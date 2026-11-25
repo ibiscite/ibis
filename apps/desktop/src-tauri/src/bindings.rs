@@ -66,6 +66,7 @@ registry![
     crate::cli_install::cli_status,
     crate::cli_install::set_cli_installed,
     crate::cli_install::copy_cli_profile,
+    crate::tray::copy_version,
     crate::library::commands::choose_library,
     crate::library::commands::reload_library,
     crate::library::commands::use_zotero,
@@ -335,6 +336,7 @@ mod tests {
         "cli_status",
         "set_cli_installed",
         "copy_cli_profile",
+        "copy_version",
     ];
 
     /// Only Settings asks about paste permission, changes the global shortcut
@@ -373,6 +375,7 @@ mod tests {
         "cli_status",
         "set_cli_installed",
         "copy_cli_profile",
+        "copy_version",
     ];
 
     #[test]

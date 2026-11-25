@@ -78,7 +78,7 @@ side of the same window, one region at a time, and folds back with Esc:
 | Search | Types | The list, and the delivery bar: the citation Enter delivers and the one action |
 | Several references | ⇧↵, ⌘-click or a row's + | One citation token each, in order; the count names them |
 | Details | Clicks a token, or ⌘I | The token's details, in the drawer that rises from the bar ([inspector-and-reader](design/inspector-and-reader.md), decision 0045) |
-| Pages | **Show PDF** (⌘D) | The window takes a reading shape once, taller and wider; the list folds away and the **Reader**'s thumbnails and pages take its place beside the column |
+| Pages | **Show PDF** (⌘D) | The **Reader** opens in its own read-only window with thumbnails and pages (decision 0036) |
 | Choose a page | Clicks a thumbnail (⇧-click a range, ⌘-click another), or ⌘↵ on the page in view | The Page field and the citation token show it, "p. 417–419, 423" |
 | Deliver | Enter, as the bar's action says | Pasted or copied, then the window hides |
 

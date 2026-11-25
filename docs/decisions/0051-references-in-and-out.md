@@ -2,7 +2,7 @@
 
 Decided by the maintainer on 2026-11-13, after a design study of Zotero, JabRef,
 BibDesk, Paperpile, Bookends, citation.js and the doi.org, Crossref and OpenAlex
-services. It is the first step of the wider aim in ROADMAP.md (Where Ibis is going).
+services. It is the first step of the wider aim in [the roadmap](../../ROADMAP.md).
 
 ## Lasting concepts, each with one owner
 

@@ -1,0 +1,1 @@
+{"ibis": 1, "read": {"scope": "invented-scope", "revision": "r1", "keys": true, "records": [{"id": "2475", "type": "article-journal", "title": "Invented tides", "citation-key": "tides2024", "author": [{"family": "Okafor", "given": "Ada"}], "issued": {"date-parts": [[2024]]}}], "skipped": [{"cause": "unsupported-type", "entry": "An invented talk", "field": "ref-type"}]}}

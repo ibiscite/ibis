@@ -1,0 +1,51 @@
+TY  - JOUR
+AU  - Doe, Jane
+AU  - Roe, Rafael
+TI  - Invented tides of the northern lake
+T2  - Journal of Invented Studies
+J2  - J. Invent. Stud.
+PY  - 2026
+DA  - 2026/03/14/
+VL  - 12
+IS  - 3
+SP  - 101
+EP  - 118
+DO  - 10.0000/invented.2026.1
+UR  - https://example.org/tides
+ID  - 17
+AN  - INVENTED:000001
+N1  - A note Ibis never reads
+L1  - file:///invented/private.pdf
+ER  - 
+
+TY  - CHAP
+AU  - Quill, Ada
+A2  - Editor, Ena
+TI  - An invented chapter
+
+T2  - The Invented Handbook
+PB  - Example Press
+CY  - Exampleville
+PY  - 2025
+SP  - 1654–6
+ER  - 
+
+TY  - BOOK
+AU  - 山田太郎
+AU  - Example Collective
+TI  - A book of invented seasons
+T2  - Invented Series
+PB  - Example Press
+PY  - 2026/07//Jul-Sep2026
+SP  - 320
+SN  - 978-0-00-000000-2
+ER  - 
+
+TY  - JOUR
+AU  - Vale, Ivo
+TI  - An article with only a number
+T2  - Invented Letters
+PY  - 2024
+VL  - 3
+C7  - e1234
+ER  - 

@@ -543,13 +543,24 @@ fn each_file_format_declares_what_it_offers() -> Result<(), Box<dyn std::error::
         (
             "refs.bib",
             bibtex,
-            &[BibliographicRecords, NativeCitationKeys, AttachmentText, Proposals],
+            &[
+                BibliographicRecords,
+                NativeCitationKeys,
+                AttachmentText,
+                Proposals,
+                OriginalEntries,
+            ],
         ),
         // Recognised by its text only: never rewritten by a proposal.
         (
             "refs.backup",
             bibtex,
-            &[BibliographicRecords, NativeCitationKeys, AttachmentText],
+            &[
+                BibliographicRecords,
+                NativeCitationKeys,
+                AttachmentText,
+                OriginalEntries,
+            ],
         ),
         (
             "refs.json",

@@ -9,7 +9,7 @@ use ibis_core::destination::CopyReason;
 #[cfg(any(target_os = "macos", test))]
 use super::capture::{Front, Selection};
 #[cfg(any(target_os = "macos", test))]
-use super::{CopyProof, DeliveryRequest, POST_LIMIT, SafetyStamp};
+use super::{DeliveryRequest, DeliveryTicket, POST_LIMIT, SafetyStamp};
 
 #[cfg(any(target_os = "macos", test))]
 #[derive(Clone)]
@@ -17,7 +17,7 @@ pub(super) struct PostRequest {
     pub(super) token: u32,
     pub(super) pid: i32,
     pub(super) id: String,
-    pub(super) change_count: isize,
+    pub(super) change_count: i64,
     pub(super) presentation: u64,
     pub(super) stamp: SafetyStamp,
     pub(super) window: Option<u32>,
@@ -28,18 +28,17 @@ pub(super) struct PostRequest {
 
 #[cfg(any(target_os = "macos", test))]
 impl PostRequest {
-    pub(super) fn new(request: DeliveryRequest, proof: &CopyProof) -> Self {
+    pub(super) fn new<W>(request: DeliveryRequest, proof: &DeliveryTicket<W>) -> Self {
         Self {
             token: proof.token,
             pid: request.pid,
             id: request.id,
-            change_count: proof.change_count,
-            presentation: proof.presentation,
+            change_count: proof.clipboard,
+            presentation: proof.target.presentation,
             stamp: proof.stamp,
-            window: proof.captured.as_ref().and_then(|captured| captured.window),
+            window: proof.captured().and_then(|captured| captured.window),
             selection: proof
-                .captured
-                .as_ref()
+                .captured()
                 .map_or(Selection::Unknown, |captured| captured.selection.clone()),
             began: request.began,
             deadline: request.deadline,
@@ -100,7 +99,8 @@ pub(super) trait PostDesk {
     fn refused(&self, reason: CopyReason) -> CopyReason {
         reason
     }
-    fn change_count(&self) -> isize;
+    /// The system's count of clipboard writes now; `None` when unreadable.
+    fn change_count(&self) -> Option<i64>;
     fn secure_input(&self) -> Option<bool>;
     fn seconds_since_input(&self, event: InputPress) -> f64;
     fn input_unchanged(&self, began: Instant) -> Result<(), PostResult> {
@@ -181,7 +181,7 @@ fn post_checked(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
                     None => return Err(CopyReason::PasteUnavailable),
                     Some(false) => {}
                 }
-                if desk.change_count() != request.change_count {
+                if desk.change_count() != Some(request.change_count) {
                     return Err(CopyReason::ClipboardChanged);
                 }
                 if desk.now() >= request.deadline {
@@ -221,7 +221,7 @@ fn post_checked(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
         None => return PostResult::Unavailable,
         Some(false) => {}
     }
-    if desk.change_count() != request.change_count {
+    if desk.change_count() != Some(request.change_count) {
         return PostResult::ClipboardChanged;
     }
     if desk.now() >= request.deadline {

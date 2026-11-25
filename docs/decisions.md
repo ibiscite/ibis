@@ -25,7 +25,7 @@ the anchor older links use.
 [0007](decisions/0007-formatting.md): citeproc-js in QuickJS, key outputs from `ibis-core`, every CSL style in one bundle.
 
 ## 0008 Offline by default
-[0008](decisions/0008-offline-by-default.md): no telemetry; each network use is opt-in, listed and approved; the editor endpoint.
+[0008](decisions/0008-offline-by-default.md): no telemetry; each network use is listed and approved, opt-in except update checks before 1.0; the editor endpoint.
 
 ## 0009 Insertion
 [0009](decisions/0009-insertion.md): every Enter ends pasted or copied with a reason; selected text as the search.
@@ -43,7 +43,7 @@ the anchor older links use.
 [0031](decisions/0031-what-ibis-remembers-per-app.md): `apps.json`, recent citations and app-ID evidence. Format and project rules are replaced by 0042.
 
 ## 0019 Updates
-[0019](decisions/0019-updates.md): Tauri's updater, opt-in, signed; offers never take Enter; release naming; one Windows package.
+[0019](decisions/0019-updates.md): Tauri's updater, checks on by default until 1.0, signed; offers never take Enter; release naming; one Windows package.
 
 ## 0021 Interface foundation
 [0021](decisions/0021-interface-foundation.md): React Aria only inside `ui/`, hand-written tokens, Ibis's own icon set.
@@ -67,13 +67,13 @@ the anchor older links use.
 [0035](decisions/0035-one-owner-one-contract-one-catalogue.md): one session state machine, the engine's types, one catalogue of words.
 
 ## 0036 The reader's trust boundary
-[0036](decisions/0036-reader-trust-boundary.md): PDF.js in the web view, bytes not paths, limits and page labels.
+[0036](decisions/0036-reader-trust-boundary.md): a read-only reader in its own window where PDF.js only paints; the engine owns text, page labels and anchors; bytes not paths, limits.
 
 ## 0037 One source per fact; everything else is generated, checked or a command
 [0037](decisions/0037-one-source-per-fact.md): one place per fact; repeats are generated or checked; routine steps are commands.
 
 ## 0038 One window that unfolds
-[0038](decisions/0038-one-window-that-unfolds.md): details and pages unfold in the same window: beside the list, or up from the delivery bar.
+[0038](decisions/0038-one-window-that-unfolds.md): citation details rise from the delivery bar and warnings unfold beside the list; the PDF reader has its own window (0036).
 
 ## 0039 Extending Ibis from outside
 [0039](decisions/0039-extending-ibis-from-outside.md): licence boundary, package names, `ibis-foo` plugins, the running app answers `ibis`.
@@ -137,3 +137,9 @@ the anchor older links use.
 
 ## 0058 Interface language
 [0058](decisions/0058-interface-language.md): one catalogue per language with every English message, checked by tests; the app speaks the Settings choice or the system's language from the next opening, the command line and MCP stay English; citations keep their style's language; right to left by `dir` and logical properties, with isolated arguments for mixed-direction text.
+
+## 0059 Works with nothing, better with more
+[0059](decisions/0059-works-with-nothing-better-with-more.md): every capability useful with only Ibis and files, better when Zotero or Better BibTeX is present, detected not asked; five nouns (Source, Selection, Anchor, Context, Output and Sink), five operations (find, locate, render, scan, propose); `needs`, `network` and `palette` on every method row; Ibis writes only a project's `.bib` (opt-in) and a folder's `.bib`.
+
+## 0060 One document pipeline
+[0060](decisions/0060-one-document-pipeline.md): check, export, format and share are one pipeline, scan → reference set → render → sink; every document file is parsed only in a child behind a CLI-only feature; the reference set is a CSL-JSON file of share-safe records; project-scoped keys and the opt-in `.bib` append are the project's own.

@@ -87,5 +87,6 @@ export function demoApi(initialPreferences: Partial<PickerPreferences> = {}): Se
     cliStatus: async () => command,
     setCliInstalled: async (installed) => (command = { ...command, state: installed ? "matching" : "not-installed", version: installed ? "0.2.1" : null, installable: !installed, removable: installed }),
     copyCliProfile: noop,
+    copyVersion: noop,
   };
 }

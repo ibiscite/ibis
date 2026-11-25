@@ -29,6 +29,11 @@ The regions that unfold beside the list ([the model](../design.md#the-model), de
 
 ## Reader (planned, #1252)
 
+Amended by decision 0036 on 2026-11-25: the reader opens in its own read-only
+window, and page text, find and page labels come from the engine (`find_in`),
+not the PDF.js worker. **Where**, **Find in the PDF** and **Status** below are
+redesigned to match before #1252 starts.
+
 [C20] A read-only view of a reference's PDF that is already in Zotero or a `.bib` `file` field, for looking at a source and choosing its page without opening Zotero (decision 0036). Ibis never imports, downloads, edits or annotates a PDF; **Open in Zotero** stays beside it.
 
 - **Where**: in the list's place, beside the Inspector column. **Show PDF** (⌘D, Ctrl+D elsewhere) is a row in the column under the fields, and reads **Hide PDF** while open. Opening gives the window a reading shape once, from its top edge and within the screen: as wide as thumbnails, one page at Fit Width and the column, and as tall as the screen allows up to 1.6 times the steady height. It is the one planned exception to [C10], with no animated resize. The list folds away and keeps its selection; search, shelf and footer stay where they were. Typing in Search, Esc or Hide PDF returns the list and the steady size; the details stay open.

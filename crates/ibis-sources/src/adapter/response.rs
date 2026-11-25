@@ -85,7 +85,7 @@ impl<'de> DeserializeSeed<'de> for Entry {
             return Err(D::Error::custom("too many adapter entries"));
         }
         let raw = <&RawValue>::deserialize(deserializer)?;
-        if raw.get().len() > crate::csl_json::MAX_RECORD_BYTES {
+        if raw.get().len() > crate::MAX_RECORD_BYTES {
             return Err(D::Error::custom("adapter entry too large"));
         }
         Ok(raw)

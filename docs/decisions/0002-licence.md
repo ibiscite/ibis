@@ -9,3 +9,10 @@ CSL styles and locales ship unmodified under their own licences, credited to
 citationstyles.org. `cargo deny` checks dependency licences. The NCSA exception
 for `libfuzzer-sys` exactly `0.4.13` applies only to the test-only `ibis-fuzz`
 crate; it must never enter shipped artifacts.
+
+2026-11-25 (maintainer, #1271): every package carries `THIRD-PARTY-NOTICES.txt`,
+generated at build time (`scripts/third-party-notices.py`) with every licence,
+NOTICE and third-party attribution file its dependencies ship. A dependency
+that ships no licence file is credited with the standard SPDX text of the
+licence it declares; npm packages without one are listed by exact version
+after review. `cargo deny` stays the licence policy.

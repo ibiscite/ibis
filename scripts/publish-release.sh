@@ -2,7 +2,9 @@
 # Preview's "Publish the verified release" step (preview.yml), from the
 # repository root: publishes the drafted numbered release TAG with the
 # verified packages in dist/. Every refusal and failed read comes before the
-# first change on GitHub. GH_TOKEN, TAG, REPO, ACTOR come from the workflow.
+# first change on GitHub. Every file, SBOMs included, is attached while the
+# release is a draft, never after it is public: numbered releases are
+# immutable once published (#50). GH_TOKEN, TAG, REPO, ACTOR come from the workflow.
 set -euo pipefail
 # An older tag must not take Latest back. A failed lookup stops here,
 # before any draft is published or its packages are replaced.
@@ -24,7 +26,7 @@ if gh release view "$TAG" --repo "$REPO" --json body,isDraft > release.json; the
   fi
   jq -r .body release.json > generated-notes.md
   node scripts/release-notes.mjs "$TAG" generated-notes.md style-changes/notes.md style-changes/contract.md > release-notes.md
-  gh release upload "$TAG" dist/* style-changes/changed-styles.txt --repo "$REPO" --clobber
+  gh release upload "$TAG" dist/* sbom/*.cdx.json style-changes/changed-styles.txt --repo "$REPO" --clobber
   gh release edit "$TAG" --repo "$REPO" --prerelease=false --draft=false "$latest_flag" --title "Ibis ${TAG#v}" --notes-file release-notes.md
 elif [[ "$ACTOR" == *"[bot]" ]]; then
   # Release Please pushes the tag before it drafts the release. A bot
@@ -35,6 +37,6 @@ elif [[ "$ACTOR" == *"[bot]" ]]; then
 else
   : > generated-notes.md
   node scripts/release-notes.mjs "$TAG" generated-notes.md style-changes/notes.md style-changes/contract.md > release-notes.md
-  gh release create "$TAG" dist/* style-changes/changed-styles.txt --repo "$REPO" --prerelease=false --draft --title "Ibis ${TAG#v}" --notes-file release-notes.md --verify-tag
+  gh release create "$TAG" dist/* sbom/*.cdx.json style-changes/changed-styles.txt --repo "$REPO" --prerelease=false --draft --title "Ibis ${TAG#v}" --notes-file release-notes.md --verify-tag
   gh release edit "$TAG" --repo "$REPO" --prerelease=false --draft=false "$latest_flag"
 fi

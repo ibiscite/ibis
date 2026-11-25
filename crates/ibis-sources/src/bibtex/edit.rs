@@ -182,9 +182,12 @@ impl<'a> Entry<'a> {
         let mut out = String::with_capacity(self.text.len() + 256);
         let mut from = 0;
         for (range, text) in edits {
-            out.push_str(&self.text[from..range.start]);
+            // Removing neighbouring fields on one line, or a field written
+            // twice, gives overlapping ranges: the removals join (#53).
+            let start = range.start.max(from);
+            out.push_str(&self.text[from..start]);
             out.push_str(&text);
-            from = range.end;
+            from = from.max(range.end);
         }
         out.push_str(&self.text[from..]);
         out
@@ -271,6 +274,26 @@ mod tests {
         assert_eq!(edited, FILE.replace("{Synthetic noise}", "{Synthetic quiet}"));
         assert_eq!(entry.literal("journal"), Some(Err(EditProblem::NotLiteral)));
         assert_eq!(entry.literal("year"), Some(Ok("2025")));
+    }
+
+    #[test]
+    fn neighbouring_and_repeated_fields_are_removed_together() {
+        for (text, changes, kept) in [
+            ("@misc{x, a=1, b=2}", vec![("a", None), ("b", None)], vec![]),
+            ("@misc{x, note=f, note=t}", vec![("note", None)], vec![]),
+            ("@misc{x, a=1, b=2, c=3}", vec![("a", None), ("b", None)], vec!["c"]),
+        ] {
+            let file = read(text);
+            let edited = file.entry("x").unwrap().edited(&changes);
+            let again = read(&edited);
+            let entry = again.entry("x").unwrap();
+            for (name, _) in &changes {
+                assert!(!entry.has(name), "{text} kept {name}: {edited}");
+            }
+            for name in kept {
+                assert!(entry.has(name), "{text} lost {name}: {edited}");
+            }
+        }
     }
 
     #[test]

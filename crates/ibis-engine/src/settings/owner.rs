@@ -29,16 +29,26 @@ struct Queue {
     next: u64,
 }
 type Edited = Arc<dyn Fn(u64, Loaded) + Send + Sync>;
+type Published = Arc<dyn Fn(&Loaded) + Send + Sync>;
 #[derive(Default)]
 struct WatchState {
     edited: Option<Edited>,
     watcher: Option<notify::RecommendedWatcher>,
     /// The file as the queue last saw it; see [`Owner::view`].
     view: Option<Arc<Loaded>>,
+    published: Option<Published>,
 }
 fn publish(path: &Path, watch: &Mutex<WatchState>) {
     let view = Arc::new(settings::load(path));
-    watch.recover_lock().view = Some(view);
+    let published = {
+        let mut state = watch.recover_lock();
+        state.view = Some(Arc::clone(&view));
+        state.published.clone()
+    };
+    // Outside the lock: a listener may read the view again.
+    if let Some(published) = published {
+        published(&view);
+    }
 }
 
 /// Bytes are bounded and regular-file checked, including fingerprints.
@@ -291,6 +301,12 @@ impl Owner {
     pub fn path(&self) -> &Path {
         &self.path
     }
+    /// Call `published` with every view the owner publishes: after each of
+    /// its own turns, a restore included, and after each outside edit it
+    /// observes. One listener; a later call replaces it, and closing drops it.
+    pub fn on_publish(&self, published: impl Fn(&Loaded) + Send + Sync + 'static) {
+        self.watch.recover_lock().published = Some(Arc::new(published));
+    }
     /// The settings as the last finished turn left them, without waiting for
     /// queued work. Use it wherever a caller must not stall on a write.
     pub fn view(&self) -> Arc<Loaded> {
@@ -427,6 +443,7 @@ impl Owner {
             let mut state = self.watch.recover_lock();
             state.edited = None;
             state.watcher = None;
+            state.published = None;
         }
     }
 }
@@ -602,6 +619,41 @@ mod tests {
         assert!(owner.read().from_backup);
         assert!(density(&owner, settings::Density::Compact).is_err());
         assert_eq!(std::fs::read(&path).unwrap_or_default(), b"{ editing");
+    }
+
+    #[test]
+    fn every_own_turn_and_outside_edit_is_published_to_the_listener() {
+        let (directory, owner) = owner();
+        let (sender, published) = mpsc::channel();
+        owner.on_publish(move |loaded| {
+            let _ = sender.send(loaded.settings.portable.paste);
+        });
+        let seen = || {
+            published
+                .recv_timeout(CHANNEL_LIMIT)
+                .unwrap_or_else(|error| panic!("nothing published: {error}"))
+        };
+        let paste = |value| {
+            owner
+                .change(move |s| {
+                    s.portable.paste = Some(value);
+                    Ok::<_, SettingsError>(())
+                })
+                .unwrap_or_else(|error| panic!("{error}"))
+        };
+        paste(false);
+        assert_eq!(seen(), Some(false), "an own write");
+        // An outside edit is observed at the start of the next turn.
+        replace(&directory.path().join("settings.json"), br#"{"paste":true}"#);
+        assert_eq!(owner.read().settings.portable.paste, Some(true));
+        let mut views = Vec::new();
+        while let Ok(view) = published.try_recv() {
+            views.push(view);
+        }
+        assert!(views.contains(&Some(true)), "the outside edit: {views:?}");
+        owner.close();
+        let _ = density(&owner, settings::Density::Compact);
+        assert!(published.try_recv().is_err(), "a closed owner publishes nothing");
     }
 
     #[test]

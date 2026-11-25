@@ -13,15 +13,14 @@ use ibis_core::destination::{CopyReason, System};
 use ibis_native::paste::queries;
 #[cfg(any(target_os = "windows", test))]
 use ibis_native::paste::queries::QueryWorker;
-pub(crate) use ibis_native::paste::{Captured, CopiedReason, Delivered, capture};
+pub(crate) use ibis_native::paste::{Captured, CopiedReason, CopyAttempt, Delivered, capture};
 #[cfg(target_os = "windows")]
 use ibis_native::paste::{
-    CopyAttempt, DeliveryTicket, key_release_failed,
+    DeliveryTicket, key_release_failed,
     keys::{PasteEvent, PasteKeys},
     queries::{PasswordQueries, display_name},
     tickets::{TicketDesk, deliver_ticket},
     windows::Window,
-    with_paste_setting,
 };
 use ibis_native::paste::{SYSTEM, intended_paste, policy_decision};
 use tauri::{AppHandle, Manager};
@@ -37,8 +36,8 @@ pub(crate) mod permission;
 #[cfg(target_os = "windows")]
 mod windows;
 
-/// The app the picker was last opened from. Its proofs take their tokens from
-/// the same counter as every other clipboard write of the app.
+/// The app the picker was last opened from, and the owner every clipboard
+/// write of the app goes through for its token.
 pub(crate) struct LastTarget(ibis_native::paste::LastTarget);
 
 impl Default for LastTarget {
@@ -102,7 +101,33 @@ fn paste_setting(app: &AppHandle) -> Option<bool> {
 }
 
 fn read_paste_setting(path: &std::path::Path) -> Option<bool> {
-    Some(ibis_engine::settings::load(path).cites().ok()?.portable.paste())
+    paste_consent(&ibis_engine::settings::load(path))
+}
+
+fn paste_consent(loaded: &ibis_engine::settings::Loaded) -> Option<bool> {
+    Some(loaded.cites().ok()?.portable.paste())
+}
+
+/// Turning Paste off, by any route (Settings, the picker, a restore or an
+/// edit to the file), revokes every copy already on its way to a paste: a
+/// detached ticket's final checks then refuse. So does a settings file that
+/// can no longer give consent. Delivery also reads the setting when it starts.
+pub(crate) fn revoke_when_paste_changes(app: &AppHandle) {
+    let file = app.state::<crate::preferences::SettingsFile>();
+    let known = std::sync::Mutex::new(paste_consent(&file.owner.view()));
+    let app = app.clone();
+    file.owner.on_publish(move |loaded| {
+        if consent_changed(&known, paste_consent(loaded)) {
+            let _ = change_destination(&app, true, |_| Ok(()));
+        }
+    });
+}
+
+/// Whether consent differs from the last view; a poisoned record counts as changed.
+fn consent_changed(known: &std::sync::Mutex<Option<bool>>, now: Option<bool>) -> bool {
+    known
+        .lock()
+        .map_or(true, |mut known| std::mem::replace(&mut *known, now) != now)
 }
 
 /// Serialize successful policy changes with proof publication and native
@@ -204,8 +229,8 @@ fn paste_policy(app: &AppHandle, enabled: bool, choosing: bool) -> bool {
         .unwrap_or(false)
 }
 
-#[cfg(target_os = "windows")]
-pub(crate) fn begin_copy(app: &AppHandle, replaces: &[String]) -> CopyAttempt<Window> {
+/// Freeze a citation's destination at request entry, before clipboard I/O.
+pub(crate) fn begin_copy(app: &AppHandle, replaces: &[String]) -> CopyAttempt {
     app.state::<LastTarget>().begin_copy(
         || app.state::<crate::picker::PickerGeneration>().current(),
         replaces,
@@ -214,22 +239,12 @@ pub(crate) fn begin_copy(app: &AppHandle, replaces: &[String]) -> CopyAttempt<Wi
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) fn remember_copy(
-    app: &AppHandle,
-    attempt: CopyAttempt<Window>,
-    sequence: Option<u32>,
-    token: u32,
-) -> Option<u32> {
-    app.state::<LastTarget>().remember_copy(attempt, sequence, token)
-}
-
-#[cfg(target_os = "windows")]
 pub(crate) fn take_copy(app: &AppHandle, token: Option<u32>) -> Option<DeliveryTicket<Window>> {
     app.state::<LastTarget>().take_ticket(token)
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) fn deliver_copy(app: &AppHandle, text: &str, ticket: Option<DeliveryTicket<Window>>) -> Delivered {
+pub(crate) fn deliver_copy(app: &AppHandle, _text: &str, ticket: Option<DeliveryTicket<Window>>) -> Delivered {
     let desk = windows::Win::new(app);
     // Missing/stale receipts must not strand keys from an earlier copy.
     if !desk.release_keys() {
@@ -238,25 +253,32 @@ pub(crate) fn deliver_copy(app: &AppHandle, text: &str, ticket: Option<DeliveryT
     let Some(ticket) = ticket else {
         return Delivered::copied(CopyReason::PasteUnavailable);
     };
-    with_paste_setting(
-        || paste_setting(app),
-        |enabled| deliver_ticket(&desk, &ticket, text, enabled),
-    )
+    deliver_ticket(&desk, &ticket, || paste_setting(app))
 }
 
 /// Paste into the captured app when it is safe to; the notice then says what happened.
 #[cfg(not(target_os = "windows"))]
-pub(crate) fn deliver_copy(app: &AppHandle, text: &str, token: Option<u32>) -> Delivered {
+pub(crate) fn deliver_copy(app: &AppHandle, _text: &str, token: Option<u32>) -> Delivered {
     let setting = || paste_setting(app);
     #[cfg(target_os = "macos")]
-    return ibis_native::paste::deliver_copy(&Host(app.clone()), setting, text, token);
+    return ibis_native::paste::deliver_copy(&Host(app.clone()), setting, token);
     #[cfg(target_os = "linux")]
-    ibis_native::paste::deliver_copy(&app.state::<LastTarget>(), setting, text, token)
+    ibis_native::paste::deliver_copy(&app.state::<LastTarget>(), setting, token)
 }
 
 #[cfg(test)]
 mod setting_tests {
-    use super::read_paste_setting;
+    use super::{consent_changed, read_paste_setting};
+
+    #[test]
+    fn every_change_of_consent_revokes_and_repeats_do_not() {
+        let known = std::sync::Mutex::new(Some(true));
+        assert!(!consent_changed(&known, Some(true)), "an unrelated save");
+        assert!(consent_changed(&known, Some(false)), "Paste turned off");
+        assert!(!consent_changed(&known, Some(false)));
+        assert!(consent_changed(&known, None), "a file that cannot give consent");
+        assert!(consent_changed(&known, Some(true)), "Paste back on");
+    }
 
     /// Moved from `ibis-native` with the settings read: consent comes only
     /// from a usable settings file, never a backup, across reopenings.

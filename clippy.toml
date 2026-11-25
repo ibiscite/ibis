@@ -5,3 +5,17 @@
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests = true
+
+# Every clipboard write goes through the delivery owner (apps/desktop's
+# copy/clipboard.rs), which numbers it and retires older copies.
+disallowed-methods = [
+  { path = "tauri_plugin_clipboard_manager::ClipboardExt::clipboard", reason = "write through crate::copy (the clipboard owner)" },
+  { path = "tauri_plugin_clipboard_manager::Clipboard::write_text", reason = "write through crate::copy (the clipboard owner)" },
+  { path = "tauri_plugin_clipboard_manager::Clipboard::write_html", reason = "write through crate::copy (the clipboard owner)" },
+  { path = "tauri_plugin_clipboard_manager::Clipboard::write_image", reason = "write through crate::copy (the clipboard owner)" },
+  { path = "tauri_plugin_clipboard_manager::Clipboard::write_secret", reason = "write through crate::copy (the clipboard owner)" },
+  { path = "tauri_plugin_clipboard_manager::Clipboard::clear", reason = "write through crate::copy (the clipboard owner)" },
+]
+disallowed-types = [
+  { path = "tauri_plugin_clipboard_manager::Clipboard", reason = "write through crate::copy (the clipboard owner)" },
+]

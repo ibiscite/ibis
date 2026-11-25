@@ -24,3 +24,5 @@ __pycache__/
 
 # Matching CLI staged by release builds, never committed.
 /apps/desktop/src-tauri/binaries/
+# Notices staged by release builds (scripts/third-party-notices.py).
+/apps/desktop/src-tauri/notices/

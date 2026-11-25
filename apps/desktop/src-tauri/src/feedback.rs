@@ -2,7 +2,6 @@
 //! browser; Ibis itself sends nothing.
 
 use tauri::AppHandle;
-use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 
 const ISSUES: &str = "https://github.com/ibiscite/ibis/issues/new";
@@ -56,7 +55,7 @@ pub(crate) fn open_in_browser(app: &AppHandle, url: String) {
     std::thread::spawn(move || {
         let opened = crate::system_open::open(url.as_ref(), false).is_ok();
         if !opened {
-            let copied = app.clipboard().write_text(url.clone()).is_ok();
+            let copied = crate::copy::write_plain(&app, &url).is_ok();
             let say = |id: &str| ibis_engine::catalogue::text(id, None, &[]).unwrap_or_default();
             let text = if copied {
                 say("app-open-link-copied")

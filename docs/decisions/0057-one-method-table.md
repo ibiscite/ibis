@@ -33,10 +33,16 @@ Each capability is one row, declared once in `ibis-engine` with a
 | `docs` | One catalogue line | Schema description, `--help`, MCP description, docs |
 | `errors` | The error codes it can return | The schema's error list, CLI exit table, MCP tool errors |
 | `tier` | `stable` or `app` | Which part of the schema the contract differ guards |
+| `needs` | What an open library must offer: nothing, records or attachment text (`as-called` for `call`) | Which methods a front end offers, with consent added on top (0055) |
+| `network` | `offline`, or the hosts it may reach (`as-called` for `call`) | PRIVACY.md, consent screens, the outbound client's allowlist |
+| `palette` | The selections the ⌘K list offers it for, or none | The ⌘K list |
 | `lane` | `read` or `work` | Which queue of the connection runtime runs it |
 | `cli` | None, or how it is typed at a prompt | The clap subcommand |
 | `mcp` | None, or its projection | `tools/list` and `tools/call` |
 | `access` | Which app windows may call it | The Tauri command and its per-window grants |
+| `needs` | The library capability it requires ([0059](0059-works-with-nothing-better-with-more.md)) | Whether it is offered for a library, and its refusal |
+| `network` | None, or the hosts it may reach | Consent screens and PRIVACY.md's network list |
+| `palette` | Whether it is a ⌘K verb, and for which selection kinds | The ⌘K list |
 
 - `dispatch(name, json)` is parsing the name, deserializing `Params` and
   `call`. In-process callers use `call::<M>` with typed values and no
@@ -147,6 +153,8 @@ green main; the old path goes in the last step of its family.
    fixture stays unchanged; one small pull request after this step types
    both, adds the test that every schema is non-empty, and lists the two
    changed entries of `fixtures/cli-schema.json`.
+   Then, before step 3 (added 2026-11-25 from the #2035 replan): the rows
+   gain `needs`, `network` and `palette`, published in `schema`'s answer.
 3. **CLI, catalogue and library reads** derived from the table.
 4. **CLI, the rest**; delete the hand subcommands and hand-built parameters.
 5. **MCP, search, show, styles and cite** as projections; parity gains an MCP

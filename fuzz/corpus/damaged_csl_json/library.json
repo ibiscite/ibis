@@ -1,0 +1,4 @@
+[
+  {"id": "invented-atlas", "type": "book", "title": "An invented atlas of tides", "author": [{"family": "Garcia", "given": "Ana"}], "issued": {"date-parts": [[2021, 3]]}, "publisher": "Invented Press", "citation-key": "garcia2021"},
+  {"id": "invented-paper", "type": "article-journal", "title": "Invented currents", "container-title": "Journal of Invented Things", "volume": "12", "page": "3-19", "DOI": "10.5555/invented", "author": [{"literal": "Invented Collective"}], "issued": {"raw": "2019"}, "note": "Citation Key: collective2019"}
+]

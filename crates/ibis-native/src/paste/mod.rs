@@ -12,11 +12,9 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-#[cfg(any(target_os = "macos", target_os = "windows", test))]
-use ibis_core::destination::AppPaste;
 #[cfg(test)]
 use ibis_core::destination::PastePermission;
-use ibis_core::destination::{CopyReason, System};
+use ibis_core::destination::{AppPaste, CopyReason, System};
 use serde::{Deserialize, Serialize};
 
 pub mod capture;
@@ -36,11 +34,8 @@ pub use capture::Captured;
 use capture::Front;
 #[cfg(any(target_os = "macos", test))]
 use capture::Selection;
-#[cfg(any(target_os = "windows", test))]
-use delivery::CopyEvidence;
 #[cfg(target_os = "windows")]
 pub use delivery::key_release_failed;
-pub use delivery::with_paste_setting;
 use delivery::{DeliveryRequest, Desk, deliver};
 pub use destination::{intended_paste, policy_decision};
 use input_fence::PostResult;
@@ -60,7 +55,6 @@ struct PolicyProof {
 }
 
 impl PolicyProof {
-    #[cfg(any(target_os = "macos", target_os = "windows", test))]
     fn capture(epoch: &Arc<AtomicU64>) -> Self {
         Self {
             epoch: Arc::clone(epoch),
@@ -156,13 +150,12 @@ impl SafetyStamp {
     }
 }
 
-/// The app the picker was last opened from, with the source of the unique
-/// token each of Ibis's clipboard writes takes. Only macOS writes through
-/// this owner: Windows copies take theirs before writing, and Linux only copies.
-pub struct LastTarget(
-    Mutex<TargetState>,
-    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))] fn() -> Result<u32, String>,
-);
+/// The app the picker was last opened from, and the owner of every Ibis
+/// clipboard write on every system: each write takes its unique token here,
+/// one write at a time, and only a write that began from a copy attempt can
+/// leave a delivery ticket. Writes hold their own lock, never the target
+/// state the UI thread reads: a Windows write can wait on the UI thread.
+pub struct LastTarget(Mutex<TargetState>, fn() -> Result<u32, String>, Mutex<()>);
 
 #[cfg(test)]
 impl Default for LastTarget {
@@ -181,13 +174,13 @@ impl Default for LastTarget {
 
 impl LastTarget {
     /// `write_token` must give every clipboard write of the process a new,
-    /// never reused token: a proof is consumed only by its own token.
+    /// never reused token: a ticket is taken only by its own token.
     pub fn new(write_token: fn() -> Result<u32, String>) -> Self {
-        Self(Mutex::default(), write_token)
+        Self(Mutex::default(), write_token, Mutex::new(()))
     }
 
-    /// Serialize successful policy changes with proof publication and native
-    /// posting. Detached workers keep a revocable epoch after taking their proof.
+    /// Serialize successful policy changes with ticket publication and native
+    /// posting. Detached workers keep a revocable epoch after taking their ticket.
     pub fn change_destination<T>(
         &self,
         revoke: bool,
@@ -214,6 +207,150 @@ impl LastTarget {
         let captured = last.target.as_ref().and_then(|target| target.captured.as_ref());
         Some(read(captured))
     }
+
+    /// Freeze the destination, policy and time at request entry, before
+    /// clipboard I/O. `presentation` is the host's count of picker
+    /// presentations; only Windows keeps it there, macOS and Linux count
+    /// theirs in `begin_presentation`.
+    pub fn begin_copy(
+        &self,
+        presentation: impl FnOnce() -> u64,
+        replaces: &[String],
+        paste_for: impl FnOnce(&Captured) -> Result<Option<AppPaste>, CopyReason>,
+    ) -> CopyAttempt {
+        #[cfg(target_os = "macos")]
+        let (stamp, diagnostic) = macos::observe_write_stamp();
+        #[cfg(not(target_os = "macos"))]
+        let stamp = SafetyStamp::now();
+        self.begin_copy_observed(
+            presentation,
+            replaces,
+            stamp,
+            paste_for,
+            #[cfg(target_os = "macos")]
+            diagnostic,
+        )
+    }
+
+    fn begin_copy_observed(
+        &self,
+        presentation: impl FnOnce() -> u64,
+        replaces: &[String],
+        stamp: SafetyStamp,
+        paste_for: impl FnOnce(&Captured) -> Result<Option<AppPaste>, CopyReason>,
+        #[cfg(target_os = "macos")] diagnostic: Option<macos::diagnostics::Snapshot>,
+    ) -> CopyAttempt {
+        let written = Instant::now();
+        // In-crate tests drive the macOS/Linux capture state on every system;
+        // the Windows capture is covered through `publish_capture`.
+        #[cfg(all(target_os = "windows", not(test)))]
+        let presentation = presentation();
+        #[cfg(any(not(target_os = "windows"), test))]
+        let _ = presentation;
+        let (target, policy) = self
+            .0
+            .lock()
+            .ok()
+            .map(|last| {
+                #[cfg(all(target_os = "windows", not(test)))]
+                let target = last.target.clone().filter(|target| target.presentation == presentation);
+                #[cfg(any(not(target_os = "windows"), test))]
+                let target = Some(CopyTarget {
+                    captured: last.captured.clone(),
+                    window: None,
+                    presentation: last.presentation,
+                });
+                (target, PolicyProof::capture(&last.policy))
+            })
+            .unwrap_or_default();
+        let target = target.map(|mut target| {
+            if let Some(captured) = &mut target.captured {
+                captured.paste = paste_for(captured);
+                if !replaces.is_empty() {
+                    captured.selection = capture::Selection::Citation(capture::OldCitation::of_any(replaces));
+                }
+                #[cfg(target_os = "macos")]
+                if captured.focus_failure.is_none()
+                    && (stamp.epoch == 0 || stamp.epoch == u64::MAX)
+                    && let Some(mut diagnostic) = diagnostic
+                {
+                    diagnostic.inherit_activation(captured.diagnostic.as_ref());
+                    captured.diagnostic = Some(diagnostic);
+                }
+            }
+            target
+        });
+        CopyAttempt {
+            policy,
+            target,
+            written,
+            stamp,
+        }
+    }
+
+    /// The one way Ibis writes the clipboard, on every system: one write at
+    /// a time, after retiring the earlier ticket, with the next token. `write`
+    /// returns the system's clipboard count right after the write when it can
+    /// prove nothing else wrote in between; only then, and only for a copy
+    /// `attempt`, does the write leave a ticket. A plain copy passes `None`
+    /// and still retires the earlier ticket. The token is the write's receipt.
+    pub fn write_copy(
+        &self,
+        attempt: Option<CopyAttempt>,
+        write: impl FnOnce() -> Result<Option<i64>, String>,
+    ) -> Result<u32, String> {
+        write_ticket(&self.0, &self.2, self.1, attempt, write)
+    }
+
+    /// Take the ticket of the write `token` named, once. A stale delivery
+    /// leaves a newer write's ticket alone.
+    pub fn take_ticket(&self, token: Option<u32>) -> Option<DeliveryTicket> {
+        self.0.lock().ok()?.take_ticket(token)
+    }
+}
+
+/// Writes take `writes` in turn, so tokens and tickets follow write order by
+/// construction: no later bookkeeping can let an older write's ticket
+/// replace a newer one's. The target state is held only to retire and to
+/// publish, never across clipboard I/O.
+fn write_ticket<W>(
+    state: &Mutex<TargetState<W>>,
+    writes: &Mutex<()>,
+    write_token: fn() -> Result<u32, String>,
+    attempt: Option<CopyAttempt<W>>,
+    write: impl FnOnce() -> Result<Option<i64>, String>,
+) -> Result<u32, String> {
+    let failed = || "The clipboard could not be written.".to_owned();
+    let _writing = writes.lock().map_err(|_| failed())?;
+    // Retired before the write: no earlier ticket can paste over this copy.
+    state.lock().map_err(|_| failed())?.retire_ticket();
+    let token = write_token()?;
+    let clipboard = write()?;
+    if let (
+        Some(CopyAttempt {
+            policy,
+            target: Some(target),
+            written,
+            stamp,
+        }),
+        Some(clipboard),
+        Ok(mut last),
+    ) = (attempt, clipboard, state.lock())
+    {
+        #[cfg(any(not(target_os = "windows"), test))]
+        {
+            last.owner = Some(token);
+        }
+        last.pending = Some(DeliveryTicket {
+            policy,
+            token,
+            target,
+            clipboard,
+            written,
+            stamp,
+        });
+    }
+    Ok(token)
 }
 
 #[cfg(any(target_os = "windows", test, feature = "fixtures"))]
@@ -227,7 +364,7 @@ impl LastTarget {
             last.target = Some(CopyTarget {
                 captured: Some(captured),
                 window: None,
-                generation: 0,
+                presentation: 0,
             });
         }
     }
@@ -239,53 +376,55 @@ impl LastTarget {
     }
 }
 
-#[derive(Default)]
-struct TargetState {
+struct TargetState<W = HostWindow> {
     policy: Arc<AtomicU64>,
+    /// The ticket of the newest write, until its delivery takes it.
+    pending: Option<DeliveryTicket<W>>,
     #[cfg(any(not(target_os = "windows"), test))]
     owner: Option<u32>,
     #[cfg(any(not(target_os = "windows"), test))]
     captured: Option<Captured>,
     #[cfg(any(not(target_os = "windows"), test))]
-    copied: Option<CopyProof>,
-    #[cfg(any(not(target_os = "windows"), test))]
     presentation: u64,
     #[cfg(target_os = "windows")]
-    target: Option<CopyTarget<windows::Window>>,
-    #[cfg(target_os = "windows")]
-    pending: Option<DeliveryTicket<windows::Window>>,
+    target: Option<CopyTarget<W>>,
 }
 
-impl TargetState {
-    fn invalidate_policy(&mut self) {
-        self.policy
-            .store(self.policy.load(Ordering::Acquire).saturating_add(1), Ordering::Release);
-        #[cfg(any(not(target_os = "windows"), test))]
-        {
-            self.owner = None;
-            self.copied = None;
-        }
-        #[cfg(target_os = "windows")]
-        {
-            self.pending = None;
+impl<W> Default for TargetState<W> {
+    fn default() -> Self {
+        Self {
+            policy: Arc::default(),
+            pending: None,
+            #[cfg(any(not(target_os = "windows"), test))]
+            owner: None,
+            #[cfg(any(not(target_os = "windows"), test))]
+            captured: None,
+            #[cfg(any(not(target_os = "windows"), test))]
+            presentation: 0,
+            #[cfg(target_os = "windows")]
+            target: None,
         }
     }
 }
 
-/// Evidence from Ibis's own successful clipboard write, consumed once. The
-/// text is Ibis's citation, never read back from another clipboard owner.
-#[cfg(any(not(target_os = "windows"), test))]
-struct CopyProof {
-    policy: PolicyProof,
-    token: u32,
-    captured: Option<Captured>,
-    text: String,
-    #[cfg(any(target_os = "macos", test))]
-    change_count: isize,
-    #[cfg(any(target_os = "macos", test))]
-    presentation: u64,
-    written: Instant,
-    stamp: SafetyStamp,
+impl<W> TargetState<W> {
+    fn take_ticket(&mut self, token: Option<u32>) -> Option<DeliveryTicket<W>> {
+        self.pending.take_if(|ticket| Some(ticket.token) == token)
+    }
+
+    fn retire_ticket(&mut self) {
+        self.pending = None;
+        #[cfg(any(not(target_os = "windows"), test))]
+        {
+            self.owner = None;
+        }
+    }
+
+    fn invalidate_policy(&mut self) {
+        self.policy
+            .store(self.policy.load(Ordering::Acquire).saturating_add(1), Ordering::Release);
+        self.retire_ticket();
+    }
 }
 
 #[cfg(any(not(target_os = "windows"), test))]
@@ -295,112 +434,31 @@ impl LastTarget {
     pub fn begin_presentation(&self, captured: Option<Captured>) {
         if let Ok(mut last) = self.0.lock() {
             last.presentation = last.presentation.wrapping_add(1);
-            last.copied = None;
-            last.owner = None;
+            last.retire_ticket();
             if let Some(captured) = captured {
                 last.captured = Some(captured);
             }
         }
     }
 
-    #[cfg(any(target_os = "macos", test))]
-    pub fn write_copy(
-        &self,
-        text: &str,
-        replaces: &[String],
-        paste_for: impl FnOnce(&Captured) -> Result<Option<AppPaste>, CopyReason>,
-        write: impl FnOnce() -> Result<Option<isize>, String>,
-    ) -> Result<Option<u32>, String> {
-        #[cfg(target_os = "macos")]
-        let (stamp, diagnostic) = macos::observe_write_stamp();
-        #[cfg(not(target_os = "macos"))]
-        let stamp = SafetyStamp::now();
-        self.write_copy_observed(
-            text,
-            replaces,
-            stamp,
-            paste_for,
-            write,
-            #[cfg(target_os = "macos")]
-            diagnostic,
-        )
-    }
-
     #[cfg(test)]
-    fn write_copy_at(
+    fn begin_copy_at(
         &self,
-        text: &str,
         stamp: SafetyStamp,
         paste_for: impl FnOnce(&Captured) -> Result<Option<AppPaste>, CopyReason>,
-        write: impl FnOnce() -> Result<Option<isize>, String>,
-    ) -> Result<Option<u32>, String> {
-        self.write_copy_observed(
-            text,
+    ) -> CopyAttempt {
+        self.begin_copy_observed(
+            || 0,
             &[],
             stamp,
             paste_for,
-            write,
             #[cfg(target_os = "macos")]
             None,
         )
     }
 
-    #[cfg(any(target_os = "macos", test))]
-    fn write_copy_observed(
-        &self,
-        text: &str,
-        replaces: &[String],
-        stamp: SafetyStamp,
-        paste_for: impl FnOnce(&Captured) -> Result<Option<AppPaste>, CopyReason>,
-        write: impl FnOnce() -> Result<Option<isize>, String>,
-        #[cfg(target_os = "macos")] diagnostic: Option<macos::diagnostics::Snapshot>,
-    ) -> Result<Option<u32>, String> {
-        let mut last = self.0.lock().map_err(|_| "The clipboard could not be written.")?;
-        last.copied = None;
-        last.owner = None;
-        let captured = last.captured.clone().map(|mut captured| {
-            captured.paste = paste_for(&captured);
-            if !replaces.is_empty() {
-                captured.selection = capture::Selection::Citation(capture::OldCitation::of_any(replaces));
-            }
-            #[cfg(target_os = "macos")]
-            if captured.focus_failure.is_none()
-                && (stamp.epoch == 0 || stamp.epoch == u64::MAX)
-                && let Some(mut diagnostic) = diagnostic
-            {
-                diagnostic.inherit_activation(captured.diagnostic.as_ref());
-                captured.diagnostic = Some(diagnostic);
-            }
-            captured
-        });
-        let token = (self.1)()?;
-        let change_count = write()?;
-        if let Some(change_count) = change_count {
-            last.owner = Some(token);
-            last.copied = Some(CopyProof {
-                policy: PolicyProof::capture(&last.policy),
-                token,
-                captured,
-                text: text.to_owned(),
-                change_count,
-                presentation: last.presentation,
-                written: Instant::now(),
-                stamp,
-            });
-        }
-        Ok(Some(token))
-    }
-
-    fn take_copy(&self, text: &str, token: Option<u32>) -> Option<CopyProof> {
-        self.0
-            .lock()
-            .ok()?
-            .copied
-            .take_if(|proof| Some(proof.token) == token && proof.text == text)
-    }
-
     /// Serialize own writes, presentation retirement and posting. Taking a
-    /// receipt does not surrender its ownership to a superseded worker. A
+    /// ticket does not surrender its ownership to a superseded worker. A
     /// final check that could not finish in time posted no key, so under this
     /// same lock the copy keeps its one turn for the delivery's retry.
     #[cfg(any(target_os = "macos", test))]
@@ -445,65 +503,11 @@ impl LastTarget {
                 CopyTarget {
                     captured,
                     window,
-                    generation,
+                    presentation: generation,
                 },
                 current(),
             );
         }
-    }
-
-    /// Freeze the destination and time at request entry, before clipboard I/O.
-    pub fn begin_copy(
-        &self,
-        generation: impl FnOnce() -> u64,
-        replaces: &[String],
-        paste_for: impl Fn(&Captured) -> Result<Option<AppPaste>, CopyReason>,
-    ) -> CopyAttempt<windows::Window> {
-        let stamp = SafetyStamp::now();
-        let written = Instant::now();
-        let generation = generation();
-        let (target, policy) = self
-            .0
-            .lock()
-            .ok()
-            .map(|last| {
-                (
-                    last.target.clone().filter(|target| target.generation == generation),
-                    PolicyProof::capture(&last.policy),
-                )
-            })
-            .unwrap_or_default();
-        let target = target.map(|mut target| {
-            if let Some(captured) = &mut target.captured {
-                captured.paste = paste_for(captured);
-                if !replaces.is_empty() {
-                    captured.selection = capture::Selection::Citation(capture::OldCitation::of_any(replaces));
-                }
-            }
-            target
-        });
-        CopyAttempt {
-            target,
-            policy,
-            written,
-            stamp,
-        }
-    }
-
-    pub fn remember_copy(
-        &self,
-        attempt: CopyAttempt<windows::Window>,
-        sequence: Option<u32>,
-        token: u32,
-    ) -> Option<u32> {
-        let Ok(mut last) = self.0.lock() else {
-            return Some(token);
-        };
-        remember_ticket(&mut last.pending, attempt, sequence, token)
-    }
-
-    pub fn take_ticket(&self, token: Option<u32>) -> Option<DeliveryTicket<windows::Window>> {
-        take_ticket(&mut self.0.lock().ok()?.pending, token)
     }
 }
 
@@ -546,27 +550,35 @@ impl Delivered {
     }
 }
 
-/// A Windows copy freezes its destination before writing, then adds the
-/// final sequence proved after closing the write. Neither
-/// the notice nor its worker may adopt a later capture.
-#[cfg(any(target_os = "windows", test))]
+/// The window a Windows ticket returns to. macOS proves its window inside
+/// `Captured`, and Linux captures none.
+#[cfg(target_os = "windows")]
+pub type HostWindow = windows::Window;
+#[cfg(not(target_os = "windows"))]
+pub type HostWindow = ();
+
+/// The destination a copy freezes before writing. Neither the notice nor its
+/// worker may adopt a later capture.
 #[derive(Clone)]
-pub struct CopyTarget<W> {
+pub struct CopyTarget<W = HostWindow> {
     captured: Option<Captured>,
+    #[cfg_attr(not(any(target_os = "windows", test)), allow(dead_code))]
     window: Option<W>,
-    generation: u64,
+    /// The picker presentation the capture belongs to.
+    #[cfg_attr(not(any(target_os = "macos", target_os = "windows", test)), allow(dead_code))]
+    presentation: u64,
 }
 
 /// Publish a complete capture only for the presentation that requested it.
 /// Ibis in front keeps the previous app/window under the new generation.
 #[cfg(any(target_os = "windows", test))]
 fn publish_capture<W>(kept: &mut Option<CopyTarget<W>>, next: CopyTarget<W>, current: u64) {
-    if next.generation != current {
+    if next.presentation != current {
         return;
     }
     let target = match (next.captured.is_none(), kept.take()) {
         (true, Some(previous)) => CopyTarget {
-            generation: next.generation,
+            presentation: next.presentation,
             ..previous
         },
         _ => next,
@@ -574,105 +586,73 @@ fn publish_capture<W>(kept: &mut Option<CopyTarget<W>>, next: CopyTarget<W>, cur
     *kept = Some(target);
 }
 
-#[cfg(any(target_os = "windows", test))]
-pub struct DeliveryTicket<W> {
+/// What one of Ibis's own clipboard writes proves, on every system: its
+/// frozen destination and policy, its time, and the system's clipboard count
+/// right after it. Delivery takes it once by its write's token; it is never
+/// cloned or serialized. Only a write the owner could prove leaves one, so
+/// Linux, which keeps no clipboard count, has receipts and never a ticket.
+pub struct DeliveryTicket<W = HostWindow> {
     policy: PolicyProof,
     token: u32,
     target: CopyTarget<W>,
-    sequence: u32,
+    /// macOS's change count or Windows' final sequence after this write.
+    #[cfg_attr(not(any(target_os = "macos", target_os = "windows", test)), allow(dead_code))]
+    clipboard: i64,
     written: Instant,
     stamp: SafetyStamp,
 }
 
-/// Identity and time at request entry, before target locks or clipboard I/O.
-#[cfg(any(target_os = "windows", test))]
-pub struct CopyAttempt<W> {
-    policy: PolicyProof,
-    target: Option<CopyTarget<W>>,
-    written: Instant,
-    stamp: SafetyStamp,
-}
-
-#[cfg(any(target_os = "windows", test))]
-impl<W> CopyEvidence for DeliveryTicket<W> {
+impl<W> DeliveryTicket<W> {
     fn policy_current(&self) -> bool {
         self.policy.current()
     }
     fn captured(&self) -> Option<&Captured> {
         self.target.captured.as_ref()
     }
-    fn written(&self) -> Instant {
-        self.written
-    }
-    fn stamp(&self) -> SafetyStamp {
-        self.stamp
+
+    fn check_age(&self, stamp: SafetyStamp, now: Instant) -> Result<(), SafetyFailure> {
+        self.stamp.check(stamp)?;
+        if now >= self.written + LATE {
+            return Err(SafetyFailure::Expired);
+        }
+        Ok(())
     }
 }
 
-#[cfg(any(target_os = "windows", test))]
-fn remember_ticket<W>(
-    pending: &mut Option<DeliveryTicket<W>>,
-    attempt: CopyAttempt<W>,
-    sequence: Option<u32>,
-    token: u32,
-) -> Option<u32> {
-    // Clipboard writes allocate identities before releasing their own lock.
-    // Delayed bookkeeping for A must leave B's newer paste proof available.
-    if pending.as_ref().is_some_and(|newer| newer.token > token) {
-        return Some(token);
-    }
-    *pending = attempt.target.zip(sequence).map(|(target, sequence)| DeliveryTicket {
-        policy: attempt.policy,
-        token,
-        target,
-        sequence,
-        written: attempt.written,
-        stamp: attempt.stamp,
-    });
-    Some(token)
-}
-
-/// A stale notice must leave a newer copy's ticket alone.
-#[cfg(any(target_os = "windows", test))]
-fn take_ticket<W>(pending: &mut Option<DeliveryTicket<W>>, token: Option<u32>) -> Option<DeliveryTicket<W>> {
-    pending.take_if(|ticket| Some(ticket.token) == token)
+/// Identity and time at request entry, before target locks or clipboard I/O.
+pub struct CopyAttempt<W = HostWindow> {
+    policy: PolicyProof,
+    target: Option<CopyTarget<W>>,
+    written: Instant,
+    stamp: SafetyStamp,
 }
 
 /// Paste into the captured app when it is safe to; the notice then says what happened.
 /// `setting` reads the paste setting from its owner when delivery decides.
 #[cfg(target_os = "macos")]
-pub fn deliver_copy(
-    host: &impl macos::Host,
-    setting: impl FnOnce() -> Option<bool>,
-    text: &str,
-    token: Option<u32>,
-) -> Delivered {
+pub fn deliver_copy(host: &impl macos::Host, setting: impl Fn() -> Option<bool>, token: Option<u32>) -> Delivered {
     let began = Instant::now();
-    let proof = host.last_target().take_copy(text, token);
-    let desk = macos::Mac::new(host, proof.as_ref(), began);
-    let outcome = with_paste_setting(setting, |enabled| deliver(&desk, proof.as_ref(), enabled));
+    let ticket = host.last_target().take_ticket(token);
+    let desk = macos::Mac::new(host, ticket.as_ref(), began);
+    let outcome = deliver(&desk, ticket.as_ref(), setting);
     desk.complete(&outcome);
     outcome
 }
 
+/// Linux keeps no clipboard count, so its writes leave no ticket: it only copies.
 #[cfg(target_os = "linux")]
-pub fn deliver_copy(
-    last: &LastTarget,
-    setting: impl FnOnce() -> Option<bool>,
-    text: &str,
-    token: Option<u32>,
-) -> Delivered {
-    let proof = last.take_copy(text, token);
-    with_paste_setting(setting, |enabled| deliver(&CopyOnly, proof.as_ref(), enabled))
+pub fn deliver_copy(last: &LastTarget, setting: impl Fn() -> Option<bool>, token: Option<u32>) -> Delivered {
+    let ticket = last.take_ticket(token);
+    deliver(&CopyOnly, ticket.as_ref(), setting)
 }
 
 /// Linux captures no target, so it only copies.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 struct CopyOnly;
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 impl Desk for CopyOnly {
-    type Proof = CopyProof;
+    type Window = HostWindow;
 
     fn may_post(&self) -> bool {
         false
@@ -681,10 +661,16 @@ impl Desk for CopyOnly {
     fn frontmost(&self) -> Result<Option<Front>, CopyReason> {
         Ok(None)
     }
-    fn finish(&self, _: DeliveryRequest, _: &CopyProof) -> PostResult {
+    fn finish(&self, _: DeliveryRequest, _: &DeliveryTicket) -> PostResult {
         PostResult::Refused
     }
     fn wait(&self, _: Duration) {}
+}
+
+/// The paste setting as a test's owner would answer it, every time.
+#[cfg(test)]
+fn consent(enabled: bool) -> impl Fn() -> Option<bool> {
+    move || Some(enabled)
 }
 
 #[cfg(test)]

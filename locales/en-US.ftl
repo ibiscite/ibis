@@ -1606,6 +1606,7 @@ app-failure-set-cli-installed = The command line setup could not be changed.
 app-failure-copy-cli-profile = The shell setup could not be copied.
 app-failure-hide-picker = The picker could not be closed.
 app-failure-copy-editor-endpoint = The editor address could not be copied.
+app-failure-copy-version = The version could not be copied.
 app-failure-set-window-size = The window size could not be saved.
 app-failure-undo-window-position = The window position could not be restored.
 app-failure-copy-project-entry = The reference entry could not be copied.

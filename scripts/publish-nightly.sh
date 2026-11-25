@@ -22,20 +22,23 @@ cat > notes.md <<EOF
 
 **Not signed.** macOS may say the app cannot be checked for malicious software: open System Settings → Privacy & Security and choose Open Anyway. Windows SmartScreen may warn: choose More info, then Run anyway. On Windows, if Microsoft WebView2 Runtime is missing, the installer downloads it once; Ibis works offline after setup.
 
-Verify a download: compare \`shasum -a 256 <file>\` (macOS, Linux) or \`Get-FileHash <file>\` (Windows) with the \`SHA256SUMS-*.txt\` files below, and check provenance with \`gh attestation verify <file> --repo $REPO --source-ref refs/heads/main --signer-workflow $REPO/.github/workflows/preview.yml\`.
+Verify a download: compare \`shasum -a 256 <file>\` (macOS, Linux) or \`Get-FileHash <file>\` (Windows) with the \`SHA256SUMS-*.txt\` files below, and check provenance with \`gh attestation verify <file> --repo $REPO --source-ref refs/heads/main --signer-workflow $REPO/.github/workflows/preview.yml\`; add \`--predicate-type https://cyclonedx.org/bom\` for the SBOM attached as \`*.cdx.json\`.
 EOF
 # The first run starts from a draft, so an empty release is never public.
 if ! gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
+  # A rolling release is never created under immutable releases (#50).
+  [ "$(node scripts/publication-guard.mjs new-rolling)" = create ]
   gh release create "$TAG" --repo "$REPO" --draft --prerelease --target "$SHA" --title "Ibis Nightly" --notes-file notes.md
 fi
 # Packages and signatures first; the update file last, so an app never
 # reads a feed that names packages not yet uploaded.
 gh release upload "$TAG" dist/* --repo "$REPO" --clobber
 gh release upload "$TAG" feed/latest.json --repo "$REPO" --clobber
+gh release upload "$TAG" sbom/*.cdx.json --repo "$REPO" --clobber
 # Remove packages this build no longer produces, such as an old version number.
 names=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')
 while IFS= read -r name; do
-  if [ -n "$name" ] && [ ! -e "dist/$name" ] && [ ! -e "feed/$name" ]; then gh release delete-asset "$TAG" "$name" --repo "$REPO" --yes; fi
+  if [ -n "$name" ] && [ ! -e "dist/$name" ] && [ ! -e "feed/$name" ] && [ ! -e "sbom/$name" ]; then gh release delete-asset "$TAG" "$name" --repo "$REPO" --yes; fi
 done <<< "$names"
 # Move the tag (or create it, on the first run or if it was removed),
 # then publish the notes last, so they never name a commit early.
