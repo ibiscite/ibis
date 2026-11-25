@@ -176,4 +176,85 @@ mod typed_calls {
             Some(ErrorCode::Cancelled)
         );
     }
+
+    /// An engine reading one invented library file, kept while the folder lives.
+    fn opened(name: &str, content: &str) -> (tempfile::TempDir, Engine) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(name);
+        std::fs::write(&path, content).unwrap();
+        let engine = Engine::new().unwrap().without_file_watches();
+        engine.open_file_observed(&path, &Cancellation::default()).unwrap();
+        (dir, engine)
+    }
+
+    fn library(bib: &str) -> (tempfile::TempDir, Engine) {
+        opened("invented.bib", bib)
+    }
+
+    #[test]
+    fn a_citation_with_copy_text_answers_alike() {
+        let (_dir, engine) =
+            library("@book{vale2024lanterns,title={Invented Lanterns},author={Vale, Ada},year={2024}}");
+        let cancel = Cancellation::default();
+        let hits = engine
+            .dispatch(Method::Search, &json!({"query": "lanterns"}), &cancel)
+            .unwrap();
+        let item = hits.data["hits"][0]["item"]["object"]["data"]["id"].clone();
+        let request = json!({"items": [{"item": item}], "output": {"kind": "key", "syntax": "pandoc"}});
+        assert_eq!(
+            alike::<methods::Cite>(
+                &engine,
+                serde_json::from_value(request.clone()).unwrap(),
+                request.clone(),
+                &cancel
+            ),
+            None
+        );
+        let typed = engine
+            .call::<methods::Cite>(serde_json::from_value(request).unwrap(), &cancel)
+            .unwrap();
+        assert_eq!(typed.text.as_deref(), Some("[@vale2024lanterns]"));
+        assert_eq!(typed.exit_code, ibis_core::contract::ExitCode::Ok);
+        assert!(!typed.source_findings);
+    }
+
+    #[test]
+    fn findings_in_a_damaged_library_answer_alike() {
+        let (_dir, engine) = library("@misc{one,title={Invented Lantern}}\n@misc{two,title={Missing brace}\n");
+        let cancel = Cancellation::default();
+        let search = SearchRequest {
+            query: "lantern".into(),
+            limit: 10,
+            libraries: None,
+            interpret_locator: false,
+        };
+        assert_eq!(
+            alike::<methods::Search>(&engine, search.clone(), json!({"query": "lantern"}), &cancel),
+            None
+        );
+        let typed = engine.call::<methods::Search>(search, &cancel).unwrap();
+        assert_eq!(typed.exit_code, ibis_core::contract::ExitCode::Findings);
+        assert!(typed.source_findings);
+    }
+
+    #[test]
+    fn an_oversized_answer_is_refused_alike() {
+        // About 20 MiB of titles, past the 16 MiB a result may hold.
+        let title = "Invented ".repeat(56 * 1024);
+        let records: Vec<Value> = (0..40)
+            .map(|n| json!({"id": format!("r{n}"), "type": "book", "title": title}))
+            .collect();
+        let (_dir, engine) = opened("invented.json", &Value::Array(records).to_string());
+        let cancel = Cancellation::default();
+        let search = SearchRequest {
+            query: "invented".into(),
+            limit: 1000,
+            libraries: None,
+            interpret_locator: false,
+        };
+        assert_eq!(
+            alike::<methods::Search>(&engine, search, json!({"query": "invented", "limit": 1000}), &cancel),
+            Some(ErrorCode::ResourceLimit)
+        );
+    }
 }
