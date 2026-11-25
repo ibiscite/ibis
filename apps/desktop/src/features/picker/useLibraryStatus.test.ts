@@ -1,4 +1,5 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import type * as nativeApi from "../../api";
 import type { LibraryState, LibraryStatus } from "../../bindings";
@@ -17,14 +18,14 @@ function deferred<T>() {
 
 /** A native event a test can fire once its handler is listening. */
 function source<T>() {
-  let handler: ((payload: T) => void) | undefined;
+  const handlers = new Set<(payload: T) => void>();
   return {
-    listen: (next: (payload: T) => void) => { handler = next; return Promise.resolve(() => { handler = undefined; }); },
-    emit: (payload: T) => act(() => { handler?.(payload); }),
+    listen: (handler: (payload: T) => void) => { handlers.add(handler); return Promise.resolve(() => { handlers.delete(handler); }); },
+    emit: (payload: T) => act(() => { for (const handler of handlers) handler(payload); }),
   };
 }
 
-async function setup() {
+async function setup(strict = false) {
   const reads: ReturnType<typeof deferred<LibraryStatus>>[] = [];
   const changed = source<LibraryStatus>();
   const hidden = source<null>();
@@ -35,7 +36,7 @@ async function setup() {
   } as unknown as typeof nativeApi;
   const report = vi.fn();
   const cancelCopy = vi.fn();
-  const hook = renderHook(() => useLibraryStatus(api, report, cancelCopy));
+  const hook = renderHook(() => useLibraryStatus(api, report, cancelCopy), strict ? { wrapper: StrictMode } : undefined);
   await act(async () => { await Promise.resolve(); });
   const settle = (index: number, result: LibraryStatus | Error) => act(async () => {
     const read = reads[index];
@@ -176,4 +177,13 @@ test("a snapshot reserved after a read retires that read, even before the snapsh
   expect(t.current().library).toBeUndefined();
   act(() => receive(status("snapshot")));
   expect(t.current().library).toEqual(status("snapshot"));
+});
+
+test("the owner survives StrictMode's second mount", async () => {
+  const t = await setup(true);
+  await t.changed.emit(status("event"));
+  act(() => t.current().refreshSnapshot());
+  await t.settle(0, status("read"));
+  expect(t.current().library).toEqual(status("read"));
+  expect(t.current().libraryVersion).toBe(2);
 });

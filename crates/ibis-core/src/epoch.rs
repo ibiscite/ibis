@@ -11,7 +11,8 @@
 //! same stamp, so a stale failure never publishes either.
 //!
 //! Hold no guard across an `await`: reserve the stamp when the work is asked
-//! for, compute the result outside, then commit it.
+//! for, compute the result outside, then commit it. Updates run under the
+//! lock, so one that calls back into its own epoch deadlocks.
 
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
@@ -166,11 +167,12 @@ impl<S> Inner<S> {
         self.revision.checked_add(1)
     }
 
-    /// Callers have checked `next_revision`, under this same lock.
+    /// Callers have checked `next_revision`, under this same lock. The
+    /// revision moves first, so state an update left half changed by
+    /// panicking never shares a revision with the state before it.
     fn publish<R>(&mut self, update: impl FnOnce(&mut S) -> R) -> R {
-        let result = update(&mut self.state);
         self.revision += 1;
-        result
+        update(&mut self.state)
     }
 
     fn accept<R>(&mut self, identity: u64, update: impl FnOnce(&mut S) -> R) -> Result<R, Stale> {
@@ -313,6 +315,7 @@ mod tests {
     fn an_update_that_panics_closes_the_epoch() {
         let epoch = Epoch::new(Vec::new());
         let stamp = epoch.begin(|_| {}).unwrap();
+        let before = epoch.snapshot().revision;
         let panicked = thread::spawn(move || {
             stamp.commit(|log: &mut Vec<u8>| {
                 log.push(1);
@@ -322,8 +325,10 @@ mod tests {
         .join();
         assert!(panicked.is_err());
         assert!(epoch.begin(|_| {}).is_err());
-        // Half-done state stays readable, and frozen.
-        assert_eq!(epoch.snapshot().state, [1]);
+        // Half-done state stays readable, frozen, under a revision of its own.
+        let after = epoch.snapshot();
+        assert_eq!(after.state, [1]);
+        assert!(after.revision > before);
     }
 
     #[test]
