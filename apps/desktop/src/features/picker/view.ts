@@ -6,7 +6,7 @@ import { styleOf, type OutputId } from "../../format/outputs";
 import { choiceKey, asTyped } from "./choice";
 import { destinationFormat, destinationReady, writingVersion, shouldAsk } from "./destination";
 import { ownedPreview, previewKey } from "./preview";
-import { sameInputs, type SearchInputs, type SearchState } from "./search";
+import { queryKeyOf, sameInputs, type SearchInputs, type SearchState } from "./search";
 import type { SessionState, SessionView } from "./session";
 
 /** What the session hears from outside it, whenever it changes. */
@@ -50,7 +50,7 @@ export function deriveView(s: SessionState): SessionView | null {
   const o = s.inputs;
   if (!o) return null;
   const { search, destination: d } = s;
-  const queryKey = JSON.stringify([s.query, s.interpretLocators]);
+  const queryKey = queryKeyOf(s);
   // The search the session last heard of must be this query's, in this opening and library.
   const heard = search.inputs !== null && search.session === s.session && search.inputs.queryKey === queryKey
     && search.inputs.library === o.settledLibrary && search.inputs.version === o.version
@@ -75,7 +75,7 @@ export function deriveView(s: SessionState): SessionView | null {
   const preview = ownedPreview(s.preview, key, s.session, s.opened);
   return {
     appId: d.destination?.app_id ?? null, writingId: d.destination?.writing?.id ?? null, writingVersion: writingVersion(d),
-    queryKey: sessionQueryKeyOf(s), format, snapshotRevision: o.library?.revision,
+    queryKey, format, snapshotRevision: o.library?.revision,
     defaultChoice: list && status.ready ? choiceKey(results) : choiceKey(highlighted),
     offered: shownChoice, chosen, shown: preview ? preview.value : null, searchPending: status.pending,
     // The citation stays in view through a reload, but Enter waits for its end.
@@ -83,4 +83,3 @@ export function deriveView(s: SessionState): SessionView | null {
     saving: d.saves > 0, shouldAsk: shouldAsk(d), output: d.output, remembersLast: o.remembersLast,
   };
 }
-const sessionQueryKeyOf = (s: SessionState) => JSON.stringify([s.query, s.interpretLocators]);

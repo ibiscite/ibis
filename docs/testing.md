@@ -14,8 +14,11 @@ definition does not certify a passing run. Plans live in
   cancellation, stale replies, delivery ownership and privacy. Keep native
   tests where the operating system decides the outcome.
 - Use invented data, deferred promises and fake clocks; native waits need
-  deadlines. Delete tests for withdrawn behaviour and for source text, CSS
-  declarations or call order. Review snapshot changes as code.
+  deadlines. Delete tests for withdrawn behaviour, call order and raw source
+  or stylesheet text. Rules checked over parsed stylesheets
+  (`apps/desktop/src/design.test.ts` and `ui/ownership.test.ts`) stay: they hold the
+  design system's rules ([design](design.md#how-the-design-changes)). Review
+  snapshot changes as code.
 
 ## Local commands
 

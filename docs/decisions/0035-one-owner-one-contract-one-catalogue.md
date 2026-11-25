@@ -10,11 +10,10 @@ and app types generated from the app's own structures rather than the engine
 schema. Before 1.0 these are replaced, not patched (maintainer, 2026-11-04,
 "full freedom to restructure"):
 
-- **One session owner.** Each picker session is a pure Rust state machine
-  (`(state, event) -> (state, effects)`); every effect carries its session and a
-  sequence number, and only the current one may complete. The web view sends
-  intents and renders a generated view snapshot; it holds no async state of its
-  own. Built in stages under #1260.
+- **One session owner.** Each picker session has one owner, and only its
+  current work may complete. Where that owner lives is
+  [0052](0052-engine-owns-library-and-citations.md): the engine owns the library
+  and citation sessions; the web view keeps the picker's view state.
 - **One contract.** The app speaks the engine's `CitationRequest`, `OutputSpec`
   and `ItemRef`; app-only output types and their conversions are deleted; app
   types come from the engine schema. A format, style or form has one name, from
