@@ -113,8 +113,8 @@ and Quarto take it as `bibliography:`, Zotero imports it.
   pin is used only while both are exactly as recorded: the same identifiers,
   none added, gone or changed, and the same digest. Any change, including a
   corrected title or an item id reused for another work (a replaced CSL-JSON
-  export), gives no key and a typed reason, and its old key stays reserved, never
-  reassigned. Pins live in Ibis's data folder in one bounded file of their own
+  export), gives no key and a typed reason until the person asks for a new one; the old
+  key stays reserved, never reassigned. Pins live in Ibis's data folder in one bounded file of their own
   (at most 20,000 pins and 4 MiB across projects, renamed and removed with the
   project), never in `settings.json` or anything shared, and are written
   before a minted key is emitted. The library never changes. Without a
