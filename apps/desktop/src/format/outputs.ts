@@ -37,6 +37,13 @@ export function outputDescription(id: OutputId): string | null {
   return message ? say(message) : output.description;
 }
 
+/** Words a format menu also finds an output by: the engine's own name and
+ * description, so "Keys only" still finds it in any interface language. */
+export function outputKeywords(id: OutputId): string {
+  const output = outputOf(id);
+  return [...new Set([output.name, output.description, outputDescription(id)].filter(Boolean))].join(" ");
+}
+
 /** A citation style, written by the formatter. */
 export function isStyle(id: OutputId): boolean {
   return outputOf(id).style;

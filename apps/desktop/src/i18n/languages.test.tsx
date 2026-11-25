@@ -111,3 +111,19 @@ test("the English output words are the engine's own", () => {
     if (description) expect(messages.text(description)).toBe(output.description);
   }
 });
+
+test.each(TRANSLATED)("Settings' format menus still find the engine's English names in %s", async (language) => {
+  // Sol's probe: typing "Keys only" in German or Arabic emptied the menu, and
+  // Arabic lost "Scan" for Zotero RTF/ODF Scan.
+  const messages = setInterfaceLanguage(language);
+  render(<InterfaceMessagesProvider messages={messages}><SettingsApp api={demoApi({ speaking: language })} initialPage="citations" /></InterfaceMessagesProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${messages.text("citations-keys")}`) }));
+  const filter = await screen.findByRole("searchbox", { name: messages.text("citations-filter-formats") });
+  const strip = (text: string) => text.replace(/[⁨⁩]/g, "");
+  for (const [query, id] of [["Keys only", "output-name-keys"], ["Scan", "output-name-scannable-cite"]] as const) {
+    await act(async () => { fireEvent.change(filter, { target: { value: query } }); });
+    const menu = screen.getByRole("menu");
+    expect(menu.dataset.empty).not.toBe("true");
+    expect(within(menu).getByRole("menuitemradio", { name: (name) => strip(name).startsWith(strip(messages.text(id))) })).toBeTruthy();
+  }
+});
