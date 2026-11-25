@@ -108,10 +108,12 @@ and Quarto take it as `bibliography:`, Zotero imports it.
   without a native `citationKey`, a CSL-JSON record without `citation-key`)
   gets one only inside a project. `write::citation_key` mints it against every
   key the project's `.bib`, its pins and the libraries hold. The pin records
-  the item's library and item id and a work digest (DOI, else title, year and
-  first author, normalized). A pin is used only while the item still matches
-  its digest; an item id reused for another work (a replaced CSL-JSON export)
-  gets no key and a typed reason, and its old key stays reserved, never
+  the item's library and item id, its stable identifiers (DOI, PMID, PMCID,
+  ISBN, arXiv) and a digest of its title, year and first author, normalized. A
+  pin is used only while no identifier on both sides differs and either one
+  identifier matches or, with none to compare, the digest matches. An item id
+  reused for another work (a replaced CSL-JSON export) gets no key and a typed
+  reason, and its old key stays reserved, never
   reassigned. Pins live in Ibis's data folder in one bounded file of their own
   (at most 20,000 pins and 4 MiB across projects, renamed and removed with the
   project), never in `settings.json` or anything shared, and are written
