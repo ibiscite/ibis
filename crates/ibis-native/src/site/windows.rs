@@ -104,7 +104,9 @@ impl super::Source for Native {
 fn address_field(window: usize, pid: u32) -> Option<String> {
     let automation = UIAutomation::new().ok()?;
     let handle = windows::Win32::Foundation::HWND(window as *mut std::ffi::c_void);
-    let window = automation.element_from_handle(uiautomation::types::Handle::from(handle)).ok()?;
+    let window = automation
+        .element_from_handle(uiautomation::types::Handle::from(handle))
+        .ok()?;
     if window.get_process_id().ok()? != pid {
         return None;
     }
