@@ -67,6 +67,21 @@ CLI_NAMES = ("ibis", "ibis.exe")
 # in its own resource folder: beside the `resources/samples.csljson` every app
 # package carries (tauri.bundle.conf.json), which names the one app in it.
 ANCHOR = "resources/samples.csljson"
+# Where each kind of app package installs its resources, so an anchor (and
+# its notices) anywhere else cannot stand in for the app's own.
+RESOURCE_ROOTS = {
+    "macOS app": re.compile(r"[^/]+\.app/Contents/Resources/"),
+    "Linux app": re.compile(r"usr/lib/[^/]+/"),
+    "Windows app": re.compile(r"(?:\$INSTDIR/)?"),
+}
+
+
+def app_kind(name):
+    if name.endswith((".dmg", ".app.tar.gz")):
+        return "macOS app"
+    if name.endswith("-setup.exe"):
+        return "Windows app"
+    return "Linux app"
 OPEN_ERRORS = (OSError, ValueError, EOFError, tarfile.TarError, zipfile.BadZipFile, lzma.LZMAError,
                subprocess.SubprocessError, struct.error, IndexError, UnicodeDecodeError, plistlib.InvalidFileException)
 
@@ -137,12 +152,16 @@ def write_member(into, name, data):
 
 
 def untar(data, into):
-    """Regular files only: links and devices are never created (a hard link
-    could point outside INTO and a later member write through it)."""
+    """Regular files and folders only: a link or device is refused, never
+    created (a hard link could point outside INTO)."""
     with tarfile.open(fileobj=io.BytesIO(data)) as archive:
         for member in archive:
             if member.isfile():
                 write_member(into, member.name, archive.extractfile(member).read())
+            elif not member.isdir():
+                # Ibis packages hold no links; one could make a checked file
+                # differ from what people unpack.
+                raise Failure(f"the archive holds a link or special file: {member.name}")
             elif not inside(member.name.replace("\\", "/")):
                 raise Failure(f"an archive entry leaves its folder: {member.name}")
 
@@ -330,13 +349,15 @@ def executable_format(data):
     return "unknown"
 
 
-def embeds(data, version):
-    """VERSION appears, not inside 10.4.1 or 0.4.1.2. Strings sit back to back
-    in a binary, so a digit may follow it (`...+46b3fd92026-11-25` in a real
-    app), and 0.4.10 cannot be told from 0.4.1 here: a program that runs is
-    checked exactly by its --version, and the expected version comes from the
-    same workspace version the build used (update-feed.mjs expected)."""
-    return re.search(rb"(?<![0-9.])" + re.escape(version.encode()) + rb"(?!\.[0-9])", data) is not None
+def embeds(data, build):
+    """The program was built as BUILD. A nightly's build names its commit
+    (`0.4.1-nightly.N+abc1234`), which nothing else matches. A numbered
+    release's version alone could be part of a longer one (0.4.1 in 0.4.10),
+    so it is found in the one place it is delimited: Ibis's HTTP User-Agent,
+    `User-Agent: Ibis/0.4.1\r\n`, which every Ibis program carries."""
+    if "+" in build:
+        return build.encode() in data
+    return f"User-Agent: Ibis/{build}\r\n".encode() in data
 
 
 def runs_here(data):
@@ -360,16 +381,19 @@ class Check:
         if not condition:
             self.problems.append(problem)
 
-    def notice_files(self, tree, command_line):
-        """Each notice once, byte for byte, where this package keeps it."""
-        if command_line:
+    def notice_files(self, tree, kind):
+        """Each notice once, byte for byte, where this package keeps it: at a
+        command-line archive's top, or in the resource folder of the one app
+        installed where that kind of package installs it."""
+        if kind is None:
             root, where = "", "at the archive's top"
         else:
-            anchors = [rel for rel, _ in tree if rel == ANCHOR or rel.endswith("/" + ANCHOR)]
-            if len(anchors) != 1:
-                self.problems.append(f"{len(anchors)} apps (found by {ANCHOR}), not one")
+            anchors = [rel[: -len(ANCHOR)] for rel, _ in tree if rel == ANCHOR or rel.endswith("/" + ANCHOR)]
+            roots = [root for root in anchors if RESOURCE_ROOTS[kind].fullmatch(root)]
+            if len(roots) != 1:
+                self.problems.append(f"{len(roots)} {kind}s with resources where a {kind} installs them, not one")
                 return
-            root, where = anchors[0][: -len(ANCHOR)] + "notices/", "in the app's resource folder"
+            root, where = roots[0] + "notices/", "in the app's resource folder"
         placed = {rel: full for rel, full in tree}
         for name, digest in self.notices.items():
             copy = placed.get(root + name)
@@ -413,7 +437,7 @@ class Check:
 
     def command_line(self, root):
         tree = list(files(root))
-        self.notice_files(tree, True)
+        self.notice_files(tree, None)
         binary = self.executable([full for rel, full in tree if rel in CLI_NAMES], "command-line")
         if binary is not None:
             self.reports_version(binary, "command line")
@@ -467,7 +491,7 @@ def check_package(path, notices, options, target):
             if name.startswith("ibis-"):
                 check.command_line(root)
             else:
-                check.notice_files(list(files(root)), False)
+                check.notice_files(list(files(root)), app_kind(name))
                 if name.endswith((".dmg", ".app.tar.gz")):
                     check.mac_app(root)
                 elif name.endswith((".deb", ".rpm")):

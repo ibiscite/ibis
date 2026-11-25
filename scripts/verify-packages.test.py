@@ -150,7 +150,10 @@ class Packages(unittest.TestCase):
         self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(misplaced)), "0 copies of LICENSE in the app's resource folder")
         # Two apps cannot share one package.
         two = linux_app() | app_files("./usr/lib/Old", {})
-        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(two)), "2 apps")
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(two)), "2 Linux apps")
+        # Resources and notices moved together out of where the app installs them.
+        moved = app_files("./usr/share/doc/ibis", {"./usr/bin/ibis-nightly": elf(), "./usr/bin/ibis": elf()})
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(moved)), "0 Linux apps with resources")
 
     def test_a_missing_changed_or_doubled_notice_fails(self):
         missing = {k: v for k, v in NOTICES.items() if k != "THIRD-PARTY-NOTICES.txt"}
@@ -178,16 +181,28 @@ class Packages(unittest.TestCase):
                 info = tarfile.TarInfo(name)
                 info.size = len(data)
                 archive.addfile(info, io.BytesIO(data))
-        self.check(self.write("ibis-Linux.tar.gz", buffer.getvalue()))
+        self.assertFails(self.write("ibis-Linux.tar.gz", buffer.getvalue()), "holds a link")
         self.assertEqual(outside.read_bytes(), b"untouched")
+        # A link after the checked program would replace it for whoever unpacks the archive.
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+            for name, data in [*NOTICES.items(), ("ibis", elf())]:
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+            link = tarfile.TarInfo("ibis")
+            link.type, link.linkname = tarfile.SYMTYPE, "NOTICE.md"
+            archive.addfile(link)
+        self.assertFails(self.write("ibis-Linux.tar.gz", buffer.getvalue()), "holds a link")
 
     def test_a_program_of_another_system_or_a_longer_version_fails(self):
         # A Linux program as the Intel macOS command line.
         self.assertFails(self.write("ibis-macOS-Intel.tar.gz", cli_tar()), "is a ELF program, not Mach-O", "x86_64-apple-darwin")
-        # A longer version is not this one, wherever it can be told apart.
-        self.assertTrue(verify.embeds(b"x\x000.4.1\x00y", "0.4.1"))
-        self.assertTrue(verify.embeds(b"chosen_in0.4.1+abc12342026-11-25", "0.4.1+abc1234"))
-        self.assertFalse(verify.embeds(b"10.4.1 and 0.4.1.2", "0.4.1"))
+        # A numbered release's version is read where it is delimited; a nightly's names its commit.
+        self.assertTrue(verify.embeds(b"x\r\nUser-Agent: Ibis/0.4.1\r\nZotero", "0.4.1"))
+        self.assertFalse(verify.embeds(b"User-Agent: Ibis/0.4.10\r\n and 0.4.1 elsewhere", "0.4.1"))
+        self.assertTrue(verify.embeds(b"chosen_in0.4.1-nightly.1+abc12342026-11-25", "0.4.1-nightly.1+abc1234"))
+        self.assertFalse(verify.embeds(b"0.4.1-nightly.1+abc9999", "0.4.1-nightly.1+abc1234"))
 
     def test_debian_and_rpm_packages_state_the_version(self):
         self.check(self.write("Ibis-Linux.deb", deb_bytes(linux_app())))
