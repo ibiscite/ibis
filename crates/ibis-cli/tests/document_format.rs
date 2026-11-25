@@ -186,7 +186,7 @@ fn a_word_draft_is_cited_in_apa_then_restyled_in_ieee_from_the_same_original() {
     assert_eq!(std::fs::read(folder.path("apa.docx")).unwrap(), apa_bytes);
     assert_eq!(
         folder.format("draft.docx", "draft.docx", "apa"),
-        FormatResult::Refused(FormatRefusal::OutputExists)
+        FormatResult::Refused(FormatRefusal::SameFile)
     );
     assert_eq!(
         folder.format("draft.docx", "final.odt", "apa"),
