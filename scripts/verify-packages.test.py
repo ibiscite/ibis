@@ -60,7 +60,9 @@ def tar_bytes(files):
 
 
 def app_files(prefix, programs, notices=NOTICES):
-    return {f"{prefix}/notices/{name}": data for name, data in notices.items()} | programs
+    """An app's resource folder at `prefix`: its notices beside the resource that names it."""
+    return {f"{prefix}/notices/{name}": data for name, data in notices.items()} | {
+        f"{prefix}/resources/samples.csljson": b"[]"} | programs
 
 
 def linux_app(prefix="./usr", build=BUILD):
@@ -140,22 +142,52 @@ class Packages(unittest.TestCase):
 
     def test_notices_outside_their_place_do_not_count(self):
         # The command line's belong at the archive's top, not in a folder.
-        self.assertFails(self.write("ibis-Linux.tar.gz", tar_bytes({f"notices/{n}": d for n, d in NOTICES.items()})),
-                         "0 copies of LICENSE where the command line keeps it")
-        # An app's belong in its installed resource folder, not beside the app.
-        beside = {f"notices/{n}": d for n, d in NOTICES.items()} | {"Ibis.app/Contents/MacOS/ibis-desktop": b"x"}
-        self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(beside)), "0 copies of LICENSE where the macOS app keeps it")
-        misplaced = app_files("./usr/share/doc/ibis", {"./usr/bin/ibis-nightly": elf(), "./usr/bin/ibis": elf()})
-        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(misplaced)),
-                         "0 copies of LICENSE where the Linux app keeps it")
+        self.assertFails(self.write("ibis-Linux.tar.gz", tar_bytes({f"notices/{n}": d for n, d in NOTICES.items()} | {"ibis": elf()})),
+                         "0 copies of LICENSE at the archive's top")
+        # An app's belong in its own resource folder, not elsewhere in the package.
+        elsewhere = {k: v for k, v in app_files("./usr/share/doc/ibis", {}).items() if "samples" not in k}
+        misplaced = elsewhere | {"./usr/lib/Ibis/resources/samples.csljson": b"[]", "./usr/bin/ibis-nightly": elf(), "./usr/bin/ibis": elf()}
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(misplaced)), "0 copies of LICENSE in the app's resource folder")
+        # Two apps cannot share one package.
+        two = linux_app() | app_files("./usr/lib/Old", {})
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(two)), "2 apps")
 
     def test_a_missing_changed_or_doubled_notice_fails(self):
         missing = {k: v for k, v in NOTICES.items() if k != "THIRD-PARTY-NOTICES.txt"}
         self.assertFails(self.write("ibis-Linux.tar.gz", cli_tar(notices=missing)), "0 copies of THIRD-PARTY-NOTICES.txt")
         changed = {**NOTICES, "THIRD-PARTY-NOTICES.txt": b"Third-party notices for Ibis\nstale\n"}
         self.assertFails(self.write("ibis-Linux.tar.gz", cli_tar(notices=changed)), "THIRD-PARTY-NOTICES.txt differs")
-        doubled = linux_app() | app_files("./usr/lib/Old", {})
-        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(doubled)), "2 copies of LICENSE")
+        # A stale copy written first cannot hide behind a good one.
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+            for name, data in [("LICENSE", b"stale licence"), *NOTICES.items(), ("ibis", elf())]:
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+        self.assertFails(self.write("ibis-Linux.tar.gz", buffer.getvalue()), "holds LICENSE twice")
+
+    def test_links_are_never_created_and_nothing_is_written_outside(self):
+        outside = self.dir / "outside.txt"
+        outside.write_bytes(b"untouched")
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+            link = tarfile.TarInfo("alias")
+            link.type, link.linkname = tarfile.LNKTYPE, str(outside)
+            archive.addfile(link)
+            for name, data in [("alias", b"BAD"), *NOTICES.items(), ("ibis", elf())]:
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+        self.check(self.write("ibis-Linux.tar.gz", buffer.getvalue()))
+        self.assertEqual(outside.read_bytes(), b"untouched")
+
+    def test_a_program_of_another_system_or_a_longer_version_fails(self):
+        # A Linux program as the Intel macOS command line.
+        self.assertFails(self.write("ibis-macOS-Intel.tar.gz", cli_tar()), "is a ELF program, not Mach-O", "x86_64-apple-darwin")
+        # A longer version is not this one, wherever it can be told apart.
+        self.assertTrue(verify.embeds(b"x\x000.4.1\x00y", "0.4.1"))
+        self.assertTrue(verify.embeds(b"chosen_in0.4.1+abc12342026-11-25", "0.4.1+abc1234"))
+        self.assertFalse(verify.embeds(b"10.4.1 and 0.4.1.2", "0.4.1"))
 
     def test_debian_and_rpm_packages_state_the_version(self):
         self.check(self.write("Ibis-Linux.deb", deb_bytes(linux_app())))
@@ -263,6 +295,8 @@ class Packages(unittest.TestCase):
         app = source / "Ibis Nightly.app/Contents"
         (app / "MacOS").mkdir(parents=True)
         (app / "Resources/notices").mkdir(parents=True)
+        (app / "Resources/resources").mkdir(parents=True)
+        (app / "Resources/resources/samples.csljson").write_bytes(b"[]")
         for name, data in NOTICES.items():
             (app / "Resources/notices" / name).write_bytes(data)
         program = self.dir / "main.c"

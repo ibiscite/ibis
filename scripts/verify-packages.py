@@ -55,35 +55,18 @@ MARKERS = {
     "NOTICE.md": b"# Notices",
     "THIRD-PARTY-NOTICES.txt": b"Third-party notices for Ibis",
 }
-# target: (download name, processor its executables are built for)
+# target: (download name, processor and executable format it is built for)
 PLATFORMS = {
-    "aarch64-apple-darwin": ("macOS-Apple-silicon", "arm64"),
-    "x86_64-apple-darwin": ("macOS-Intel", "x86_64"),
-    "x86_64-pc-windows-msvc": ("Windows", "x86_64"),
-    "x86_64-unknown-linux-gnu": ("Linux", "x86_64"),
+    "aarch64-apple-darwin": ("macOS-Apple-silicon", "arm64", "Mach-O"),
+    "x86_64-apple-darwin": ("macOS-Intel", "x86_64", "Mach-O"),
+    "x86_64-pc-windows-msvc": ("Windows", "x86_64", "PE"),
+    "x86_64-unknown-linux-gnu": ("Linux", "x86_64", "ELF"),
 }
 CLI_NAMES = ("ibis", "ibis.exe")
-# Where each kind of package must hold the notices: the command line at the
-# archive's top, the app in its installed resource folder (notices/ beside
-# the program on Windows, Contents/Resources on macOS, /usr/lib/<app> on Linux).
-NAMES = "(LICENSE|NOTICE\\.md|THIRD-PARTY-NOTICES\\.txt)"
-PLACES = {
-    "command line": re.compile(NAMES),
-    "macOS app": re.compile(r"[^/]+\.app/Contents/Resources/notices/" + NAMES),
-    "Linux app": re.compile(r"usr/lib/[^/]+/notices/" + NAMES),
-    "Windows app": re.compile(r"(?:\$INSTDIR/)?notices/" + NAMES),
-}
-
-
-def place(name):
-    """Which rule says where this package holds its notices."""
-    if name.startswith("ibis-"):
-        return "command line"
-    if name.endswith((".dmg", ".app.tar.gz")):
-        return "macOS app"
-    if name.endswith("-setup.exe"):
-        return "Windows app"
-    return "Linux app"
+# The command line holds the notices at its archive's top. An app holds them
+# in its own resource folder: beside the `resources/samples.csljson` every app
+# package carries (tauri.bundle.conf.json), which names the one app in it.
+ANCHOR = "resources/samples.csljson"
 OPEN_ERRORS = (OSError, ValueError, EOFError, tarfile.TarError, zipfile.BadZipFile, lzma.LZMAError,
                subprocess.SubprocessError, struct.error, IndexError, UnicodeDecodeError, plistlib.InvalidFileException)
 
@@ -139,16 +122,29 @@ def inside(name):
     return not name.startswith("/") and ".." not in name.split("/")
 
 
+def write_member(into, name, data):
+    """Write one archive file inside INTO: never a link, never outside, never twice."""
+    name = name.replace("\\", "/")
+    while name.startswith("./"):
+        name = name[2:]
+    if not inside(name):
+        raise Failure(f"an archive entry leaves its folder: {name}")
+    target = Path(into, name)
+    if target.exists():
+        raise Failure(f"the archive holds {name} twice")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+
+
 def untar(data, into):
+    """Regular files only: links and devices are never created (a hard link
+    could point outside INTO and a later member write through it)."""
     with tarfile.open(fileobj=io.BytesIO(data)) as archive:
-        members = archive.getmembers()
-        outside = [m.name for m in members if not inside(m.name)]
-        if outside:
-            raise Failure(f"an archive entry leaves its folder: {outside[0]}")
-        if sys.version_info >= (3, 12):
-            archive.extractall(into, filter="tar")
-        else:
-            archive.extractall(into)
+        for member in archive:
+            if member.isfile():
+                write_member(into, member.name, archive.extractfile(member).read())
+            elif not inside(member.name.replace("\\", "/")):
+                raise Failure(f"an archive entry leaves its folder: {member.name}")
 
 
 def ar_members(data):
@@ -205,13 +201,10 @@ def unpack_rpm(path, into):
         start += (4 - start % 4) % 4
         if name == "TRAILER!!!":
             break
-        name = name[2:] if name.startswith("./") else name.lstrip("/")
-        if not inside(name):
-            raise Failure(f"an rpm entry leaves its folder: {name}")
         if mode & 0o170000 == 0o100000:
-            target = Path(into, name)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(cpio[start:start + size])
+            write_member(into, name, cpio[start:start + size])
+        elif not inside(name.lstrip("./")):
+            raise Failure(f"an rpm entry leaves its folder: {name}")
         offset = start + size
         offset += (4 - offset % 4) % 4
     return {"Version": tags.get(1001, "")}  # RPMTAG_VERSION
@@ -247,10 +240,9 @@ def unpack(path, into, mounts):
         return into, {}
     if name.endswith(".zip"):
         with zipfile.ZipFile(path) as archive:
-            outside = [m for m in archive.namelist() if not inside(m)]
-            if outside:
-                raise Failure(f"an archive entry leaves its folder: {outside[0]}")
-            archive.extractall(into)
+            for member in archive.infolist():
+                if not member.is_dir():
+                    write_member(into, member.filename, archive.read(member))
         return into, {}
     if name.endswith(".deb"):
         return into, unpack_deb(path, into)
@@ -328,6 +320,25 @@ def header_architecture(data):
     return "unknown"
 
 
+def executable_format(data):
+    if data[:4] == b"\x7fELF":
+        return "ELF"
+    if data[:4] in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"):
+        return "Mach-O"
+    if data[:2] == b"MZ":
+        return "PE"
+    return "unknown"
+
+
+def embeds(data, version):
+    """VERSION appears, not inside 10.4.1 or 0.4.1.2. Strings sit back to back
+    in a binary, so a digit may follow it (`...+46b3fd92026-11-25` in a real
+    app), and 0.4.10 cannot be told from 0.4.1 here: a program that runs is
+    checked exactly by its --version, and the expected version comes from the
+    same workspace version the build used (update-feed.mjs expected)."""
+    return re.search(rb"(?<![0-9.])" + re.escape(version.encode()) + rb"(?!\.[0-9])", data) is not None
+
+
 def runs_here(data):
     """Whether this computer can start an executable with this header."""
     machine = platform.machine().lower()
@@ -339,8 +350,9 @@ def runs_here(data):
 class Check:
     """One package's problems, collected so a report names them all."""
 
-    def __init__(self, notices, options, arch):
-        self.notices, self.options, self.arch = notices, options, arch
+    def __init__(self, notices, options, target):
+        self.notices, self.options = notices, options
+        _, self.arch, self.format = PLATFORMS[target]
         self.problems = []
 
 
@@ -348,18 +360,22 @@ class Check:
         if not condition:
             self.problems.append(problem)
 
-    def notice_files(self, tree, rule):
-        """Each notice once, byte for byte, where this kind of package keeps it."""
-        placed = {}
-        for rel, full in tree:
-            match = PLACES[rule].fullmatch(rel)
-            if match:
-                placed.setdefault(match.group(1), []).append(full)
+    def notice_files(self, tree, command_line):
+        """Each notice once, byte for byte, where this package keeps it."""
+        if command_line:
+            root, where = "", "at the archive's top"
+        else:
+            anchors = [rel for rel, _ in tree if rel == ANCHOR or rel.endswith("/" + ANCHOR)]
+            if len(anchors) != 1:
+                self.problems.append(f"{len(anchors)} apps (found by {ANCHOR}), not one")
+                return
+            root, where = anchors[0][: -len(ANCHOR)] + "notices/", "in the app's resource folder"
+        placed = {rel: full for rel, full in tree}
         for name, digest in self.notices.items():
-            copies = placed.get(name, [])
-            if len(copies) != 1:
-                self.problems.append(f"{len(copies)} copies of {name} where the {rule} keeps it")
-            elif hashlib.sha256(copies[0].read_bytes()).hexdigest() != digest:
+            copy = placed.get(root + name)
+            if copy is None:
+                self.problems.append(f"0 copies of {name} {where}")
+            elif hashlib.sha256(copy.read_bytes()).hexdigest() != digest:
                 self.problems.append(f"{name} differs from the generated notice")
 
     def executable(self, candidates, what):
@@ -368,8 +384,10 @@ class Check:
             return None
         data = candidates[0].read_bytes()
         found = architecture(data)
+        kind = executable_format(data)
+        self.require(kind == self.format, f"the {what} is a {kind} program, not {self.format}")
         self.require(found == self.arch, f"the {what} is built for {found}, not {self.arch}")
-        self.require(self.options.build.encode() in data, f"the {what} does not embed version {self.options.build}")
+        self.require(embeds(data, self.options.build), f"the {what} does not embed version {self.options.build}")
         return candidates[0]
 
     def reports_version(self, binary, what):
@@ -382,7 +400,7 @@ class Check:
         except (OSError, subprocess.SubprocessError) as error:
             self.problems.append(f"the {what} did not start: {error}")
             return
-        self.require(out.returncode == 0 and self.options.build in out.stdout,
+        self.require(out.returncode == 0 and self.options.build in out.stdout.split(),
                      f"the {what} did not report {self.options.build} (exit {out.returncode}: {(out.stdout + out.stderr).strip()[:120]!r})")
 
     def bundled_command_line(self, root):
@@ -395,7 +413,7 @@ class Check:
 
     def command_line(self, root):
         tree = list(files(root))
-        self.notice_files(tree, "command line")
+        self.notice_files(tree, True)
         binary = self.executable([full for rel, full in tree if rel in CLI_NAMES], "command-line")
         if binary is not None:
             self.reports_version(binary, "command line")
@@ -437,7 +455,7 @@ class Check:
 
 
 def check_package(path, notices, options, target):
-    check = Check(notices, options, PLATFORMS[target][1])
+    check = Check(notices, options, target)
     mounts = []
     with tempfile.TemporaryDirectory() as work:
         try:
@@ -449,7 +467,7 @@ def check_package(path, notices, options, target):
             if name.startswith("ibis-"):
                 check.command_line(root)
             else:
-                check.notice_files(list(files(root)), place(name))
+                check.notice_files(list(files(root)), False)
                 if name.endswith((".dmg", ".app.tar.gz")):
                     check.mac_app(root)
                 elif name.endswith((".deb", ".rpm")):
