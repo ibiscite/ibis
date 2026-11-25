@@ -32,7 +32,7 @@ fn an_entry_holds_only_what_the_pdf_said_and_its_file() {
     assert_eq!(fields["DOI"], "10.5555/invented.atlas");
     let text = entry("lee2026invented", fields, "maps/atlas.pdf").unwrap();
     assert!(
-        text.starts_with("@article{lee2026invented,\n  file = {:maps/atlas.pdf:application/pdf},\n"),
+        text.starts_with("@article{lee2026invented,\n  file = {:./maps/atlas.pdf:application/pdf},\n"),
         "{text}"
     );
     assert!(!text.contains("never.written"));
@@ -48,5 +48,5 @@ fn a_pdf_that_said_nothing_is_keyed_by_its_file_name_and_holds_only_its_file() {
     assert_eq!(key, "tide");
     let text = entry(&key, fields, "scans/Tide_tables-1931.pdf").unwrap();
     assert_eq!(text.lines().count(), 3, "{text}");
-    assert!(text.starts_with("@misc{tide,\n  file = {:scans/Tide_tables-1931.pdf:application/pdf},"));
+    assert!(text.starts_with("@misc{tide,\n  file = {:./scans/Tide_tables-1931.pdf:application/pdf},"));
 }

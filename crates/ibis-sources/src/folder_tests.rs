@@ -59,5 +59,5 @@ fn unkept_pdfs_are_those_no_file_field_names_inside_the_folder() {
         "/abs/a/b.pdf".to_owned(),
     ]);
     assert_eq!(unkept(&listing, &named), ["a/b.pdf", "d:e.pdf"]);
-    assert_eq!(file_value("d:e;f.pdf"), r":d\:e\;f.pdf:application/pdf");
+    assert_eq!(file_value("d:e;f.pdf"), r":./d\:e\;f.pdf:application/pdf");
 }

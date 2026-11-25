@@ -178,7 +178,9 @@ pub fn unkept(listing: &Listing, named: &BTreeSet<String>) -> Vec<String> {
 }
 
 /// The `file` value for the PDF at `relative`: the form JabRef and Zotero
-/// write, `:path:application/pdf`, with `:` and `;` escaped.
+/// write, `:./path:application/pdf`, with `:` and `;` escaped. The `./`
+/// keeps a name that starts with a space or looks like a drive or a scheme
+/// a relative path when it is read back.
 pub fn file_value(relative: &str) -> String {
     let mut path = String::with_capacity(relative.len() + 8);
     for c in relative.chars() {
@@ -187,7 +189,7 @@ pub fn file_value(relative: &str) -> String {
         }
         path.push(c);
     }
-    format!(":{path}:application/pdf")
+    format!(":./{path}:application/pdf")
 }
 
 #[cfg(test)]

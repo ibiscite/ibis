@@ -1521,11 +1521,16 @@ problem-changed-item = Diese Referenz wurde während des Zitierens geändert.
     .agent = Suchen Sie erneut.
     .app = Suchen Sie erneut.
 problem-missing-key = Diese Referenz hat keinen Zitierschlüssel.
-problem-missing-details = Diese Referenz hat noch keinen Titel, keine Autorschaft und keine Herausgabe, daher lässt sie sich nicht zitieren. Ergänzen Sie diese Angaben in ihrer Bibliothek.
     .named = { $reference } hat keinen Zitierschlüssel.
     .cli = Zitieren Sie sie stattdessen mit --style.
     .agent = Eine Schlüsselsyntax kann sie nicht benennen; verwenden Sie einen Stil.
     .app = Vergeben Sie in Ihrer Bibliothek einen, oder wählen Sie einen Stil.
+problem-missing-details = Diese Referenz hat noch keinen Titel, keine Autorschaft und keine Herausgabe, daher lässt sie sich nicht zitieren. Ergänzen Sie diese Angaben in ihrer Bibliothek.
+    .named = { $reference } hat noch keinen Titel, keine Autorschaft und keine Herausgabe.
+    .cli = Ergänzen Sie in ihrem Eintrag einen Titel oder eine Autorschaft und zitieren Sie erneut.
+    .agent = Sie lässt sich erst zitieren, wenn ihre Bibliothek einen Titel, eine Autorschaft oder eine Herausgabe enthält.
+    .app = Ergänzen Sie in ihrer Bibliothek einen Titel oder eine Autorschaft.
+
 problem-ambiguous-key = Mehrere Referenzen teilen sich diesen Zitierschlüssel.
     .named = Mehrere Referenzen teilen sich den Zitierschlüssel von { $reference }.
     .cli = Geben Sie in Ihrer Bibliothek jeder einen eigenen Schlüssel.

@@ -119,17 +119,17 @@ pub(crate) fn keep(engine: &Engine, matches: &ArgMatches) -> Result<DispatchResu
     let mut text = String::new();
     for folder in folders {
         let mut total = ibis_engine::write::Kept::default();
+        let mut skip = std::collections::BTreeSet::new();
         loop {
             let kept = engine
-                .keep_folder(&store, &folder, &cancel)
+                .keep_folder(&store, &folder, &skip, &cancel)
                 .map_err(|error| Failure::new(ErrorCode::SourceUnavailable, error.sentence()))?;
             total.kept += kept.kept;
             total.unread += kept.unread;
-            total.retry = kept.retry;
-            total.waiting = kept.waiting;
             total.cut_short = kept.cut_short;
-            // A batch that kept nothing leaves only PDFs to try another time.
-            if kept.kept == 0 || kept.waiting == 0 {
+            skip.extend(kept.retried.iter().cloned());
+            total.retried.extend(kept.retried);
+            if kept.waiting == 0 {
                 break;
             }
         }
@@ -139,7 +139,7 @@ pub(crate) fn keep(engine: &Engine, matches: &ArgMatches) -> Result<DispatchResu
                 ("folder", &folder.display().to_string()),
                 ("kept", &total.kept.to_string()),
                 ("unread", &total.unread.to_string()),
-                ("retry", &total.retry.to_string()),
+                ("retry", &total.retried.len().to_string()),
             ],
         ));
         text.push('\n');

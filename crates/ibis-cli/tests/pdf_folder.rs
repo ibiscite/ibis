@@ -99,12 +99,12 @@ fn a_kept_folder_cites_what_its_pdfs_said_and_nothing_else() {
     assert_eq!(status, 0, "{stdout}{stderr}");
     assert!(stdout.contains("kept 3 PDFs"), "{stdout}");
     let bib = folder.bib();
-    assert!(bib.contains("file = {:atlas.pdf:application/pdf}"), "{bib}");
+    assert!(bib.contains("file = {:./atlas.pdf:application/pdf}"), "{bib}");
     assert!(
-        bib.contains("file = {:older/Tide_tables-1931.pdf:application/pdf}"),
+        bib.contains("file = {:./older/Tide_tables-1931.pdf:application/pdf}"),
         "{bib}"
     );
-    assert!(bib.contains("file = {:notes.pdf:application/pdf}"), "{bib}");
+    assert!(bib.contains("file = {:./notes.pdf:application/pdf}"), "{bib}");
     assert!(bib.contains("title = {An Invented Atlas of Tides}"), "{bib}");
     assert!(!bib.contains("Microsoft Word"), "{bib}");
 
@@ -140,7 +140,10 @@ fn a_kept_folder_cites_what_its_pdfs_said_and_nothing_else() {
     // A warning is a finding, so the command says so in its exit status.
     let (status, libraries, _) = folder.with_folder(&["libraries", "--json"]);
     assert_ne!(status, 0);
-    assert!(libraries.contains("pdfs-not-kept") && libraries.contains("\"folder\""), "{libraries}");
+    assert!(
+        libraries.contains("pdfs-not-kept") && libraries.contains("\"folder\""),
+        "{libraries}"
+    );
     let _ = std::fs::remove_dir_all(&folder.home);
 }
 
@@ -161,7 +164,28 @@ fn a_persons_edits_win_and_keeping_only_appends() {
     assert_eq!(folder.run(&["sources", "keep", "--file", &papers]).0, 0);
     let bib = folder.bib();
     assert!(bib.starts_with(&edited), "{bib}");
-    assert!(bib.contains("file = {:second.pdf:application/pdf}"), "{bib}");
+    assert!(bib.contains("file = {:./second.pdf:application/pdf}"), "{bib}");
     assert!(Path::new(&folder.papers).join("atlas.pdf").exists());
+    let _ = std::fs::remove_dir_all(&folder.home);
+}
+
+#[cfg(unix)]
+#[test]
+fn names_that_look_like_drives_or_start_with_a_space_are_kept_once() {
+    let folder = Folder::new("names");
+    for name in ["d:e.pdf", " spaced.pdf"] {
+        std::fs::write(
+            folder.papers.join(name),
+            ibis::pdf_text::invented_pdf(&["Invented page."], None),
+        )
+        .unwrap();
+    }
+    let papers = folder.papers.display().to_string();
+    let (status, stdout, stderr) = folder.run(&["sources", "keep", "--file", &papers]);
+    assert_eq!(status, 0, "{stdout}{stderr}");
+    assert!(stdout.contains("kept 5 PDFs"), "{stdout}");
+    let (status, stdout, _) = folder.run(&["sources", "keep", "--file", &papers]);
+    assert_eq!(status, 0);
+    assert!(stdout.contains("kept 0 PDFs"), "{stdout}");
     let _ = std::fs::remove_dir_all(&folder.home);
 }

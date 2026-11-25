@@ -1535,11 +1535,16 @@ problem-changed-item = This reference changed while citing.
     .agent = Search again.
     .app = Search again.
 problem-missing-key = This reference has no citation key.
-problem-missing-details = This reference has no title, author or editor yet, so there is nothing to cite it by. Add them in its library.
     .named = { $reference } has no citation key.
     .cli = Cite it with --style instead.
     .agent = A key syntax cannot name it; use a style.
     .app = Give it one in your library, or choose a style.
+problem-missing-details = This reference has no title, author or editor yet, so there is nothing to cite it by. Add them in its library.
+    .named = { $reference } has no title, author or editor yet.
+    .cli = Add a title or author to its entry, then cite it again.
+    .agent = It cannot be cited until its library gives it a title, author or editor.
+    .app = Add a title or author to it in its library.
+
 problem-ambiguous-key = Several references share this citation key.
     .named = Several references share the citation key of { $reference }.
     .cli = Give each one its own key in your library.

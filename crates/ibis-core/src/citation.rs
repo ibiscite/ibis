@@ -80,15 +80,22 @@ pub fn check<'a>(
         .collect())
 }
 
-/// Whether a record has a title, an author or an editor to be cited by.
+/// Whether a record has a title, an author or an editor to be cited by, in
+/// the fields a citation actually uses (note overrides applied).
 pub fn has_details(record: &Record) -> bool {
-    ["title", "author", "editor"].iter().any(|name| {
-        record.csl.get(name).is_some_and(|value| match value {
-            serde_json::Value::String(text) => !text.trim().is_empty(),
-            serde_json::Value::Array(items) => !items.is_empty(),
-            _ => false,
+    let fields = crate::citable::CitableFields::new(record.csl.to_map());
+    let text = |part: &Option<String>| part.as_deref().is_some_and(|text| !text.trim().is_empty());
+    fields
+        .plain()
+        .get("title")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|title| !title.trim().is_empty())
+        || ["author", "editor"].iter().any(|role| {
+            fields
+                .names(role)
+                .iter()
+                .any(|name| text(&name.family) || text(&name.given) || text(&name.literal))
         })
-    })
 }
 
 fn validate_annotation(now: &Snapshot, shown: Option<&Snapshot>, pick: &CitationItem) -> Result<(), CitationError> {

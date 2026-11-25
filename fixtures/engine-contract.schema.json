@@ -361,6 +361,7 @@
             "missing-item",
             "changed-item",
             "missing-key",
+            "missing-details",
             "missing-doi",
             "ambiguous-key",
             "conflicting-key",

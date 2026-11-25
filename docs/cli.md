@@ -432,11 +432,11 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | --- | --- |
 | `ID` | The proposal id printed by ibis proposals list |
 
-**`ibis sources`**: Check that a library's source keeps Ibis's promises, built-in readers and source adapters alike
+**`ibis sources`**: Check that a library's source keeps Ibis's promises, or keep a folder's PDFs as references
 
 | Option | Does |
 | --- | --- |
-| `ACTION` | check: read the libraries named here again and check what every source promises |
+| `ACTION` | check: read the libraries named here again and check what every source promises; keep: read each new PDF in the folders named with --file and keep what it says in the folder's ibis-references.bib |
 | `--expect FILE` | CSL-JSON records the library should hold exactly, without their ids, in any order |
 | `--changed-from REVISION` | A revision an earlier check printed: check that the library changed since |
 
