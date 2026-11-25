@@ -85,6 +85,7 @@ ${list ? `\n${list}\n` : "\nSee the commits since the previous release.\n"}${[st
 
 - Checksums: compare \`shasum -a 256 <file>\` (macOS, Linux) or \`Get-FileHash <file>\` (Windows) with the \`SHA256SUMS-*.txt\` files below.
 - Provenance: \`gh attestation verify <file> --repo ${repo} --source-ref refs/tags/${tag} --signer-workflow ${repo}/.github/workflows/preview.yml\`
+- What it contains: each package's CycloneDX SBOM is attached below (\`Ibis-<system>.cdx.json\` for the app, \`ibis-<system>-cli.cdx.json\` for the command line) and attested to it: add \`--predicate-type https://cyclonedx.org/bom\` to the command above.
 
 </details>
 `;

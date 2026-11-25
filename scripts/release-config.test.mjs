@@ -48,6 +48,10 @@ function fakeGithub() {
       }
       return;
     }
+    if (args[1] === "repos/example/ibis/immutable-releases") {
+      response(state.immutableStatus ?? 200, JSON.stringify({ enabled: state.immutable ?? false, enforced_by_owner: false }));
+      return;
+    }
     if (args[1] === "repos/example/ibis/releases/tags/stable") {
       // GitHub's tag lookup does not expose drafts, even with authentication.
       response(state.feedStatus ?? (state.releases.stable && !state.releases.stable.isDraft ? 200 : 404), JSON.stringify({ id: 12 }), state.feedNetwork);
@@ -107,7 +111,7 @@ function fakeGithub() {
   }
   if (command === "upload" || command === "create") {
     if (state.failUpload) process.exit(1);
-    for (const path of args.filter((arg) => /^(dist|feed|style-changes)\//.test(arg))) {
+    for (const path of args.filter((arg) => /^(dist|feed|sbom|style-changes)\//.test(arg))) {
       release.assets[path.split("/").at(-1)] = fs.readFileSync(path, "utf8");
     }
     if (state.failAfterFeedUpload && args.includes("feed/latest.json")) {
@@ -142,7 +146,7 @@ function fakeJq() {
 function fixture(t, initial = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ibis-release-config-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  for (const name of ["scripts", "dist", "feed", "style-changes"]) mkdirSync(join(dir, name));
+  for (const name of ["scripts", "dist", "feed", "sbom", "style-changes"]) mkdirSync(join(dir, name));
   for (const name of ["update-feed.mjs", "release-notes.mjs", "publication-guard.mjs", "ci-main.mjs", ...Object.values(scripts)]) {
     copyFileSync(new URL(name, import.meta.url), join(dir, "scripts", name));
   }
@@ -155,6 +159,7 @@ function fixture(t, initial = {}) {
   const hash = createHash("sha256").update("invented package").digest("hex");
   writeFileSync(join(dir, "dist/SHA256SUMS-synthetic.txt"), `${hash}  Ibis-synthetic.zip\n`);
   writeFileSync(join(dir, "feed/latest.json"), JSON.stringify({ version: "0.2.3" }));
+  writeFileSync(join(dir, "sbom/Ibis-synthetic.cdx.json"), JSON.stringify({ bomFormat: "CycloneDX" }));
   writeFileSync(join(dir, "style-changes/notes.md"), "**Citation styles**\n\n- Output changed since v0.2.2 in 1 style: `invented-style`\n");
   writeFileSync(join(dir, "style-changes/changed-styles.txt"), "Citation styles compared with v0.2.2.\n\nOutput changed:\ninvented-style\n");
   const draft = { isDraft: true, prerelease: true, body: "### Bug Fixes\n* invented fix", assets: {} };
@@ -179,6 +184,10 @@ test("numbered releases publish fully with a versioned title and explicit Latest
     assert.equal(release.title, "Ibis 0.2.3");
     assert.match(release.body, /\*\*Citation styles\*\*\n\n- Output changed since v0\.2\.2 in 1 style: `invented-style`/);
     assert.match(release.assets["changed-styles.txt"], /^Output changed:\ninvented-style$/m);
+    // Attached before publication: numbered releases are immutable once public.
+    assert.ok(release.assets["Ibis-synthetic.cdx.json"]);
+    const attached = state.calls.findIndex((args) => args.includes("sbom/Ibis-synthetic.cdx.json"));
+    assert.ok(attached >= 0 && attached < state.calls.findIndex((args) => args.includes("--draft=false")));
     assert.equal(state.latest, latest === "v0.2.10" ? latest : "v0.2.3");
     const edit = state.calls.find((args) => args.includes("--draft=false"));
     assert.ok(edit.includes(latest === "v0.2.10" ? "--latest=false" : "--latest"));
@@ -473,4 +482,14 @@ test("Release Please bumps every workspace crate in Cargo.lock", () => {
     .sort();
   assert.ok(crates.length > 0, "workspace crates are found in Cargo.lock");
   assert.deepEqual(bumped, crates, "a release must bump every workspace crate or `--locked` builds fail");
+});
+
+test("a rolling release is created only when release immutability is confirmed off", { skip }, (t) => {
+  for (const [job, tag] of [["nightly", "nightly"], ["stable-feed", "stable"]]) {
+    for (const initial of [{ immutable: true }, { immutableStatus: 403 }]) {
+      const f = fixture(t, { releases: {}, ...initial });
+      assert.notEqual(f.run(job).status, 0, job);
+      assert.equal(f.state().releases[tag], undefined, `${job} created a release that would lock`);
+    }
+  }
 });
