@@ -16,7 +16,7 @@ struct Fixture {
 impl Fixture {
     fn new(library: &str) -> Self {
         let folder = tempfile::tempdir().unwrap();
-        let path = folder.path().join("refs.bib");
+        let path = folder.path().canonicalize().unwrap().join("refs.bib");
         std::fs::write(&path, library).unwrap();
         let engine = Engine::new()
             .unwrap()
@@ -26,7 +26,8 @@ impl Fixture {
         Self { engine, folder }
     }
     fn file(&self, name: &str, text: &str) -> PathBuf {
-        let path = self.folder.path().join(name);
+        // macOS reaches its temporary folder through a link; documents are read without following one.
+        let path = self.folder.path().canonicalize().unwrap().join(name);
         std::fs::write(&path, text).unwrap();
         path
     }
@@ -103,7 +104,7 @@ fn a_check_names_every_citation_that_cannot_be_built() {
 #[test]
 fn a_document_ibis_cannot_read_refuses_without_checking() {
     let fixture = Fixture::new(LIBRARY);
-    let missing = fixture.folder.path().join("gone.md");
+    let missing = fixture.folder.path().canonicalize().unwrap().join("gone.md");
     assert_eq!(
         fixture.check(&missing, None),
         CheckResult::Refused {
