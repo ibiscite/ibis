@@ -45,5 +45,5 @@ changed sources refuse before a delayed launch. IPC accepts native identities,
 never paths or arbitrary commands.
 
 Configurable editors/viewers, attachment menus and page-aware opening are
-[planned](../../ROADMAP.md#04-citation-and-integration-work). Printed citation
+[planned](../../ROADMAP.md#d-06-the-place-in-the-source). Printed citation
 pages must never be assumed to be physical PDF indices.

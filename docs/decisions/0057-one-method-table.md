@@ -37,6 +37,9 @@ Each capability is one row, declared once in `ibis-engine` with a
 | `cli` | None, or how it is typed at a prompt | The clap subcommand |
 | `mcp` | None, or its projection | `tools/list` and `tools/call` |
 | `access` | Which app windows may call it | The Tauri command and its per-window grants |
+| `needs` | The library capability it requires ([0059](0059-works-with-nothing-better-with-more.md)) | Whether it is offered for a library, and its refusal |
+| `network` | None, or the hosts it may reach | Consent screens and PRIVACY.md's network list |
+| `palette` | Whether it is a ⌘K verb, and for which selection kinds | The ⌘K list |
 
 - `dispatch(name, json)` is parsing the name, deserializing `Params` and
   `call`. In-process callers use `call::<M>` with typed values and no

@@ -19,7 +19,7 @@ It offers the way back to the usual format, recent formats, the app's delivery
 choice, New project (when offered) and the output catalogue. Key formats preview the chosen
 references; citation styles show a labelled example. Projects are managed in
 their own sheet. Esc leaves the format unchanged; Enter picks and returns to
-Search. Real style previews and inline projects are [planned](../../ROADMAP.md#04-citation-and-integration-work).
+Search. Real style previews and inline projects are [planned](../../ROADMAP.md#b-04-one-contract-one-context-one-delivery).
 
 **Inside Zotero, Ibis finds instead of citing.** Enter opens the PDF, or shows the item when there's no PDF. Other keys show the item or copy a citation. The footer says which.
 
