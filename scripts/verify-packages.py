@@ -67,8 +67,9 @@ class Failure(Exception):
     pass
 
 
-def expected_packages(target, names):
-    """Package names for TARGET in dist order; Nightly has no .rpm."""
+def expected_packages(target, names, version):
+    """Package names for TARGET in dist order; Nightly has no .rpm, every
+    numbered release has one."""
     if target not in PLATFORMS:
         raise Failure(f"no packages are known for {target}")
     name = PLATFORMS[target][0]
@@ -78,7 +79,9 @@ def expected_packages(target, names):
         required = ["Ibis-Windows-setup.exe", "ibis-Windows.zip"]
     else:
         required = ["Ibis-Linux.deb", "Ibis-Linux.AppImage", "ibis-Linux.tar.gz"]
-    optional = ["Ibis-Linux.rpm"] if name == "Linux" else []
+    optional = []
+    if name == "Linux":
+        (optional if "-nightly." in version else required).append("Ibis-Linux.rpm")
     sums = f"SHA256SUMS-{target}.txt"
     missing = [n for n in required + [sums] if n not in names]
     if missing:
@@ -315,6 +318,8 @@ class Check:
         self.notices, self.options, self.arch = notices, options, arch
         self.problems = []
 
+        self.cli_digest = None
+
     def require(self, condition, problem):
         if not condition:
             self.problems.append(problem)
@@ -342,10 +347,20 @@ class Check:
         self.require(self.options.build.encode() in data, f"the {what} does not embed version {self.options.build}")
         return candidates[0]
 
+    def bundled_command_line(self, root):
+        """The command line an app package carries (unsigned on Windows and Linux)."""
+        found = [full for rel, full in files(root) if Path(rel).name in CLI_NAMES]
+        if len(found) != 1:
+            self.problems.append(f"{len(found)} bundled command-line programs, not one")
+        else:
+            self.cli_digest = hashlib.sha256(found[0].read_bytes()).hexdigest()
+
     def command_line(self, root):
         tree = list(files(root))
         self.notice_files(tree, top_level=True)
         binary = self.executable([full for rel, full in tree if rel in CLI_NAMES], "command-line")
+        if binary is not None:
+            self.cli_digest = hashlib.sha256(binary.read_bytes()).hexdigest()
         if binary is None or not runs_here(binary.read_bytes()):
             return  # Cross-built (Intel on Apple silicon): checked above, not run.
         binary.chmod(0o755)
@@ -412,12 +427,15 @@ def check_package(path, notices, options, target):
                 elif name.endswith((".deb", ".rpm")):
                     check.require(meta.get("Version") == options.version, f"the package says version {meta.get('Version')!r}")
                     check.linux_app(root)
+                    check.bundled_command_line(root)
                 elif name.endswith(".AppImage"):
                     check.linux_app(root)
+                    check.bundled_command_line(root)
                 elif name.endswith("-setup.exe"):
                     check.require(meta.get("ProductVersion") == options.version,
                                   f"the setup executable says version {meta.get('ProductVersion')!r}")
                     check.windows_app(root)
+                    check.bundled_command_line(root)
         except OPEN_ERRORS as error:
             raise Failure(f"{path.name} could not be read: {error}") from error
         finally:
@@ -425,6 +443,7 @@ def check_package(path, notices, options, target):
                 subprocess.run(["hdiutil", "detach", str(mount), "-force"], capture_output=True)
     if check.problems:
         raise Failure(f"{path.name}: " + "; ".join(check.problems))
+    return check.cli_digest
 
 
 def load_notices(folder):
@@ -456,18 +475,25 @@ def check_sums(dist, target, packages):
 def verify(dist, target, notices_folder, options):
     dist = Path(dist)
     notices = load_notices(notices_folder)
-    packages = expected_packages(target, sorted(p.name for p in dist.iterdir()))
+    packages = expected_packages(target, sorted(p.name for p in dist.iterdir()), options.version)
     check_sums(dist, target, packages)
-    failures = []
+    failures, digests = [], {}
     for name in packages:
         try:
-            check_package(dist / name, notices, options, target)
+            digest = check_package(dist / name, notices, options, target)
+            if digest:
+                digests[name] = digest
             print(f"ok   {name}")
         except Failure as failure:
             failures.append(str(failure))
             print(f"FAIL {failure}")
     if failures:
         raise Failure(f"{len(failures)} of {len(packages)} packages failed")
+    # On Windows and Linux every app package carries the very command line the
+    # archive holds, which ran here and reported its version: that proves the
+    # version of a package (the AppImage) whose format records none.
+    if len(set(digests.values())) > 1:
+        raise Failure("the packages carry different command lines: " + ", ".join(f"{n} {d[:12]}" for n, d in sorted(digests.items())))
 
 
 def repack_without_notice(source, planted):
@@ -489,7 +515,7 @@ def self_test(dist, target, notices_folder, options):
     """Planted bad copies of the real packages must each be refused."""
     dist = Path(dist)
     notices = load_notices(notices_folder)
-    packages = expected_packages(target, sorted(p.name for p in dist.iterdir()))
+    packages = expected_packages(target, sorted(p.name for p in dist.iterdir()), options.version)
     wrong = argparse.Namespace(**{**vars(options), "version": options.version + ".9", "build": options.build + ".9"})
     passed_open = []
     with tempfile.TemporaryDirectory() as work:

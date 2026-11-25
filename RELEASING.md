@@ -54,8 +54,7 @@ versions/changelog and tags through the release app token, starting
    macOS signature (by the pinned certificate) and identity, and the command
    line's `--version`. It first plants bad copies (cut in half, a wrong
    version, notices removed) and fails unless each is refused. Install, publish
-   and nightly jobs require it. Packages are then installed and started; a
-   numbered release also runs the installed journey (chooser, delivery, Quit).
+   and nightly jobs require it. Packages are then installed and started.
    Intel macOS is verified but not run, and its release-notes row says so.
 3. Stable publishing waits in `updates` for approval. It verifies exact-tag
    checksums/provenance, signs updater archives and publishes the draft.

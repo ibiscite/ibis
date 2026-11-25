@@ -183,16 +183,19 @@ class Packages(unittest.TestCase):
 
     def test_each_target_needs_its_packages_and_nothing_else(self):
         linux = ["Ibis-Linux.AppImage", "Ibis-Linux.deb", "SHA256SUMS-x86_64-unknown-linux-gnu.txt", "ibis-Linux.tar.gz"]
-        self.assertEqual(verify.expected_packages("x86_64-unknown-linux-gnu", linux), ["Ibis-Linux.deb", "Ibis-Linux.AppImage", "ibis-Linux.tar.gz"])
-        self.assertIn("Ibis-Linux.rpm", verify.expected_packages("x86_64-unknown-linux-gnu", linux + ["Ibis-Linux.rpm"]))
+        self.assertEqual(verify.expected_packages("x86_64-unknown-linux-gnu", linux, VERSION), ["Ibis-Linux.deb", "Ibis-Linux.AppImage", "ibis-Linux.tar.gz"])
+        self.assertIn("Ibis-Linux.rpm", verify.expected_packages("x86_64-unknown-linux-gnu", linux + ["Ibis-Linux.rpm"], VERSION))
         with self.assertRaisesRegex(verify.Failure, "missing packages: Ibis-Linux.AppImage"):
-            verify.expected_packages("x86_64-unknown-linux-gnu", linux[1:])
+            verify.expected_packages("x86_64-unknown-linux-gnu", linux[1:], VERSION)
         with self.assertRaisesRegex(verify.Failure, "unexpected files: Ibis-Linux.deb.sig"):
-            verify.expected_packages("x86_64-unknown-linux-gnu", linux + ["Ibis-Linux.deb.sig"])
+            verify.expected_packages("x86_64-unknown-linux-gnu", linux + ["Ibis-Linux.deb.sig"], VERSION)
+        # A numbered release always has its rpm.
+        with self.assertRaisesRegex(verify.Failure, "missing packages: Ibis-Linux.rpm"):
+            verify.expected_packages("x86_64-unknown-linux-gnu", linux, "0.4.0")
         with self.assertRaisesRegex(verify.Failure, "missing packages: .*SHA256SUMS"):
-            verify.expected_packages("x86_64-pc-windows-msvc", ["Ibis-Windows-setup.exe", "ibis-Windows.zip"])
+            verify.expected_packages("x86_64-pc-windows-msvc", ["Ibis-Windows-setup.exe", "ibis-Windows.zip"], VERSION)
         with self.assertRaisesRegex(verify.Failure, "no packages are known"):
-            verify.expected_packages("riscv64gc-unknown-linux-gnu", [])
+            verify.expected_packages("riscv64gc-unknown-linux-gnu", [], VERSION)
 
     def test_checksums_must_list_exactly_the_packages(self):
         dist = self.dir / "dist"
@@ -230,6 +233,16 @@ class Packages(unittest.TestCase):
             "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in packages.items()))
         verify.self_test(dist, "x86_64-unknown-linux-gnu", self.notices, OPTIONS)
         verify.verify(dist, "x86_64-unknown-linux-gnu", self.notices, OPTIONS)
+        # An app package carrying another command line than the archive fails.
+        other = deb_bytes(app_files("./usr/lib/Ibis Nightly", {"./usr/bin/ibis-nightly": elf(), "./usr/bin/ibis": elf() + b"other"}))
+        (dist / "Ibis-Linux.deb").write_bytes(other)
+        (dist / "SHA256SUMS-x86_64-unknown-linux-gnu.txt").write_text("".join(
+            f"{hashlib.sha256((dist / name).read_bytes()).hexdigest()}  {name}\n" for name in packages))
+        with self.assertRaisesRegex(verify.Failure, "different command lines"):
+            verify.verify(dist, "x86_64-unknown-linux-gnu", self.notices, OPTIONS)
+        (dist / "Ibis-Linux.deb").write_bytes(packages["Ibis-Linux.deb"])
+        (dist / "SHA256SUMS-x86_64-unknown-linux-gnu.txt").write_text("".join(
+            f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in packages.items()))
         # A verifier that accepted anything fails its own self-test.
         accept_all = verify.check_package
         verify.check_package = lambda *args: None
@@ -241,7 +254,7 @@ class Packages(unittest.TestCase):
     def test_a_setup_executable_is_unpacked_with_7zip(self):
         for name, version in (("good", VERSION), ("old", "0.4.0")):
             source = self.dir / name
-            files = app_files("res", {"ibis-desktop.exe": pe() + version_resource(version), "uninstall.exe": pe()})
+            files = app_files("res", {"ibis-desktop.exe": pe() + version_resource(version), "ibis.exe": pe(), "uninstall.exe": pe()})
             for path, data in files.items():
                 (source / path).parent.mkdir(parents=True, exist_ok=True)
                 (source / path).write_bytes(data)
