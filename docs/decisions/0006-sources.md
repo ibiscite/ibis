@@ -43,8 +43,10 @@ cache. Numbered temporary files are cleaned under the lease and never queried.
 Unix directories are 0700 and files 0600. The shared creator inherits per-user
 cache security on Windows; it supplies no separate ACL or ownership repair.
 
-A project's optional `.bib` is read only to check emitted keys, never searched
-or edited. It is checked when chosen, at launch and when the picker opens,
+A project's optional `.bib` is read to check emitted keys and never searched.
+It is edited only when that project turns on appending (decided 2026-11-25,
+[0059](0059-works-with-nothing-better-with-more.md)): a cited entry is appended,
+with Undo, and nothing else in the file changes. It is checked when chosen, at launch and when the picker opens,
 without polling. Only its filename, key states and line numbers reach the
 webview. Copy Entry sends the original library entry directly from native code
 to the clipboard, including its `file` and `note` fields; this explicit local
