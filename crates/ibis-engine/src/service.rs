@@ -10,7 +10,7 @@ pub use ibis_csl::{
     LocaleEntry as LocaleInfo, Release as UpstreamRelease, StyleEntry as StyleInfo, StylePage as StylesResult,
 };
 pub use ibis_sources::{LibraryKind, SourceCapability, SourceWarning, WarningCause, WarningCode};
-use schemars::{JsonSchema, schema_for};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
@@ -210,7 +210,20 @@ pub enum Reply {
     Outputs(crate::outputs::OutputsResult),
     Schema(Value),
 }
-impl DispatchResult<Reply> {
+/// `call` answers with whichever method it called. Until its result is typed
+/// (decision 0057), its schema is any value.
+impl JsonSchema for Reply {
+    fn inline_schema() -> bool {
+        Value::inline_schema()
+    }
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        Value::schema_name()
+    }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        Value::json_schema(generator)
+    }
+}
+impl DispatchResult<health::Checked<CitationResult>> {
     pub fn citation(
         result: health::Checked<CitationResult>,
         expected_items: usize,
@@ -261,10 +274,10 @@ impl DispatchResult<Reply> {
             ExitCode::Findings
         };
         Self {
-            data: Reply::Citation(Box::new(health::Checked {
+            data: health::Checked {
                 value: result,
                 source_health,
-            })),
+            },
             exit_code,
             text,
             source_findings,
@@ -883,143 +896,7 @@ impl Engine {
     ) -> Result<DispatchResult<Reply>, EngineError> {
         cancel.check()?;
         crate::protocol::validate_shape(params).map_err(|_| error(ErrorCode::BadInput))?;
-        match method {
-            Method::Libraries => {
-                let request = if params.is_null() {
-                    LibrariesRequest::List {}
-                } else {
-                    parameters::<LibrariesRequest>(params)?
-                };
-                let (profiles, groups) = match request {
-                    LibrariesRequest::List {} => (None, None),
-                    LibrariesRequest::OpenZotero {
-                        libraries,
-                        profile,
-                        reload,
-                    } => {
-                        self.read_zotero(reload, libraries.as_deref(), profile.as_deref(), cancel)?;
-                        (None, None)
-                    }
-                    LibrariesRequest::ZoteroProfiles {} => (Some(self.zotero_profiles().unwrap_or_default()), None),
-                    LibrariesRequest::ZoteroGroups {} => (None, Some(self.zotero_groups()?)),
-                    LibrariesRequest::OpenFile { path } => {
-                        self.open_file(&path, cancel)?;
-                        (None, None)
-                    }
-                    LibrariesRequest::OpenSource { name, library } => {
-                        self.open_source(&name, library.as_deref(), cancel)?;
-                        (None, None)
-                    }
-                    LibrariesRequest::Reload { library } => {
-                        self.reload_files(library.as_ref(), cancel)?;
-                        (None, None)
-                    }
-                };
-                let mut listed = self.libraries_checked()?;
-                listed.value.zotero_installed = profiles.is_some().then(ibis_sources::zotero_source::installed);
-                listed.value.zotero_profiles = profiles;
-                listed.value.zotero_groups = groups;
-                cancel.check()?;
-                checked(listed, ExitCode::Ok, Reply::Libraries)
-            }
-            Method::Search => {
-                let result = self.search(&parameters(params)?, cancel)?;
-                let source_findings = !result.source_health.is_ok();
-                DispatchResult {
-                    data: Reply::Search(Box::new(result)),
-                    exit_code: if source_findings {
-                        ExitCode::Findings
-                    } else {
-                        ExitCode::Ok
-                    },
-                    text: None,
-                    source_findings,
-                }
-                .bounded()
-            }
-            Method::Show => checked(self.show_checked(&parameters(params)?)?, ExitCode::Ok, |value| {
-                Reply::Show(Box::new(value))
-            }),
-
-            Method::Cite => {
-                let request: CitationRequest = parameters(params)?;
-                let checked = self.prepare_citation(&request, cancel)?.into_checked();
-                DispatchResult::citation(checked, request.items.len(), &request.output)
-            }
-            Method::Records => {
-                let request: RecordsRequest = parameters(params)?;
-                let count = request.items.as_ref().map_or(request.records.len(), Vec::len);
-                // No library is read, so no library's health bears on it. A
-                // field that could not be read as sent is a finding, as it is
-                // in a library file, so the citation never reads as clean.
-                let result = self.cite_records(&request, cancel)?;
-                let unread = result
-                    .warnings
-                    .iter()
-                    .any(|warning| warning.code == CitationWarningCode::SourceField);
-                let mut dispatched = DispatchResult::citation(
-                    health::Checked {
-                        value: result,
-                        source_health: health::SourceHealth::of(std::iter::empty()),
-                    },
-                    count,
-                    &request.output,
-                )?;
-                if unread {
-                    dispatched.exit_code = ExitCode::Findings;
-                }
-                Ok(dispatched)
-            }
-            Method::Project => {
-                let result = self.project(&parameters(params)?, cancel)?;
-                let exit_code = if result.value.settled() {
-                    ExitCode::Ok
-                } else {
-                    ExitCode::Findings
-                };
-                checked(result, exit_code, Reply::Project)
-            }
-            Method::Entry => {
-                let result = self.entry_checked(&parameters(params)?, cancel)?;
-                let exit_code = match result.value {
-                    EntryResult::Entry { .. } => ExitCode::Ok,
-                    EntryResult::Refused { .. } => ExitCode::Findings,
-                };
-                checked(result, exit_code, Reply::Entry)
-            }
-            Method::Outline => checked(
-                self.outline(&parameters(params)?, cancel)?,
-                ExitCode::Ok,
-                Reply::Outline,
-            ),
-            Method::Read => checked(
-                self.read_attachment(&parameters(params)?, cancel)?,
-                ExitCode::Ok,
-                Reply::Read,
-            ),
-            Method::FindIn => checked(self.find_in(&parameters(params)?, cancel)?, ExitCode::Ok, Reply::FindIn),
-            Method::Share => {
-                let result = self.share(&parameters(params)?, cancel)?;
-                // A reference left out of a file it was asked for is a finding.
-                let exit_code = if result.value.complete() {
-                    ExitCode::Ok
-                } else {
-                    ExitCode::Findings
-                };
-                checked(result, exit_code, Reply::Share)
-            }
-            Method::Styles | Method::Outputs | Method::Schema => {
-                let row = method.row().ok_or_else(|| error(ErrorCode::Internal))?;
-                (row.route)(self, params, cancel)
-            }
-            Method::Call => {
-                let request: CallRequest = parameters(params)?;
-                if request.method == Method::Call {
-                    return Err(error(ErrorCode::BadInput));
-                }
-                self.reply(request.method, &request.params, cancel)
-            }
-        }
+        (method.row().route)(self, params, cancel)
     }
 
     /// Answers one method with typed values: what dispatch does once it has
@@ -1033,26 +910,6 @@ impl Engine {
         M::answer(self, params, cancel)
     }
 }
-/// A result and its sources' health, as dispatch sends them.
-fn checked<T>(
-    result: health::Checked<T>,
-    exit_code: ExitCode,
-    wrap: impl FnOnce(health::Checked<T>) -> Reply,
-) -> Result<DispatchResult<Reply>, EngineError> {
-    let source_findings = !result.source_health.is_ok();
-    DispatchResult {
-        data: wrap(result),
-        exit_code: if source_findings && exit_code == ExitCode::Ok {
-            ExitCode::Findings
-        } else {
-            exit_code
-        },
-        text: None,
-        source_findings,
-    }
-    .bounded()
-}
-
 /// The libraries a lookup read: every one for a key, the record's own for an id.
 fn consulted(state: &State, selector: &ItemSelector, library: &LibraryId) -> health::SourceHealth {
     health::SourceHealth::of(
@@ -1268,24 +1125,4 @@ fn value(value: impl Serialize) -> Result<Value, EngineError> {
 }
 pub(crate) fn error(code: ErrorCode) -> EngineError {
     EngineError::new(code)
-}
-pub(super) fn response_schema(method: Method) -> Value {
-    match method {
-        Method::Libraries => schema_for!(health::Checked<LibrariesResult>),
-        Method::Search => schema_for!(SearchResult),
-        Method::Show => schema_for!(health::Checked<SnapshotObject>),
-        Method::Cite => schema_for!(health::Checked<CitationResult>),
-        Method::Project => schema_for!(health::Checked<ProjectResult>),
-        Method::Entry => schema_for!(health::Checked<EntryResult>),
-        Method::Records => schema_for!(health::Checked<CitationResult>),
-        Method::Outline => schema_for!(health::Checked<OutlineResult>),
-        Method::Read => schema_for!(health::Checked<ReadResult>),
-        Method::FindIn => schema_for!(health::Checked<FindInResult>),
-        Method::Share => schema_for!(health::Checked<ShareResult>),
-        Method::Styles | Method::Outputs | Method::Schema => {
-            return method.row().map(|row| (row.result)()).unwrap_or_default();
-        }
-        Method::Call => schema_for!(Value),
-    }
-    .into()
 }
