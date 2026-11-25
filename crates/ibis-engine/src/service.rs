@@ -33,9 +33,14 @@ mod prepared;
 mod receipt;
 pub use prepared::{CitationCommitError, PreparedCitation};
 pub(crate) mod answers;
+mod document;
 mod project;
 mod reading;
 mod share;
+pub use document::{
+    CheckRequest, CheckResult, Checked as DocumentChecked, ExportRequest, ExportResult, Finding,
+    Problem as DocumentProblem, Read as DocumentRead, Which,
+};
 pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
 pub use project::{
     EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectResult, WritingCitation, project_name,
