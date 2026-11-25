@@ -77,7 +77,7 @@ pub enum ExportResult {
         read: Read,
         /// The records, with a refusal for each the format cannot write.
         /// `None` when the manuscript cites nothing that could be found.
-        records: Option<CitationResult>,
+        records: Option<Box<CitationResult>>,
     },
     Refused {
         file: Which,
@@ -369,7 +369,7 @@ impl Engine {
             source_health: records.source_health,
             value: ExportResult::Exported {
                 read: scanned.read(),
-                records: Some(records.value),
+                records: Some(Box::new(records.value)),
             },
         })
     }
