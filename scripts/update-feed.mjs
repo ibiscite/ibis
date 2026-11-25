@@ -156,14 +156,30 @@ function workspaceVersion() {
   return match[1];
 }
 
+function headNightlyVersion() {
+  const time = execFileSync("git", ["show", "-s", "--format=%cd", "--date=format-local:%Y%m%d%H%M%S", "HEAD"], {
+    cwd: root,
+    env: { ...process.env, TZ: "UTC" },
+    encoding: "utf8",
+  }).trim();
+  return nightlyVersion(workspaceVersion(), time);
+}
+
+/** The version a Preview run at `ref` builds: a v tag's, which must be the
+ * workspace's, or the Nightly version of HEAD. Read from the source, never
+ * from what the build produced. */
+export function expectedVersion(ref, workspace, nightly) {
+  if (!ref.startsWith("refs/tags/v")) return nightly();
+  const version = ref.slice("refs/tags/v".length);
+  if (version !== workspace) throw new Error(`${ref} does not match the workspace version ${workspace}`);
+  return version;
+}
+
 function main([command, ...args]) {
   if (command === "version") {
-    const time = execFileSync("git", ["show", "-s", "--format=%cd", "--date=format-local:%Y%m%d%H%M%S", "HEAD"], {
-      cwd: root,
-      env: { ...process.env, TZ: "UTC" },
-      encoding: "utf8",
-    }).trim();
-    console.log(nightlyVersion(workspaceVersion(), time));
+    console.log(headNightlyVersion());
+  } else if (command === "expected" && args.length === 1) {
+    console.log(expectedVersion(args[0], workspaceVersion(), headNightlyVersion));
   } else if (command === "newer" && args.length === 2) {
     process.exitCode = compareVersions(args[0], args[1]) > 0 ? 0 : 1;
   } else if (command === "release") {

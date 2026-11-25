@@ -12,6 +12,8 @@ cat > feed-notes.md <<EOF
 **Not a release.** This entry holds the files behind Ibis's permanent download links and \`latest.json\`, the update feed the app reads. It currently mirrors [Ibis ${TAG#v}](https://github.com/$REPO/releases/tag/$TAG). For release notes and how to verify a download, see [the latest release](https://github.com/$REPO/releases/latest).
 EOF
 if ! gh release view "$FEED" --repo "$REPO" > /dev/null 2>&1; then
+  # A rolling release is never created under immutable releases (#50).
+  [ "$(node scripts/publication-guard.mjs new-rolling)" = create ]
   gh release create "$FEED" --repo "$REPO" --draft --prerelease --target "$SHA" --title "Ibis update feed" --notes-file feed-notes.md
 fi
 # Packages first, the feed last; then remove files from older releases.

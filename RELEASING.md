@@ -56,10 +56,15 @@ versions/changelog and tags through the release app token, starting
    version, notices removed) and fails unless each is refused. Install, publish
    and nightly jobs require it. Packages are then installed and started.
    Intel macOS is verified but not run, and its release-notes row says so.
-3. Stable publishing waits in `updates` for approval. It verifies exact-tag
-   checksums/provenance, signs updater archives and publishes the draft.
-   Numbered publishing is serialized and does not overwrite public releases.
-4. `stable-feed` replaces packages, then `latest.json` on the fixed `stable`
+3. The sbom job attests each final package to its CycloneDX SBOM
+   (`scripts/sbom.py`, written by the build: the Rust crates for that
+   platform and, for the app, the npm packages).
+4. Stable publishing waits in `updates` for approval. It verifies exact-tag
+   checksums, provenance and SBOM attestations (`scripts/verify-sboms.sh`),
+   signs updater archives, attaches packages and SBOMs to the draft and only
+   then publishes it. Numbered publishing is serialized and never changes a
+   public release.
+5. `stable-feed` replaces packages, then `latest.json` on the fixed `stable`
    tag. Older versions cannot replace a newer feed. That tag is not a source ref.
 
 Once a day (02:07 UTC) Preview builds the nightly from main's head if its push
@@ -71,13 +76,84 @@ release-mode/MSRV checks and bounded fuzzing; failures update one issue. Run
 Manual Preview with publication disabled retains artifacts for 14 days. The
 daily installed-update check still uses the previous nightly; see [testing](docs/testing.md#native-journeys-and-installed-updates).
 
+## Verifying a download
+
+Anyone can check a file from a numbered release (use `refs/heads/main` for
+the nightly):
+
+```sh
+shasum -a 256 FILE        # compare with SHA256SUMS-*.txt in the same release
+gh attestation verify FILE --repo ibiscite/ibis --source-ref refs/tags/TAG \
+  --signer-workflow ibiscite/ibis/.github/workflows/preview.yml
+gh attestation verify FILE --repo ibiscite/ibis --source-ref refs/tags/TAG \
+  --signer-workflow ibiscite/ibis/.github/workflows/preview.yml \
+  --predicate-type https://cyclonedx.org/bom
+```
+
+The first attestation says the file was built from that tag by this
+repository's Preview workflow; the second carries the SBOM, which must equal
+the attached `Ibis-<system>.cdx.json` (app packages) or
+`ibis-<system>-cli.cdx.json` (command line). Before approving a stable
+release, run these three checks on one package per system from the release
+candidate's workflow artifacts and note the result on the release PR.
+
+## Immutable releases
+
+Maintainer decision, 2026-11-25 (#50): numbered releases are immutable once
+published ([decision 0019](docs/decisions/0019-updates.md)). The repository
+setting is **Settings → General → Releases → Enable release immutability**;
+it applies only to releases published after it is switched on. Every file a
+numbered release carries (packages, checksums, SBOMs, the style list) is
+attached while it is a draft, and nothing edits it after publication except
+GitHub's Latest marker.
+
+The rolling `nightly` and `stable` releases replace their files and the
+nightly tag moves; both were published before the setting, so they stay
+mutable. Never delete them: a new one would lock at its first publication and
+its tag could not be used again, so the publishing scripts refuse to create
+one unless GitHub confirms immutability is off
+(`publication-guard.mjs new-rolling`). If one is lost, the channel has to move
+off GitHub Releases or to a new tag name, which the app's feed URLs and the
+website name; that is a maintainer decision.
+
 ## Update keys
 
 Stable and Nightly trust separate public keys. Private keys/passwords belong
 in `updates` (`v*`, required approval) and `nightly` (`main`) respectively.
 Key-holding jobs restore no shared caches. Signatures authenticate the build
-version as well as package bytes. Keep private offline key backups; losing
-one requires affected users to reinstall.
+version as well as package bytes. Keep an offline backup of each private key
+and its password, in two places, never in the repository.
+
+The app trusts exactly one key, built into it (`tauri.conf.json` for Ibis,
+`NIGHTLY_PUBKEY` in `scripts/update-feed.mjs` for Nightly), and
+`update-feed.mjs` refuses a feed signed by any key other than the one built
+into the commit being published.
+
+**Planned rotation** (for example before a key's holder changes):
+
+1. Generate the new pair offline with `pnpm -C apps/desktop tauri signer generate`
+   and back it up as above.
+2. Bridge release: a reviewed change puts the new public key into the app,
+   while this one release is still signed with the old key, which every
+   installed copy trusts. The feed's key check must accept the old key for
+   exactly this version; that exception is a code change made, reviewed and
+   removed with the rotation, since the scripts allow one key per channel.
+3. Wait until the update counts show most people on the bridge release, then
+   replace the environment's secret with the new key. Later releases are
+   signed with it only. Copies older than the bridge cannot verify them and
+   must install the next release by hand; the release notes say so.
+
+**Lost key** (no backup): installed copies can never accept another update.
+Generate a new pair, ship it in the next release, and say in the release
+notes, the website and a pinned issue that everyone must download
+and install that release by hand. Nothing else changes.
+
+**Leaked key**: remove the secret from its environment at once and treat it as
+lost. A leaked key alone cannot reach people: the app fetches updates only
+from this repository's release feed, which needs write access to change. Check
+the release and environment audit logs for unexpected publications, then ship
+the new key as for a lost one. A Nightly key never signs Ibis, so a Nightly
+leak touches only Nightly.
 
 ## One-time setup
 

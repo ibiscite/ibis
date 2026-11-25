@@ -3,6 +3,11 @@
 // Prints "publish" or "keep"; lookup/parse failures exit nonzero.
 //   node scripts/publication-guard.mjs stable <candidate latest.json>
 //   node scripts/publication-guard.mjs nightly
+//   node scripts/publication-guard.mjs new-rolling
+// new-rolling prints "create" only when GitHub confirms that release
+// immutability is off: the rolling nightly and stable releases replace their
+// files, so one created while it is on would lock at its first publication
+// and its tag could never be used again (RELEASING.md, immutable releases).
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -90,12 +95,21 @@ function version(feed) {
 }
 
 function main([kind, file, ...extra]) {
-  if (extra.length || kind === "nightly" && file || kind === "stable" && !file || !["stable", "nightly"].includes(kind)) {
-    throw new Error("Usage: publication-guard.mjs stable <latest.json> | nightly");
+  if (extra.length || kind !== "stable" && file || kind === "stable" && !file || !["stable", "nightly", "new-rolling"].includes(kind)) {
+    throw new Error("Usage: publication-guard.mjs stable <latest.json> | nightly | new-rolling");
   }
   const repository = process.env.REPO;
   if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*\/[A-Za-z0-9_-][A-Za-z0-9_.-]*$/.test(repository ?? "")) {
     throw new Error("Publication guard needs a valid REPO.");
+  }
+  if (kind === "new-rolling") {
+    const setting = githubJson(repository, "immutable-releases");
+    if (setting?.enabled !== false) {
+      console.error("::error::Release immutability is on (or unconfirmed): a new rolling release would lock when first published. See RELEASING.md.");
+      throw new Error("Rolling release creation refused.");
+    }
+    console.log("create");
+    return;
   }
   let publish;
   if (kind === "stable") {
