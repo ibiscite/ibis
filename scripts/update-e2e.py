@@ -441,7 +441,8 @@ while ($null -ne ($ibisLine = [Console]::In.ReadLine())) {
   } catch {
     $ibisAnswer.exit = 1; $ibisAnswer.error = $_.Exception.GetType().Name
   } finally {
-    foreach ($ibisName in $ibisNames) { [Environment]::SetEnvironmentVariable($ibisName, $null) }
+    # Not SetEnvironmentVariable: PowerShell passes $null to it as an empty value.
+    foreach ($ibisName in $ibisNames) { Remove-Item -LiteralPath "Env:$ibisName" -ErrorAction Ignore }
   }
   $ibisOut.WriteLine((ConvertTo-Json -Compress -InputObject $ibisAnswer)); $ibisOut.Flush()
 }
