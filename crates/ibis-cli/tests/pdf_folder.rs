@@ -137,7 +137,9 @@ fn a_kept_folder_cites_what_its_pdfs_said_and_nothing_else() {
     let (status, stdout, stderr) = folder.run(&["sources", "check", "--file", &papers]);
     assert_eq!(status, 0, "{stdout}{stderr}");
     std::fs::copy(folder.papers.join("atlas.pdf"), folder.papers.join("atlas copy.pdf")).unwrap();
-    let libraries = folder.json(&["libraries"]).to_string();
+    // A warning is a finding, so the command says so in its exit status.
+    let (status, libraries, _) = folder.with_folder(&["libraries", "--json"]);
+    assert_ne!(status, 0);
     assert!(libraries.contains("pdfs-not-kept") && libraries.contains("\"folder\""), "{libraries}");
     let _ = std::fs::remove_dir_all(&folder.home);
 }
