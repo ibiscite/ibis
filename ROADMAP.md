@@ -63,9 +63,10 @@ the maintainer promotes it.
 
 ## 0.4 Citation and integration work
 
-Order (maintainer, 2026-11-18): German and Arabic with the public beta first,
-then customizable shortcuts and quiet updates, then drag and Copy as Markdown,
-then every locator with real style previews. When items compete, the first
+Order (maintainer, 2026-11-18, amended 2026-11-25): German and Arabic with the
+public beta first, then customizable shortcuts and quiet updates, then connected
+libraries (Zotero and a project's `.bib` searched together), then drag and Copy as
+Markdown, then every locator with real style previews. When items compete, the first
 person to serve is an academic writing in LaTeX or Markdown, and Ibis should
 feel like an invisible utility: summon, cite, gone, with depth only when asked.
 
@@ -78,6 +79,11 @@ feel like an invisible utility: summon, cite, gone, with depth only when asked.
   if they work; document exactly what was tested.
 - Customizable shortcuts; connected libraries together in the app; an empty-
   search tip; opt-in download and install on explicit quit.
+- Decided 2026-11-25: a citation format is remembered per website inside a
+  browser (overleaf.com apart from docs.google.com), reading only the front
+  tab's site name on this computer; the welcome screen shows Open at Login
+  switched on; Settings › AI Apps gets a per-app "May propose changes" switch,
+  off by default, replacing hand-edited `--allow-writes`.
 - Drag citations into apps. Configurable reference opening, editor and PDF
   viewer choices, several-PDF menus and Open PDF at This Page only with a known
   printed-to-physical page mapping.
