@@ -610,6 +610,7 @@ pub(super) fn warning_line(warning: &SourceWarning) -> String {
         (ibis_engine::WarningCode::Field, _) => cli("cli-warning-field", &[]),
         (ibis_engine::WarningCode::WorkLimit, _) => cli("cli-warning-work-limit", &[]),
         (ibis_engine::WarningCode::InvalidAttachment, _) => cli("cli-warning-invalid-attachment", &[]),
+        (ibis_engine::WarningCode::PdfsNotKept, _) => cli("cli-warning-pdfs-not-kept", &[]),
         (ibis_engine::WarningCode::CloudSyncedDirectory, _) => cli("cli-warning-cloud-directory", &[]),
         (ibis_engine::WarningCode::CitationKeysUnavailable, _) => cli("cli-warning-keys-unavailable", &[]),
         _ => cli("cli-warning-unknown", &[]),
@@ -803,6 +804,14 @@ pub(super) fn file_failure(path: &Path, error: EngineError) -> String {
 
 /// Why a library file did not open, without naming it.
 pub(super) fn file_reason(path: &Path, error: EngineError) -> String {
+    // A folder of PDFs has a library only once someone keeps it (decision 0061).
+    let probed = path.to_owned();
+    let unkept = crate::bounded(move || {
+        probed.is_dir() && std::fs::symlink_metadata(probed.join(ibis_sources::folder::LIBRARY_FILE)).is_err()
+    });
+    if unkept == Some(true) {
+        return cli("cli-folder-not-kept", &[]);
+    }
     if let Some(reason) = error.reason {
         return reason_sentence(reason);
     }

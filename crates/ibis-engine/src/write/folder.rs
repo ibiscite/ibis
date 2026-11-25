@@ -41,15 +41,11 @@ pub struct Kept {
 }
 
 impl Engine {
-    /// Keep up to [`KEEP_BATCH`] of `folder`'s unkept PDFs, read by `reader`,
-    /// in its `ibis-references.bib`, creating the file if it is missing.
-    pub fn keep_folder(
-        &self,
-        store: &Proposals,
-        folder: &Path,
-        reader: &PdfReader,
-        cancel: &Cancellation,
-    ) -> Result<Kept, WriteError> {
+    /// Keep up to [`KEEP_BATCH`] of `folder`'s unkept PDFs in its
+    /// `ibis-references.bib`, creating the file if it is missing. PDFs are
+    /// read by the engine's PDF reader; without one nothing is kept.
+    pub fn keep_folder(&self, store: &Proposals, folder: &Path, cancel: &Cancellation) -> Result<Kept, WriteError> {
+        let reader: &PdfReader = self.pdf_reader().ok_or(WriteProblem::Unreadable)?;
         let _lock = store.lock()?;
         let folder = std::fs::canonicalize(folder).map_err(|_| WriteProblem::Unreadable)?;
         let path = folder.join(LIBRARY_FILE);

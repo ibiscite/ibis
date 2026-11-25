@@ -315,7 +315,7 @@ impl Engine {
                 let (reading, port) = self.zotero_reading()?;
                 Owner::Zotero(reading, port)
             }
-            LibraryKind::File => match self.file_path(&parent.object.id().library)? {
+            LibraryKind::File | LibraryKind::Folder => match self.file_path(&parent.object.id().library)? {
                 Some(path) => Owner::File(path),
                 None => Owner::Snapshot,
             },

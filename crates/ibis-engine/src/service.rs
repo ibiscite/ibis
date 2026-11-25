@@ -382,6 +382,10 @@ impl Engine {
         self.pdf = Some(ibis_sources::pdf::PdfReader::new(program));
         self
     }
+    /// The PDF reader this engine was given, if any.
+    pub(crate) fn pdf_reader(&self) -> Option<&ibis_sources::pdf::PdfReader> {
+        self.pdf.as_ref()
+    }
     /// Serve built-in source adapters with `program`, an `ibis` executable
     /// started as `ibis __source NAME` for each read (decision 0056).
     pub fn with_built_in_sources(mut self, program: std::path::PathBuf) -> Self {

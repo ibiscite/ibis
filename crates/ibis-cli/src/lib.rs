@@ -1287,6 +1287,10 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
             None,
         ));
     }
+    // A folder is kept before any library opens: until then it has none.
+    if name == "sources" && args.get_one::<String>("action").map(String::as_str) == Some("keep") {
+        return Ok(Execution::Result(local(sources::keep(engine, matches)?), None));
+    }
     let opened = open_libraries(engine, matches, name, defaults);
     if name == "mcp" {
         let session = match opened {
