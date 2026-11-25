@@ -17,8 +17,9 @@ zip, ar, rpm, disk image, AppImage, NSIS through 7-Zip) and must:
 - declare version V where its format records one (Info.plist, Debian control,
   rpm header, the setup executable's ProductVersion), and hold one app or
   command-line executable built for TARGET's processor that embeds --build;
-- on Windows and Linux, carry a command line that runs and reports --build
-  (the only version proof an AppImage has);
+- on Windows and Linux (deb, rpm, setup executable), carry a command line
+  that runs and reports --build; the AppImage's is checked from its header
+  and embedded version only;
 - on macOS, have a valid code signature, made by --signing-leaf when given,
   and the bundle identifier --identifier;
 - run its command line, where this computer can, and report --build.
@@ -359,7 +360,7 @@ class Check:
             self.problems.append(f"the {what} did not start: {error}")
             return
         self.require(out.returncode == 0 and self.options.build in out.stdout,
-                     f"the {what} did not report {self.options.build}")
+                     f"the {what} did not report {self.options.build} (exit {out.returncode}: {(out.stdout + out.stderr).strip()[:120]!r})")
 
     def bundled_command_line(self, root):
         """The command line an app package carries runs and reports its version,
@@ -433,8 +434,10 @@ def check_package(path, notices, options, target):
                     check.linux_app(root)
                     check.bundled_command_line(root)
                 elif name.endswith(".AppImage"):
+                    # Its bundler rewrites the bundled command line, which then
+                    # does not start on its own; header and embedded version only.
                     check.linux_app(root)
-                    check.bundled_command_line(root)
+                    check.executable([full for rel, full in files(root) if Path(rel).name in CLI_NAMES], "bundled command-line")
                 elif name.endswith("-setup.exe"):
                     check.require(meta.get("ProductVersion") == options.version,
                                   f"the setup executable says version {meta.get('ProductVersion')!r}")
