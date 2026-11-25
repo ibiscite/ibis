@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { enterAction, enterOutcome, type EnterInputs, type EnterOutcome } from "./enterLabel";
 
 const base: EnterInputs = {
-  count: 1, preview: "ready", editor: false, findOpen: false, practising: false, deciding: false, changing: false,
+  count: 1, preview: "ready", editor: false, findOpen: false, openable: true, practising: false, deciding: false, changing: false,
   format: "pandoc", app: "Invented Editor", canPaste: true, stayOpen: false, ownOrder: false, refusal: null,
 };
 
@@ -20,6 +20,7 @@ const outcomes: Record<string, Partial<EnterInputs>> = {
   failed: { preview: "failed" },
   editor: { editor: true },
   "find mode": { findOpen: true },
+  "find mode with no result to open": { findOpen: true, openable: false },
   practice: { practising: true },
   "the practice offer still being read": { deciding: true },
   "changing the last citation": { changing: true },

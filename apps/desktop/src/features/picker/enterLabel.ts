@@ -15,7 +15,8 @@ export function citationDelivery(app: string | null, canPaste: boolean, stayOpen
 /** Everything Enter can do, each named by the bar's one action:
  * - nothing: no citation yet, or one that is out of date or failed;
  * - send: an editor asked for the citation, and takes it;
- * - open: Find mode opens the reference's PDF or shows it in Zotero;
+ * - open: Find mode opens the highlighted reference's PDF or shows it in
+ *   Zotero; with no result to open, Enter does nothing there;
  * - deciding: this opening's practice offer has not answered yet, so Enter
  *   waits for it; the bar keeps the action's room but names nothing, so its
  *   words never promise what Enter will not do;
@@ -34,6 +35,8 @@ export type EnterInputs = {
   /** The prepared citation: ready, or out of date or failed, which Enter cannot deliver. */
   preview: "ready" | "stale" | "failed";
   editor: boolean; findOpen: boolean; practising: boolean; changing: boolean;
+  /** Find mode has a highlighted result to open. */
+  openable: boolean;
   /** Whether this opening's practice offer is still being read: Enter waits on it. */
   deciding: boolean;
   format: OutputId; app: string | null; canPaste: boolean;
@@ -48,7 +51,7 @@ export type EnterInputs = {
 export function enterOutcome(i: EnterInputs): EnterOutcome {
   if (i.count === 0 || i.preview !== "ready") return "nothing";
   if (i.editor) return "send";
-  if (i.findOpen) return "open";
+  if (i.findOpen) return i.openable ? "open" : "nothing";
   if (i.practising) return "practice";
   if (i.deciding) return "deciding";
   if (i.changing) return "change";

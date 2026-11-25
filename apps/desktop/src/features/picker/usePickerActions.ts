@@ -84,7 +84,7 @@ export function usePickerActions({
   // outcome, named once by the bar's action; null when it does nothing.
   const enter = describeEnter({
     count: offered.length, preview: shown === "stale" || shown === "failed" ? shown : "ready",
-    editor: Boolean(delivery.editorFormat), findOpen: destination.findOpen, practising, deciding, changing: state.changing !== null,
+    editor: Boolean(delivery.editorFormat), findOpen: destination.findOpen, openable: results.length > 0, practising, deciding, changing: state.changing !== null,
     format, app: destination.app, canPaste, stayOpen, ownOrder: state.keepOrder && writesStyle, refusal,
   });
   // Only a row that answers the current query can be added or given a locator.

@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { backend, prepared, receipt, resetApp, result } from "./testing/app";
+import { fixtureDestination } from "./testing/format";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(resetApp);
@@ -166,4 +167,23 @@ test("a refusal whose reason changes waits for a fresh press before it is said a
   expect(said?.textContent).toBe("");
   await enter();
   expect(said?.textContent).toBe(`Not pasted or copied. ${reason()}`);
+});
+
+test("in Find mode the bar offers Open only while there is a result to open, as Enter does", async () => {
+  const open = vi.fn(() => null);
+  const calls = backend({
+    library_status: () => ({ state: "loaded", has_snapshot: true, zotero: true, snapshot_zotero: true, zotero_libraries: ["user"], name: "Zotero", references: 1, warnings: 0, error: null, problem: null, note: null }),
+    destination: () => fixtureDestination({ app: "Zotero", app_id: "org.zotero.zotero", find_open: true }),
+    search: ({ query }) => query.text ? [] : [result("a", "Invented A")],
+    zotero_groups: () => [], open_library_source: open,
+  });
+  await act(async () => { render(<App />); });
+  expect(screen.getByRole("button", { name: "Open PDF, or show item in Zotero" })).toBeTruthy();
+  await act(async () => { fireEvent.keyDown(searchBox(), { key: "Enter", shiftKey: true }); });
+  await act(async () => { fireEvent.change(searchBox(), { target: { value: "missing" } }); });
+  // The citation is kept, but nothing can be opened: the bar promises nothing.
+  expect(screen.queryByRole("button", { name: "Open PDF, or show item in Zotero" })).toBeNull();
+  await enter();
+  expect(open).not.toHaveBeenCalled();
+  expect(calls).not.toContain("deliver_citation");
 });
