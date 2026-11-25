@@ -83,7 +83,10 @@ A tool that mirrors a library compares `revision` and rereads only when it
 differs. RIS and CSV files declare records only: they have no citation keys,
 and neither do EndNote libraries. `ibis sources check` rereads the libraries
 named with it and checks what every source promises; see
-[source adapters](source-adapters.md#the-conformance-check).
+[source adapters](source-adapters.md#the-conformance-check). `ibis sources keep
+--file FOLDER` keeps a folder of PDFs as a library in its `ibis-references.bib`
+([compatibility](compatibility.md#a-folder-of-pdfs)); it is the only command
+that writes a library file without a proposal, and only that one file.
 
 Without explicit libraries, `search`, `show`, `cite`, `libraries` and `call`
 of the first three use the app's choice. Stable settings take precedence;

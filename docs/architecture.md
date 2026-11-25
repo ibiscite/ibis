@@ -97,6 +97,14 @@ validation, the private-link filter and key claims to itself. Adapter
 libraries declare records, and keys only when the adapter says it has them.
 They are read on open and on reload; a failed read keeps the last good one.
 
+A folder of PDFs is a library of kind `folder` whose records are its
+`ibis-references.bib`, read by the BibTeX reader with BibTeX's capabilities
+except proposals ([0061](decisions/0061-a-folder-of-pdfs-and-one-resolve.md)).
+`ibis_sources::folder` lists the PDFs, and a read warns `pdfs-not-kept` when
+one has no entry. Only `Engine::keep_folder` writes it, appending entries for
+new PDFs from what the PDF child (`ibis __extract-pdf --details`) read, through
+the proposal writer's lock, change check, atomic replace and backups.
+
 File formats and limits are in [compatibility](compatibility.md#library-files). Files are bounded to 64 MiB; parsers report skipped records without discarding valid neighbours.
 
 Zotero reads use the same pinned Zotero-to-CSL mapping in both modes:

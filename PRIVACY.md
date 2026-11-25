@@ -45,6 +45,11 @@ yourself in the app. It has no account or crash-upload service. This page descri
   rejects proposals but cannot apply them. Only `.bib` files take proposals;
   Ibis does not change Zotero libraries.
   An AI app that can run commands can still edit files you can edit.
+- **A folder of PDFs:** `ibis sources keep --file FOLDER` reads each new PDF
+  in the folder in a separate process and appends what the PDF says about
+  itself to `ibis-references.bib` in that folder, keeping the replaced file in
+  Ibis's data folder as for a proposal. Nothing is sent anywhere; no PDF and no
+  existing entry changes. Opening the folder afterwards only reads that file.
 - **Project bibliographies:** chosen files are checked without changes.
   Settings retain their paths; the picker receives only file names.
 - **Clipboard:** copying replaces its contents. Clipboard managers, cloud
