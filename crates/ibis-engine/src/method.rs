@@ -158,7 +158,7 @@ rows! {
     /// The citation formats and record exports, with what each can do.
     Outputs "outputs": OutputsRequest => OutputsResult, answers::outputs, Reply::Outputs;
     /// The parameter and result schemas of one method, or of every one.
-    Schema "schema": SchemaRequest => Value, answers::schema, Reply::Schema;
+    Schema "schema": SchemaRequest => Vec<answers::MethodSchema>, answers::schema, Reply::Schema;
     /// Any other method by name, with its parameters.
     Call "call": CallRequest => Reply, answers::call, std::convert::identity;
 }
