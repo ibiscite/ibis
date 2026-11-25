@@ -1,5 +1,5 @@
 //! Native boundaries used only by the closed reader. No source lock is acquired.
-use super::{ClosedError, Control, FileLease, ParentLinks};
+use super::{ClosedError, Control, FileLease};
 use std::fs::{File, Metadata};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -155,28 +155,12 @@ pub(super) fn open_source(path: &Path) -> Result<File, ClosedError> {
 
 /// Open each component through a no-follow handle. Directory handles stay
 /// pinned until the file is opened; Windows also denies ancestor replacement.
-pub(super) fn local_file(path: &Path, parents: ParentLinks, control: &Control) -> Result<Option<File>, ClosedError> {
+pub(super) fn local_file(path: &Path, control: &Control) -> Result<Option<File>, ClosedError> {
     use std::path::Component;
     control.check()?;
     if !path.is_absolute() {
         return Err(ClosedError::UnsafeSource);
     }
-    // Resolve only the selected parent, classifying each symlink target before
-    // probing it. Reopen the resolved path below through no-follow handles.
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    let resolved;
-    let path = match parents {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        ParentLinks::Resolve => {
-            let (Some(folder), Some(name)) = (path.parent(), path.file_name()) else {
-                return Err(ClosedError::UnsafeSource);
-            };
-            resolved = directory(folder, control)?.join(name);
-            resolved.as_path()
-        }
-        // Windows always refuses reparse points; its aliases are drive paths.
-        _ => path,
-    };
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     super::mounts::local(path, control)?;
     #[cfg(unix)]

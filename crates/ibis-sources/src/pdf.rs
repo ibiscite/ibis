@@ -169,11 +169,11 @@ impl PdfReader {
         labels_only: bool,
         cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
     ) -> Result<PdfDocument, Refusal> {
-        use crate::zotero_local::closed::{ClosedError, ParentLinks, with_local_file};
+        use crate::zotero_local::closed::{ClosedError, with_local_file};
         let started = Instant::now();
         let reader = self.clone();
         let stop = cancelled.clone();
-        with_local_file(path, ParentLinks::Refuse, cancelled, self.deadline, move |mut file| {
+        with_local_file(path, cancelled, self.deadline, move |mut file| {
             let before = stamp(&mut file)?;
             let answer = reader.run(
                 file.try_clone().map_err(|_| Refusal::NotLocal)?,
@@ -320,8 +320,8 @@ impl std::fmt::Debug for LocalPdf {
 impl LocalPdf {
     /// Open the PDF at `path` as [`PdfReader::read`] opens it.
     pub fn open(path: &Path, cancelled: Arc<dyn Fn() -> bool + Send + Sync>) -> Result<Self, Refusal> {
-        use crate::zotero_local::closed::{ClosedError, ParentLinks, with_local_file};
-        with_local_file(path, ParentLinks::Refuse, cancelled, DEADLINE, |mut file| {
+        use crate::zotero_local::closed::{ClosedError, with_local_file};
+        with_local_file(path, cancelled, DEADLINE, |mut file| {
             let stamp = share_stamp(&mut file)?;
             Ok(Self { file, stamp })
         })

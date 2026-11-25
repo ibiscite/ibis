@@ -8,8 +8,8 @@ use std::process::{Command, Stdio};
 #[test]
 fn the_engine_checks_a_manuscript_through_the_child() {
     let folder = tempfile::tempdir().unwrap();
-    // Also exercise canonical Windows verbatim paths through the engine.
-    let root = folder.path().canonicalize().unwrap();
+    // Resolve macOS's /var alias and exercise Windows verbatim paths.
+    let root = std::fs::canonicalize(folder.path()).unwrap();
     let library = root.join("refs.bib");
     std::fs::write(
         &library,
