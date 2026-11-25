@@ -16,8 +16,6 @@
 }
 ul.ui-line-words:is(:hover, :focus-visible) > li { display: list-item; }
 ul.ui-line-words:is(:hover, :focus-visible) > li + li::before { content: none; }
-/* A popover's arrow is part of the same layer. */
-.ui-overlay .ui-popover-arrow svg { fill: var(--layer-overlay); }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-overlay { border: var(--border-width) solid CanvasText; }
 }

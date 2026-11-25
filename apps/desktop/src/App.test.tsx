@@ -29,7 +29,7 @@ test("a pasted list previews and copies every result in order, with a safe missi
   fireEvent.paste(box, { clipboardData: { getData: () => "b\na\nmissing" } });
   expect((box as HTMLInputElement).value).toBe("b\ta\tmissing");
   await screen.findByText("Pasted list");
-  expect(await screen.findByText("Copy 2 citations · Pandoc")).toBeTruthy();
+  expect(await screen.findByText("Copy 2 Citations")).toBeTruthy();
   expect(await screen.findByText("Not in your library: <script>invented</script>")).toBeTruthy();
   expect(document.querySelector("script")).toBeNull();
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b; @a"));
@@ -54,7 +54,7 @@ const formatButton = (name: string | RegExp = /^Citation format /) => within(scr
 function formatValue() {
   const shown = formatButton().getAttribute("aria-label")!.slice("Citation format ".length);
   const choices = OUTPUTS.map((output) => output.id);
-  return choices.find((choice) => shown === `${outputName(choice)}` || shown === `${outputName(choice)} · This paste`);
+  return choices.find((choice) => shown === outputName(choice));
 }
 
 const selectedKeys = citationKeys;
@@ -568,7 +568,10 @@ test("a known wrong-work key is refused and never reaches native copy, by Enter 
   });
   render(<App />);
   await screen.findByText("A key in thesis.bib identifies a different work.");
-  expect(document.querySelector<HTMLButtonElement>(".footer-action")?.disabled).toBe(true);
+  // The action is off but still focusable and spoken, described by its reason in the bar.
+  const action = document.querySelector<HTMLButtonElement>(".footer-action")!;
+  expect(action.getAttribute("aria-disabled")).toBe("true");
+  expect(document.getElementById(action.getAttribute("aria-describedby")!)?.textContent).toBe("A key in thesis.bib identifies a different work.");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   expect(called).not.toContain("deliver_citation");
   // Dragging delivers what Enter pastes, so it delivers nothing here either.
@@ -604,14 +607,17 @@ test("leaving a writing restores the app's output and copies a fresh preview", a
   render(<App />);
   await screen.findByText("Synthetic source");
   const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Citation format / });
-  await waitFor(() => expect(formatButton().getAttribute("aria-label")).toContain("Field Guide"));
+  // The pop-up names the format alone; whose it is, the project, is its spoken status.
+  const formatStatus = () => screen.getByRole("status", { name: "Citation format" }).textContent;
+  await waitFor(() => expect(formatStatus()).toContain("Field Guide"));
+  expect(formatButton().getAttribute("aria-label")).not.toContain("Field Guide");
   fireEvent.click(formatButton());
   fireEvent.click(await screen.findByRole("option", { name: "New project…" }));
   const dialog = await screen.findByRole("dialog", { name: "Projects" });
   fireEvent.click(await within(dialog).findByRole("button", { name: "No Project" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Projects" })).toBeNull());
   await waitFor(() => expect(formatButton().getAttribute("aria-label")).toContain("Typst"));
-  expect(formatButton().getAttribute("aria-label")).not.toContain("Field Guide");
+  expect(formatStatus()).not.toContain("Field Guide");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
   await waitFor(() => expect(copied).toEqual(["typst:[2,0]"]));
 });

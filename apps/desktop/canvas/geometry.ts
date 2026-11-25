@@ -12,7 +12,7 @@ export const columns = {
   bands: "[data-band]",
   outside: ".choice-screen, .inspector, .menu-popover, .ui-sheet-status, [inert], .ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice",
   /** Hover plates on the window's leading edge: each starts on the window inset, as a row does. */
-  plates: ["#results [role=\"option\"]", ".library-bar .library-status-trigger"],
+  plates: ["#results [role=\"option\"]", ".library-bar:has(> .bar-citation:empty) .library-status-trigger"],
   /** The last control of a band, on the window's trailing edge: its plate ends on
    * the window inset, as a row's fill and the shelf do (#1923). */
   ends: [".search-bar .toolbar-menu-button", ".library-bar .more-button", ".ui-view-foot > .ui-band-trailing > :last-child"],
@@ -22,8 +22,9 @@ export const columns = {
  * edge and is never narrower than it. */
 export const anchored = { popover: '.toolbar-menu-popover[data-anchor="field"]', trigger: '.citation-field .ui-popup-button[aria-expanded="true"]' } as const;
 
-/** [C8] The leading footer selector is one of the footer's small controls;
- * its menu opens above it with the same leading edge and a clear gap. */
+/** [C8] The bar's library selector is one of the bar's small controls; its
+ * menu opens above it, over its whole width (it ends where the selector ends),
+ * with a clear gap. */
 export const footerSelector = {
   trigger: ".library-bar .library-status-trigger",
   controls: ".library-bar .enter-hints .ui-button, .library-bar .more .more-button",
@@ -44,11 +45,11 @@ export const forms = {
 } as const;
 
 /** [C19] A pane divider runs the whole region it splits, as a Mac split view's:
- * from the search bar's divider to the shelf. */
-export const panes = { pane: ".inspector:not([data-reading])", top: ".search-bar", bottom: ".shelf" } as const;
+ * from the search bar's divider to the delivery bar. */
+export const panes = { pane: ".inspector:not([data-reading])", top: ".search-bar", bottom: ".delivery-bar" } as const;
 
 /** Stacked parts never cover each other: each starts below the one before. */
-export const stacks = [".inspector-titles", ".inspector-column", ".citation-details", ".peek-card section"] as const;
+export const stacks = [".inspector-titles", ".inspector-column", ".citation-details", ".ui-drawer-lead"] as const;
 
 /** [C12] A grid of choice cards: one height, and each glyph level with its title's first line. */
 export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".result-title" } as const;
@@ -166,8 +167,8 @@ export function geometry(root: ParentNode = document): string[] {
     const popover = root.querySelector(footerSelector.popover);
     if (popover && visible(popover)) {
       const menu = popover.getBoundingClientRect();
-      if (Math.abs(lead(menu) - lead(button)) > tolerance)
-        failures.push(`[C8] library menu starts ${lead(menu).toFixed(1)}, selector ${lead(button).toFixed(1)}`);
+      if (lead(menu) > lead(button) + tolerance || lead(menu, true) < lead(button, true) - tolerance)
+        failures.push(`[C8] library menu spans ${lead(menu).toFixed(1)}–${lead(menu, true).toFixed(1)}, not its selector ${lead(button).toFixed(1)}–${lead(button, true).toFixed(1)}`);
       if (menu.bottom > button.top - tolerance)
         failures.push(`[C8] library menu ends ${menu.bottom.toFixed(1)}, must leave a gap above selector ${button.top.toFixed(1)}`);
     }
@@ -206,7 +207,7 @@ export function geometry(root: ParentNode = document): string[] {
     const rect = pane.getBoundingClientRect(), header = top.getBoundingClientRect().bottom;
     if (Math.abs(rect.top - header) > tolerance) failures.push(`[C19] ${name(pane)}: divider starts ${rect.top.toFixed(1)}, the search bar ends ${header.toFixed(1)}`);
     const floor = bottom && visible(bottom) ? bottom.getBoundingClientRect().top : null;
-    if (floor !== null && Math.abs(rect.bottom - floor) > tolerance) failures.push(`[C19] ${name(pane)}: divider ends ${rect.bottom.toFixed(1)}, the shelf starts ${floor.toFixed(1)}`);
+    if (floor !== null && Math.abs(rect.bottom - floor) > tolerance) failures.push(`[C19] ${name(pane)}: divider ends ${rect.bottom.toFixed(1)}, the bar starts ${floor.toFixed(1)}`);
   }
 
   // Nothing scrolls sideways: a sub-pixel overhang draws a whole scroll bar in Chromium.
@@ -313,10 +314,25 @@ export const anchors = {
   search: { selector: "#search", edges: ["start", "top", "height"] },
   "first row": { selector: '#results [role="option"]', edges: ["start", "end", "top", "height"] },
   "footer action": { selector: ".library-bar .footer-action", edges: ["end", "top", "height"] },
-  shelf: { selector: "main > .shelf", edges: ["start", "end", "top", "height"] },
+  shelf: { selector: ".delivery-bar .shelf", edges: ["start", "top", "height"] },
 } as const;
 type Anchor = keyof typeof anchors;
 type Edge = "start" | "end" | "top" | "height";
+
+/** [C4] Compact rows are the default so the list shows enough to choose from:
+ * at Medium (the frame pass's 720 × 480) with a citation in the bar, this many
+ * long-titled rows show whole, the highlighted one opened to two lines. */
+export const denseList = { scenario: "long-titles", rows: 8 } as const;
+
+/** Rows of the result list wholly inside its scroller. */
+export function rowsInView(root: ParentNode = document): number {
+  const scroller = root.querySelector(".picker-content")?.getBoundingClientRect();
+  if (!scroller) return 0;
+  return [...root.querySelectorAll('#results [role="option"]')].filter((row) => {
+    const box = row.getBoundingClientRect();
+    return box.height > 0 && box.top >= scroller.top - tolerance && box.bottom <= scroller.bottom + tolerance;
+  }).length;
+}
 
 /** Picker states compared with the idle picture ("results"), each a canvas
  * scenario: loading, failures, a refusal, notices, the shelf, details and the
@@ -325,7 +341,9 @@ export const frameStates = ["unknown-app", "loading", "error", "project-check-co
 
 /** Moves an anchor may make, each with its reason. Keep this short: a line here
  * is a design decision, not a fix. */
-export const declaredMoves: { anchor: Anchor; scenario: string; edge: Edge; reason: string }[] = [];
+export const declaredMoves: { anchor: Anchor; scenario: string; edge: Edge; reason: string }[] = [
+  { anchor: "first row", scenario: "shelf", edge: "height", reason: "Compact opens only the highlighted row to two lines; here the highlight is on the second row, so the first is one line." },
+];
 
 /** Where each anchor's edges are in this picture, from the window's leading edge. */
 export function anchorBoxes(root: ParentNode = document): Partial<Record<Anchor, Record<Edge, number>>> {
@@ -387,9 +405,7 @@ function seen(node: Element): DOMRect | null {
 }
 
 /** Layers that cover live controls on purpose, each with its reason. */
-export const coverings: { selector: string; reason: string }[] = [
-  { selector: ".peek-card, .ui-popover", reason: "An overlay anchored to its row or token, opened on purpose, covers the rows beside it until any key, a click outside or Esc closes it." },
-];
+export const coverings: { selector: string; reason: string }[] = [];
 
 /** [C24 cover] The centre of every visible, enabled control hits that control:
  * nothing drawn over it takes the click it shows. */
@@ -451,6 +467,11 @@ export function heldKeys(root: ParentNode = document): string[] {
   return [...new Set(failures)];
 }
 
+/** States that may change a part's size, each with its reason. Keep this short. */
+export const sizedStates: { selector: string; state: typeof paintStates[number]; reason: string }[] = [
+  { selector: '#results [role="option"]', state: "data-active", reason: "Compact opens the highlighted row to two lines (maintainer, 2026-11-25); the rows after it move down, the list's first row and the bar never." },
+];
+
 /** The states a control draws: React Aria's attributes, set as the canvas States board sets them. */
 export const paintStates = ["data-hovered", "data-pressed", "data-focus-visible", "data-active", "aria-expanded"] as const;
 
@@ -469,6 +490,7 @@ export function paintOnly(root: ParentNode = document): string[] {
     const before = watched.map(boxOf);
     for (const part of parts) for (const state of paintStates) {
       if (state === "aria-expanded" ? part.getAttribute(state) !== "false" : part.hasAttribute(state)) continue;
+      if (sizedStates.some((sized) => sized.state === state && part.matches(sized.selector))) continue;
       const previous = part.getAttribute(state);
       part.setAttribute(state, state === "aria-expanded" ? "true" : "");
       const after = watched.map(boxOf);
@@ -488,8 +510,8 @@ export function paintOnly(root: ParentNode = document): string[] {
 
 /** Surfaces that float over the window or stand in for it, and the layer role tokens they may take. */
 export const surfaces = {
-  selector: ".ui-overlay, .menu-popover, .ui-popover, .peek-card, .ui-view",
-  roles: ["--surface", "--surface-overlay", "--layer-base", "--layer-inset", "--layer-overlay", "--layer-view"],
+  selector: ".ui-overlay, .menu-popover, .ui-view",
+  roles: ["--surface", "--surface-overlay", "--layer-base", "--layer-overlay", "--layer-view"],
 } as const;
 
 /** [C24 layers] One surface floats at a time: a menu opened inside another surface
@@ -564,7 +586,7 @@ export const slots = {
   /** The frame's notice line (ui/Frame), its first notice's words. */
   /** It also shows the engine's own sentences (a settings notice, a project
    * refusal), which no table can list: only the catalogue's are measured. */
-  noticeLine: { selector: ".ui-notice-line > .ui-line-notice:first-of-type > .ui-line-words", lines: 1, scenario: "project-check-conflict", catalogue: false },
+  noticeLine: { selector: ".ui-notice-line > .ui-line-notice:first-of-type > .ui-line-words", lines: 1, scenario: "editor-request", catalogue: false },
 } as const;
 
 /** Why words do not fit their slot: cut, or on more lines than it has. */

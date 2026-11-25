@@ -11,11 +11,12 @@ function Example({ projects = () => undefined }: { projects?: () => void }) {
     writing={{ name: "Thesis" }} onWritings={projects} onChange={() => undefined} disabled={false} styles searchRef={search} /></>;
 }
 
-test("the selected project stays visible and the format menu explains where changes go", () => {
+test("the pop-up names the format alone; the project is its status and the palette's heading", () => {
   render(<Example />);
-  const format = screen.getByRole("button", { name: /^Citation format .*Thesis$/ });
-  expect(format.textContent).toContain("Thesis");
+  const format = screen.getByRole("button", { name: /^Citation format / });
+  expect(format.textContent).not.toContain("Thesis");
   expect(format.textContent).not.toContain("Example Browser");
+  expect(screen.getByRole("status", { name: "Citation format" }).textContent).toContain("Thesis");
   fireEvent.click(format);
   expect(screen.getByRole("dialog").textContent).toContain("New project…");
   expect(screen.getAllByText(/Saved for .*Thesis/).length).toBeGreaterThan(0);

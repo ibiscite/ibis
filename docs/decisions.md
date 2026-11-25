@@ -73,7 +73,7 @@ the anchor older links use.
 [0037](decisions/0037-one-source-per-fact.md): one place per fact; repeats are generated or checked; routine steps are commands.
 
 ## 0038 One window that unfolds
-[0038](decisions/0038-one-window-that-unfolds.md): details and pages unfold beside the list in the same window.
+[0038](decisions/0038-one-window-that-unfolds.md): details and pages unfold in the same window: beside the list, or up from the delivery bar.
 
 ## 0039 Extending Ibis from outside
 [0039](decisions/0039-extending-ibis-from-outside.md): licence boundary, package names, `ibis-foo` plugins, the running app answers `ibis`.
@@ -94,7 +94,7 @@ the anchor older links use.
 [0044](decisions/0044-lucide-icon-primitive.md): superseded by 0053; the one Lucide drawing left on the website keeps its notices in the file.
 
 ## 0045 The citation line is a token field
-[0045](decisions/0045-citation-line-token-field.md): each reference in the shelf's line is a token whose details open in a popover above it; the side panel keeps the Reader and warnings.
+[0045](decisions/0045-citation-line-token-field.md): each reference in the delivery bar's citation is a token whose details open in a drawer rising from the bar; the side panel keeps the Reader and warnings.
 
 ## 0046 Official names and listings
 [0046](decisions/0046-official-names-and-listings.md): useful MIT clients under `ibiscite`, official listings before 1.0, build provenance, and the name and logo owner and contact.

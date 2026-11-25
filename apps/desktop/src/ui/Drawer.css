@@ -1,0 +1,39 @@
+/* The drawer (ui/Drawer.tsx): a band of the window, not a card over it. It opens
+   up from the delivery bar across the full width, on the window's own surface,
+   with the same hairline the search bar draws, and takes its room from the list's
+   end, so it covers nothing. Its words start where the rows' words do; with
+   room, what it is about sits on the leading side and its fields beside it. */
+.ui-drawer {
+  --ring-offset: var(--ring-inside); container: drawer / inline-size; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2) var(--gutter);
+  max-block-size: 50dvh; overflow: hidden auto; overscroll-behavior: contain; padding: var(--space-3) var(--row-start);
+  border-block-start: var(--border-width) solid var(--separator); background: var(--layer-base);
+  font: var(--type-body-size) / var(--type-body-line) var(--font);
+}
+@container (min-width: 36rem) {
+  .ui-drawer:has(> .ui-drawer-main) { grid-template-columns: minmax(0, 1fr) minmax(0, 24rem); }
+}
+.ui-drawer-lead, .ui-drawer-main { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+/* What it is about: the title once, two lines at most, then a quiet byline. */
+.ui-drawer-lead h2, .ui-drawer-lead h3 { margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font: var(--strong) var(--type-title-size) / var(--type-title-line) var(--font); }
+.ui-drawer-heading { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; }
+.ui-drawer-heading > p { margin: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+/* Notes about it: plain words, quiet. */
+.ui-drawer-lead > p { margin: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+/* Facts as an inspector's label and value rows, labels ending on one edge. */
+.ui-drawer-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; }
+.ui-drawer-facts > div { display: contents; }
+.ui-drawer-facts dt { color: var(--text-secondary); text-align: end; }
+.ui-drawer-facts dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.ui-drawer-facts dd[data-mono] { font-family: var(--mono); }
+/* A setting for what the drawer is about, at the fields' foot under a hairline: words, then the switch. */
+.ui-drawer-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block-start: var(--space-2); border-block-start: var(--border-width) solid var(--separator); }
+/* It rises from the bar as it opens; Reduce Motion shows it at once. */
+.ui-drawer { transition: translate var(--dur-2) var(--ease-out), opacity var(--dur-2) var(--ease-out); }
+@starting-style { .ui-drawer { translate: 0 var(--space-4); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .ui-drawer { transition: opacity var(--dur-1) linear; }
+  @starting-style { .ui-drawer { translate: none; opacity: 0; } }
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  .ui-drawer { border-block-start-color: CanvasText; }
+}

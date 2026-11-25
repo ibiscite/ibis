@@ -15,9 +15,9 @@ export async function dismissMenu(menu, keyTarget = menu) {
 
 export function shelfControl(page, name) {
   // An open menu marks its visible background aria-hidden; intersect physical
-  // shelf controls so menu rows never become a second match for their cause.
+  // citation controls so menu rows never become a second match for their cause.
   return page.getByRole("button", { name, exact: true, includeHidden: true })
-    .and(page.locator("main > .shelf button:visible"));
+    .and(page.locator("main > footer .shelf button:visible"));
 }
 
 // Keep this function self-contained: Playwright serializes it into the page.
@@ -38,8 +38,10 @@ export function hasMiddleViewport() {
   return Boolean(middle && middle.clientHeight > 0 && middle.getBoundingClientRect().height > 0);
 }
 
+// The citation is the delivery bar's first part: one line inside the bar, never
+// in the middle scroller, never taller than its line.
 export function isWholeShelf() {
-  const shelf = document.querySelector("main > .shelf");
+  const shelf = document.querySelector("main > footer .shelf");
   if (!shelf) return document.querySelector("main .shelf") === null;
   const rect = shelf.getBoundingClientRect();
   const output = shelf.querySelector(":scope > .shelf-output");
@@ -52,18 +54,18 @@ export function isWholeShelf() {
   const expected = Math.max(line, target);
   if (Number.isFinite(expected) && Math.abs(rect.height - expected) > 1) return false;
   const header = document.querySelector(".search-bar").getBoundingClientRect();
-  const footer = document.querySelector("footer").getBoundingClientRect();
-  return rect.height > 0 && rect.top >= header.bottom - 1 && rect.bottom <= footer.top + 1 &&
+  const footer = shelf.closest("footer").getBoundingClientRect();
+  return rect.height > 0 && rect.top >= header.bottom - 1 && rect.top >= footer.top - 1 && rect.bottom <= footer.bottom + 1 &&
     rect.left >= 0 && rect.right <= innerWidth + 1 && footer.bottom <= innerHeight + 1 &&
-    getComputedStyle(shelf).flexShrink === "0" && !/auto|scroll/.test(getComputedStyle(shelf).overflowY);
+    !/auto|scroll/.test(getComputedStyle(shelf).overflowY);
 }
 
-// The inspector sits in the middle row and never overlaps a list in view.
+// The inspector sits in the middle row, above the delivery bar, and never overlaps a list in view.
 export function isSeatedInspector() {
   const panes = document.querySelectorAll(".inspector");
   if (panes.length !== 1) return false;
   const rect = panes[0].getBoundingClientRect();
-  const search = document.querySelector(".search-bar").getBoundingClientRect(), shelf = document.querySelector(".shelf").getBoundingClientRect();
+  const search = document.querySelector(".search-bar").getBoundingClientRect(), shelf = document.querySelector("main > footer").getBoundingClientRect();
   const list = document.querySelector(".picker-content");
   const beside = getComputedStyle(list).visibility === "hidden" || list.getBoundingClientRect().right <= rect.left + 1;
   return beside && rect.width > 0 && rect.height > 0 && rect.left >= 0 && rect.right <= innerWidth && rect.top >= search.bottom - 1 && rect.bottom <= shelf.top + 1;

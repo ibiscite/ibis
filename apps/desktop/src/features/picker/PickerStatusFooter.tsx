@@ -1,4 +1,5 @@
 import type * as nativeApi from "../../api";
+import type React from "react";
 import type { RefObject } from "react";
 import type { CitationLineActions } from "./CitationShelf";
 import { say } from "../../i18n";
@@ -22,7 +23,7 @@ import { libraryMessages } from "../../libraryWords";
 
 export function PickerStatusFooter({
   api, library, scope, sourceState, menus, actions, run, copyChosen, recents,
-  operations, altHeld, lastOutcome, emptyAction, project, highlighted, copyProblem, peek, citationLine,
+  operations, altHeld, lastOutcome, emptyAction, project, highlighted, refusal, refusalActions, refused, peek, citationLine,
 }: {
   /** The highlighted reference's details (⌘Y), when there is one. */
   peek?: (() => void) | null;
@@ -43,7 +44,10 @@ export function PickerStatusFooter({
   altHeld: boolean;
   lastOutcome: string | null;
   emptyAction?: boolean;
-  copyProblem?: string | null;
+  /** Why the citation cannot be delivered, its fixes, and whether Enter was just refused. */
+  refusal?: string | null;
+  refusalActions?: React.ReactNode;
+  refused?: boolean;
 }) {
   const { reloadLibrary, useZotero } = api;
   const { groupName, offeredGroups, isChosen, chosenLibraries, toggleLibrary, searchAllLibraries } = scope;
@@ -53,7 +57,7 @@ export function PickerStatusFooter({
   const { toggleHighlighted, hints } = actions;
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
-  return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction} copyProblem={copyProblem} delivery={actions.delivery.mode}
+  return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction} refusal={refusal} refusalActions={refusalActions} refused={refused}
     status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
       onOpenChange={(open) => (open ? openLibrary() : closeLibrary())}
       searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}

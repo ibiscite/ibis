@@ -64,9 +64,12 @@
    so the eye stays on the results. Hover and press are the quiet fills. */
 .ui-button[data-variant="action"] { background: transparent; color: var(--text); font-weight: 500; border-color: transparent; }
 .ui-button[data-variant="action"] .key-caps kbd { background: var(--primary); color: var(--text-on-accent); }
+/* An action that is off loses its accent too: nothing on it says "press". */
+.ui-button[data-variant="action"]:is([data-disabled], [aria-disabled="true"]) .key-caps kbd { background: var(--fill-control); color: var(--text-disabled); }
 @media (hover: hover) { .ui-button[data-variant="action"][data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-quiet-hover); } }
 .ui-button[data-variant="action"]:is([data-pressed], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--fill-control-hover); }
 @media (forced-colors: active) {
   .ui-button[data-variant="action"]:not([data-disabled], [aria-disabled="true"]) { background: Canvas; color: CanvasText; border-color: CanvasText; }
   .ui-button[data-variant="action"] .key-caps kbd { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .ui-button[data-variant="action"]:is([data-disabled], [aria-disabled="true"]) .key-caps kbd { background: Canvas; color: GrayText; }
 }

@@ -5,12 +5,12 @@ import { LANGUAGES, say, setInterfaceLanguage, type InterfaceLanguage, type Mess
 import { libraryOperations, OPERATION_FAILURES, type Operation } from "../src/features/picker/Notices";
 import { HOLD_MS } from "../src/ui/HeldKeys";
 import { currentPlatform } from "../src/platform";
-import { anchorBoxes, anchorMoves, frameStates, geometry, heldKeys, layerRoles, occlusion, oneSurface, overflow, paintOnly, settle, slots } from "./geometry";
+import { anchorBoxes, anchorMoves, denseList, frameStates, rowsInView, geometry, heldKeys, layerRoles, occlusion, oneSurface, overflow, paintOnly, settle, slots } from "./geometry";
 
 type Mount = (host: HTMLElement, options: { scenario: string; theme: string }) => () => void;
 
 /** Picker screens held to the single-picture layout rules (geometry()). */
-export const geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "reader", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "compact", "long-titles", "stale", "more", "format-menu", "library-menu", "text-80", "text-120",
+export const geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "reader", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "comfortable", "long-titles", "stale", "more", "format-menu", "library-menu", "text-80", "text-120",
   // German runs longest and Arabic mirrors: the same rules hold in both.
   "results-de", "results-ar", "first-run-de", "first-run-ar"];
 
@@ -19,7 +19,7 @@ export const layerScreens = ["more", "format-menu", "library-menu", "show-as-men
 
 /** Screens checked again while ⌘ (Ctrl elsewhere) is held, as a person holds it:
  * every held key and the row numbers drawn over a list with a citation. */
-export const heldScreens = ["shelf", "compact", "right-to-left", "pinned", "results-ar"];
+export const heldScreens = ["shelf", "comfortable", "right-to-left", "pinned", "results-ar"];
 
 /** Holds the command key alone for longer than the hold (ui/HeldKeys), returns what
  * the check finds, and lets go. The same keydown a person's key sends. */
@@ -144,6 +144,7 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
       ...oneSurface(),
     ];
     const patterns = declared();
+    if (scenario === denseList.scenario && pass === "frame" && rowsInView() < denseList.rows) found.push(`[C4 dense] ${rowsInView()} rows whole in view, fewer than ${denseList.rows}`);
     for (const [slot, { selector }] of Object.entries(slots).filter(([, { catalogue }]) => catalogue)) for (const words of document.querySelectorAll(selector))
       if (words.textContent && !patterns.some((pattern) => pattern.test(plain(words.textContent!)))) found.push(`[C24 words] ${slot} shows a message it does not declare: "${words.textContent}"`);
     failures.push(...found.map((failure) => `${scenario}: ${failure}`));

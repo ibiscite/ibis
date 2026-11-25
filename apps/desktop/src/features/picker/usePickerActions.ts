@@ -5,8 +5,7 @@ import { say } from "../../i18n";
 import { useLayer, useNearestLayer } from "../../ui/layers";
 import type { SearchResult } from "../../api";
 import { choiceKey, idKey, type CitationReference } from "./choice";
-import { outputName } from "../../format/outputs";
-import { citationDelivery, enterLabel } from "./enterLabel";
+import { citationDelivery, enterAction as describeEnter } from "./enterLabel";
 import { closestMatchWarnings } from "./rows";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -19,7 +18,7 @@ import type { useOperations } from "./useOperations";
 
 export function usePickerActions({
   api, pickerSession, menus, libraryState, searchState, destination, shown, offered, canPaste, shortcut,
-  perform, dismissChooser, toggle, writesStyle,
+  perform, dismissChooser, toggle, writesStyle, practising, refusal,
 }: {
   api: typeof nativeApi;
   pickerSession: ReturnType<typeof usePickerSession>;
@@ -37,11 +36,15 @@ export function usePickerActions({
   toggle: (result?: SearchResult) => void;
   /** The output being written is a style, which may sort. */
   writesStyle: boolean;
+  /** Enter's next paste is the first screen's practice, into Ibis itself. */
+  practising: boolean;
+  /** Why the shown citation is refused, when it is. */
+  refusal: string | null;
 }) {
   const { session, state, send, cancelCopy } = pickerSession;
   const { pinned, focusHome, leaveOverlays } = menus;
   const { choosingLibrary, welcomeShown, showCitations } = libraryState;
-  const { ready, results, list, interpretation } = searchState;
+  const { ready, results, interpretation } = searchState;
   const { query, active, selected, interpretLocators } = state;
   const { format } = destination;
   const { hidePicker } = api;
@@ -75,14 +78,13 @@ export function usePickerActions({
     ...destination.findOpen ? [{ region: "search", action: "copyCitation", keys: ["Alt+Enter"] } as const] : [],
     ...shortcut?.registered ? [{ region: "system", action: "open", keys: [shortcut.shortcut], displayLabel: shortcut.desktop ? shortcut.shortcut : undefined } as const] : [],
   ];
-  // What Enter does now, from the same state the copy uses; null when it does nothing.
-  // A refused or stale engine preview cannot be copied.
-  const enterAction = offered.length === 0 || shown === "stale" || shown === "failed" ? null
-    : delivery.editorFormat ? say("picker-send", { format: delivery.editorFormat })
-    : destination.findOpen ? say("picker-find-open") : state.changing !== null ? say("picker-change-citation", { format: outputName(format) })
-    : enterLabel(format, offered.length, destination.app, canPaste, stayOpen, Boolean(list && selected.size === 0))
-      // A style that would sort keeps the person’s order: the footer says so, not the line.
-      + (state.keepOrder && writesStyle && offered.length > 1 ? ` · ${say("picker-your-order")}` : "");
+  // What Enter does now, from the same state the copy uses (enterLabel.ts): one
+  // outcome, named once by the bar's action; null when it does nothing.
+  const enter = describeEnter({
+    count: offered.length, preview: shown === "stale" || shown === "failed" ? shown : "ready",
+    editor: Boolean(delivery.editorFormat), findOpen: destination.findOpen, practising, changing: state.changing !== null,
+    format, app: destination.app, canPaste, stayOpen, ownOrder: state.keepOrder && writesStyle, refusal,
+  });
   // Only a row that answers the current query can be added or given a locator.
   const highlighted = ready ? results[active] : undefined;
   // What the engine read around the search: a page off its end, a signal off its start.
@@ -121,5 +123,5 @@ export function usePickerActions({
   // The keys sheet lists Change Last Citation only while there is one to change, as More does.
   // Keys outputs always keep the order, so only a style offers the choice.
   const keepOrder = writesStyle ? { checked: state.keepOrder, toggle: () => send({ type: "keep-order", value: !state.keepOrder }) } : null;
-  return { delivery, canChooseFormat: destination.canChooseFormat, keepOrder, bindings: bindings.filter((binding) => (lastCitation || binding.action !== "changeLast") && (destination.canChooseFormat || binding.action !== "format")), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, referenceList, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
+  return { delivery, canChooseFormat: destination.canChooseFormat, keepOrder, bindings: bindings.filter((binding) => (lastCitation || binding.action !== "changeLast") && (destination.canChooseFormat || binding.action !== "format")), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, referenceList, enterOff: enter.off, hints: { enter: enter.label, shiftEnter: shiftEnterAction, escape: escapeAction } };
 }

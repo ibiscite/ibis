@@ -1047,6 +1047,27 @@ picker-remove-named = Remove { $name } from citation
 picker-best-matches = Best matches
 picker-pasted-list = Pasted list
 picker-paste-into = Paste into { $app } · { $output }
+# The delivery bar's one action: what Enter does, naming where the citation goes and never its format.
+picker-bar-paste = Paste into { $app }
+picker-bar-paste-entries =
+    { $count ->
+        [one] Paste Entry into { $app }
+       *[other] Paste { $count } Entries into { $app }
+    }
+picker-bar-copy =
+    { $count ->
+        [one] Copy
+       *[other] Copy { $count } Citations
+    }
+picker-bar-copy-entries =
+    { $count ->
+        [one] Copy Entry
+       *[other] Copy { $count } Entries
+    }
+picker-bar-send = Send to Editor
+picker-bar-change = Change Citation
+# The first screen's practice: Enter pastes into Ibis itself, to try it.
+picker-bar-practice = Paste Here to Try
 picker-last-outcome = Last outcome. { $outcome }
 picker-closest-matches = Closest matches
 picker-closest-match = Closest match

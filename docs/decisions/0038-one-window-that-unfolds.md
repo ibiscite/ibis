@@ -2,8 +2,9 @@
 
 The picker is a launcher first: type, see references, Enter. The citation line
 holds the actual output as tokens; citation details open from a token
-([0045](0045-citation-line-token-field.md)). Reader and warning details use the
-side panel. Search, citation and footer remain available without a second
+([0045](0045-citation-line-token-field.md)) in a drawer above the delivery bar.
+Reader and warning details use the side panel. Search, the list and the delivery
+bar (the citation, the one action and More) remain available without a second
 workspace or reader window to learn.
 
 The planned PDF reader takes a taller, wider shape once and folds the list
@@ -17,5 +18,5 @@ Scrolling never changes the citation's page. Printed labels and physical PDF
 indices remain distinct; unknown labels ask for confirmation.
 
 Only controls that act need visual weight. Rows have no decorative plate;
-the footer action is quiet text with an accented Enter cap; Settings cards
+the bar's action is quiet text with an accented Enter cap; Settings cards
 separate by fill. Repeated library lines and reference titles add no control.
