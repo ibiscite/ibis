@@ -213,4 +213,8 @@ fn typst_math_never_changes_code_depth() {
         of(&[(2, 1, &["ghost"])])
     );
     assert!(keys(TextKind::Typst, "$ a @b $\n").is_empty());
+    assert_eq!(
+        keys(TextKind::Typst, "$ \"dollar: $\" $ @ghost\n"),
+        of(&[(1, 19, &["ghost"])])
+    );
 }
