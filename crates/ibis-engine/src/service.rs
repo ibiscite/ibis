@@ -33,6 +33,7 @@ mod prepared;
 mod receipt;
 pub use prepared::{CitationCommitError, PreparedCitation};
 pub(crate) mod answers;
+pub use answers::MethodSchema;
 mod project;
 mod reading;
 mod share;
@@ -192,8 +193,9 @@ impl<T: Serialize> DispatchResult<T> {
     }
 }
 
-/// Native callers retain the engine's result types until their output boundary.
-#[derive(Debug, Serialize)]
+// Native callers retain the engine's result types until their output boundary.
+/// One method's result, as `call` answers it.
+#[derive(Debug, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum Reply {
     Libraries(health::Checked<LibrariesResult>),
@@ -208,20 +210,7 @@ pub enum Reply {
     Share(health::Checked<ShareResult>),
     Styles(StylesResult),
     Outputs(crate::outputs::OutputsResult),
-    Schema(Value),
-}
-/// `call` answers with whichever method it called. Until its result is typed
-/// (decision 0057), its schema is any value.
-impl JsonSchema for Reply {
-    fn inline_schema() -> bool {
-        Value::inline_schema()
-    }
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        Value::schema_name()
-    }
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        Value::json_schema(generator)
-    }
+    Schema(Vec<answers::MethodSchema>),
 }
 impl DispatchResult<health::Checked<CitationResult>> {
     pub fn citation(
