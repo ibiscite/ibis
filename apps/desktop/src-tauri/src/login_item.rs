@@ -315,8 +315,7 @@ pub(crate) fn launched_as_macos_login_item() -> bool {
 
 /// Read the system state for Settings.
 pub(crate) fn current(app: &AppHandle) -> LoginItem {
-    app.try_state::<LoginItems>()
-        .map_or_else(|| unsupported(app), |items| items.read())
+    app.state::<LoginItems>().read()
 }
 
 fn unsupported(app: &AppHandle) -> LoginItem {
@@ -325,8 +324,7 @@ fn unsupported(app: &AppHandle) -> LoginItem {
 
 /// Change the choice in the system and return its actual state to Settings.
 pub(crate) fn set(app: &AppHandle, on: bool) -> LoginItem {
-    app.try_state::<LoginItems>()
-        .map_or_else(|| unsupported(app), |items| items.change(on))
+    app.state::<LoginItems>().change(on)
 }
 
 /// Whether Ibis starts when the person logs in, read from the system now.

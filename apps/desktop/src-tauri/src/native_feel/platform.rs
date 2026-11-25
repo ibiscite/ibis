@@ -115,13 +115,22 @@ pub(super) fn preferences(app: &AppHandle) -> Option<Preferences> {
     }
 }
 
+/// The empty state: a preference read before or during observer setup sees an
+/// opaque fallback.
+pub(super) fn manage(app: &AppHandle) {
+    #[cfg(target_os = "windows")]
+    {
+        use tauri::Manager;
+        app.manage(std::sync::Mutex::new(None::<WindowsPreferences>));
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = app;
+}
+
 pub(super) fn watch(app: &AppHandle) {
     #[cfg(target_os = "windows")]
     {
         use tauri::Manager;
-        // Register the empty state first: a preference callback can arrive
-        // during observer setup and must see an opaque fallback, not panic.
-        app.manage(std::sync::Mutex::new(None::<WindowsPreferences>));
         let observers = windows_watch(app);
         if let Ok(mut state) = app.state::<std::sync::Mutex<Option<WindowsPreferences>>>().lock() {
             *state = observers;

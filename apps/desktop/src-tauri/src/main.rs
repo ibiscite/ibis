@@ -234,47 +234,12 @@ fn main() {
             }
         })
         .setup(move |app| {
-            // Before the first library, so its id lasts and matches `ibis`.
-            ibis_engine::identity::use_saved_key(true);
-            let settings_path = app.path().app_config_dir()?.join("settings.json");
-            let loaded = settings::load(&settings_path);
+            let startup = app.state::<Startup>();
+            let (settings_path, loaded) = (&startup.settings_path, &startup.loaded);
             let interface = loaded.interface().unwrap_or_default();
             let cites = loaded.cites().ok();
-            library::engine_library::warm_formatter(cites.and_then(|settings| settings.portable.output.clone()));
-            let settings_file = SettingsFile::new(settings_path.clone());
-            app.manage(settings_file.clone());
-            app_context::manage(app.handle(), &settings_file);
-            let handle = app.handle().clone();
-            let notices = settings_file.clone();
-            app.manage(Owner::new(
-                Arc::new(settings_file),
-                || Ok(Engine::new()?.with_formatting(library::engine_library::FORMATTING.clone())),
-                move |mut status| {
-                    for line in &status.log {
-                        application_message(line);
-                    }
-                    let reveal = status.reveal;
-                    status.settings_notice = notices.notice();
-                    report(handle.emit("library:changed", status), NativeIssue::LibraryEvent);
-                    let native = handle.clone();
-                    // Tauri runs main-thread calls inline during setup. Defer
-                    // native work so it can read the owner after publication.
-                    tauri::async_runtime::spawn(async move {
-                        let main = native.clone();
-                        report(
-                            native.run_on_main_thread(move || {
-                                if reveal {
-                                    picker::reveal_picker_quietly(&main);
-                                }
-                                tray::refresh_library(&main);
-                            }),
-                            NativeIssue::TrayLibrary,
-                        );
-                    });
-                },
-            ));
             let remember = cites.is_some_and(|settings| settings.portable.recent_citations());
-            session_references::manage(app.handle(), &settings_path, remember);
+            session_references::manage(app.handle(), settings_path, remember);
             app.state::<sizing::Sizing>().load(&interface);
             if !sizing::start(app.handle()) {
                 return Err("the picker settings worker could not start".into());
@@ -307,15 +272,12 @@ fn main() {
             }
             native_feel::install(app.handle());
             cli_install::keep_at_launch(app.handle());
-            destination::manage(app.handle(), &settings_path);
             if let Some(problem) = &loaded.problem {
                 application_message(preferences::settings_problem(problem));
             }
             #[cfg(target_os = "macos")]
             picker::follow_layout(app.handle());
-            let login_items = login_item::for_app(app.handle());
-            login_items.refresh();
-            app.manage(login_items);
+            app.state::<login_item::LoginItems>().refresh();
             let shown_shortcut = app
                 .state::<Mutex<ShortcutStatus>>()
                 .lock()
@@ -369,6 +331,8 @@ fn main() {
             // undone by an older initial tray, shortcut or recording value.
             let watching = app.state::<SettingsFile>().watch(app.handle().clone());
             app.manage(std::sync::Mutex::new(watching));
+            // Last: a launch handed over during startup is answered now.
+            instance::ready(app.handle());
             Ok(())
         });
     #[cfg(target_os = "macos")]
@@ -379,7 +343,11 @@ fn main() {
             panel::page_loaded(webview.app_handle());
         }
     });
-    let app = builder.build(context);
+    // Every handler's state exists before the event loop can deliver anything.
+    let app = builder.build(context).and_then(|app| {
+        create_state(app.handle()).map_err(|error| tauri::Error::Setup(error.into()))?;
+        Ok(app)
+    });
     match app {
         Ok(app) => app.run(|app, event| {
             match &event {
@@ -405,6 +373,62 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+/// What setup reads from the settings as they were at launch.
+struct Startup {
+    settings_path: PathBuf,
+    loaded: settings::Loaded,
+}
+
+/// Create every piece of state that depends on the settings, after the plugins
+/// and before the event loop runs. The loop delivers every handler's input: a
+/// second launch, a window, tray or menu event, a shortcut or a command. So no
+/// handler can find state missing, and setup itself only starts effects.
+fn create_state(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    // Before the first library, so its id lasts and matches `ibis`.
+    ibis_engine::identity::use_saved_key(true);
+    let settings_path = app.path().app_config_dir()?.join("settings.json");
+    let loaded = settings::load(&settings_path);
+    let cites = loaded.cites().ok();
+    library::engine_library::warm_formatter(cites.and_then(|settings| settings.portable.output.clone()));
+    let settings_file = SettingsFile::new(settings_path.clone());
+    app.manage(settings_file.clone());
+    app_context::manage(app, &settings_file);
+    let handle = app.clone();
+    let notices = settings_file.clone();
+    app.manage(Owner::new(
+        Arc::new(settings_file),
+        || Ok(Engine::new()?.with_formatting(library::engine_library::FORMATTING.clone())),
+        move |mut status| {
+            for line in &status.log {
+                application_message(line);
+            }
+            let reveal = status.reveal;
+            status.settings_notice = notices.notice();
+            report(handle.emit("library:changed", status), NativeIssue::LibraryEvent);
+            let native = handle.clone();
+            // Tauri runs a main-thread call inline when made on the main
+            // thread. Defer native work so it can read the owner after publication.
+            tauri::async_runtime::spawn(async move {
+                let main = native.clone();
+                report(
+                    native.run_on_main_thread(move || {
+                        if reveal {
+                            picker::reveal_picker_quietly(&main);
+                        }
+                        tray::refresh_library(&main);
+                    }),
+                    NativeIssue::TrayLibrary,
+                );
+            });
+        },
+    ));
+    destination::manage(app, &settings_path);
+    app.manage(login_item::for_app(app));
+    native_feel::manage(app);
+    app.manage(Startup { settings_path, loaded });
+    Ok(())
 }
 
 #[cfg(test)]

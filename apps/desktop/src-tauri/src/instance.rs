@@ -38,7 +38,7 @@ pub(crate) fn install(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tau
             let handle = app.clone();
             // Serialize handoff decisions and presentation with shortcuts and OS reopen events.
             report(
-                app.run_on_main_thread(move || activate(&handle, &args, &cwd)),
+                app.run_on_main_thread(move || hand_over(&handle, Launch { args, cwd })),
                 NativeIssue::PickerEvent,
             );
         }))
@@ -85,18 +85,76 @@ fn needs_settings(app: &AppHandle) -> bool {
 /// An OS reopen and an ordinary second launch share the same destination.
 #[cfg(target_os = "macos")]
 pub(crate) fn reopen(app: &AppHandle) {
-    activate(app, &[], "");
+    hand_over(
+        app,
+        Launch {
+            args: Vec::new(),
+            cwd: String::new(),
+        },
+    );
 }
 
-fn activate(app: &AppHandle, args: &[String], cwd: &str) {
+/// The one entry for a launch handed to this copy. One launch is answered at
+/// a time: a launch that arrives during setup, or while another is being
+/// answered (a window build pumps native messages), waits its turn.
+fn hand_over(app: &AppHandle, launch: Launch) {
+    deliver(app, launch, &mut |launch, hidden| answer(app, &launch, hidden));
+}
+
+/// Setup has finished: answer the launches that arrived during it, in order.
+pub(crate) fn ready(app: &AppHandle) {
+    start(app, &mut |launch, hidden| answer(app, &launch, hidden));
+}
+
+/// A launch that arrived during setup found the picker hidden, so a toggle
+/// among them shows it; a later one reads the picker as it is now.
+fn answer(app: &AppHandle, launch: &Launch, hidden: bool) {
+    let visible = if hidden {
+        None
+    } else {
+        app.get_webview_window("main")
+            .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility))
+    };
+    activate(app, launch, visible);
+}
+
+fn handoff<R: tauri::Runtime>(app: &AppHandle<R>) -> std::sync::MutexGuard<'_, Handoff> {
+    app.state::<Mutex<Handoff>>()
+        .inner()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn deliver<R: tauri::Runtime>(app: &AppHandle<R>, launch: Launch, answer: &mut dyn FnMut(Launch, bool)) {
+    // Bind first: the guard must be released before answering.
+    let admitted = handoff(app).admit(launch);
+    if let Some(launch) = admitted {
+        answer(launch, false);
+        drain(app, answer);
+    }
+}
+
+fn start<R: tauri::Runtime>(app: &AppHandle<R>, answer: &mut dyn FnMut(Launch, bool)) {
+    handoff(app).starting = false;
+    drain(app, answer);
+}
+
+/// Answer what waited, oldest first, then open the gate.
+fn drain<R: tauri::Runtime>(app: &AppHandle<R>, answer: &mut dyn FnMut(Launch, bool)) {
+    loop {
+        let next = handoff(app).next();
+        let Some((launch, hidden)) = next else { return };
+        answer(launch, hidden);
+    }
+}
+
+fn activate(app: &AppHandle, launch: &Launch, visible: Option<bool>) {
+    let Launch { args, cwd } = launch;
     let launched = app
         .path()
         .app_cache_dir()
         .ok()
         .and_then(|cache| launched_version(&cache, args, cwd));
-    let visible = app
-        .get_webview_window("main")
-        .and_then(|window| checked(window.is_visible(), NativeIssue::Visibility));
     let action = app.state::<Mutex<Handoff>>().lock().ok().map(|mut handoff| {
         handoff.decide(
             args,
@@ -164,9 +222,32 @@ enum Action {
     Ignore,
 }
 
-#[derive(Default)]
+/// A launch of another copy, as the single-instance plugin forwards it.
+#[derive(Debug, PartialEq, Eq)]
+struct Launch {
+    args: Vec<String>,
+    cwd: String,
+}
+
 struct Handoff {
     notice: Notice,
+    /// Setup has not finished.
+    starting: bool,
+    /// A launch is being answered, or setup has not finished.
+    busy: bool,
+    /// Launches waiting their turn, and whether each arrived during setup.
+    waiting: std::collections::VecDeque<(Launch, bool)>,
+}
+
+impl Default for Handoff {
+    fn default() -> Self {
+        Self {
+            notice: Notice::default(),
+            starting: true,
+            busy: true,
+            waiting: std::collections::VecDeque::new(),
+        }
+    }
 }
 
 #[derive(Default, PartialEq, Eq)]
@@ -178,6 +259,23 @@ enum Notice {
 }
 
 impl Handoff {
+    /// The launch to answer now, or `None` while it waits its turn.
+    fn admit(&mut self, launch: Launch) -> Option<Launch> {
+        if self.busy {
+            self.waiting.push_back((launch, self.starting));
+            return None;
+        }
+        self.busy = true;
+        Some(launch)
+    }
+
+    /// The next waiting launch to answer; with none left, the gate opens.
+    fn next(&mut self) -> Option<(Launch, bool)> {
+        let next = self.waiting.pop_front();
+        self.busy = next.is_some();
+        next
+    }
+
     fn decide(
         &mut self,
         args: &[String],
@@ -264,6 +362,92 @@ mod tests {
                 );
             }
         }
+    }
+
+    type App = tauri::AppHandle<tauri::test::MockRuntime>;
+
+    fn mock_app() -> tauri::App<tauri::test::MockRuntime> {
+        tauri::test::mock_builder()
+            .manage(Mutex::new(Handoff::default()))
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap()
+    }
+
+    fn launch(name: &str) -> Launch {
+        Launch {
+            args: args(&[name]),
+            cwd: "/synthetic".into(),
+        }
+    }
+
+    /// Stands in for `answer`: records each answer, and while answering
+    /// "first" a further launch arrives, as during a window build's pump.
+    fn record(app: &App, log: &std::cell::RefCell<Vec<String>>, launch: Launch, hidden: bool) {
+        let name = launch.args[1].clone();
+        log.borrow_mut().push(format!("start {name} hidden={hidden}"));
+        if name == "first" {
+            deliver(app, super::tests::launch("nested"), &mut |launch, hidden| {
+                record(app, log, launch, hidden)
+            });
+        }
+        log.borrow_mut().push(format!("end {name}"));
+    }
+
+    /// The installed-update test launched a second copy while the first was
+    /// still creating its window, and the handoff read the library owner
+    /// before setup had created it. The app here has no owner, settings or
+    /// window at all: a launch must wait without reading any of them.
+    #[test]
+    fn a_launch_during_startup_waits_and_is_answered_once_ready() {
+        let app = mock_app();
+        let app = app.handle();
+        let log = std::cell::RefCell::new(Vec::new());
+        let mut answer = |launch, hidden| record(app, &log, launch, hidden);
+        deliver(app, launch("early"), &mut answer);
+        deliver(app, launch("toggle"), &mut answer);
+        assert!(log.borrow().is_empty());
+        start(app, &mut answer);
+        deliver(app, launch("later"), &mut answer);
+        assert_eq!(
+            *log.borrow(),
+            [
+                "start early hidden=true",
+                "end early",
+                "start toggle hidden=true",
+                "end toggle",
+                "start later hidden=false",
+                "end later",
+            ]
+        );
+        // The picker was hidden when the toggle arrived, so it shows it.
+        assert_eq!(
+            Handoff::default().decide(&args(&["toggle"]), None, false, "0.3.6", None),
+            Action::Picker
+        );
+    }
+
+    /// Answering a launch can build a window, which pumps native messages; a
+    /// launch delivered then must not start a second build inside the first.
+    #[test]
+    fn a_launch_during_another_waits_until_it_is_answered() {
+        let app = mock_app();
+        let app = app.handle();
+        let log = std::cell::RefCell::new(Vec::new());
+        let mut answer = |launch, hidden| record(app, &log, launch, hidden);
+        start(app, &mut answer);
+        deliver(app, launch("first"), &mut answer);
+        deliver(app, launch("after"), &mut answer);
+        assert_eq!(
+            *log.borrow(),
+            [
+                "start first hidden=false",
+                "end first",
+                "start nested hidden=false",
+                "end nested",
+                "start after hidden=false",
+                "end after",
+            ]
+        );
     }
 
     #[test]

@@ -84,8 +84,14 @@ pub(crate) fn configure(context: &mut tauri::Context<tauri::Wry>) {
     }
 }
 
-pub(crate) fn install(app: &AppHandle) {
+/// Before the event loop, so an early `native_appearance` call or picker
+/// presentation finds the cache and platform preferences.
+pub(crate) fn manage(app: &AppHandle) {
     app.manage(Mutex::new(Cache::default()));
+    platform::manage(app);
+}
+
+pub(crate) fn install(app: &AppHandle) {
     platform::watch(app);
     let handle = app.clone();
     app.listen("picker:shown", move |_| schedule(&handle));
