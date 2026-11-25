@@ -75,9 +75,9 @@ and \\parencite[see][p.~4]{fen2023, okafor2031}, also \\autocites(all)[p.~1]{val
         of(&[
             (1, 4, &["vale2024"]),
             (2, 5, &["fen2023", "okafor2031"]),
-            (2, 53, &["vale2024", "marsh2030"]),
-            (6, 23, &["lark2029"]),
-            (6, 68, &["after"]),
+            (2, 54, &["vale2024", "marsh2030"]),
+            (6, 22, &["lark2029"]),
+            (6, 78, &["after"]),
         ])
     );
     let read = scan(TextKind::Latex, text, &|| false);
@@ -102,9 +102,9 @@ fn typst_references_to_the_documents_own_labels_are_not_citations() {
         keys(TextKind::Typst, text),
         of(&[
             (2, 16, &["vale2024"]),
-            (2, 32, &["fen2023"]),
-            (2, 55, &["okafor-2031"]),
-            (5, 47, &["marsh2030"]),
+            (2, 33, &["fen2023"]),
+            (2, 54, &["okafor-2031"]),
+            (5, 46, &["marsh2030"]),
         ])
     );
 }

@@ -96,7 +96,7 @@ pub fn scan(kind: TextKind, text: &str, stop: &dyn Fn() -> bool) -> Manuscript {
         match kind {
             TextKind::Markdown => markdown(&masked, &mut work, &mut places, &mut out),
             TextKind::Latex => latex(&masked, &mut work, &mut places, &mut out),
-            TextKind::Typst => typst_text(&masked, &mut work, &mut places, &mut out),
+            TextKind::Typst => typst_text(text, &masked, &mut work, &mut places, &mut out),
         }
     }
     if work.check().is_err() && out.complete() {
@@ -595,7 +595,8 @@ fn labels(text: &str, work: &mut Work<'_>) -> std::collections::BTreeSet<String>
     labels
 }
 
-fn typst_text(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Manuscript) {
+/// `text` is the original, for `#cite(` arguments whose strings `masked` blanked.
+fn typst_text(original: &str, text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Manuscript) {
     let labels = labels(text, work);
     let mut at = 0;
     while let Some(offset) = work.find(&text[at..], |c| c == '@' || c == '#' || c == '\\') {
@@ -606,7 +607,7 @@ fn typst_text(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mu
             continue;
         }
         if rest.starts_with('#') {
-            match rest.starts_with("#cite(").then(|| typst(rest, work)).flatten() {
+            match rest.starts_with("#cite(").then(|| typst(&original[start..], work)).flatten() {
                 Some(read) => {
                     let cites: Vec<MarkerCite> = read
                         .keys
@@ -623,7 +624,7 @@ fn typst_text(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mu
                             cites,
                         });
                     }
-                    at = text.len() - read.rest.len();
+                    at = original.len() - read.rest.len();
                 }
                 None => at = start + 1,
             }
