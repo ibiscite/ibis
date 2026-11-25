@@ -202,6 +202,6 @@ fn a_typst_code_block_keeps_its_strings_until_it_closes() {
     assert!(keys(TextKind::Typst, r#"#let x = { let y = 1; "@ghost" };"#).is_empty());
     assert_eq!(
         keys(TextKind::Typst, "#let x = {\n  1\n}; then @ghost\n"),
-        of(&[(3, 10, &["ghost"])])
+        of(&[(3, 9, &["ghost"])])
     );
 }
