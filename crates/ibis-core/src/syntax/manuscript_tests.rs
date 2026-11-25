@@ -205,3 +205,12 @@ fn a_typst_code_block_keeps_its_strings_until_it_closes() {
         of(&[(3, 9, &["ghost"])])
     );
 }
+
+#[test]
+fn typst_math_never_changes_code_depth() {
+    assert_eq!(
+        keys(TextKind::Typst, "#let x = $ \\{ $\n@ghost\n"),
+        of(&[(2, 1, &["ghost"])])
+    );
+    assert!(keys(TextKind::Typst, "$ a @b $\n").is_empty());
+}

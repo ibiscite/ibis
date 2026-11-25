@@ -588,6 +588,25 @@ fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
             at = end;
             continue;
         }
+        if c == '$' {
+            // Math has no citations, and its braces and quotes are not code's.
+            let mut j = at + 1;
+            while let Some(d) = text[j..].chars().next() {
+                if !work.spend(d.len_utf8()) {
+                    return None;
+                }
+                j += d.len_utf8();
+                match d {
+                    '\\' => j += text[j..].chars().next().map_or(0, char::len_utf8),
+                    '$' => break,
+                    _ => {}
+                }
+            }
+            let end = j.min(text.len());
+            blank(&mut bytes, at..end);
+            at = end;
+            continue;
+        }
         if c == '`' {
             let length = rest.bytes().take_while(|&b| b == b'`').count();
             let body = at + length;
