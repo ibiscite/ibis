@@ -8,7 +8,7 @@
 
 use std::time::{Duration, Instant};
 
-const MAX_INPUT_BYTES: usize = 1024 * 1024;
+pub const MAX_INPUT_BYTES: usize = 1024 * 1024;
 const INPUT_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub fn check_damaged_pdf(data: &[u8]) {
@@ -42,44 +42,17 @@ pub fn check_damaged_pdf(data: &[u8]) {
 mod tests {
     use super::*;
 
+    /// The committed seeds run in the crate's `seed_corpus`; these are made here.
     #[test]
-    fn pdf_seed_corpus() {
-        let (done, finished) = std::sync::mpsc::channel();
-        let worker = std::thread::spawn(move || {
-            let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("corpus/damaged_pdf");
-            let mut seeds = Vec::new();
-            for entry in std::fs::read_dir(corpus).unwrap_or_else(|_| panic!("seed corpus unavailable")) {
-                let path = entry.unwrap_or_else(|_| panic!("seed entry unavailable")).path();
-                if path.extension().is_some_and(|extension| extension == "pdf") {
-                    seeds.push(path);
-                }
-            }
-            seeds.sort();
-            assert!(!seeds.is_empty(), "seed corpus must not be empty");
-            for seed in seeds {
-                let data = std::fs::read(seed).unwrap_or_else(|_| panic!("seed read failed"));
-                check_damaged_pdf(&data);
-            }
-            let invented = ibis::pdf_text::invented_pdf(
-                &["Invented first page.", "Invented second page."],
-                Some(&[(0, Some("r"), "", 1), (1, Some("D"), "B-", 1)]),
-            );
-            check_damaged_pdf(&invented);
-            for cut in [0, 5, 64, invented.len() / 2] {
-                check_damaged_pdf(&invented[..cut]);
-            }
-            check_damaged_pdf(b"%PDF-");
-            done.send(()).unwrap_or_else(|_| panic!("corpus watchdog unavailable"));
-        });
-        let outcome = finished.recv_timeout(INPUT_TIMEOUT * 4);
-        assert_ne!(
-            outcome,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout),
-            "corpus exceeded twenty seconds"
+    fn invented_pdfs_and_their_cuts() {
+        let invented = ibis::pdf_text::invented_pdf(
+            &["Invented first page.", "Invented second page."],
+            Some(&[(0, Some("r"), "", 1), (1, Some("D"), "B-", 1)]),
         );
-        worker
-            .join()
-            .unwrap_or_else(|payload| std::panic::resume_unwind(payload));
-        assert!(outcome.is_ok(), "corpus worker did not finish");
+        check_damaged_pdf(&invented);
+        for cut in [0, 5, 64, invented.len() / 2] {
+            check_damaged_pdf(&invented[..cut]);
+        }
+        check_damaged_pdf(b"%PDF-");
     }
 }

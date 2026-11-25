@@ -6,8 +6,6 @@ use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Re
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-pub(crate) const MAX_RECORD_BYTES: usize = 1024 * 1024;
-
 /// CSL-JSON records a caller sent, requiring an `id` before applying the file
 /// reader's rules without touching a file. A `file` field is dropped unread:
 /// no path or `file:` URL is ever probed. Each warning's `line` is the record's place in
@@ -194,7 +192,7 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
             library: library.clone(),
             key: format!("record:{native}"),
         };
-        if raw.get().len() > MAX_RECORD_BYTES {
+        if raw.get().len() > crate::MAX_RECORD_BYTES {
             result.warnings.push(warning(WarningCode::WorkLimit));
             continue;
         }
