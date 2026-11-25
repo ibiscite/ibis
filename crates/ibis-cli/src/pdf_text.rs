@@ -68,7 +68,7 @@ pub fn child(arguments: &[OsString], mut input: impl Read, mut output: impl Writ
 /// ceiling, the per-stream inflation cap and the file-size cap bound the rest
 /// everywhere.
 #[cfg(unix)]
-fn limit_resources() -> nix::Result<()> {
+pub(crate) fn limit_resources() -> nix::Result<()> {
     use nix::sys::resource::{Resource, getrlimit, setrlimit};
     let limits = [
         (Resource::RLIMIT_CPU, MAX_CPU_SECONDS),
