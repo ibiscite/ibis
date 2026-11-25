@@ -124,7 +124,6 @@ export function initialSession(query = "", copied: Copied | null = null): Sessio
     hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, resting: true, deferred: [], search: initialSearch, preview: initialPreview, destination: initialDestination,
     pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, shelfCopied: null, copyNotice: copied, removed: null, copyError: null, lastOutcome: null };
 }
-export const sessionQueryKey = (state: SessionState) => JSON.stringify([state.query, state.interpretLocators]);
 const ownsClipboard = (s: SessionState, f: Flight) => s.activeCopy === f.id && s.context === f.owner.context && s.session === f.owner.session;
 const ownsInteraction = (s: SessionState, f: Flight) => ownsClipboard(s, f) && s.view?.output.delivery === f.owner.output.delivery;
 const ownsCompletion = (s: SessionState, f: Flight, output: OutputToken) => ownsInteraction(s, f) && s.visibility === f.owner.visibility && sameOutput(f.owner.output, output);

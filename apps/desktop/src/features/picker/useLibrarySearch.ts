@@ -6,7 +6,7 @@ import type * as nativeApi from "../../api";
 import type { LibraryStatus } from "../../api";
 import type { SessionState } from "./session";
 import type { createSessionController } from "./sessionController";
-import type { SearchInputs } from "./search";
+import { queryKeyOf, type SearchInputs } from "./search";
 import { searchStatus } from "./view";
 
 export function useLibrarySearch({ session, state, search, emptySearch, emptyReply, app = null, query, interpretLocators, library, statusFailed, libraryVersion }: {
@@ -26,7 +26,7 @@ export function useLibrarySearch({ session, state, search, emptySearch, emptyRep
   /** Changes whenever a library opens, so the current query is searched again. */
   libraryVersion: number;
 }) {
-  const queryKey = JSON.stringify([query, interpretLocators]);
+  const queryKey = queryKeyOf({ query, interpretLocators });
   const recentSearch = query.trim() ? undefined : emptySearch;
   const inputs: SearchInputs = { queryKey, query, interpretLocators, library, version: libraryVersion, recent: recentSearch, recentReply: recentSearch && emptyReply && emptyReply.revision === library?.revision ? emptyReply.reply : undefined, app: recentSearch ? app : null };
   useLayoutEffect(() => { session.connect({ search, recent: recentSearch }); });

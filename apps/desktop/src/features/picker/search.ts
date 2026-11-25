@@ -5,6 +5,9 @@ import type { LibraryStatus, LocatorQuery, PastedList, SearchResult } from "../.
 import { say } from "../../i18n";
 import { choiceKey } from "./choice";
 
+/** The one key for a query and its locator mode; a search answers the query whose key it carries. */
+export const queryKeyOf = ({ query, interpretLocators }: { query: string; interpretLocators: boolean }) => JSON.stringify([query, interpretLocators]);
+
 export type SearchReply = Awaited<ReturnType<typeof nativeApi.search>>;
 
 /** What one search asks: the query and what it is searched in. `recent` is the

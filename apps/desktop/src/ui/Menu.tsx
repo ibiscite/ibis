@@ -3,7 +3,7 @@ import { Children, createContext, isValidElement, useCallback, useContext, useEf
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { mergeProps, setInteractionModality } from "react-aria";
-import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Separator, SubmenuTrigger, Text } from "react-aria-components";
+import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Separator, Text } from "react-aria-components";
 import { Button } from "./Button";
 import { markScrollEdges } from "./ScrollArea";
 import { Floating } from "./Layer";
@@ -245,29 +245,6 @@ export function MenuSection({ id, label, header, children, layout, selectionMode
     {header && <Header className={typeof header === "string" ? "menu-header ui-list-heading menu-heading" : "menu-header"}>{label && <span className="visually-hidden">{label}</span>}<div aria-hidden="true">{header}</div></Header>}
     {children}
   </AriaMenuSection>;
-}
-
-/** A nested choice menu. React Aria owns hover, arrows, Escape and placement;
- * the parent menu still owns Tab and action focus return. */
-export function MenuSubmenu({ id, label, value, title, children }: {
-  id: string; label: string; value: string; title?: string; children: ReactNode;
-}) {
-  const list = useRef<HTMLDivElement | null>(null);
-  const wholeRows = useWholeRows(list);
-  return <SubmenuTrigger>
-    <AriaMenuItem id={id} className="menu-item" textValue={value} aria-label={value}
-      render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={id} title={title} />}>
-      <bdi className="menu-label" dir="auto">{value}</bdi>
-      <span className="menu-submenu-arrow" aria-hidden="true">›</span>
-    </AriaMenuItem>
-    {/* Part of its menu's layer, whose Esc it hands to React Aria. */}
-    <Floating ref={wholeRows} className="menu-popover ui-overlay" offset={6} containerPadding={8}>
-      <MenuList ref={list} className="menu scroll-area" aria-label={label}
-        render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
-        {children}
-      </MenuList>
-    </Floating>
-  </SubmenuTrigger>;
 }
 
 export function MenuSeparator() {
