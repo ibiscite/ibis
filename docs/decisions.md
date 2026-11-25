@@ -143,3 +143,6 @@ the anchor older links use.
 
 ## 0060 One document pipeline
 [0060](decisions/0060-one-document-pipeline.md): check, export, format and share are one pipeline, scan → reference set → render → sink; every document file is parsed only in a child behind a CLI-only feature; the reference set is a CSL-JSON file of share-safe records; project-scoped keys and the opt-in `.bib` append are the project's own.
+
+## 0061 A folder of PDFs is a library, and one `resolve`
+[0061](decisions/0061-a-folder-of-pdfs-and-one-resolve.md): a folder of PDFs opens as a library whose records Ibis keeps in `ibis-references.bib` beside them, read from each PDF's own metadata and DOI in the child and appended only when the person keeps them; reads never write; a record with no title or author is not cited; `resolve` finds an identifier, text or file in the library, then online only after asking.
