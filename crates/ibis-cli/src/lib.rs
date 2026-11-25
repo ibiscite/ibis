@@ -19,6 +19,7 @@ mod generated;
 mod human;
 mod keys;
 mod out;
+pub mod pdf_details;
 pub mod pdf_text;
 mod proposals;
 mod settings_backup;

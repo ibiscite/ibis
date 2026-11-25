@@ -43,6 +43,37 @@ pub fn parse_query(query: &str) -> Option<Identifier> {
 /// Longer pasted text is searched as words, never as an identifier.
 const MAX_QUERY_LEN: usize = 512;
 
+/// The most DOIs [`dois_in`] reports for one text.
+const MAX_FOUND: usize = 32;
+
+/// Each DOI written in running text, canonical, in order: bare (`10.…/…`),
+/// after `doi:` or inside a `doi.org` link. A DOI is one word, so it ends at
+/// white space, and sentence punctuation after it is not part of it. The
+/// scan is linear in the text and stops after 32 DOIs.
+pub fn dois_in(text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut rest = text;
+    while let Some(at) = rest.find("10.") {
+        let starts_word = rest[..at]
+            .chars()
+            .next_back()
+            .is_none_or(|before| !before.is_alphanumeric() && before != '.');
+        let word = &rest[at..];
+        let end = word.find(char::is_whitespace).unwrap_or(word.len());
+        if starts_word
+            && end <= MAX_QUERY_LEN
+            && let Some(value) = doi(trim_wrapping(&word[..end]))
+        {
+            found.push(value);
+            if found.len() == MAX_FOUND {
+                break;
+            }
+        }
+        rest = &word[if starts_word { end.max(3) } else { 3 }..];
+    }
+    found
+}
+
 /// Read a complete identifier at the start of a pasted list, before citation
 /// punctuation is considered. The returned label omits surrounding punctuation.
 pub(crate) fn parse_token<'a>(text: &'a str, work: &mut Work<'_>) -> Option<(&'a str, Identifier, &'a str)> {
@@ -395,6 +426,19 @@ fn isbn13_sum(digits: &str) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dois_in_running_text_are_found_whole_and_in_order() {
+        let text = "Invented Tides, vol. 3. doi:10.5555/Tides.2031 Received 2030.\n\
+                    See https://doi.org/10.5555/Second (ref. 12), and 10.5555/third.\n\
+                    Not a DOI: v10.5555/x, 210.5555/y, 10.55/z, 10.5555/";
+        assert_eq!(
+            dois_in(text),
+            ["10.5555/tides.2031", "10.5555/second", "10.5555/third"]
+        );
+        assert!(dois_in(&"10.5555/a ".repeat(100)).len() == MAX_FOUND);
+        assert!(dois_in("").is_empty());
+    }
 
     #[test]
     fn queries_in_common_written_forms_are_recognized() {

@@ -7,7 +7,7 @@
 //! `/PageLabels`. The parent bounds the time, checks the answer again and
 //! decides what may be cited; a crash here only fails this one file.
 
-use ibis_engine::pdf::{Answer, Extracted, LABELS_ONLY, MAX_FILE_BYTES, MAX_PAGES, MAX_TEXT_BYTES, Refusal};
+use ibis_engine::pdf::{Answer, DETAILS, Extracted, LABELS_ONLY, MAX_FILE_BYTES, MAX_PAGES, MAX_TEXT_BYTES, Refusal};
 use lopdf::content::Content;
 use lopdf::{Dictionary, Document, Encoding, LoadOptions, Object, ObjectId};
 use std::collections::BTreeMap;
@@ -43,14 +43,19 @@ pub fn run_child(arguments: &[OsString]) -> u8 {
 
 /// Reads the PDF from `input` and answers on `output`.
 pub fn child(arguments: &[OsString], mut input: impl Read, mut output: impl Write) -> u8 {
-    let labels_only = match arguments {
-        [] => false,
-        [flag] if flag == LABELS_ONLY => true,
+    let (labels_only, details) = match arguments {
+        [] => (false, false),
+        [flag] if flag == LABELS_ONLY => (true, false),
+        [flag] if flag == DETAILS => (false, true),
         _ => return 2,
     };
     let mut bytes = Vec::new();
     let answer = match (&mut input).take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes) {
         Err(_) => Answer::Refused(Refusal::Damaged),
+        Ok(_) if details => match crate::pdf_details::details(&bytes) {
+            Ok(said) => Answer::Details(said),
+            Err(refusal) => Answer::Refused(refusal),
+        },
         Ok(_) => match extract(&bytes, labels_only) {
             Ok(extracted) => Answer::Read(extracted),
             Err(refusal) => Answer::Refused(refusal),
@@ -85,8 +90,8 @@ fn limit_resources() -> nix::Result<()> {
     Ok(())
 }
 
-/// A PDF's pages, their text unless `labels_only`, and their labels.
-pub fn extract(bytes: &[u8], labels_only: bool) -> Result<Extracted, Refusal> {
+/// The parsed PDF in `bytes` and its pages, within the file and page bounds.
+pub(crate) fn load(bytes: &[u8]) -> Result<(Document, Vec<ObjectId>), Refusal> {
     if bytes.len() as u64 > MAX_FILE_BYTES {
         return Err(Refusal::TooLarge);
     }
@@ -105,6 +110,12 @@ pub fn extract(bytes: &[u8], labels_only: bool) -> Result<Extracted, Refusal> {
     if pages.len() > MAX_PAGES as usize {
         return Err(Refusal::TooLarge);
     }
+    Ok((document, pages))
+}
+
+/// A PDF's pages, their text unless `labels_only`, and their labels.
+pub fn extract(bytes: &[u8], labels_only: bool) -> Result<Extracted, Refusal> {
+    let (document, pages) = load(bytes)?;
     let count = u32::try_from(pages.len()).map_err(|_| Refusal::TooLarge)?;
     // Even a labels-only answer must check the tree against printed numbers.
     let text = if labels_only && !document.catalog().is_ok_and(|catalog| catalog.has(b"PageLabels")) {
@@ -131,7 +142,7 @@ pub fn extract(bytes: &[u8], labels_only: bool) -> Result<Extracted, Refusal> {
 
 /// The text a page shows, in content order, one line per text line. A page
 /// that cannot be decoded gives what was read of it, or nothing.
-fn page_text(document: &Document, page: ObjectId) -> String {
+pub(crate) fn page_text(document: &Document, page: ObjectId) -> String {
     let fonts: BTreeMap<_, _> = document
         .get_page_fonts(page)
         .unwrap_or_default()
