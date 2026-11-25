@@ -27,7 +27,7 @@ NOTICES = {
 }
 VERSION = "0.4.1-nightly.20261125000000"
 BUILD = VERSION + "+abc1234"
-OPTIONS = argparse.Namespace(version=VERSION, build=BUILD, identifier=None, signing_leaf=None)
+OPTIONS = argparse.Namespace(version=VERSION, build=BUILD, identifier=None, signing_leaf=None, product="Ibis Nightly")
 
 
 def options(**changes):
@@ -61,8 +61,9 @@ def tar_bytes(files):
 
 def app_files(prefix, programs, notices=NOTICES):
     """An app's resource folder at `prefix`: its notices beside the resource that names it."""
-    return {f"{prefix}/notices/{name}": data for name, data in notices.items()} | {
-        f"{prefix}/resources/samples.csljson": b"[]"} | programs
+    folder = f"{prefix}/" if prefix else ""
+    return {f"{folder}notices/{name}": data for name, data in notices.items()} | {
+        f"{folder}resources/samples.csljson": b"[]"} | programs
 
 
 def linux_app(prefix="./usr", build=BUILD):
@@ -146,11 +147,11 @@ class Packages(unittest.TestCase):
                          "0 copies of LICENSE at the archive's top")
         # An app's belong in its own resource folder, not elsewhere in the package.
         elsewhere = {k: v for k, v in app_files("./usr/share/doc/ibis", {}).items() if "samples" not in k}
-        misplaced = elsewhere | {"./usr/lib/Ibis/resources/samples.csljson": b"[]", "./usr/bin/ibis-nightly": elf(), "./usr/bin/ibis": elf()}
+        misplaced = elsewhere | {"./usr/lib/Ibis Nightly/resources/samples.csljson": b"[]", "./usr/bin/ibis-nightly": elf(), "./usr/bin/ibis": elf()}
         self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(misplaced)), "0 copies of LICENSE in the app's resource folder")
-        # Two apps cannot share one package.
-        two = linux_app() | app_files("./usr/lib/Old", {})
-        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(two)), "2 Linux apps")
+        # Another product's resource folder is not this app's.
+        stable = app_files("./usr/lib/Ibis", {"./usr/bin/ibis-nightly": elf(), "./usr/bin/ibis": elf()})
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(stable)), "0 Linux apps with resources where Ibis Nightly")
         # Resources and notices moved together out of where the app installs them.
         moved = app_files("./usr/share/doc/ibis", {"./usr/bin/ibis-nightly": elf(), "./usr/bin/ibis": elf()})
         self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(moved)), "0 Linux apps with resources")
@@ -203,6 +204,7 @@ class Packages(unittest.TestCase):
         self.assertFalse(verify.embeds(b"User-Agent: Ibis/0.4.10\r\n and 0.4.1 elsewhere", "0.4.1"))
         self.assertTrue(verify.embeds(b"chosen_in0.4.1-nightly.1+abc12342026-11-25", "0.4.1-nightly.1+abc1234"))
         self.assertFalse(verify.embeds(b"0.4.1-nightly.1+abc9999", "0.4.1-nightly.1+abc1234"))
+        self.assertFalse(verify.embeds(b"10.4.1-nightly.1+abc1234", "0.4.1-nightly.1+abc1234"))
 
     def test_debian_and_rpm_packages_state_the_version(self):
         self.check(self.write("Ibis-Linux.deb", deb_bytes(linux_app())))
@@ -292,7 +294,7 @@ class Packages(unittest.TestCase):
     def test_a_setup_executable_is_unpacked_with_7zip(self):
         for name, version in (("good", VERSION), ("old", "0.4.0")):
             source = self.dir / name
-            files = app_files("res", {"ibis-desktop.exe": pe() + version_resource(version), "ibis.exe": pe(), "uninstall.exe": pe()})
+            files = app_files("", {"ibis-desktop.exe": pe() + version_resource(version), "ibis.exe": pe(), "uninstall.exe": pe()})
             for path, data in files.items():
                 (source / path).parent.mkdir(parents=True, exist_ok=True)
                 (source / path).write_bytes(data)

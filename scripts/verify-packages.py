@@ -2,7 +2,8 @@
 """Open every package Preview built for one target and check what it holds.
 
     python3 scripts/verify-packages.py DIST TARGET NOTICES --version V
-        [--build V+SHA] [--identifier ID] [--signing-leaf SHA1] [--self-test]
+        --product NAME [--build V+SHA] [--identifier ID] [--signing-leaf SHA1]
+        [--self-test]
 
 DIST is the folder of collected packages (scripts/collect-packages.sh),
 TARGET the app's Rust target, NOTICES the folder scripts/third-party-notices.py
@@ -68,12 +69,15 @@ CLI_NAMES = ("ibis", "ibis.exe")
 # package carries (tauri.bundle.conf.json), which names the one app in it.
 ANCHOR = "resources/samples.csljson"
 # Where each kind of app package installs its resources, so an anchor (and
-# its notices) anywhere else cannot stand in for the app's own.
-RESOURCE_ROOTS = {
-    "macOS app": re.compile(r"[^/]+\.app/Contents/Resources/"),
-    "Linux app": re.compile(r"usr/lib/[^/]+/"),
-    "Windows app": re.compile(r"(?:\$INSTDIR/)?"),
-}
+# its notices) anywhere else, or another product's, cannot stand in.
+def resource_root(kind, product):
+    """Where a package of this kind installs PRODUCT's resources."""
+    name = re.escape(product)
+    return re.compile({
+        "macOS app": name + r"\.app/Contents/Resources/",
+        "Linux app": r"usr/lib/" + name + "/",
+        "Windows app": r"(?:\$INSTDIR/)?",
+    }[kind])
 
 
 def app_kind(name):
@@ -356,7 +360,7 @@ def embeds(data, build):
     so it is found in the one place it is delimited: Ibis's HTTP User-Agent,
     `User-Agent: Ibis/0.4.1\r\n`, which every Ibis program carries."""
     if "+" in build:
-        return build.encode() in data
+        return re.search(rb"(?<![0-9.])" + re.escape(build.encode()), data) is not None
     return f"User-Agent: Ibis/{build}\r\n".encode() in data
 
 
@@ -389,9 +393,9 @@ class Check:
             root, where = "", "at the archive's top"
         else:
             anchors = [rel[: -len(ANCHOR)] for rel, _ in tree if rel == ANCHOR or rel.endswith("/" + ANCHOR)]
-            roots = [root for root in anchors if RESOURCE_ROOTS[kind].fullmatch(root)]
+            roots = [root for root in anchors if resource_root(kind, self.options.product).fullmatch(root)]
             if len(roots) != 1:
-                self.problems.append(f"{len(roots)} {kind}s with resources where a {kind} installs them, not one")
+                self.problems.append(f"{len(roots)} {kind}s with resources where {self.options.product} installs them, not one")
                 return
             root, where = roots[0] + "notices/", "in the app's resource folder"
         placed = {rel: full for rel, full in tree}
@@ -615,6 +619,7 @@ def main():
     parser.add_argument("--version", required=True)
     parser.add_argument("--build")
     parser.add_argument("--identifier")
+    parser.add_argument("--product", required=True, help='the app\'s name, "Ibis" or "Ibis Nightly"')
     parser.add_argument("--signing-leaf")
     parser.add_argument("--self-test", action="store_true")
     options = parser.parse_args()

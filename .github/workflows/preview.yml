@@ -697,6 +697,7 @@ jobs:
           LEAF: ${{ vars.MACOS_SIGNING_LEAF }}
           # Matches "Choose the app identity" in the build job.
           IDENTIFIER: ${{ startsWith(github.ref, 'refs/tags/v') && 'com.ibiscite.ibis' || 'com.ibiscite.ibis.nightly' }}
+          PRODUCT: ${{ startsWith(github.ref, 'refs/tags/v') && 'Ibis' || 'Ibis Nightly' }}
         run: |
           if [[ "$REF" == refs/tags/v* ]]; then
             version=${REF#refs/tags/v}
@@ -711,7 +712,7 @@ jobs:
           python=python3
           if [ "$RUNNER_OS" = Windows ]; then python=python; fi
           "$python" scripts/verify-packages.py dist "$TARGET" notices --version "$version" --build "$build" \
-            --identifier "$IDENTIFIER" "${signed[@]}" --self-test
+            --identifier "$IDENTIFIER" --product "$PRODUCT" "${signed[@]}" --self-test
 
   # Install each package the way a user would, start the installed app and
   # drive it with the native smoke test, so a broken installer or a package
