@@ -346,7 +346,7 @@ export const PICKER_IDS = [
   "picker-spelling-match",
   "picker-pasted-list",
   "picker-paste-into",
-  "picker-bar-paste", "picker-bar-paste-entries", "picker-bar-copy", "picker-bar-copy-entries", "picker-bar-send", "picker-bar-change", "picker-bar-practice",
+  "picker-bar-paste", "picker-bar-paste-entries", "picker-bar-copy", "picker-bar-copy-entries", "picker-bar-send", "picker-bar-change", "picker-bar-practice", "picker-bar-refused",
   "picker-last-outcome",
   "picker-closest-matches",
   "picker-closest-match",

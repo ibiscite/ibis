@@ -86,10 +86,11 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
     {/* The reason sits in the bar, over the citation it is about, with its fixes. */}
     {refusal && <div className="bar-reason">
       <span className="bar-reason-mark" aria-hidden="true"><Icon name="warning" /></span>
-      <p id={reasonId} className="bar-reason-words" dir="auto" title={refusal}>{refusal}</p>
+      <Status id={reasonId} className="bar-reason-words" dir="auto" role="alert">{refusal}</Status>
       {refusalActions}
     </div>}
-    {refusal && <Status className="visually-hidden" role="alert">{refused ? refusal : ""}</Status>}
+    {/* The reason is an alert as it arrives; Enter meeting it is said here, mounted with the reason so it is heard. */}
+    {refusal && <Status className="visually-hidden" role="alert">{refused ? say("picker-bar-refused", { reason: refusal }) : ""}</Status>}
     {/* The region includes More and Copy. Its name must stay distinct from
         the Library button, so native name lookup cannot activate the region. */}
     <section ref={bar} aria-label={say("picker-picker-actions")} className="library-bar" data-empty-action={emptyAction || undefined}

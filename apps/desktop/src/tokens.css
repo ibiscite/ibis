@@ -29,10 +29,11 @@
   /* A row: its own padding, the gap after its icon slot (--tile), its spacing in a
      list, and its two heights. Rows without an icon start their words at
      --inset + --row-pad; rows with one start them on the label column after the slot.
-     Compact, the default, is one line of a 32 px target; the highlighted row
-     opens to two. Comfortable is two lines for every row. */
+     Compact lists (the default) take --row-compact; a Compact result row is
+     denser still, one line on a 32 px target (--row-dense), the highlighted
+     one opening to two. Comfortable is two lines for every row. */
   --row-pad: var(--space-3); --row-gap: var(--space-3); --row-spacing: 2px;
-  --row-compact: var(--space-8); --row-comfortable: 3.625rem;
+  --row-compact: var(--space-10); --row-dense: var(--space-8); --row-comfortable: 3.625rem;
   --row-height: var(--row-comfortable);
   /* The longest a sheet's text and cards run before the window has more room. */
   --content-max: 42rem;

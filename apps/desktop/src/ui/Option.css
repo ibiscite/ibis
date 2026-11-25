@@ -69,7 +69,7 @@
   .result-byline > .result-authors { max-width: 100%; }
   .result-separator { display: none; }
   .result-container { flex: none; max-width: 100%; }
-  .result-container::before { content: " · "; white-space: pre; }
+  .result-container::before, .result-byline > .result-year:not(:first-child)::before { content: " · "; white-space: pre; }
 }
 .result-why { font-style: italic; }
 .result-library { flex: 0 1000 auto; min-width: min(5em, 100%); max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -90,6 +90,8 @@
 :root[data-density="compact"] { --row-height: var(--row-compact); }
 :root[data-density="compact"] .ui-option:not([data-citation-selected]) .result-tile { background: transparent; }
 :root[data-density="compact"] .result-tile { width: 1.5rem; height: 1.5rem; }
+:root[data-density="compact"] #results .ui-option { min-height: var(--row-dense); padding-block: var(--space-1); }
+@media (pointer: coarse) { :root[data-density="compact"] #results .ui-option { min-height: max(var(--row-dense), var(--touch-target)); } }
 :root[data-density="compact"] #results .result-title { font-size: var(--type-body-size); line-height: var(--type-body-line); }
 :root[data-density="compact"] .result-byline > .result-year { flex: none; margin: 0; }
 :root[data-density="compact"] #results .ui-option:not([data-active]) .result-body { flex-direction: row; align-items: baseline; justify-content: start; gap: var(--space-3); overflow: hidden; white-space: nowrap; }

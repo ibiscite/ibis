@@ -441,7 +441,7 @@ general-paste-return-failed = Couldn’t return to your citation. Open Ibis with
 general-paste-stale = Already on, but still waiting? In System Settings, remove { $name } from the list, add this copy again, then turn it on.
 
 general-rows = Rows
-general-rows-description = Compact rows fit more references; comfortable rows show each one’s authors and source.
+general-rows-description = Compact rows fit more references, one line each; comfortable rows give every reference two lines.
 general-density-compact = Compact
 general-density-comfortable = Comfortable
 
@@ -1068,6 +1068,8 @@ picker-bar-send = Send to Editor
 picker-bar-change = Change Citation
 # The first screen's practice: Enter pastes into Ibis itself, to try it.
 picker-bar-practice = Paste Here to Try
+# Said to a screen reader when Enter is pressed on a refused citation. $reason: why, in the engine's words.
+picker-bar-refused = Not pasted or copied. { $reason }
 picker-last-outcome = Last outcome. { $outcome }
 picker-closest-matches = Closest matches
 picker-closest-match = Closest match

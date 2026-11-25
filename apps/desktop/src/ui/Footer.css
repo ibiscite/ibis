@@ -7,10 +7,11 @@ footer.delivery-bar { display: flex; flex-direction: column; border-block-start:
 /* Coarse targets grow the band instead of clipping; the grid below owns its columns. */
 .library-bar { min-width: 0; min-height: var(--footer-h); align-items: center; gap: 0 var(--space-2); padding-inline: var(--inset); }
 /* The reason: its mark in the lead column, the words on the title column in the
-   text colour, its fixes ending on the inset; one line, whole in its tooltip. */
+   text colour, whole (they wrap; the line takes its room from the list's end),
+   its fixes ending on the inset. */
 .bar-reason { display: flex; align-items: center; gap: var(--space-2); min-height: var(--control-h); padding: var(--space-1) var(--inset) 0 var(--row-start); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .bar-reason-mark { flex: none; display: flex; justify-content: center; inline-size: var(--tile); color: var(--status-error); }
-.bar-reason-words { flex: 1 1 auto; min-width: 0; margin: 0; margin-inline-start: calc(var(--row-gap) - var(--space-2)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.bar-reason-words { flex: 1 1 auto; min-width: 0; margin: 0; margin-inline-start: calc(var(--row-gap) - var(--space-2)); overflow-wrap: anywhere; color: var(--text); }
 .bar-reason > .ui-button { flex: none; }
 
 /* One line that never pushes the keys aside: the age after the problem
