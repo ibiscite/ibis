@@ -6,6 +6,7 @@ import { usePickerShown } from "./features/picker/pickerShown";
 import "./ui/LibraryStatus.css";
 import { libraryMessages } from "./libraryWords";
 import { Status } from "./ui/Status";
+import { Icon } from "./icons";
 
 export type LibraryCondition = { health: "done" | "look" | "stop" | "idle"; problem: string | null };
 
@@ -58,8 +59,9 @@ function useMinuteTick() {
 }
 
 /**
- * The footer's library item: just the source when healthy; a problem's words,
- * dot and age when attention is needed. Counts stay in the full detail and
+ * The delivery bar's library item: the library's glyph alone while it is
+ * healthy, its name in the tooltip and the spoken name; the words, dot and age
+ * only when it needs the person (checking, none chosen, a problem). Counts stay in the full detail and
  * tooltip; the live region holds no clock, so it is not repeated
  * every age tick.
  */
@@ -94,9 +96,12 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure, c
     {separated && state && <bdi className="library-separator">{" · "}</bdi>}
     {state && <bdi className="library-state">{state}</bdi>}
   </>;
+  // Healthy, the library asks nothing of the person: its glyph stands for it.
+  const quiet = health === "done";
   const content = <>
         {(health === "look" || health === "stop") && <span className="status-dot" data-health={health} aria-hidden="true" />}
-        <bdi className="library-words" dir="ltr">
+        {quiet && <Icon name="library" className="library-glyph" />}
+        <bdi className={quiet ? "library-words visually-hidden" : "library-words"} dir="ltr">
           {menu ? <span className="library-name" dir="ltr">{words}</span> : <Status as="span" className="library-name" dir="ltr" label={say("picker-library-status")} muted={!announces}>{words}</Status>}
           {age && <bdi className="library-age" dir="auto" aria-hidden="true"> · {age}</bdi>}
         </bdi>

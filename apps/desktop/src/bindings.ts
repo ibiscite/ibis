@@ -305,7 +305,7 @@ export const CITATION_FORMS = ["normal","narrative","author-only","year-only","f
 
 export const DEFAULT_OUTPUT = "pandoc" as const;
 
-export const DEFAULT_PREFERENCES = {"accent":"system","appearance":"system","density":"comfortable","interface_language":"system","larger_text":false,"menu_bar":true,"paste":true,"picker_placement":"centre","recent_citations":true,"small_surprises":true} as const;
+export const DEFAULT_PREFERENCES = {"accent":"system","appearance":"system","density":"compact","interface_language":"system","larger_text":false,"menu_bar":true,"paste":true,"picker_placement":"centre","recent_citations":true,"small_surprises":true} as const;
 
 export const DEFAULT_STYLE = "apa" as const;
 

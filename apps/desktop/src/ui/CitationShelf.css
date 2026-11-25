@@ -1,18 +1,15 @@
-/* C7: one band, on the result columns, regardless of selection or open menu. */
-/* One band, one padding, corner, hover and pressed fill for every control in it:
-   tokens and the count. Hover and open steps are even: band, tertiary, system fill.
-   At rest the count shows only its chevron, whose glyph is drawn inside its box, so
-   it takes no end padding and the glyph ends on the year column [C3]. */
-.shelf { --band-control-pad: var(--space-2); --band-control-pad-end: 0px; --band-control-radius: var(--r-small); --band-control-hover: var(--fill-control); --band-control-pressed: var(--fill-control-pressed); --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-control); background: var(--layer-inset); }
+/* C7: the citation, the delivery bar's first part, on the result columns whatever
+   is selected or open: the beak in the lead column, the citation on the title
+   column. It is no slab of its own: the bar is one band on the window's surface,
+   and the tokens' soft fills are the only fills in it. One padding, corner, hover
+   and pressed fill for every control in it: tokens and the count. */
+.shelf { --band-control-pad: var(--space-2); --band-control-pad-end: 0px; --band-control-radius: var(--r-small); --band-control-hover: var(--fill-control); --band-control-pressed: var(--fill-control-pressed); --shelf-target: var(--control-h); position: relative; min-width: 0; min-height: 0; overflow: visible; border-radius: var(--r-control); }
 .shelf::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--status-ok-wash); opacity: 0; pointer-events: none; }
-main:has(> .shelf) > footer { border-top-color: transparent; }
-/* Text starts on the title column; trailing controls keep the same gap S to the
-   shelf's end as above and below them, so their corners nest in its own [C15]. */
-/* The slot clips what it holds, so no output, however long or tall, reaches the footer. */
-.shelf-output { position: relative; overflow: clip; display: flex; align-items: center; height: max(calc(var(--control-small-h) + 2 * var(--inset)), var(--hit)); padding-inline: var(--row-pad) var(--inset); font-size: var(--type-body-size); }
+/* The slot clips what it holds, so no output, however long or tall, grows the bar. */
+.shelf-output { position: relative; overflow: clip; display: flex; align-items: center; height: max(calc(var(--control-small-h) + 2 * var(--inset)), var(--hit)); padding-inline: var(--row-pad) 0; font-size: var(--type-body-size); }
 .shelf-leading { flex: 0 0 var(--tile); display: flex; justify-content: end; margin-inline-end: var(--row-gap); }
 .shelf-leading[draggable] { cursor: grab; -webkit-user-drag: element; }
-.shelf-mark { display: block; flex: none; height: var(--space-5); width: auto; color: var(--scarlet); }
+.shelf-mark { display: block; flex: none; height: var(--icon); width: auto; color: var(--scarlet); }
 .shelf-output[data-state="pending"] .shelf-mark { opacity: .45; }
 [dir="rtl"] .shelf-mark { transform: scaleX(-1); }
 .shelf-mark-close { transform: rotate(180deg); }
@@ -42,7 +39,6 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
   .shelf[data-copied]::before { animation: none; }
 }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .shelf { outline: var(--border-width) solid CanvasText; outline-offset: var(--border-outside); }
   .shelf-mark { color: CanvasText; }
   .shelf-copied { color: CanvasText; border: var(--border-width) solid CanvasText; }
 }

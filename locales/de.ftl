@@ -431,7 +431,7 @@ general-paste-return-failed = Rückkehr zu Ihrer Zitation nicht möglich. Öffne
 general-paste-stale = Schon aktiviert, aber es wartet noch? Entfernen Sie { $name } in den Systemeinstellungen aus der Liste, fügen Sie diese Kopie erneut hinzu und aktivieren Sie sie.
 
 general-rows = Zeilen
-general-rows-description = Kompakte Zeilen zeigen mehr Referenzen; komfortable zeigen zu jeder Autoren und Quelle.
+general-rows-description = Kompakte Zeilen zeigen mehr Referenzen, je eine Zeile; komfortable geben jeder Referenz zwei Zeilen.
 general-density-compact = Kompakt
 general-density-comfortable = Komfortabel
 
@@ -1035,6 +1035,26 @@ picker-remove-named = { $name } aus der Zitation entfernen
 picker-best-matches = Beste Treffer
 picker-pasted-list = Eingefügte Liste
 picker-paste-into = In { $app } einfügen · { $output }
+picker-bar-paste = In { $app } einfügen
+picker-bar-paste-entries =
+    { $count ->
+        [one] Eintrag in { $app } einfügen
+       *[other] { $count } Einträge in { $app } einfügen
+    }
+picker-bar-copy =
+    { $count ->
+        [one] Kopieren
+       *[other] { $count } Zitationen kopieren
+    }
+picker-bar-copy-entries =
+    { $count ->
+        [one] Eintrag kopieren
+       *[other] { $count } Einträge kopieren
+    }
+picker-bar-send = An Editor senden
+picker-bar-change = Zitation ändern
+picker-bar-practice = Hier zum Ausprobieren einfügen
+picker-bar-refused = Nicht eingefügt oder kopiert. { $reason }
 picker-last-outcome = Letztes Ergebnis: { $outcome }
 picker-closest-matches = Nächste Treffer
 picker-closest-match = Ungefährer Treffer
@@ -1168,6 +1188,7 @@ picker-project-entry =
        *[dependency] Dieser Eintrag hängt von einem crossref, xdata oder @string ab, der nicht mitkopiert werden kann. Exportieren Sie ihn aus Ihrer Literaturverwaltung und behalten Sie den Schlüssel bei.
     }
 picker-editor-waiting = Zitieren für Ihren Editor in { $format }. Esc bricht ab.
+picker-editor-asking = Zitieren für Ihren Editor. Esc bricht ab.
 picker-send = Senden · { $format }
 picker-delivery-editor = Editor
 picker-delivery-clipboard = Zwischenablage

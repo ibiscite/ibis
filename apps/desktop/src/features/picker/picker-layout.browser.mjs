@@ -405,7 +405,7 @@ try {
       await page.close(); profiles += 1; continue;
     }
     if (shelfDetails === "undo") {
-      const band = await page.locator("main > .shelf").boundingBox();
+      const band = await page.locator("main > footer .shelf").boundingBox();
       await search.press("Shift+Enter");
       await shelfControl(page, /^Edit /).first().press("Backspace");
       const removal = page.locator(".notice-slot > .notice-band").first();
@@ -428,7 +428,7 @@ try {
       await removal.getByRole("button", { name: /^Undo/ }).click();
       await removal.waitFor({ state: "detached" });
       assert.equal(await page.locator('[role="option"][data-citation-selected]').count(), 1, "undoing the window leaves the independent reference Undo intact");
-      assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "Undo feedback does not move the shelf");
+      assert.deepEqual(await page.locator("main > footer .shelf").boundingBox(), band, "Undo feedback does not move the shelf");
       await checkScan("Undo feedback keeps fixed bands and one scroller");
       assert.deepEqual(page.viewportSize(), frame, "Undo feedback keeps the fixture's frame");
       assert.deepEqual(resizes, [], "no content-driven native sizing");
@@ -436,10 +436,10 @@ try {
       await page.close(); profiles += 1; continue;
     }
     if (shelfDetails === "copied") {
-      const text = await page.locator("main > .shelf .preview-text").textContent();
+      const text = await page.locator("main > footer .shelf .preview-text").textContent();
       await search.press("Enter");
       await page.getByRole("status", { name: "Copied", exact: true }).waitFor();
-      assert.equal(await page.locator("main > .shelf .preview-text").textContent(), text, "Copied confirms the exact receipt");
+      assert.equal(await page.locator("main > footer .shelf .preview-text").textContent(), text, "Copied confirms the exact receipt");
       assert.equal(await page.locator(".copy-notice p").count(), 0, "the shelf confirms each copy once");
       await waitForCheck("matching-copied-beaks", () => {
         const open = document.querySelector(".shelf-mark-open").getBoundingClientRect();
@@ -458,7 +458,7 @@ try {
     }
     if (shelfDetails === "single" || shelfDetails === "rtl") {
       await search.press("Shift+Enter");
-      const band = await page.locator("main > .shelf").boundingBox();
+      const band = await page.locator("main > footer .shelf").boundingBox();
       const token = shelfControl(page, /^Edit /).first();
       await token.hover();
       const remove = shelfControl(page, "Remove synthetic0 from the selection");
@@ -486,7 +486,7 @@ try {
       assert.equal(await forms.getByRole("menuitemradio").count(), 3, "all three forms are in the Show as menu");
       await page.keyboard.press("Escape");
       await forms.waitFor({ state: "detached" });
-      assert.deepEqual(await page.locator("main > .shelf").boundingBox(), band, "the long citation and panel never grow the shelf");
+      assert.deepEqual(await page.locator("main > footer .shelf").boundingBox(), band, "the long citation and panel never grow the shelf");
       await closeEditor(dialog);
       const reopened = await openEditor();
       assert.equal(await reopened.getByRole("textbox", { name: "Page", exact: true }).inputValue(), "iv–vi", "close/reopen keeps the page");
@@ -501,12 +501,12 @@ try {
       await page.close(); profiles += 1; continue;
     }
     if (shelfDetails) {
-      let beforeShelf = await page.locator("main > .shelf").boundingBox();
+      let beforeShelf = await page.locator("main > footer .shelf").boundingBox();
       let dialog;
       if (shelfDetails === "expanded") {
         for (let i = 0; i < 9; i++) { if (i) await search.press("ArrowDown"); await search.press("Shift+Enter"); }
-        beforeShelf = await page.locator("main > .shelf").boundingBox();
-        const tokens = page.locator("main > .shelf .citation-token-button");
+        beforeShelf = await page.locator("main > footer .shelf").boundingBox();
+        const tokens = page.locator("main > footer .shelf .citation-token-button");
         await tokens.nth(8).waitFor({ state: "attached" });
         assert.equal(await tokens.count(), 9, "the citation has one engine-owned token per reference");
         await tokens.first().focus(); await tokens.first().press("ArrowRight");
@@ -529,9 +529,9 @@ try {
         const warnings = shelfControl(page, /2 warnings.*Reference entry.*Closest matches/);
         await warnings.waitFor();
         await warnings.click({ trial: true });
-        beforeShelf = await page.locator("main > .shelf").boundingBox();
+        beforeShelf = await page.locator("main > footer .shelf").boundingBox();
         assert.equal(await reachable(warnings), true, "the warnings control stays reachable from the shelf");
-        const folded = await page.locator("main > .shelf").getAttribute("data-folded") !== null;
+        const folded = await page.locator("main > footer .shelf").getAttribute("data-folded") !== null;
         assert.equal(await warnings.getByText(folded ? "! 2" : "2 warnings", { exact: true }).isVisible(), true, "warning and closest-match choices have a visible cue before opening");
         await warnings.press("Space");
         dialog = page.getByRole("region", { name: "Citation warnings", exact: true });
@@ -542,7 +542,7 @@ try {
           assert.equal(await reachable(meaning), true, "every warning, reference-entry explanation and closest-match provenance is reachable");
         }
       } else {
-        const shelfReason = page.locator("main > .shelf .shelf-output p");
+        const shelfReason = page.locator("main > footer .shelf .shelf-output p");
         await shelfReason.waitFor();
         assert.equal(await shelfReason.textContent(), noticeText.formatting, "the reason appears beside the failed citation before Details opens");
         assert.equal(await shelfReason.getAttribute("role"), "alert", "the shelf announces the refusal once, before Details");
@@ -556,7 +556,7 @@ try {
         assert.equal(await reachable(dialog.getByText(noticeText.formatting, { exact: true })), true, "both ends of the full refusal are reachable");
       }
       await checkScan("details leave whole fixed bands and one active scroller");
-      const shelf = await page.locator("main > .shelf").boundingBox();
+      const shelf = await page.locator("main > footer .shelf").boundingBox();
       assert.deepEqual(shelf, beforeShelf, "opening details does not grow or move the shelf");
       await closeEditor(dialog);
       await checkScan("closing details restores the one browsing scroller");

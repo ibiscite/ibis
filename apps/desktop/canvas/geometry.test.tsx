@@ -3,7 +3,7 @@ import { expect, test, vi } from "vitest";
 import { CitationDetails } from "../src/ui/CitationDetails";
 import { Band } from "../src/ui/Band";
 import { Progress } from "../src/ui/Progress";
-import { anchorMoves, geometry, layerRoles, occlusion, overflow, paintOnly } from "./geometry";
+import { anchorMoves, geometry, layerRoles, occlusion, overflow, paintOnly, rowsInView } from "./geometry";
 
 test("the frame guard catches an anchor that moves between states, and not an edge it does not hold", () => {
   const idle = { search: { start: 64, end: 600, top: 18, height: 36 }, "first row": { start: 8, end: 712, top: 90, height: 52 } };
@@ -115,7 +115,7 @@ test("footer geometry catches a short selector, status off the leading edge and 
     expect(failures()).toContainEqual("[C3] button.ui-button.more-button: plate ends 702.0, window inset 712.0");
     moreEnd = 712;
     statusX = 20; menuX = 20; menuBottom = 460;
-    expect(failures()).toContainEqual(expect.stringContaining("library menu starts 20.0, selector 8.0"));
+    expect(failures()).toContainEqual(expect.stringContaining("library menu spans 20.0–260.0, not its selector 8.0–218.0"));
     expect(failures()).toContainEqual(expect.stringContaining("must leave a gap above selector"));
   } finally { boxes.mockRestore(); view.unmount(); }
 });
@@ -182,4 +182,22 @@ test("the frame guard catches a frame that ends short of the window or past it",
     expect(frameFailures()).toEqual([]);
     boxes.mockRestore();
   } finally { edge.mockRestore(); view.unmount(); }
+});
+
+test("the dense list counts only rows wholly inside the list's scroller", () => {
+  const view = render(<main><div className="picker-content"><ul id="results">
+    {Array.from({ length: 10 }, (_, row) => <li key={row} role="option" aria-selected={row === 0} data-row={row} />)}
+  </ul></div></main>);
+  let bottom = 400;
+  const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this.matches(".picker-content")) return new DOMRect(0, 90, 720, bottom - 90);
+    // The highlighted row is two lines (52 px), the rest one (34 px).
+    const row = Number(this.dataset.row);
+    return new DOMRect(8, 90 + (row ? 52 + (row - 1) * 34 : 0), 704, row ? 32 : 52);
+  });
+  try {
+    expect(rowsInView(view.container)).toBe(8);
+    bottom = 340;
+    expect(rowsInView(view.container)).toBe(6);
+  } finally { boxes.mockRestore(); view.unmount(); }
 });

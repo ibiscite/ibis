@@ -102,7 +102,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
           expect(host.querySelector(".library-status-trigger")?.getAttribute("title")).toContain("190 references");
           if (scenario === "library-menu") expect(window.document.querySelector("#library-menu")?.textContent).toContain("Field Notes");
         }
-        if (scenario === "reference-details") expect(window.document.querySelector('.ui-popover [role="dialog"]')?.textContent).toContain("Page");
+        if (scenario === "reference-details") expect(window.document.querySelector('.ui-drawer[role="dialog"]')?.textContent).toContain("Page");
         if (scenario === "show-as-menu") expect([...window.document.querySelectorAll('[role="menuitemradio"]')].some((item) => item.textContent.includes("[-@synthetic0]"))).toBe(true);
         if (scenario === "reader") expect(host.textContent).toContain("Hide PDF");
       }

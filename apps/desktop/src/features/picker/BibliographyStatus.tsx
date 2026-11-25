@@ -2,16 +2,21 @@ import { say } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { LineNotice } from "../../ui/Frame";
 
-/** The bibliography beside a key citation. A key known to name a
- * different work is refused; a file that can't be read is only advice, and
- * the citation stays available. Either way the person can retry or find it. */
-export function bibliographyCheckNotice({ refusal, problem, onRetry, onLocate, disabled = false }: {
-  refusal: string | null; problem: string | null; onRetry?: () => void; onLocate?: () => void; disabled?: boolean;
-}) {
-  const message = refusal ?? problem;
-  if (!message) return null;
-  return <LineNotice key="bibliography-check" role={refusal ? "alert" : "status"} actions={<>
+type CheckFixes = { onRetry?: () => void; onLocate?: () => void; disabled?: boolean };
+
+/** Retry the check, or find the bibliography: the fixes for either kind of answer. */
+export function BibliographyCheckFixes({ onRetry, onLocate, disabled = false }: CheckFixes) {
+  return <>
     {onRetry && <Button size="small" label={say("project-check-retry")} isDisabled={disabled} onPress={onRetry} />}
     {onLocate && <Button size="small" label={say("project-check-locate")} isDisabled={disabled} onPress={onLocate} />}
-  </>}>{message}</LineNotice>;
+  </>;
+}
+
+/** The bibliography beside a key citation. A key known to name a different
+ * work is refused, and the delivery bar says so with these fixes; a file that
+ * can't be read is only advice, in the notice line, and the citation stays
+ * available. The fixes show once, beside the refusal when there is one. */
+export function bibliographyCheckNotice({ refused, problem, ...fixes }: CheckFixes & { refused: boolean; problem: string | null }) {
+  if (!problem) return null;
+  return <LineNotice key="bibliography-check" actions={refused ? undefined : <BibliographyCheckFixes {...fixes} />}>{problem}</LineNotice>;
 }

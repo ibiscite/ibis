@@ -86,7 +86,7 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
             if (locator) onLocatorChange({ ...locator, term: chosen });
           }} />
         <TextField aria-label={termName(term)} value={locator?.value ?? ""} onChange={(value) => onLocatorChange(value.trim() ? { term, value } : null)}>
-          <Input ref={field} autoFocus={autoFocus} placeholder={term === "page" ? say("citation-details-page-placeholder") : say("citation-details-locator-placeholder")} onKeyDown={submit} />
+          <Input ref={field} className="citation-locator-value" autoFocus={autoFocus} placeholder={term === "page" ? say("citation-details-page-placeholder") : say("citation-details-locator-placeholder")} onKeyDown={submit} />
           <Text slot="description" className="visually-hidden">{say("citation-details-page-hint")}</Text>
         </TextField>
       </div>

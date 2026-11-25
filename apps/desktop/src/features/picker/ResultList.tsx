@@ -118,6 +118,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
   const compact = density === "compact";
   // A match in the container is always named: the row may shorten the container.
   const why = hiddenMatch(r.matched);
+  const year = r.year ?? say("picker-no-date");
   return (
     <Option hoverAllowed={hoverAllowed}
       id={`result-${i}`}
@@ -155,19 +156,20 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
           <strong className="result-title" dir="auto">{r.sample && <><bdi>{say("setup-sample-label")}</bdi>{" · "}</>}{r.title}</strong>
           {/* Spoken pauses: the parts are separate on screen but one accessible name. */}
           <span className="visually-hidden">, </span>
-          {compact && r.first_author && <><span className="result-first-author" dir="auto">{abbreviatedAuthors(r) ? <>{r.first_author} {etAl()}</> : r.authors}</span><span className="visually-hidden">, </span></>}
-          <span className="result-year">{r.year ?? say("picker-no-date")}</span>
-          <span className="visually-hidden">, </span>
+          {!compact && <><span className="result-year">{year}</span><span className="visually-hidden">, </span></>}
         </span>
         <span className="result-meta">
           {/* Each clipping part takes its own text direction, so Latin text in a
-              right-to-left row is cut at its end. The separator is its own part. */}
+              right-to-left row is cut at its end. Each separator is its own part.
+              Compact puts the year among them: author · year · container. */}
           <span className="result-byline">
-            <span className="result-authors" dir="auto">
-              {abbreviatedAuthors(r) ? <><span aria-hidden="true">{r.first_author} {etAl()}</span><span className="visually-hidden">{r.authors}</span></> : r.authors}
-            </span>
-            {!compact && r.container && r.authors && <><span className="result-separator" aria-hidden="true">{" · "}</span>{pause}</>}
-            {!compact && r.container && <span className="result-container" dir="auto">{r.container}</span>}
+            {[
+              r.authors && <span key="authors" className="result-authors" dir="auto">
+                {abbreviatedAuthors(r) ? <><span aria-hidden="true">{r.first_author} {etAl()}</span><span className="visually-hidden">{r.authors}</span></> : r.authors}
+              </span>,
+              compact && <span key="year" className="result-year">{year}</span>,
+              r.container && <span key="container" className="result-container" dir="auto">{r.container}</span>,
+            ].filter(Boolean).flatMap((part, at) => at ? [<span key={`separator-${at}`} className="result-separator" aria-hidden="true">{" · "}</span>, <span key={`pause-${at}`} className="visually-hidden">, </span>, part] : [part])}
           </span>
           {library && <>{pause}<span className="result-library" dir="auto">{library}</span></>}
         </span>

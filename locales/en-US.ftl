@@ -441,7 +441,7 @@ general-paste-return-failed = Couldn’t return to your citation. Open Ibis with
 general-paste-stale = Already on, but still waiting? In System Settings, remove { $name } from the list, add this copy again, then turn it on.
 
 general-rows = Rows
-general-rows-description = Compact rows fit more references; comfortable rows show each one’s authors and source.
+general-rows-description = Compact rows fit more references, one line each; comfortable rows give every reference two lines.
 general-density-compact = Compact
 general-density-comfortable = Comfortable
 
@@ -1047,6 +1047,29 @@ picker-remove-named = Remove { $name } from citation
 picker-best-matches = Best matches
 picker-pasted-list = Pasted list
 picker-paste-into = Paste into { $app } · { $output }
+# The delivery bar's one action: what Enter does, naming where the citation goes and never its format.
+picker-bar-paste = Paste into { $app }
+picker-bar-paste-entries =
+    { $count ->
+        [one] Paste Entry into { $app }
+       *[other] Paste { $count } Entries into { $app }
+    }
+picker-bar-copy =
+    { $count ->
+        [one] Copy
+       *[other] Copy { $count } Citations
+    }
+picker-bar-copy-entries =
+    { $count ->
+        [one] Copy Entry
+       *[other] Copy { $count } Entries
+    }
+picker-bar-send = Send to Editor
+picker-bar-change = Change Citation
+# The first screen's practice: Enter pastes into Ibis itself, to try it.
+picker-bar-practice = Paste Here to Try
+# Said to a screen reader when Enter is pressed on a refused citation. $reason: why, in the engine's words.
+picker-bar-refused = Not pasted or copied. { $reason }
 picker-last-outcome = Last outcome. { $outcome }
 picker-closest-matches = Closest matches
 picker-closest-match = Closest match
@@ -1180,6 +1203,8 @@ picker-project-entry =
        *[dependency] This entry relies on a crossref, xdata or @string that can’t come with it. Export it from your reference manager, keeping its key.
     }
 picker-editor-waiting = Citing for your editor in { $format }. Esc cancels.
+# The header names the format an editor asked for; this line says only who asked.
+picker-editor-asking = Citing for your editor. Esc cancels.
 picker-send = Send · { $format }
 picker-delivery-editor = Editor
 picker-delivery-clipboard = Clipboard
