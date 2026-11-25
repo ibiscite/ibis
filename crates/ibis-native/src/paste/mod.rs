@@ -40,7 +40,7 @@ use capture::Selection;
 use delivery::CopyEvidence;
 #[cfg(target_os = "windows")]
 pub use delivery::key_release_failed;
-pub use delivery::with_paste_settings;
+pub use delivery::with_paste_setting;
 use delivery::{DeliveryRequest, Desk, deliver};
 pub use destination::{intended_paste, policy_decision};
 use input_fence::PostResult;
@@ -639,21 +639,31 @@ fn take_ticket<W>(pending: &mut Option<DeliveryTicket<W>>, token: Option<u32>) -
 }
 
 /// Paste into the captured app when it is safe to; the notice then says what happened.
-/// `settings` is the settings file the paste setting is read from.
+/// `setting` reads the paste setting from its owner when delivery decides.
 #[cfg(target_os = "macos")]
-pub fn deliver_copy(host: &impl macos::Host, settings: &std::path::Path, text: &str, token: Option<u32>) -> Delivered {
+pub fn deliver_copy(
+    host: &impl macos::Host,
+    setting: impl FnOnce() -> Option<bool>,
+    text: &str,
+    token: Option<u32>,
+) -> Delivered {
     let began = Instant::now();
     let proof = host.last_target().take_copy(text, token);
     let desk = macos::Mac::new(host, proof.as_ref(), began);
-    let outcome = with_paste_settings(settings, |enabled| deliver(&desk, proof.as_ref(), enabled));
+    let outcome = with_paste_setting(setting, |enabled| deliver(&desk, proof.as_ref(), enabled));
     desk.complete(&outcome);
     outcome
 }
 
 #[cfg(target_os = "linux")]
-pub fn deliver_copy(last: &LastTarget, settings: &std::path::Path, text: &str, token: Option<u32>) -> Delivered {
+pub fn deliver_copy(
+    last: &LastTarget,
+    setting: impl FnOnce() -> Option<bool>,
+    text: &str,
+    token: Option<u32>,
+) -> Delivered {
     let proof = last.take_copy(text, token);
-    with_paste_settings(settings, |enabled| deliver(&CopyOnly, proof.as_ref(), enabled))
+    with_paste_setting(setting, |enabled| deliver(&CopyOnly, proof.as_ref(), enabled))
 }
 
 /// Linux captures no target, so it only copies.

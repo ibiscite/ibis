@@ -406,37 +406,30 @@ fn pasted() -> Delivered {
 }
 
 #[test]
-fn settings_failures_keep_the_citation_copied_after_reopening() {
-    let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-    let path = directory.path().join("settings.json");
+fn the_paste_setting_is_read_when_delivery_decides_and_unreadable_only_copies() {
     let desk = Fake::new();
-    let deliver = || with_paste_settings(&path, |enabled| super::deliver(&desk, Some(&proof()), enabled));
-    assert_eq!(deliver(), pasted(), "first-run defaults still allow paste");
-    desk.posts.borrow_mut().clear();
-    std::fs::write(&path, r#"{"paste":false}"#).unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(deliver(), copied("paste-off"));
-    // The same read is used again after closing and reopening the picker.
-    for _ in 0..2 {
-        std::fs::write(&path, "{").unwrap_or_else(|e| panic!("{e}"));
-        std::fs::write(path.with_extension("json.bak"), r#"{"paste":true}"#).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(deliver(), copied("paste-unavailable"));
-        std::fs::write(&path, format!("{{}}{}", " ".repeat(1024 * 1024))).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(
-            deliver(),
-            copied("paste-unavailable"),
-            "oversized settings cannot use backup consent"
-        );
-        std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
-        std::fs::create_dir(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(
-            deliver(),
-            copied("paste-unavailable"),
-            "failed I/O cannot use backup consent"
-        );
-        std::fs::remove_dir(&path).unwrap_or_else(|e| panic!("{e}"));
-    }
+    // The proof was taken with Paste on; the setting is read only now.
+    let proof = proof();
+    let reads = Cell::new(0);
+    let deliver = |setting: Option<bool>| {
+        with_paste_setting(
+            || {
+                reads.set(reads.get() + 1);
+                setting
+            },
+            |enabled| super::deliver(&desk, Some(&proof), enabled),
+        )
+    };
+    assert_eq!(
+        deliver(Some(false)),
+        copied("paste-off"),
+        "Paste turned off after capture"
+    );
+    assert_eq!(deliver(None), copied("paste-unavailable"), "an unreadable setting");
     assert!(desk.posts.borrow().is_empty());
     assert_eq!(desk.asked.get(), 0);
+    assert_eq!(reads.get(), 2, "one read per delivery");
+    assert_eq!(deliver(Some(true)), pasted());
 }
 
 #[test]

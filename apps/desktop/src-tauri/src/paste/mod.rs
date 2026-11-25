@@ -21,7 +21,7 @@ use ibis_native::paste::{
     queries::{PasswordQueries, display_name},
     tickets::{TicketDesk, deliver_ticket},
     windows::Window,
-    with_paste_settings,
+    with_paste_setting,
 };
 use ibis_native::paste::{SYSTEM, intended_paste, policy_decision};
 use tauri::{AppHandle, Manager};
@@ -90,10 +90,19 @@ impl ibis_native::paste::macos::Host for Host {
             .state::<crate::destination::AppMemory>()
             .paste_for(id, identity)
             .ok()?;
-        let settings = ibis_engine::settings::load(&self.0.state::<crate::preferences::SettingsFile>().path);
-        let settings = settings.cites().ok()?;
-        Some((preference, settings.portable.paste()))
+        Some((preference, paste_setting(&self.0)?))
     }
+}
+
+/// The paste setting as the settings file holds it now, or `None` when the
+/// file cannot be used for consent: delivery then only copies. A damaged
+/// file never falls back to its backup's choice.
+fn paste_setting(app: &AppHandle) -> Option<bool> {
+    read_paste_setting(&app.state::<crate::preferences::SettingsFile>().path)
+}
+
+fn read_paste_setting(path: &std::path::Path) -> Option<bool> {
+    Some(ibis_engine::settings::load(path).cites().ok()?.portable.paste())
 }
 
 /// Serialize successful policy changes with proof publication and native
@@ -229,17 +238,53 @@ pub(crate) fn deliver_copy(app: &AppHandle, text: &str, ticket: Option<DeliveryT
     let Some(ticket) = ticket else {
         return Delivered::copied(CopyReason::PasteUnavailable);
     };
-    with_paste_settings(&app.state::<crate::preferences::SettingsFile>().path, |enabled| {
-        deliver_ticket(&desk, &ticket, text, enabled)
-    })
+    with_paste_setting(
+        || paste_setting(app),
+        |enabled| deliver_ticket(&desk, &ticket, text, enabled),
+    )
 }
 
 /// Paste into the captured app when it is safe to; the notice then says what happened.
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn deliver_copy(app: &AppHandle, text: &str, token: Option<u32>) -> Delivered {
-    let settings = app.state::<crate::preferences::SettingsFile>();
+    let setting = || paste_setting(app);
     #[cfg(target_os = "macos")]
-    return ibis_native::paste::deliver_copy(&Host(app.clone()), &settings.path, text, token);
+    return ibis_native::paste::deliver_copy(&Host(app.clone()), setting, text, token);
     #[cfg(target_os = "linux")]
-    ibis_native::paste::deliver_copy(&app.state::<LastTarget>(), &settings.path, text, token)
+    ibis_native::paste::deliver_copy(&app.state::<LastTarget>(), setting, text, token)
+}
+
+#[cfg(test)]
+mod setting_tests {
+    use super::read_paste_setting;
+
+    /// Moved from `ibis-native` with the settings read: consent comes only
+    /// from a usable settings file, never a backup, across reopenings.
+    #[test]
+    fn settings_failures_keep_the_citation_copied_after_reopening() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("settings.json");
+        assert_eq!(
+            read_paste_setting(&path),
+            Some(true),
+            "first-run defaults still allow paste"
+        );
+        std::fs::write(&path, r#"{"paste":false}"#).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(read_paste_setting(&path), Some(false));
+        for _ in 0..2 {
+            std::fs::write(&path, "{").unwrap_or_else(|e| panic!("{e}"));
+            std::fs::write(path.with_extension("json.bak"), r#"{"paste":true}"#).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(read_paste_setting(&path), None);
+            std::fs::write(&path, format!("{{}}{}", " ".repeat(1024 * 1024))).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(
+                read_paste_setting(&path),
+                None,
+                "oversized settings cannot use backup consent"
+            );
+            std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
+            std::fs::create_dir(&path).unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(read_paste_setting(&path), None, "failed I/O cannot use backup consent");
+            std::fs::remove_dir(&path).unwrap_or_else(|e| panic!("{e}"));
+        }
+    }
 }
