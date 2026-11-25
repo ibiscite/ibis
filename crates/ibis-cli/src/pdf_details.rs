@@ -298,9 +298,9 @@ fn push(open: &mut Option<Open>, text: &str) {
         Some((value, _)) => value,
         None => &mut current.text,
     };
-    if target.len() + text.len() <= MAX_VALUE_BYTES {
-        target.push_str(text);
-    }
+    // Past the bound the value is cut, as the parent would cut it.
+    let room = MAX_VALUE_BYTES.saturating_sub(target.len());
+    target.push_str(&truncated(text.to_owned(), room));
 }
 
 fn keep(found: &mut BTreeMap<&'static str, Vec<String>>, property: &'static str, value: &str) {
