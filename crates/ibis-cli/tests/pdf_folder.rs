@@ -116,8 +116,8 @@ fn a_kept_folder_cites_what_its_pdfs_said_and_nothing_else() {
 
     let found = folder.json(&["search", "atlas"]).to_string();
     assert!(found.contains("lee2026invented"), "{found}");
-    let cited = folder.json(&["cite", "lee2026invented", "--style", "apa"]);
-    assert!(cited["text"].as_str().unwrap().contains("Lee"), "{cited}");
+    let cited = folder.json(&["cite", "lee2026invented", "--style", "apa"]).to_string();
+    assert!(cited.contains("(Lee, 2026)"), "{cited}");
 
     // A PDF that said nothing is listed but not cited: there is nothing to cite it by.
     let (status, stdout, stderr) = folder.with_folder(&["cite", "tide", "--style", "apa", "--json"]);
