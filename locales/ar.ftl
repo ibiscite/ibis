@@ -431,7 +431,7 @@ general-paste-return-failed = تعذّرت العودة إلى استشهادك.
 general-paste-stale = مفعّل بالفعل، لكنه لا يزال ينتظر؟ في إعدادات النظام، أزل { $name } من القائمة، وأضف هذه النسخة مجددًا، ثم فعّلها.
 
 general-rows = الصفوف
-general-rows-description = الصفوف المضغوطة تعرض مراجع أكثر، والمريحة تعرض مؤلفي كل مرجع ومصدره.
+general-rows-description = الصفوف المضغوطة تعرض مراجع أكثر، سطرًا لكل مرجع؛ والمريحة تمنح كل مرجع سطرين.
 general-density-compact = مضغوطة
 general-density-comfortable = مريحة
 
@@ -1039,6 +1039,38 @@ picker-remove-named = إزالة { $name } من الاستشهاد
 picker-best-matches = أفضل التطابقات
 picker-pasted-list = القائمة الملصقة
 picker-paste-into = لصق في { $app } · { $output }
+picker-bar-paste = لصق في { $app }
+picker-bar-paste-entries =
+    { $count ->
+        [zero] لا مُدخلات للصق في { $app }
+        [one] لصق مُدخل في { $app }
+        [two] لصق مُدخلين في { $app }
+        [few] لصق { $count } مُدخلات في { $app }
+        [many] لصق { $count } مُدخلًا في { $app }
+       *[other] لصق { $count } مُدخل في { $app }
+    }
+picker-bar-copy =
+    { $count ->
+        [zero] لا استشهادات للنسخ
+        [one] نسخ
+        [two] نسخ استشهادين
+        [few] نسخ { $count } استشهادات
+        [many] نسخ { $count } استشهادًا
+       *[other] نسخ { $count } استشهاد
+    }
+picker-bar-copy-entries =
+    { $count ->
+        [zero] لا مُدخلات للنسخ
+        [one] نسخ مُدخل
+        [two] نسخ مُدخلين
+        [few] نسخ { $count } مُدخلات
+        [many] نسخ { $count } مُدخلًا
+       *[other] نسخ { $count } مُدخل
+    }
+picker-bar-send = إرسال إلى المحرر
+picker-bar-change = تغيير الاستشهاد
+picker-bar-practice = الصق هنا للتجربة
+picker-bar-refused = لم يُلصق أو يُنسخ شيء. { $reason }
 picker-last-outcome = آخر نتيجة: { $outcome }
 picker-closest-matches = أقرب التطابقات
 picker-closest-match = تطابق تقريبي
@@ -1192,6 +1224,7 @@ picker-project-entry =
        *[dependency] يعتمد هذا المُدخل على crossref أو xdata أو @string لا يمكن نسخه معه. صدّره من مدير المراجع، مع الاحتفاظ بمفتاحه.
     }
 picker-editor-waiting = استشهاد لمحررك بتنسيق { $format }. Esc للإلغاء.
+picker-editor-asking = استشهاد لمحررك. Esc للإلغاء.
 picker-send = إرسال · { $format }
 picker-delivery-editor = المحرر
 picker-delivery-clipboard = الحافظة
