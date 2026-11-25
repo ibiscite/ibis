@@ -102,7 +102,33 @@ fn paste_setting(app: &AppHandle) -> Option<bool> {
 }
 
 fn read_paste_setting(path: &std::path::Path) -> Option<bool> {
-    Some(ibis_engine::settings::load(path).cites().ok()?.portable.paste())
+    paste_consent(&ibis_engine::settings::load(path))
+}
+
+fn paste_consent(loaded: &ibis_engine::settings::Loaded) -> Option<bool> {
+    Some(loaded.cites().ok()?.portable.paste())
+}
+
+/// Turning Paste off, by any route (Settings, the picker, a restore or an
+/// edit to the file), revokes every copy already on its way to a paste: a
+/// detached ticket's final checks then refuse. So does a settings file that
+/// can no longer give consent. Delivery also reads the setting when it starts.
+pub(crate) fn revoke_when_paste_changes(app: &AppHandle) {
+    let file = app.state::<crate::preferences::SettingsFile>();
+    let known = std::sync::Mutex::new(paste_consent(&file.owner.view()));
+    let app = app.clone();
+    file.owner.on_publish(move |loaded| {
+        if consent_changed(&known, paste_consent(loaded)) {
+            let _ = change_destination(&app, true, |_| Ok(()));
+        }
+    });
+}
+
+/// Whether consent differs from the last view; a poisoned record counts as changed.
+fn consent_changed(known: &std::sync::Mutex<Option<bool>>, now: Option<bool>) -> bool {
+    known
+        .lock()
+        .map_or(true, |mut known| std::mem::replace(&mut *known, now) != now)
 }
 
 /// Serialize successful policy changes with proof publication and native
@@ -243,7 +269,17 @@ pub(crate) fn deliver_copy(app: &AppHandle, _text: &str, token: Option<u32>) -> 
 
 #[cfg(test)]
 mod setting_tests {
-    use super::read_paste_setting;
+    use super::{consent_changed, read_paste_setting};
+
+    #[test]
+    fn every_change_of_consent_revokes_and_repeats_do_not() {
+        let known = std::sync::Mutex::new(Some(true));
+        assert!(!consent_changed(&known, Some(true)), "an unrelated save");
+        assert!(consent_changed(&known, Some(false)), "Paste turned off");
+        assert!(!consent_changed(&known, Some(false)));
+        assert!(consent_changed(&known, None), "a file that cannot give consent");
+        assert!(consent_changed(&known, Some(true)), "Paste back on");
+    }
 
     /// Moved from `ibis-native` with the settings read: consent comes only
     /// from a usable settings file, never a backup, across reopenings.
