@@ -20,7 +20,7 @@ fn the_engine_checks_a_manuscript_through_the_child() {
         .unwrap()
         .without_file_watches()
         .with_document_reader(env!("CARGO_BIN_EXE_ibis").into());
-    engine.open_file(&library, &Cancellation::default()).unwrap();
+    engine.open_file_observed(&library, &Cancellation::default()).unwrap();
     let request = CheckRequest {
         document: draft.clone(),
         set: None,
