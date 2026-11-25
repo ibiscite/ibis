@@ -112,7 +112,6 @@ pub fn scan(kind: TextKind, text: &str, stop: &dyn Fn() -> bool) -> Manuscript {
 struct Places<'a> {
     text: &'a str,
     line: usize,
-    line_start: usize,
     offset: usize,
     column: usize,
 }
@@ -122,7 +121,6 @@ impl<'a> Places<'a> {
         Self {
             text,
             line: 1,
-            line_start: 0,
             offset: 0,
             column: 1,
         }
@@ -138,7 +136,6 @@ impl<'a> Places<'a> {
             if c == '\n' {
                 self.line += 1;
                 self.column = 1;
-                self.line_start = self.offset;
             } else {
                 self.column += 1;
             }
@@ -218,7 +215,7 @@ fn mask_markdown(text: &str, work: &mut Work<'_>) -> Option<String> {
                 }
             }
             None if indent < 4 => {
-                for mark in [b'`', b'~'] {
+                for mark in *b"`~" {
                     let length = run(mark);
                     if length >= 3 && !(mark == b'`' && trimmed[length..].contains('`')) {
                         fence = Some((mark, length, start));
@@ -602,8 +599,8 @@ fn typst_text(original: &str, text: &str, work: &mut Work<'_>, places: &mut Plac
     while let Some(offset) = work.find(&text[at..], |c| c == '@' || c == '#' || c == '\\') {
         let start = at + offset;
         let rest = &text[start..];
-        if rest.starts_with('\\') {
-            at = start + 1 + rest[1..].chars().next().map_or(0, char::len_utf8);
+        if let Some(escaped) = rest.strip_prefix('\\') {
+            at = start + 1 + escaped.chars().next().map_or(0, char::len_utf8);
             continue;
         }
         if rest.starts_with('#') {
