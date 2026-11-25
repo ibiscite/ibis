@@ -65,7 +65,9 @@ inputs → model → operations → outputs → thin front ends
 - **Inputs:** sources (Zotero, `.bib`, CSL-JSON, RIS, EndNote, adapters, a
   folder of PDFs) and documents (Markdown, Quarto, LaTeX, Typst, DOCX, ODT).
   Untrusted parsers run in a child process of `ibis`.
-- **Model:** five nouns. A **Source** is a snapshot with declared capabilities.
+- **Model:** five nouns
+  ([0059](docs/decisions/0059-works-with-nothing-better-with-more.md)). A
+  **Source** is a snapshot with declared capabilities.
   A **Selection** is ordered references with optional anchors, prefixes,
   suffixes and forms. An **Anchor** is a place inside content; a locator is a
   projection of it. A **Context** resolves optional facts (app, site, project,
@@ -79,8 +81,7 @@ inputs → model → operations → outputs → thin front ends
   targets. Rows say what they offer or `needs`, their `network` use and whether
   they are a `palette` verb. Consent screens, PRIVACY.md, MCP tools, the ⌘K list
   and the compatibility guide derive from them.
-- **Front ends** are projections with no handlers of their own
-  ([0059](docs/decisions/0059-works-with-nothing-better-with-more.md)). Settings have
+- **Front ends** are projections with no handlers of their own. Settings have
   one schema; everything Ibis says reaches people as a `Problem` in the notice
   slot.
 
@@ -166,9 +167,9 @@ all three systems; one ⌘K list.
 - **Foundations,** each just before its feature: 0057 steps 3 to 12 with the
   three row fields, which finish moving the app onto the engine (0052); the
   Selection request replacing the separate item shapes of `cite`, `records` and
-  `share`; one output descriptor replacing the output booleans; the whole Anchor type replacing the two page vocabularies; the
-  `writings` settings key renamed `projects`; the picker controller owning its
-  asynchronous work.
+  `share`; one output descriptor replacing the output booleans; the whole
+  Anchor type replacing the two page vocabularies; the `writings` settings key
+  renamed `projects`; the picker controller owning its asynchronous work.
 - **Checks:** tests of supported outcomes instead of source or CSS text;
   generated action and race sequences for the picker, Settings and delivery,
   with fake time and reviewed engine snapshots; published engine and CLI limits
