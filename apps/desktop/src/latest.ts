@@ -42,14 +42,18 @@ export function latest<S>(initial: S): Latest<S> {
   const outsideReducer = () => {
     if (reducing) throw new Error("A reducer returns the next state; it cannot begin, commit or retire work.");
   };
-  const apply = (reduce: Reduce<S>) => {
+  const apply = (reduce: Reduce<S>, after?: () => void) => {
     reducing = true;
     let next: S;
-    try { next = reduce(state); } finally { reducing = false; }
-    if (typeof (next as { then?: unknown } | null)?.then === "function") throw new TypeError("A reducer returns the next state, not a promise.");
-    if (Object.is(next, state)) return;
+    try {
+      next = reduce(state);
+      // Still inside the guard: a `then` getter cannot begin or commit work either.
+      if (typeof (next as { then?: unknown } | null)?.then === "function") throw new TypeError("A reducer returns the next state, not a promise.");
+    } finally { reducing = false; }
+    const changed = !Object.is(next, state);
     state = next;
-    for (const listener of [...listeners]) listener();
+    // A commit's effects come before any listener can begin newer work.
+    try { after?.(); } finally { if (changed) for (const listener of [...listeners]) listener(); }
   };
   const begin = (): Stamp<S> => {
     outsideReducer();
@@ -60,8 +64,7 @@ export function latest<S>(initial: S): Latest<S> {
         outsideReducer();
         if (!open || active !== identity) return;
         active = null;
-        apply(reduce);
-        after?.();
+        apply(reduce, after);
       },
     };
   };

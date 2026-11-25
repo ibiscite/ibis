@@ -192,3 +192,24 @@ test("after and listeners may begin newer work once the state is published", () 
   newer?.commit((n) => n + 1);
   expect(seen).toEqual([1, 2]);
 });
+
+test("a commit's effects run before a listener can begin newer work", () => {
+  const owner = latest("none");
+  const effects: string[] = [];
+  let once = true;
+  owner.subscribe(() => {
+    if (!once) return;
+    once = false;
+    owner.begin().commit(() => "b", () => effects.push("b"));
+  });
+  owner.begin().commit(() => "a", () => effects.push("a"));
+  expect(effects).toEqual(["a", "b"]);
+  expect(owner.getSnapshot()).toBe("b");
+});
+
+test("checking a result for a promise cannot commit other work", () => {
+  const owner = latest<unknown>("none");
+  const sneaky = { get then() { owner.begin().commit(() => "b"); return undefined; } };
+  expect(() => owner.begin().commit(() => sneaky)).toThrow(/reducer/);
+  expect(owner.getSnapshot()).toBe("none");
+});

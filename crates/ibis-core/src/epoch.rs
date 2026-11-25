@@ -11,13 +11,20 @@
 //! same stamp, so a stale failure never publishes either.
 //!
 //! Hold no guard across an `await`: reserve the stamp when the work is asked
-//! for, compute the result outside, then commit it. Updates run under the
-//! lock, so one that calls back into its own epoch deadlocks.
+//! for, compute the result outside, then commit it.
+//!
+//! Caller rule: updates run under the epoch's lock, so an update must not
+//! call its own epoch or one of that epoch's stamps; that deadlocks. Updating
+//! a different epoch from inside an update is fine when every caller takes
+//! them in the same order.
 
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
 
 /// State that newer work replaces, with the one identity allowed to commit.
+///
+/// Every closure passed in runs under this epoch's lock and must not call
+/// this epoch or its stamps (see the module's caller rule).
 pub struct Epoch<S> {
     shared: Arc<Mutex<Inner<S>>>,
 }
