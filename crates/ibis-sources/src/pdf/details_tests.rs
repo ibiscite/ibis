@@ -56,7 +56,6 @@ fn titles_that_name_a_file_or_a_template_are_unknown() {
         "/Users/invented/tides",
         "  \u{7}  ",
         "\u{fffd}\u{fffd}\u{fffd}\u{fffd}",
-        "12345678",
     ] {
         let details = checked_details(said(titled(noise), Stated::default(), "")).unwrap();
         assert_eq!(details.title, None, "{noise:?}");
@@ -208,4 +207,47 @@ fn an_answer_past_a_bound_is_refused() {
         "",
     );
     assert_eq!(checked_details(answer), Err(Refusal::TooLarge));
+}
+
+#[test]
+fn a_numeric_title_is_a_title() {
+    let details = checked_details(said(titled("2049"), Stated::default(), "")).unwrap();
+    assert_eq!(details.title.as_deref(), Some("2049"));
+}
+
+#[test]
+fn a_value_longer_than_the_child_sends_refuses_the_answer() {
+    let info = Stated {
+        creators: vec!["A;".repeat(MAX_STATED_BYTES)],
+        ..Stated::default()
+    };
+    assert_eq!(
+        checked_details(said(info, Stated::default(), "")),
+        Err(Refusal::TooLarge)
+    );
+    let info = Stated {
+        creators: vec!["Invented Person;".repeat(200)[..MAX_STATED_BYTES].to_owned()],
+        ..Stated::default()
+    };
+    assert!(
+        checked_details(said(info, Stated::default(), ""))
+            .unwrap()
+            .authors
+            .len()
+            <= MAX_LIST
+    );
+}
+
+#[test]
+fn a_page_with_more_dois_than_one_scan_reports_gives_no_candidate() {
+    let page = format!(
+        "{}10.5555/b",
+        "10.5555/a ".repeat(ibis_core::identifier::MAX_DOIS_FOUND)
+    );
+    assert_eq!(
+        checked_details(said(Stated::default(), Stated::default(), &page))
+            .unwrap()
+            .page_doi,
+        None
+    );
 }

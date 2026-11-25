@@ -143,19 +143,30 @@ fn xmp(packet: &str) -> Stated {
     }
 }
 
+/// The namespace declarations in scope, one list per open element: each
+/// prefix with the usual prefix of its namespace, or `None` for a namespace
+/// this reader does not know.
 struct Names {
-    /// Prefix to the usual prefix of its namespace, as declared so far.
-    prefixes: BTreeMap<String, &'static str>,
+    scopes: Vec<Vec<(String, Option<&'static str>)>>,
 }
 impl Names {
-    /// `prefix:local` with its prefix made the usual one, when known.
+    /// `prefix:local` with its prefix made the usual one, when it is bound to
+    /// a known namespace, or, when nothing in scope binds it, is itself a
+    /// usual prefix.
     fn usual(&self, name: &str) -> Option<(&'static str, String)> {
         let (prefix, local) = name.split_once(':')?;
-        let usual = self.prefixes.get(prefix).copied().or_else(|| {
-            ["dc", "prism", "pdfx", "crossmark", "rdf"]
+        let bound = self
+            .scopes
+            .iter()
+            .rev()
+            .flat_map(|scope| scope.iter().rev())
+            .find(|(declared, _)| declared == prefix);
+        let usual = match bound {
+            Some((_, usual)) => (*usual)?,
+            None => ["dc", "prism", "pdfx", "crossmark", "rdf"]
                 .into_iter()
-                .find(|usual| *usual == prefix)
-        })?;
+                .find(|usual| *usual == prefix)?,
+        };
         Some((usual, local.to_owned()))
     }
     fn property(&self, name: &str) -> Option<&'static str> {
@@ -189,9 +200,7 @@ struct Stop;
 fn read_xmp(packet: &str, found: &mut BTreeMap<&'static str, Vec<String>>) -> Result<(), Stop> {
     let mut reader = Reader::from_str(packet);
     reader.config_mut().expand_empty_elements = true;
-    let mut names = Names {
-        prefixes: BTreeMap::new(),
-    };
+    let mut names = Names { scopes: Vec::new() };
     let mut depth = 0usize;
     let mut open: Option<Open> = None;
     let mut work = 0usize;
@@ -215,6 +224,7 @@ fn read_xmp(packet: &str, found: &mut BTreeMap<&'static str, Vec<String>>) -> Re
                     return Err(Stop);
                 }
                 let mut attributes = Vec::new();
+                let mut declared = Vec::new();
                 for (index, attribute) in tag.attributes().enumerate() {
                     let attribute = attribute.map_err(|_| Stop)?;
                     let key: &str = attribute.key.as_ref();
@@ -222,13 +232,12 @@ fn read_xmp(packet: &str, found: &mut BTreeMap<&'static str, Vec<String>>) -> Re
                         return Err(Stop);
                     }
                     let value = quick_xml::escape::unescape(&attribute.value).map_err(|_| Stop)?;
-                    if let Some(prefix) = key.strip_prefix("xmlns:")
-                        && let Some(usual) = known_namespace(&value)
-                    {
-                        names.prefixes.insert(prefix.to_owned(), usual);
+                    if let Some(prefix) = key.strip_prefix("xmlns:") {
+                        declared.push((prefix.to_owned(), known_namespace(&value)));
                     }
                     attributes.push((key.to_owned(), value.into_owned()));
                 }
+                names.scopes.push(declared);
                 if let Some(current) = &mut open {
                     if names.is_rdf(name, "li") {
                         let default = attributes
@@ -279,6 +288,8 @@ fn read_xmp(packet: &str, found: &mut BTreeMap<&'static str, Vec<String>>) -> Re
                         current.values.push(value);
                     }
                 }
+                // The element's own declarations held for its end tag too.
+                names.scopes.pop();
                 depth = depth.checked_sub(1).ok_or(Stop)?;
             }
             Event::Text(text) => push(&mut open, &text.xml10_content()),

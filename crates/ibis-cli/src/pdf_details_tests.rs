@@ -106,3 +106,17 @@ fn the_child_answers_details_when_asked() {
     };
     assert_eq!(said.info.title.as_deref(), Some("Invented Info Title"));
 }
+
+#[test]
+fn prefixes_mean_what_their_scope_declares() {
+    let xmp = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description xmlns:prism="urn:invented-unrelated" prism:doi="10.5555/other"><prism:publicationName>Not a journal</prism:publicationName></rdf:Description>
+<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Scoped Title</dc:title></rdf:Description>
+<rdf:Description><dc:title>Out of scope, read by its usual prefix</dc:title></rdf:Description>
+</rdf:RDF></x:xmpmeta>"#;
+    let pdf = invented_pdf_with_details(&["Invented page."], &[], Some(xmp));
+    let xmp = details(&pdf).unwrap().xmp;
+    assert_eq!(xmp.doi, None);
+    assert_eq!(xmp.container, None);
+    assert_eq!(xmp.title.as_deref(), Some("Scoped Title"));
+}

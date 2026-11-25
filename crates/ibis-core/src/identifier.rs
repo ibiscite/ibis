@@ -43,33 +43,34 @@ pub fn parse_query(query: &str) -> Option<Identifier> {
 /// Longer pasted text is searched as words, never as an identifier.
 const MAX_QUERY_LEN: usize = 512;
 
-/// The most DOIs [`dois_in`] reports for one text.
-const MAX_FOUND: usize = 32;
+/// The most DOIs [`dois_in`] reports for one text. A caller that needs every
+/// DOI of a text treats a result this long as incomplete.
+pub const MAX_DOIS_FOUND: usize = 32;
 
 /// Each DOI written in running text, canonical, in order: bare (`10.…/…`),
 /// after `doi:` or inside a `doi.org` link. A DOI is one word, so it ends at
-/// white space, and sentence punctuation after it is not part of it. The
-/// scan is linear in the text and stops after 32 DOIs.
+/// white space, and sentence punctuation after it is not part of it. Each
+/// word is read once and gives at most one DOI; words longer than any DOI
+/// are passed over. Stops after [`MAX_DOIS_FOUND`].
 pub fn dois_in(text: &str) -> Vec<String> {
     let mut found = Vec::new();
-    let mut rest = text;
-    while let Some(at) = rest.find("10.") {
-        let starts_word = rest[..at]
-            .chars()
-            .next_back()
-            .is_none_or(|before| !before.is_alphanumeric() && before != '.');
-        let word = &rest[at..];
-        let end = word.find(char::is_whitespace).unwrap_or(word.len());
-        if starts_word
-            && end <= MAX_QUERY_LEN
-            && let Some(value) = doi(trim_wrapping(&word[..end]))
-        {
+    for word in text.split_whitespace() {
+        if word.len() > MAX_QUERY_LEN || !word.contains("10.") {
+            continue;
+        }
+        // The first `10.` that starts a word part, as in `doi:10.…` or `/10.…`.
+        let start = word.match_indices("10.").map(|(at, _)| at).find(|&at| {
+            word[..at]
+                .chars()
+                .next_back()
+                .is_none_or(|before| !before.is_alphanumeric() && before != '.')
+        });
+        if let Some(value) = start.and_then(|at| doi(trim_wrapping(&word[at..]))) {
             found.push(value);
-            if found.len() == MAX_FOUND {
+            if found.len() == MAX_DOIS_FOUND {
                 break;
             }
         }
-        rest = &word[if starts_word { end.max(3) } else { 3 }..];
     }
     found
 }
@@ -433,7 +434,9 @@ mod tests {
                     See https://doi.org/10.5555/Second (ref. 12), and 10.5555/third.\n\
                     Not a DOI: v10.5555/x, 210.5555/y, 10.55/z, 10.5555/";
         assert_eq!(dois_in(text), ["10.5555/tides.2031", "10.5555/second", "10.5555/third"]);
-        assert!(dois_in(&"10.5555/a ".repeat(100)).len() == MAX_FOUND);
+        assert!(dois_in(&"10.5555/a ".repeat(100)).len() == MAX_DOIS_FOUND);
+        // Long words of rejected prefixes are read once each.
+        assert!(dois_in(&"x10.".repeat(16_384)).is_empty());
         assert!(dois_in("").is_empty());
     }
 

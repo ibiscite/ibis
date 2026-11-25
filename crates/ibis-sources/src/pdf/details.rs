@@ -24,6 +24,9 @@ pub const DETAIL_PAGES: usize = 2;
 pub const MAX_PAGE_TEXT_BYTES: usize = 64 * 1024;
 /// The most authors kept, as a reference manager would show them.
 const MAX_AUTHORS: usize = 50;
+/// The most bytes of one stated value the child may send: it cuts longer
+/// values to this, so a longer one means the answer cannot be trusted.
+pub const MAX_STATED_BYTES: usize = 4 * MAX_VALUE_CHARS;
 
 /// One metadata block as the file states it: the Info dictionary or the XMP
 /// packet. Every value is the file's own text, unchecked.
@@ -48,6 +51,27 @@ pub struct Stated {
     /// The publication date (`prism:coverDate` or `prism:publicationDate`),
     /// never the file's own dates.
     pub date: Option<String>,
+}
+
+impl Stated {
+    /// Every value the block states.
+    fn values(&self) -> impl Iterator<Item = &String> {
+        [
+            &self.title,
+            &self.publisher,
+            &self.doi,
+            &self.container,
+            &self.volume,
+            &self.issue,
+            &self.first_page,
+            &self.last_page,
+            &self.date,
+        ]
+        .into_iter()
+        .flatten()
+        .chain(&self.creators)
+        .chain(&self.identifiers)
+    }
 }
 
 /// The child's answer to a details request.
@@ -103,7 +127,10 @@ pub fn checked_details(said: Said) -> Result<PdfDetails, Refusal> {
         return Err(Refusal::TooLarge);
     }
     for block in [&said.info, &said.xmp] {
-        if block.creators.len() > MAX_LIST || block.identifiers.len() > MAX_LIST {
+        if block.creators.len() > MAX_LIST
+            || block.identifiers.len() > MAX_LIST
+            || block.values().any(|value| value.len() > MAX_STATED_BYTES)
+        {
             return Err(Refusal::TooLarge);
         }
     }
@@ -118,6 +145,7 @@ pub fn checked_details(said: Said) -> Result<PdfDetails, Refusal> {
             .creators
             .iter()
             .flat_map(|names| split_names(names))
+            .take(MAX_LIST)
             .filter_map(author)
             .collect();
     }
@@ -174,22 +202,20 @@ fn short(value: &str) -> bool {
     value.chars().count() <= 32
 }
 
-/// Titles that name a file or a template rather than a work, or have no
-/// letter at all.
+/// Titles that name a file or a template rather than a work.
 fn noise_title(title: &str) -> bool {
     let lower = title.to_lowercase();
-    !title.chars().any(char::is_alphabetic)
-        || [
-            "microsoft word -",
-            "microsoft powerpoint -",
-            "untitled",
-            "title",
-            "no title",
-            "document",
-            "slide 1",
-        ]
-        .iter()
-        .any(|noise| lower == *noise || noise.ends_with('-') && lower.starts_with(noise))
+    [
+        "microsoft word -",
+        "microsoft powerpoint -",
+        "untitled",
+        "title",
+        "no title",
+        "document",
+        "slide 1",
+    ]
+    .iter()
+    .any(|noise| lower == *noise || noise.ends_with('-') && lower.starts_with(noise))
         || file_name(&lower)
 }
 
@@ -292,6 +318,10 @@ fn page_doi(said: &Said) -> Option<String> {
         return None;
     }
     let mut found = ibis_core::identifier::dois_in(said.text.first()?);
+    // A page with more DOIs than one scan reports may hold another.
+    if found.len() == ibis_core::identifier::MAX_DOIS_FOUND {
+        return None;
+    }
     found.sort();
     found.dedup();
     (found.len() == 1).then(|| found.remove(0))
