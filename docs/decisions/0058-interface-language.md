@@ -19,6 +19,14 @@ Decided 2026-11-18 with German and Arabic, the 0.4 order's first item
 - **Citations keep their own language.** The style's or locale's language
   decides a citation and a bibliography; what is copied or pasted never depends
   on the interface language (`languages.test.tsx`).
+  Format names that are words (Keys only, Chicago (notes)) are translated in
+  the one output presentation (`format/outputs.ts`); proper names such as
+  Pandoc or APA are not.
+- **Settings outlive languages.** A language value this build does not speak,
+  from another build, follows the system without invalidating the settings
+  file.
+- **Left and right are on screen.** Move Left and Move Right, by key or from
+  More, go through one shelf action that reads the citation line's direction.
 - **Right to left by `dir` alone.** A right-to-left language sets `dir="rtl"`
   on the window; layout uses logical properties, and the few motions CSS has no
   logical form for multiply by `--inline-sign` (`tokens.css`). Glyphs that point

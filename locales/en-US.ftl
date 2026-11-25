@@ -632,6 +632,22 @@ settings-read-only = The settings file is read-only; the saved value is shown.
 
 citations-key-formats = Citation keys
 citations-style-formats = Citation styles
+# Output names and descriptions that are words, not proper names; English repeats the engine's own.
+output-name-pandoc-bare = Pandoc without brackets
+output-name-keys = Keys only
+output-name-doi-links = DOI links
+output-name-scannable-cite = Zotero RTF/ODF Scan
+output-name-chicago-author-date = Chicago (author-date)
+output-name-chicago-notes-bibliography = Chicago (notes)
+output-name-gb-numeric = GB/T 7714 (numeric)
+output-name-gb-author-date = GB/T 7714 (author-date)
+output-name-gb-note = GB/T 7714 (notes)
+output-description-apa = APA (7th edition)
+output-description-chicago-notes-bibliography = Chicago (notes and bibliography)
+output-description-mla = MLA (9th edition)
+output-description-gb-numeric = GB/T 7714-2025 (numeric)
+output-description-gb-author-date = GB/T 7714-2025 (author-date)
+output-description-gb-note = GB/T 7714-2025 (notes)
 citations-filter-formats = Filter formats
 look-sample-title-2 = Paths through the orchard
 look-sample-title-3 = A map of quiet places

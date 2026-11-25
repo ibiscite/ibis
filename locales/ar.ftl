@@ -625,6 +625,22 @@ settings-read-only = ملف الإعدادات للقراءة فقط؛ تظهر 
 
 citations-key-formats = مفاتيح الاستشهاد
 citations-style-formats = أنماط الاستشهاد
+# Output names and descriptions that are words, not proper names; English repeats the engine's own.
+output-name-pandoc-bare = Pandoc بلا أقواس
+output-name-keys = المفاتيح فقط
+output-name-doi-links = روابط DOI
+output-name-scannable-cite = مسح RTF/ODF من Zotero
+output-name-chicago-author-date = Chicago (المؤلف والتاريخ)
+output-name-chicago-notes-bibliography = Chicago (الحواشي)
+output-name-gb-numeric = GB/T 7714 (رقمي)
+output-name-gb-author-date = GB/T 7714 (المؤلف والتاريخ)
+output-name-gb-note = GB/T 7714 (الحواشي)
+output-description-apa = APA (الإصدار السابع)
+output-description-chicago-notes-bibliography = Chicago (الحواشي وقائمة المراجع)
+output-description-mla = MLA (الإصدار التاسع)
+output-description-gb-numeric = GB/T 7714-2025 (رقمي)
+output-description-gb-author-date = GB/T 7714-2025 (المؤلف والتاريخ)
+output-description-gb-note = GB/T 7714-2025 (الحواشي)
 citations-filter-formats = تصفية التنسيقات
 look-sample-title-2 = دروب عبر البستان
 look-sample-title-3 = خريطة للأماكن الهادئة

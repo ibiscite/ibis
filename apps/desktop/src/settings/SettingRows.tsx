@@ -7,7 +7,7 @@ import { PictureChoice } from "../ui/PictureChoice";
 import { Segmented } from "../ui/Segmented";
 import { Switch } from "../ui/Switch";
 import type { useSettingUndo } from "../ui/useSettingUndo";
-import { defaultOutput, defaultStyle, keyOutputs, listedOutput, outputName, styleOutputs } from "../format/outputs";
+import { defaultOutput, defaultStyle, keyOutputs, listedOutput, outputDescription, outputName, styleOutputs } from "../format/outputs";
 import { ToolbarMenu } from "../ui/ToolbarMenu";
 import { PickerPicture } from "./PickerPicture";
 import { PREFERENCES, REPORTED, rowDetails, type SettingRow, type NativeSetting } from "./rows";
@@ -98,6 +98,6 @@ function FormatControl({ label, value, keys, onChange }: { label: string; value:
   const selected = listedOutput(value) ?? (keys ? defaultOutput : defaultStyle);
   return <ToolbarMenu buttonRef={button} returnFocusRef={button} label={label} value={outputName(selected)} selectedKey={selected}
     sections={[{ id: "defaults", label: text(keys ? "citations-key-formats" : "citations-style-formats"),
-      items: (keys ? keyOutputs : styleOutputs).map((output) => ({ id: output.id, label: output.name, detail: output.description ?? undefined })) }]}
+      items: (keys ? keyOutputs : styleOutputs).map((output) => ({ id: output.id, label: outputName(output.id), detail: outputDescription(output.id) ?? undefined })) }]}
     filterLabel={text("citations-filter-formats")} onAction={(choice) => { const output = listedOutput(choice); if (output) onChange(output); }} />;
 }

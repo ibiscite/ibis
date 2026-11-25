@@ -621,6 +621,22 @@ settings-read-only = Die Einstellungsdatei ist schreibgeschützt; der gespeicher
 
 citations-key-formats = Zitierschlüssel
 citations-style-formats = Zitierstile
+# Output names and descriptions that are words, not proper names; English repeats the engine's own.
+output-name-pandoc-bare = Pandoc ohne Klammern
+output-name-keys = Nur Schlüssel
+output-name-doi-links = DOI-Links
+output-name-scannable-cite = Zotero-RTF/ODF-Scan
+output-name-chicago-author-date = Chicago (Autor-Jahr)
+output-name-chicago-notes-bibliography = Chicago (Fußnoten)
+output-name-gb-numeric = GB/T 7714 (numerisch)
+output-name-gb-author-date = GB/T 7714 (Autor-Jahr)
+output-name-gb-note = GB/T 7714 (Fußnoten)
+output-description-apa = APA (7. Auflage)
+output-description-chicago-notes-bibliography = Chicago (Fußnoten und Literaturverzeichnis)
+output-description-mla = MLA (9. Auflage)
+output-description-gb-numeric = GB/T 7714-2025 (numerisch)
+output-description-gb-author-date = GB/T 7714-2025 (Autor-Jahr)
+output-description-gb-note = GB/T 7714-2025 (Fußnoten)
 citations-filter-formats = Formate filtern
 look-sample-title-2 = Pfade durch den Obstgarten
 look-sample-title-3 = Eine Karte stiller Orte

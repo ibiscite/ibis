@@ -6,7 +6,9 @@ import { demoApi } from "../settings/demo";
 import { SettingsApp } from "../settings/SettingsApp";
 import { backend, resetApp, result } from "../testing/app";
 import { deliveryHarness } from "../testing/delivery";
+import { OUTPUTS } from "../bindings";
 import { InterfaceMessagesProvider, LANGUAGES, setInterfaceLanguage, type InterfaceLanguage } from ".";
+import { OUTPUT_DESCRIPTIONS, OUTPUT_NAMES } from "./outputs";
 
 const TRANSLATED: InterfaceLanguage[] = ["de", "ar"];
 afterEach(async () => { await resetApp(); setInterfaceLanguage("en-US"); });
@@ -88,3 +90,24 @@ test("what is copied and pasted is the same in every interface language", async 
 });
 
 beforeEach(() => { localStorage.clear(); });
+
+test.each(TRANSLATED)("Settings › Citations names its key formats in %s", async (language) => {
+  // Sol's probe: the key-format menu said "Keys only" in German and Arabic.
+  const messages = setInterfaceLanguage(language);
+  render(<InterfaceMessagesProvider messages={messages}><SettingsApp api={demoApi({ speaking: language })} initialPage="citations" /></InterfaceMessagesProvider>);
+  fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${messages.text("citations-keys")}`) }));
+  const menu = await screen.findByRole("menu");
+  const strip = (text: string) => text.replace(/[⁨⁩]/g, "");
+  expect(within(menu).getByRole("menuitemradio", { name: (name) => strip(name).startsWith(strip(messages.text("output-name-keys"))) })).toBeTruthy();
+  expect(within(menu).queryByRole("menuitemradio", { name: /Keys only|Pandoc without brackets/ })).toBeNull();
+  expect(untranslated(language)).toEqual([]);
+});
+
+test("the English output words are the engine's own", () => {
+  const messages = setInterfaceLanguage("en-US");
+  for (const output of OUTPUTS) {
+    const name = OUTPUT_NAMES[output.id as keyof typeof OUTPUT_NAMES], description = OUTPUT_DESCRIPTIONS[output.id as keyof typeof OUTPUT_DESCRIPTIONS];
+    if (name) expect(messages.text(name)).toBe(output.name);
+    if (description) expect(messages.text(description)).toBe(output.description);
+  }
+});
