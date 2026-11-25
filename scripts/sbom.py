@@ -15,9 +15,12 @@ downloads they describe:
   for its own target (static musl on Linux). Names differing only in case
   would collide on macOS and Windows.
 
-Crates are what Cargo.lock resolves for that platform through normal and build
-dependencies (never dev-only ones), each with its registry checksum; npm
-packages are pnpm's production list. The sbom job attests each package with
+Crates are what `cargo tree` shows the package linking for that platform with
+a release build's features, through normal and build dependencies (never
+dev-only or inactive optional ones), each with its registry checksum; the
+citeproc-js, CSL and Zotero files Ibis embeds come from their vendor
+manifests with upstream revisions and hashes; npm packages are pnpm's
+production list. The sbom job attests each package with
 its file, and publishing attaches the files to the release. Offline: Cargo
 reads the crates `cargo fetch` already fetched.
 """
@@ -59,45 +62,77 @@ def lock_checksums():
     return checksums
 
 
+# The features a release build turns on beyond the defaults (tauri build).
+RELEASE_FEATURES = {"ibis-desktop": ["tauri/custom-protocol"]}
+
+
 def crates(root_name, target):
-    """Third-party crates `root_name` links for `target`, as CycloneDX components."""
+    """Third-party crates `root_name` links for `target` with the features a
+    release build activates, as CycloneDX components (cargo tree, offline)."""
+    command = ["cargo", "tree", "--locked", "--offline", "-p", root_name, "--target", target, "-e", "normal,build",
+               "--prefix", "none", "--format", "{p}|{l}"]
+    for feature in RELEASE_FEATURES.get(root_name, []):
+        command += ["--features", feature]
     try:
-        out = subprocess.run(["cargo", "metadata", "--format-version", "1", "--locked", "--offline", "--filter-platform", target],
-                             cwd=ROOT, check=True, capture_output=True, text=True).stdout
+        out = subprocess.run(command, cwd=ROOT, check=True, capture_output=True, text=True).stdout
     except (OSError, subprocess.CalledProcessError) as error:
-        fail(f"cargo metadata failed for {target}: {error}")
-    metadata = json.loads(out)
-    packages = {package["id"]: package for package in metadata["packages"]}
-    nodes = {node["id"]: node for node in metadata["resolve"]["nodes"]}
-    roots = [package["id"] for package in metadata["packages"] if package["name"] == root_name and package["source"] is None]
-    if len(roots) != 1:
-        fail(f"no single workspace crate {root_name}")
-    seen, stack = set(), roots[:]
-    while stack:
-        node = nodes[stack.pop()]
-        for dep in node["deps"]:
-            if any(kind["kind"] != "dev" for kind in dep["dep_kinds"]) and dep["pkg"] not in seen:
-                seen.add(dep["pkg"])
-                stack.append(dep["pkg"])
+        fail(f"cargo tree failed for {root_name} on {target}: {error}")
     checksums = lock_checksums()
-    components = []
-    for package in (packages[i] for i in seen):
-        if package["source"] is None:
-            continue  # Ibis's own crates: the SBOM's subject, not a dependency.
-        component = {
-            "type": "library",
-            "name": package["name"],
-            "version": package["version"],
-            "purl": f"pkg:cargo/{package['name']}@{package['version']}",
-        }
-        if package.get("license"):
-            component["licenses"] = [{"expression": package["license"]}]
-        checksum = checksums.get((package["name"], package["version"]))
+    components = {}
+    for line in out.splitlines():
+        package, _, licence = line.removesuffix(" (*)").partition("|")
+        words = package.split()
+        if len(words) < 2 or not words[1].startswith("v"):
+            continue
+        if len(words) > 2:
+            continue  # A path crate, Ibis's own: the SBOM's subject, not a dependency.
+        name, version = words[0], words[1][1:]
+        component = {"type": "library", "name": name, "version": version, "purl": f"pkg:cargo/{name}@{version}"}
+        if licence.strip():
+            component["licenses"] = [{"expression": licence.strip()}]
+        checksum = checksums.get((name, version))
         if checksum:
             component["hashes"] = [{"alg": "SHA-256", "content": checksum}]
-        components.append(component)
+        components[component["purl"]] = component
     if not components:
         fail(f"no crates found for {root_name} on {target}")
+    return list(components.values())
+
+
+# Third-party code and data Ibis embeds from source, with the manifests that
+# pin their upstream revisions and hashes; both the app and the command line
+# carry them (NOTICE.md).
+VENDORED = {
+    "crates/ibis-csl/vendor/manifest.json": {"zotero": "CPAL-1.0 OR AGPL-3.0-or-later", "styles": "CC-BY-SA-3.0",
+                                              "locales": "CC-BY-SA-3.0"},
+    "crates/ibis-sources/vendor/zotero/manifest.json": {},
+}
+
+
+def vendored():
+    components = []
+    for manifest, licences in VENDORED.items():
+        data = json.loads((ROOT / manifest).read_text(encoding="utf-8"))
+        files = {}
+        for file in data.get("files", []):
+            files.setdefault(file["source"], []).append(file)
+        for source, origin in data["sources"].items():
+            repo, commit = origin["repo"], origin["commit"]
+            component = {
+                "type": "library" if files.get(source) else "data",
+                "name": repo,
+                "version": origin.get("tag", commit),
+                "purl": f"pkg:github/{repo}@{commit}",
+                "externalReferences": [{"type": "vcs", "url": f"https://github.com/{repo}"}],
+            }
+            if licences.get(source):
+                component["licenses"] = [{"expression": licences[source]}]
+            if files.get(source):
+                component["components"] = [
+                    {"type": "file", "name": file["path"], "hashes": [{"alg": "SHA-256", "content": file["sha256"]}]}
+                    for file in files[source]
+                ]
+            components.append(component)
     return components
 
 
@@ -178,7 +213,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     npm = npm_packages()
     for target, (platform, cli_target) in PLATFORMS.items():
-        cli = crates("ibis", cli_target)
+        cli = crates("ibis", cli_target) + vendored()
         # The app bundles this same command line (scripts/build-cli.sh).
         app = crates("ibis-desktop", target) + cli + npm
         files = {
