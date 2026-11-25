@@ -300,10 +300,8 @@ fn mask_latex(text: &str, work: &mut Work<'_>) -> Option<String> {
         }
         let rest = &text[i + 1..];
         if let Some(after) = rest.strip_prefix("begin{")
-            && let Some(name) = after
-                .get(..after.len().min(16))
-                .and_then(|head| head.split_once('}'))
-                .map(|(name, _)| name)
+            && let Some(end) = after.bytes().take(16).position(|byte| byte == b'}')
+            && let name = &after[..end]
             && VERBATIM.contains(&name)
         {
             let close = format!("\\end{{{name}}}");
@@ -536,7 +534,7 @@ struct Typst {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode {
-    /// Code: parentheses open in it, and whether a line ends it.
+    /// Code: parentheses and braces open in it, and whether a line or `;` ends it.
     Code { parens: usize, line: bool },
     /// A content block inside code: brackets open in it.
     Content { brackets: usize },
@@ -590,6 +588,25 @@ fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
             at = end;
             continue;
         }
+        if c == '$' {
+            // Math has no citations, and its braces and quotes are not code's.
+            let mut j = at + 1;
+            while let Some(d) = text[j..].chars().next() {
+                if !work.spend(d.len_utf8()) {
+                    return None;
+                }
+                j += d.len_utf8();
+                match d {
+                    '\\' => j += text[j..].chars().next().map_or(0, char::len_utf8),
+                    '$' => break,
+                    _ => {}
+                }
+            }
+            let end = j.min(text.len());
+            blank(&mut bytes, at..end);
+            at = end;
+            continue;
+        }
         if c == '`' {
             let length = rest.bytes().take_while(|&b| b == b'`').count();
             let body = at + length;
@@ -621,14 +638,14 @@ fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
                 }
                 next = j.min(text.len());
             }
-            (Some(Mode::Code { parens, line }), '(') => {
+            (Some(Mode::Code { parens, line }), '(' | '{') => {
                 stack.pop();
                 stack.push(Mode::Code {
                     parens: parens + 1,
                     line,
                 });
             }
-            (Some(Mode::Code { parens, line }), ')') => {
+            (Some(Mode::Code { parens, line }), ')' | '}') => {
                 stack.pop();
                 if parens > 1 || line {
                     stack.push(Mode::Code {
@@ -637,7 +654,7 @@ fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
                     });
                 }
             }
-            (Some(Mode::Code { parens: 0, line: true }), '\n') => {
+            (Some(Mode::Code { parens: 0, line: true }), '\n' | ';') => {
                 stack.pop();
             }
             (Some(Mode::Code { .. }), '[') => stack.push(Mode::Content { brackets: 0 }),
@@ -667,10 +684,13 @@ fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
             _ => {}
         }
         if stack.len() > 256 {
+            // Too deep to follow: stop, so the text reads as read in part.
+            work.spend(usize::MAX);
             return None;
         }
         match (code_from, in_code(&stack)) {
-            (None, true) => code_from = Some(at),
+            // Code starts after `#name`, so the call itself is markup's.
+            (None, true) => code_from = Some(next),
             (Some(from), false) => {
                 code.push(from..next);
                 code_from = None;
@@ -743,6 +763,10 @@ fn typst_text(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mu
             continue;
         }
         if rest.starts_with('#') {
+            if code.contains(start) {
+                at = start + 1;
+                continue;
+            }
             match rest.starts_with("#cite(").then(|| typst(rest, work)).flatten() {
                 Some(read) => {
                     let cites: Vec<Cite> = read
