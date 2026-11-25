@@ -1044,10 +1044,12 @@ fn sparse_members_never_become_copyable_cluster_placeholders_or_omissions() {
         let result = formatter.format(&snapshot, &request).unwrap();
         assert!(result.copy_content(2).is_none());
         assert!(result.text.is_empty());
+        // The sparse record has nothing to cite it by (decision 0061); the
+        // cluster it was in is still refused whole.
         assert!(result.outcomes.iter().all(|outcome| matches!(
             outcome,
             ItemOutcome::Refused {
-                error: CitationError::UnsupportedForm,
+                error: CitationError::UnsupportedForm | CitationError::MissingDetails,
                 ..
             }
         )));
