@@ -227,7 +227,9 @@ impl<'a> Records<'a> {
         }
         // Serialising the sorted map gives the same bytes for the same fields.
         let fields = serde_json::to_vec(&csl).unwrap_or_default();
-        if fields.len() > crate::MAX_RECORD_BYTES {
+        // The record also carries its generated `id`, `"id":"<prefix>:<32 hex>",`.
+        let id_bytes = self.prefix.len() + 41;
+        if fields.len() + id_bytes > crate::MAX_RECORD_BYTES {
             self.warn(WarningCode::WorkLimit, line);
             return;
         }
