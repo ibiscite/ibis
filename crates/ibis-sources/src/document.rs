@@ -6,7 +6,7 @@
 //! readers exist only where the `documents` feature is on, which only the
 //! command line enables. Answers are untrusted and checked here again.
 
-use crate::zotero_local::closed::{ClosedError, with_local_file};
+use crate::zotero_local::closed::{ClosedError, ParentLinks, with_local_file};
 use ibis_core::contract::{MAX_TEXT_BYTES, Manuscript, TextKind};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -52,7 +52,7 @@ pub enum Refusal {
 
 /// The bytes of the document at `path`, at most `max` of them.
 pub fn read(path: &Path, max: u64, cancelled: Arc<dyn Fn() -> bool + Send + Sync>) -> Result<Vec<u8>, Refusal> {
-    let read = with_local_file(path, cancelled, READ_BUDGET, move |file| {
+    let read = with_local_file(path, ParentLinks::Resolve, cancelled, READ_BUDGET, move |file| {
         let mut bytes = Vec::new();
         file.take(max + 1).read_to_end(&mut bytes).map(|_| bytes)
     })
@@ -287,10 +287,30 @@ mod tests {
         let path = folder.path().join("draft.md");
         std::fs::write(&path, "\u{feff}Lanterns [@vale2024].").unwrap();
         assert_eq!(read_text(&path, 64, never()).unwrap(), "Lanterns [@vale2024].");
+        // Windows canonicalization produces a verbatim drive path.
+        assert_eq!(
+            read_text(&path.canonicalize().unwrap(), 64, never()).unwrap(),
+            "Lanterns [@vale2024]."
+        );
         assert_eq!(read(&path, 4, never()), Err(Refusal::TooLarge));
         std::fs::write(&path, [0xff, 0xfe, 0x00]).unwrap();
         assert_eq!(read_text(&path, 64, never()), Err(Refusal::NotText));
         assert_eq!(read(&folder.path().join("gone.md"), 64, never()), Err(Refusal::Missing));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_document_in_a_symlinked_temporary_folder_is_read() {
+        let folder = tempfile::tempdir().unwrap();
+        let real = folder.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        std::fs::write(real.join("draft.md"), "Lanterns [@vale2024].").unwrap();
+        let link = folder.path().join("linked");
+        std::os::unix::fs::symlink("real", &link).unwrap();
+        assert_eq!(
+            read_text(&link.join("draft.md"), 64, never()).unwrap(),
+            "Lanterns [@vale2024]."
+        );
     }
 
     #[cfg(unix)]

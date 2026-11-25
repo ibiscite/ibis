@@ -327,6 +327,31 @@ mod tests {
     }
 
     #[test]
+    fn a_document_parent_link_cannot_redirect_to_a_remote_mount() {
+        let folder = tempfile::tempdir().unwrap();
+        let link = folder.path().join("link");
+        std::os::unix::fs::symlink("/remote", &link).unwrap();
+        let table = b"1 0 8:1 / / rw - ext4 /dev/synthetic rw\n2 1 0:2 / /remote rw - nfs synthetic rw\n";
+        let mounts = linux_table(table).unwrap();
+        assert_eq!(
+            walk(
+                Path::new("/selected"),
+                &mounts,
+                |path| {
+                    assert_eq!(
+                        path,
+                        Path::new("/selected"),
+                        "a remote symlink target must not be probed"
+                    );
+                    std::fs::symlink_metadata(&link)
+                },
+                |_| Ok(PathBuf::from("/remote"))
+            ),
+            Err(ClosedError::UnsafeSource)
+        );
+    }
+
+    #[test]
     fn macos_mounts_refuse_case_and_unicode_aliases_conservatively() {
         let rows = [("/", "apfs"), ("/Volumes/Remote", "smbfs"), ("/Volumes/\u{3c2}", "nfs")]
             .map(|(point, kind)| (OsString::from(point), kind.to_owned()));

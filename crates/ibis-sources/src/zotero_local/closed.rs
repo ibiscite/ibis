@@ -253,7 +253,7 @@ impl ClosedReader {
 
 /// The folder Zotero or the person chose, with links in its own path resolved
 /// once: only what lies below it is opened without following any link. Windows
-/// keeps the path as given, since its verbatim form fails the local-file checks.
+/// keeps the path as given and refuses reparse points when opening it.
 pub fn trusted_folder(path: &Path) -> PathBuf {
     // Classify every component and symlink target against the cached mounts
     // before probing it; plain canonicalize could touch a remote root first.
@@ -278,7 +278,7 @@ pub fn read_text_cache(
     use std::io::Read;
     let path = trusted_folder(data).join("storage").join(key).join(".zotero-ft-cache");
     let limit = crate::zotero_local::fulltext::MAX_TEXT_BYTES as u64;
-    let read = with_local_file(&path, cancelled, LOCAL_FILE_BUDGET, move |file| {
+    let read = with_local_file(&path, ParentLinks::Refuse, cancelled, LOCAL_FILE_BUDGET, move |file| {
         let mut bytes = Vec::new();
         file.take(limit + 1).read_to_end(&mut bytes).map(|_| bytes)
     })?;
@@ -292,11 +292,23 @@ pub fn read_text_cache(
 
 const LOCAL_FILE_BUDGET: Duration = Duration::from_secs(10);
 
-/// Use an opened regular, resident local file without following a link at
-/// any component. The operation shares a bounded I/O slot and one deadline
-/// with opening; cancelled or late results are dropped, never published.
+/// Whether the selected file's parent may contain directory links. The final
+/// component is never followed, and every resolved directory must be local.
+#[derive(Clone, Copy)]
+pub enum ParentLinks {
+    /// Resolve local macOS/Linux directory links for a selected document.
+    /// Windows reparse points remain refused.
+    Resolve,
+    /// Attachments and cache files must not redirect through another folder.
+    Refuse,
+}
+
+/// Use an opened regular, resident local file without following a final link.
+/// Resolving parents, opening and the operation share a bounded I/O slot and
+/// one deadline; cancelled or late results are dropped, never published.
 pub fn with_local_file<T: Send + 'static>(
     path: &Path,
+    parents: ParentLinks,
     cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
     budget: Duration,
     operation: impl FnOnce(std::fs::File) -> T + Send + 'static,
@@ -304,7 +316,7 @@ pub fn with_local_file<T: Send + 'static>(
     let control = Control::within(cancelled, budget.min(LOCAL_FILE_BUDGET));
     let path = path.to_owned();
     control.io(move |control| {
-        let file = platform::local_file(&path, control)?;
+        let file = platform::local_file(&path, parents, control)?;
         control.check()?;
         Ok(file.map(operation))
     })

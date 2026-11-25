@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 #[test]
 fn the_engine_checks_a_manuscript_through_the_child() {
     let folder = tempfile::tempdir().unwrap();
-    // macOS reaches its temporary folder through a link; documents are read without following one.
+    // Also exercise canonical Windows verbatim paths through the engine.
     let root = folder.path().canonicalize().unwrap();
     let library = root.join("refs.bib");
     std::fs::write(

@@ -1,5 +1,5 @@
 //! Native boundaries used only by the closed reader. No source lock is acquired.
-use super::{ClosedError, Control, FileLease};
+use super::{ClosedError, Control, FileLease, ParentLinks};
 use std::fs::{File, Metadata};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -155,12 +155,28 @@ pub(super) fn open_source(path: &Path) -> Result<File, ClosedError> {
 
 /// Open each component through a no-follow handle. Directory handles stay
 /// pinned until the file is opened; Windows also denies ancestor replacement.
-pub(super) fn local_file(path: &Path, control: &Control) -> Result<Option<File>, ClosedError> {
+pub(super) fn local_file(path: &Path, parents: ParentLinks, control: &Control) -> Result<Option<File>, ClosedError> {
     use std::path::Component;
     control.check()?;
     if !path.is_absolute() {
         return Err(ClosedError::UnsafeSource);
     }
+    // Resolve only the selected parent, classifying each symlink target before
+    // probing it. Reopen the resolved path below through no-follow handles.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let resolved;
+    let path = match parents {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        ParentLinks::Resolve => {
+            let (Some(folder), Some(name)) = (path.parent(), path.file_name()) else {
+                return Err(ClosedError::UnsafeSource);
+            };
+            resolved = directory(folder, control)?.join(name);
+            resolved.as_path()
+        }
+        // Windows always refuses reparse points; its aliases are drive paths.
+        _ => path,
+    };
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     super::mounts::local(path, control)?;
     #[cfg(unix)]
@@ -215,9 +231,7 @@ pub(super) fn local_file(path: &Path, control: &Control) -> Result<Option<File>,
         // opening the next one. Reparse points and placeholders fail closed.
         let mut current = PathBuf::new();
         let mut directories = Vec::new();
-        if !drive_path(path) {
-            return Err(ClosedError::UnsafeSource);
-        }
+        windows::checked_path(path)?;
         for component in folder.components() {
             current.push(component);
             if matches!(component, Component::Prefix(_)) {
@@ -534,13 +548,75 @@ pub(super) fn space(path: &Path, needed: u64, control: &Control) -> Result<(), C
     Ok(())
 }
 
-#[cfg(windows)]
-fn drive_path(path: &Path) -> bool {
-    use std::path::{Component, Prefix};
-    let mut parts = path.components();
-    matches!(parts.next(), Some(Component::Prefix(p)) if matches!(p.kind(), Prefix::Disk(_)))
-        && matches!(parts.next(), Some(Component::RootDir))
-        && parts.all(|p| matches!(p, Component::Normal(_)))
+/// The drive-letter offset in a plain or verbatim absolute Windows disk path.
+/// Raw UTF-16 keeps this locality gate testable on every host, without letting
+/// host-specific Path parsing accept UNC, device or ambiguous components.
+#[cfg(any(windows, test))]
+fn windows_drive_path(path: &[u16]) -> Option<usize> {
+    let disk = if path.starts_with(&[92, 92, 63, 92]) { 4 } else { 0 };
+    let plain = path.get(disk..)?;
+    if !matches!(plain.first(), Some(65..=90 | 97..=122))
+        || plain.get(1) != Some(&58)
+        || !matches!(plain.get(2), Some(47 | 92))
+        || (disk != 0 && plain.contains(&47))
+    {
+        return None;
+    }
+    for part in plain[3..].split(|c| matches!(*c, 47 | 92)).filter(|p| !p.is_empty()) {
+        if part == [46]
+            || part == [46, 46]
+            || part.iter().any(|c| *c == 58 || *c < 32 || (127..=159).contains(c))
+            || matches!(part.last(), Some(46 | 32))
+        {
+            return None;
+        }
+    }
+    Some(disk)
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::windows_drive_path;
+
+    #[test]
+    fn document_windows_disk_paths_accept_plain_verbatim_and_short_names() {
+        for (path, disk) in [
+            (r"C:\Users\Example\draft.md", 0),
+            (r"C:/Users/Example/draft.md", 0),
+            (r"\\?\C:\Users\Example\draft.md", 4),
+            (r"C:\Users\EXAMPL~1\draft.md", 0),
+            (r"\\?\C:\Users\EXAMPL~1\draft.md", 4),
+            (r"\\?\C:\", 4),
+        ] {
+            assert_eq!(windows_drive_path(&path.encode_utf16().collect::<Vec<_>>()), Some(disk));
+        }
+    }
+
+    #[test]
+    fn document_windows_unc_device_and_ambiguous_paths_are_refused() {
+        for path in [
+            r"\\server\share\draft.md",
+            r"\\?\UNC\server\share\draft.md",
+            r"\\.\C:\draft.md",
+            r"\\?\Volume{invented}\draft.md",
+            r"\??\C:\draft.md",
+            r"C:relative.md",
+            r"\draft.md",
+            r"\\?\C:/draft.md",
+            r"C:\a\..\draft.md",
+            r"\\?\C:\a\..\draft.md",
+            r"C:\a\.\draft.md",
+            r"\\?\C:\a\.\draft.md",
+            r"C:\draft.md:stream",
+            r"\\?\C:\draft.md:stream",
+            r"C:\a.\draft.md",
+            r"C:\a \draft.md",
+            "C:\\a\u{1f}\\draft.md",
+            "C:\\draft\0.md",
+        ] {
+            assert_eq!(windows_drive_path(&path.encode_utf16().collect::<Vec<_>>()), None);
+        }
+    }
 }
 
 // SAFETY: Win32 owns the handles and buffers in this boundary. Unsafe calls are
