@@ -13,10 +13,10 @@ use ibis_core::destination::{CopyReason, System};
 use ibis_native::paste::queries;
 #[cfg(any(target_os = "windows", test))]
 use ibis_native::paste::queries::QueryWorker;
-pub(crate) use ibis_native::paste::{Captured, CopiedReason, Delivered, capture};
+pub(crate) use ibis_native::paste::{Captured, CopiedReason, CopyAttempt, Delivered, capture};
 #[cfg(target_os = "windows")]
 use ibis_native::paste::{
-    CopyAttempt, DeliveryTicket, key_release_failed,
+    DeliveryTicket, key_release_failed,
     keys::{PasteEvent, PasteKeys},
     queries::{PasswordQueries, display_name},
     tickets::{TicketDesk, deliver_ticket},
@@ -37,8 +37,8 @@ pub(crate) mod permission;
 #[cfg(target_os = "windows")]
 mod windows;
 
-/// The app the picker was last opened from. Its proofs take their tokens from
-/// the same counter as every other clipboard write of the app.
+/// The app the picker was last opened from, and the owner every clipboard
+/// write of the app goes through for its token.
 pub(crate) struct LastTarget(ibis_native::paste::LastTarget);
 
 impl Default for LastTarget {
@@ -204,8 +204,8 @@ fn paste_policy(app: &AppHandle, enabled: bool, choosing: bool) -> bool {
         .unwrap_or(false)
 }
 
-#[cfg(target_os = "windows")]
-pub(crate) fn begin_copy(app: &AppHandle, replaces: &[String]) -> CopyAttempt<Window> {
+/// Freeze a citation's destination at request entry, before clipboard I/O.
+pub(crate) fn begin_copy(app: &AppHandle, replaces: &[String]) -> CopyAttempt {
     app.state::<LastTarget>().begin_copy(
         || app.state::<crate::picker::PickerGeneration>().current(),
         replaces,
@@ -214,22 +214,12 @@ pub(crate) fn begin_copy(app: &AppHandle, replaces: &[String]) -> CopyAttempt<Wi
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) fn remember_copy(
-    app: &AppHandle,
-    attempt: CopyAttempt<Window>,
-    sequence: Option<u32>,
-    token: u32,
-) -> Option<u32> {
-    app.state::<LastTarget>().remember_copy(attempt, sequence, token)
-}
-
-#[cfg(target_os = "windows")]
 pub(crate) fn take_copy(app: &AppHandle, token: Option<u32>) -> Option<DeliveryTicket<Window>> {
     app.state::<LastTarget>().take_ticket(token)
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) fn deliver_copy(app: &AppHandle, text: &str, ticket: Option<DeliveryTicket<Window>>) -> Delivered {
+pub(crate) fn deliver_copy(app: &AppHandle, _text: &str, ticket: Option<DeliveryTicket<Window>>) -> Delivered {
     let desk = windows::Win::new(app);
     // Missing/stale receipts must not strand keys from an earlier copy.
     if !desk.release_keys() {
@@ -238,20 +228,17 @@ pub(crate) fn deliver_copy(app: &AppHandle, text: &str, ticket: Option<DeliveryT
     let Some(ticket) = ticket else {
         return Delivered::copied(CopyReason::PasteUnavailable);
     };
-    with_paste_setting(
-        || paste_setting(app),
-        |enabled| deliver_ticket(&desk, &ticket, text, enabled),
-    )
+    with_paste_setting(|| paste_setting(app), |enabled| deliver_ticket(&desk, &ticket, enabled))
 }
 
 /// Paste into the captured app when it is safe to; the notice then says what happened.
 #[cfg(not(target_os = "windows"))]
-pub(crate) fn deliver_copy(app: &AppHandle, text: &str, token: Option<u32>) -> Delivered {
+pub(crate) fn deliver_copy(app: &AppHandle, _text: &str, token: Option<u32>) -> Delivered {
     let setting = || paste_setting(app);
     #[cfg(target_os = "macos")]
-    return ibis_native::paste::deliver_copy(&Host(app.clone()), setting, text, token);
+    return ibis_native::paste::deliver_copy(&Host(app.clone()), setting, token);
     #[cfg(target_os = "linux")]
-    ibis_native::paste::deliver_copy(&app.state::<LastTarget>(), setting, text, token)
+    ibis_native::paste::deliver_copy(&app.state::<LastTarget>(), setting, token)
 }
 
 #[cfg(test)]

@@ -388,7 +388,6 @@ pub(crate) fn commit_shown(
         // the preview, by the command line for one, retires it before the commit.
         crate::app_context::refresh(&app, captured.as_ref().map(|(id, _, _)| id))?;
     }
-    #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app, &replaces);
     let file = open_file(&library)?;
     let captured_id = captured.as_ref().map(|(id, _, _)| id.normalized());
@@ -479,16 +478,9 @@ pub(crate) fn commit_shown(
                 app.state::<crate::picker::PickerGeneration>().current(),
                 clipboard_mark(),
                 || {
-                    #[cfg(target_os = "windows")]
-                    let delivery = {
-                        let (token, sequence) =
-                            clipboard::write(&app, content).map_err(|_| CommandError::ClipboardUnavailable)?;
-                        crate::paste::remember_copy(&app, attempt, sequence, token)
-                    };
-                    #[cfg(not(target_os = "windows"))]
-                    let delivery =
-                        clipboard::write(&app, content, &replaces).map_err(|_| CommandError::ClipboardUnavailable)?;
-                    Ok(delivery)
+                    clipboard::write(&app, Some(attempt), content)
+                        .map(Some)
+                        .map_err(|_| CommandError::ClipboardUnavailable)
                 },
             )
         },
@@ -551,12 +543,8 @@ pub(crate) fn write_copy_only(
     app: &AppHandle,
     content: ibis_core::contract::ClipboardContent<'_>,
 ) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    let written = clipboard::write(app, content);
-    // Nothing is replaced: this is a new copy, not a change to the last citation.
-    #[cfg(not(target_os = "windows"))]
-    let written = clipboard::write(app, content, &[]);
-    written.map(|_| ())
+    // No attempt: a new copy, never pasted, that retires the last citation's ticket.
+    clipboard::write(app, None, content).map(|_| ())
 }
 
 /// Native delivery owns the side effect; the engine guard prevents stale content.

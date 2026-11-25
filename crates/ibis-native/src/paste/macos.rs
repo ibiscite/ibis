@@ -15,7 +15,7 @@ use objc2_foundation::MainThreadMarker;
 
 use super::capture::{Front, SelectedText};
 use super::{
-    CopyProof, DeliveryRequest, Desk, InputPress, LastTarget, PendingPost, PostDesk, PostRequest, PostResult,
+    DeliveryRequest, DeliveryTicket, Desk, InputPress, LastTarget, PendingPost, PostDesk, PostRequest, PostResult,
     Selection, check_input_since, checked_post,
 };
 
@@ -234,10 +234,10 @@ pub(super) struct Mac<H> {
 }
 
 impl<H: Host> Mac<H> {
-    pub(super) fn new(host: &H, proof: Option<&CopyProof>, began: Instant) -> Self {
+    pub(super) fn new(host: &H, proof: Option<&DeliveryTicket>, began: Instant) -> Self {
         Self {
             host: host.clone(),
-            trace: diagnostics::Trace::new(proof.and_then(|p| p.captured.as_ref()?.diagnostic.clone())),
+            trace: diagnostics::Trace::new(proof.and_then(|p| p.captured()?.diagnostic.clone())),
             started: safety::elapsed(),
             began,
             stamp_unavailable: proof.is_some_and(|proof| proof.stamp.epoch == 0 || proof.stamp.epoch == u64::MAX),
@@ -298,7 +298,7 @@ impl<H: Host> Mac<H> {
 }
 
 impl<H: Host> Desk for Mac<H> {
-    type Proof = CopyProof;
+    type Window = super::HostWindow;
 
     fn delivery_began(&self) -> Instant {
         self.began
@@ -338,7 +338,7 @@ impl<H: Host> Desk for Mac<H> {
         self.on_main(active_app).ok_or(CopyReason::PasteUnavailable)
     }
 
-    fn ready(&self, request: &DeliveryRequest, proof: &CopyProof) -> Result<bool, CopyReason> {
+    fn ready(&self, request: &DeliveryRequest, proof: &DeliveryTicket) -> Result<bool, CopyReason> {
         let request = PostRequest::new(
             DeliveryRequest {
                 pid: request.pid,
@@ -403,7 +403,7 @@ impl<H: Host> Desk for Mac<H> {
         .ok_or(CopyReason::PasteUnavailable)?
     }
 
-    fn finish(&self, request: DeliveryRequest, proof: &CopyProof) -> PostResult {
+    fn finish(&self, request: DeliveryRequest, proof: &DeliveryTicket) -> PostResult {
         // This deadline belongs to the queued task too, not just its caller.
         let request = PostRequest::new(request, proof).queued(Instant::now());
         let limit = request.deadline.saturating_duration_since(Instant::now());
@@ -531,9 +531,9 @@ impl<H: Host> PostDesk for Ready<'_, H> {
         focus::refused(self.request.pid, reason)
     }
 
-    fn change_count(&self) -> isize {
+    fn change_count(&self) -> Option<i64> {
         diagnostics::stage("clipboard");
-        NSPasteboard::generalPasteboard().changeCount()
+        i64::try_from(NSPasteboard::generalPasteboard().changeCount()).ok()
     }
 
     fn secure_input(&self) -> Option<bool> {

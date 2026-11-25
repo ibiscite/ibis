@@ -50,20 +50,19 @@ fn macos_html(fragment: &str) -> String {
     )
 }
 
-/// The general pasteboard, cleared once and then given every flavor.
+/// The general pasteboard, cleared once and then given every flavor, under
+/// the clipboard's one owner.
 #[cfg(target_os = "macos")]
 pub(crate) fn write(
     app: &tauri::AppHandle,
+    attempt: Option<crate::paste::CopyAttempt>,
     content: ClipboardContent<'_>,
-    replaces: &[String],
-) -> Result<Option<u32>, String> {
+) -> Result<u32, String> {
     use tauri::Manager;
-    app.state::<crate::paste::LastTarget>().write_copy(
-        content.text,
-        replaces,
-        |target| app.state::<crate::destination::AppMemory>().for_capture(target),
-        || publish_macos(&objc2_app_kit::NSPasteboard::generalPasteboard(), content),
-    )
+    app.state::<crate::paste::LastTarget>().write_copy(attempt, || {
+        let count = publish_macos(&objc2_app_kit::NSPasteboard::generalPasteboard(), content)?;
+        Ok(count.and_then(|count| i64::try_from(count).ok()))
+    })
 }
 
 /// Return the count immediately after our last format write. A replacement
@@ -95,33 +94,36 @@ fn publish_macos(board: &objc2_app_kit::NSPasteboard, content: ClipboardContent<
     Ok((owned_count == written_count).then_some(written_count))
 }
 
-/// One clipboard write, retried briefly while another app holds it.
+/// One clipboard write, retried briefly while another app holds it, under
+/// the clipboard's one owner.
 #[cfg(target_os = "windows")]
-pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<(u32, Option<u32>), String> {
+pub(crate) fn write(
+    app: &tauri::AppHandle,
+    attempt: Option<crate::paste::CopyAttempt>,
+    content: ClipboardContent<'_>,
+) -> Result<u32, String> {
     use tauri::Manager;
+    // Tauri's HWND getter may dispatch to the UI thread: resolve it before
+    // taking the owner's lock, which the UI thread also takes.
     let owner = app
         .get_webview_window("main")
         .and_then(|window| window.hwnd().ok())
         .ok_or_else(|| FAILED.to_string())?;
-    write_windows(owner.0, content)
+    app.state::<crate::paste::LastTarget>()
+        .write_copy(attempt, || Ok(write_windows(owner.0, content)?.map(i64::from)))
 }
 
+/// The final sequence of a write no other app changed, or `None`. The
+/// caller holds the owner's lock, so no other Ibis copy can take the same
+/// HWND's ownership between closing the write and proving its sequence.
 #[cfg(target_os = "windows")]
-fn write_windows(
-    owner: clipboard_win::types::HWND,
-    content: ClipboardContent<'_>,
-) -> Result<(u32, Option<u32>), String> {
+fn write_windows(owner: clipboard_win::types::HWND, content: ClipboardContent<'_>) -> Result<Option<u32>, String> {
     use clipboard_win::{
         Clipboard,
         formats::{CF_UNICODETEXT, Html},
         options::NoClear,
         raw,
     };
-    // Keep another Ibis copy from taking the same HWND's ownership between
-    // closing the write and proving its final sequence.
-    static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _writing = WRITING.lock().map_err(|_| FAILED.to_string())?;
-    let token = super::write_token()?;
     // About 100 ms in all: 20 retries, 5 ms apart.
     let open = Clipboard::new_attempts_for(owner, 20).map_err(|_| FAILED.to_string())?;
     raw::empty().map_err(|_| FAILED.to_string())?;
@@ -149,7 +151,7 @@ fn write_windows(
         sequence: clipboard_win::seq_num().map(std::num::NonZeroU32::get),
     };
     drop(open);
-    Ok((token, windows_sequence(owner, &written)))
+    Ok(windows_sequence(owner, &written))
 }
 
 #[cfg(target_os = "windows")]
@@ -207,48 +209,32 @@ impl WindowsWrite {
     }
 }
 
-/// Text and HTML; Linux apps read HTML for formatting and rarely RTF.
+/// Text and HTML; Linux apps read HTML for formatting and rarely RTF. Linux
+/// keeps no clipboard count, so its writes have receipts and never a ticket.
 #[cfg(target_os = "linux")]
 pub(crate) fn write(
     app: &tauri::AppHandle,
+    attempt: Option<crate::paste::CopyAttempt>,
     content: ClipboardContent<'_>,
-    _replaces: &[String],
-) -> Result<Option<u32>, String> {
+) -> Result<u32, String> {
+    use tauri::Manager;
     use tauri_plugin_clipboard_manager::ClipboardExt;
     let html = flavors(&content)
         .into_iter()
         .find_map(|(flavor, value)| (flavor == Flavor::Html).then_some(value));
-    write_copy_only(|| {
+    app.state::<crate::paste::LastTarget>().write_copy(attempt, || {
         match html {
             Some(html) => app.clipboard().write_html(html, Some(content.text)),
             None => app.clipboard().write_text(content.text),
         }
-        .map_err(|_| FAILED.to_string())
+        .map_err(|_| FAILED.to_string())?;
+        Ok(None)
     })
-}
-
-/// Linux has no native paste proof; it still owns a numbered write receipt.
-#[cfg(any(target_os = "linux", test))]
-fn write_copy_only(write: impl FnOnce() -> Result<(), String>) -> Result<Option<u32>, String> {
-    static WRITING: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _writing = WRITING.lock().map_err(|_| FAILED.to_string())?;
-    let token = super::write_token()?;
-    write()?;
-    Ok(Some(token))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn copy_only_writes_have_ordered_receipts_and_failed_io_has_none() {
-        let a = write_copy_only(|| Ok(())).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(write_copy_only(|| Err(FAILED.into())), Err(FAILED.into()));
-        let b = write_copy_only(|| Ok(())).unwrap_or_else(|e| panic!("{e}"));
-        assert!(a.is_some());
-        assert!(b > a, "a later write has a newer identity even without native paste");
-    }
 
     #[test]
     fn windows_clipboard_receipt_accounts_for_format_writes_and_synthesis_on_close() {
@@ -392,7 +378,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
         let text = "Ŝynthetic 山田";
         let html = "<i>Ŝynthetic 山田</i>";
         let rtf = "{\\rtf1\\ansi\\uc1 {\\i \\u348?ynthetic \\u23665?\\u30000?}}";
-        let (_, sequence) = write_windows(
+        let sequence = write_windows(
             owner.ptr(),
             ClipboardContent {
                 text,
@@ -471,7 +457,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
             assert_eq!(windows_sequence(owner.ptr(), &written), None);
         }
         // A later key-only copy must remove stale rich formats.
-        let (_, next_sequence) = write_windows(
+        let next_sequence = write_windows(
             owner.ptr(),
             ClipboardContent {
                 text: "[@Synthetic2026]",

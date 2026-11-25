@@ -7,9 +7,7 @@ use ibis_core::destination::CopyReason;
 #[cfg(any(target_os = "windows", test))]
 use super::capture::Front;
 #[cfg(any(target_os = "windows", test))]
-use super::{
-    CopyEvidence, Delivered, DeliveryRequest, DeliveryTicket, Desk, PostResult, SafetyFailure, SafetyStamp, deliver,
-};
+use super::{Delivered, DeliveryRequest, DeliveryTicket, Desk, PostResult, SafetyFailure, SafetyStamp, deliver};
 
 /// Windows checks that can be exercised with fake HWNDs on every host.
 #[cfg(any(target_os = "windows", test))]
@@ -56,12 +54,12 @@ impl<D: TicketDesk> TicketDeskGuard<'_, D> {
             return Err(CopyReason::PasteUnavailable);
         }
         // A stale presentation is distinct from replaced or unreadable clipboard evidence.
-        if self.desk.generation() != self.ticket.target.generation.wrapping_add(1) || !self.desk.picker_hidden() {
+        if self.desk.generation() != self.ticket.target.presentation.wrapping_add(1) || !self.desk.picker_hidden() {
             return Err(CopyReason::TargetChanged);
         }
         match self.desk.clipboard_sequence() {
             None => Err(CopyReason::PasteUnavailable),
-            Some(sequence) if sequence != self.ticket.sequence => Err(CopyReason::ClipboardChanged),
+            Some(sequence) if i64::from(sequence) != self.ticket.clipboard => Err(CopyReason::ClipboardChanged),
             Some(_) => Ok(()),
         }
     }
@@ -114,7 +112,7 @@ impl<D: TicketDesk> TicketDeskGuard<'_, D> {
 
 #[cfg(any(target_os = "windows", test))]
 impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
-    type Proof = DeliveryTicket<D::Window>;
+    type Window = D::Window;
 
     fn stamp(&self) -> SafetyStamp {
         self.desk.stamp()
@@ -153,7 +151,7 @@ impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
         Ok(self.in_front().then(|| self.desk.frontmost()).flatten())
     }
 
-    fn finish(&self, request: DeliveryRequest, _: &Self::Proof) -> PostResult {
+    fn finish(&self, request: DeliveryRequest, _: &DeliveryTicket<D::Window>) -> PostResult {
         if let Err(result) = self.checked(&request) {
             return result;
         }
@@ -193,11 +191,6 @@ impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
 }
 
 #[cfg(any(target_os = "windows", test))]
-pub fn deliver_ticket<D: TicketDesk>(
-    desk: &D,
-    ticket: &DeliveryTicket<D::Window>,
-    _text: &str,
-    enabled: bool,
-) -> Delivered {
+pub fn deliver_ticket<D: TicketDesk>(desk: &D, ticket: &DeliveryTicket<D::Window>, enabled: bool) -> Delivered {
     deliver(&TicketDeskGuard { desk, ticket }, Some(ticket), enabled)
 }
