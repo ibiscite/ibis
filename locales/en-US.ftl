@@ -1494,6 +1494,7 @@ source-warning-duplicate-key = More than one entry uses the same key or id, so I
 source-warning-field = A field could not be fully converted; check this entry.
 source-warning-work-limit = The library is too large to read in full.
 source-warning-invalid-attachment = An attachment link is not valid.
+source-warning-pdfs-not-kept = This folder has PDFs Ibis has not kept yet.
 
 # Per-setting reset actions name their setting for assistive technology.
 settings-use-default = Use Default for { $setting }
@@ -1532,6 +1533,7 @@ problem-changed-item = This reference changed while citing.
     .agent = Search again.
     .app = Search again.
 problem-missing-key = This reference has no citation key.
+problem-missing-details = This reference has no title, author or editor yet, so there is nothing to cite it by. Add them in its library.
     .named = { $reference } has no citation key.
     .cli = Cite it with --style instead.
     .agent = A key syntax cannot name it; use a style.
@@ -1837,6 +1839,7 @@ cli-warning-syntax = an entry could not be read, so Ibis skips it
 cli-warning-field = a field could not be fully converted; check this entry
 cli-warning-work-limit = the library is too large to read in full
 cli-warning-invalid-attachment = an attachment link is not valid
+cli-warning-pdfs-not-kept = the folder has PDFs Ibis has not kept yet; run ibis sources keep --file FOLDER
 cli-warning-cloud-directory = the library is in a cloud-synced folder, so changes can be late
 cli-warning-keys-unavailable = Better BibTeX keys could not be read, so some items have none
 cli-warning-unknown = something in the library needs checking

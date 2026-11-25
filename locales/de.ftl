@@ -1480,6 +1480,7 @@ source-warning-duplicate-key = Mehrere Einträge verwenden denselben Schlüssel 
 source-warning-field = Ein Feld konnte nicht vollständig umgewandelt werden; prüfen Sie diesen Eintrag.
 source-warning-work-limit = Die Bibliothek ist zu groß, um sie vollständig zu lesen.
 source-warning-invalid-attachment = Ein Anhangslink ist ungültig.
+source-warning-pdfs-not-kept = Dieser Ordner enthält PDFs, die Ibis noch nicht aufgenommen hat.
 
 # Per-setting reset actions name their setting for assistive technology.
 settings-use-default = Standard für { $setting } verwenden
@@ -1518,6 +1519,7 @@ problem-changed-item = Diese Referenz wurde während des Zitierens geändert.
     .agent = Suchen Sie erneut.
     .app = Suchen Sie erneut.
 problem-missing-key = Diese Referenz hat keinen Zitierschlüssel.
+problem-missing-details = Diese Referenz hat noch keinen Titel, keine Autorschaft und keine Herausgabe, daher lässt sie sich nicht zitieren. Ergänzen Sie diese Angaben in ihrer Bibliothek.
     .named = { $reference } hat keinen Zitierschlüssel.
     .cli = Zitieren Sie sie stattdessen mit --style.
     .agent = Eine Schlüsselsyntax kann sie nicht benennen; verwenden Sie einen Stil.
@@ -1822,6 +1824,7 @@ cli-warning-syntax = ein Eintrag konnte nicht gelesen werden, daher überspringt
 cli-warning-field = ein Feld konnte nicht vollständig umgewandelt werden; prüfen Sie diesen Eintrag
 cli-warning-work-limit = die Bibliothek ist zu groß, um sie vollständig zu lesen
 cli-warning-invalid-attachment = ein Anhangslink ist ungültig
+cli-warning-pdfs-not-kept = der Ordner enthält PDFs, die Ibis noch nicht aufgenommen hat; führen Sie ibis sources keep --file ORDNER aus
 cli-warning-cloud-directory = die Bibliothek liegt in einem Cloud-synchronisierten Ordner, daher können Änderungen verspätet ankommen
 cli-warning-keys-unavailable = Better-BibTeX-Schlüssel konnten nicht gelesen werden, daher fehlen sie bei einigen Einträgen
 cli-warning-unknown = etwas in der Bibliothek sollte geprüft werden

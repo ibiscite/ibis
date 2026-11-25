@@ -1556,6 +1556,7 @@ source-warning-duplicate-key = أكثر من مُدخل يستخدم المفت�
 source-warning-field = تعذّر تحويل أحد الحقول بالكامل؛ تحقق من هذا المُدخل.
 source-warning-work-limit = المكتبة أكبر من أن تُقرأ كاملة.
 source-warning-invalid-attachment = رابط أحد المرفقات غير صالح.
+source-warning-pdfs-not-kept = في هذا المجلد ملفات PDF لم يحفظها Ibis بعد.
 
 # Per-setting reset actions name their setting for assistive technology.
 settings-use-default = استخدام القيمة الافتراضية لإعداد { $setting }
@@ -1594,6 +1595,7 @@ problem-changed-item = تغيّر هذا المرجع أثناء الاستشه�
     .agent = ابحث مجددًا.
     .app = ابحث مجددًا.
 problem-missing-key = ليس لهذا المرجع مفتاح استشهاد.
+problem-missing-details = ليس لهذا المرجع عنوان ولا مؤلف ولا محرر بعد، لذا لا يمكن الاستشهاد به. أضفها في مكتبته.
     .named = ليس لـ { $reference } مفتاح استشهاد.
     .cli = استشهد به باستخدام --style بدلًا من ذلك.
     .agent = لا يمكن لصيغة المفاتيح تسميته؛ استخدم نمطًا.
@@ -1914,6 +1916,7 @@ cli-warning-syntax = تعذّرت قراءة أحد المُدخلات، لذا 
 cli-warning-field = تعذّر تحويل أحد الحقول بالكامل؛ تحقق من هذا المُدخل
 cli-warning-work-limit = المكتبة أكبر من أن تُقرأ كاملة
 cli-warning-invalid-attachment = رابط أحد المرفقات غير صالح
+cli-warning-pdfs-not-kept = في المجلد ملفات PDF لم يحفظها Ibis بعد؛ شغّل ibis sources keep --file FOLDER
 cli-warning-cloud-directory = المكتبة في مجلد متزامن مع السحابة، لذا قد تتأخر التغييرات
 cli-warning-keys-unavailable = تعذّرت قراءة مفاتيح Better BibTeX، لذا بعض العناصر بلا مفاتيح
 cli-warning-unknown = شيء ما في المكتبة يحتاج إلى مراجعة

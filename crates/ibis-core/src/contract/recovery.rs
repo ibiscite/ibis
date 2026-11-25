@@ -349,6 +349,7 @@ citation_diagnostics! {
     MissingItem => "missing-item", Recovery::SelectReferences;
     ChangedItem => "changed-item", Recovery::SelectReferences;
     MissingKey => "missing-key", Recovery::ChooseStyle;
+    MissingDetails => "missing-details", Recovery::ReviewLibrary;
     MissingDoi => "missing-doi", Recovery::ChooseOutput;
     AmbiguousKey => "ambiguous-key", Recovery::ChooseStyle;
     ConflictingKey => "conflicting-key", Recovery::ChooseStyle;

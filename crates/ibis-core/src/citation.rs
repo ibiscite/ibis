@@ -58,6 +58,10 @@ pub fn check<'a>(
             let LibraryObject::Record(record) = &object.object else {
                 return Err(CitationError::NotCitable);
             };
+            // Nothing to cite it by: never filled in from elsewhere (decision 0061).
+            if !has_details(record) {
+                return Err(CitationError::MissingDetails);
+            }
             validate_annotation(now, shown, pick)?;
             let support = form_support(pick);
             if pick
@@ -74,6 +78,17 @@ pub fn check<'a>(
             Ok(record)
         })
         .collect())
+}
+
+/// Whether a record has a title, an author or an editor to be cited by.
+pub fn has_details(record: &Record) -> bool {
+    ["title", "author", "editor"].iter().any(|name| {
+        record.csl.get(name).is_some_and(|value| match value {
+            serde_json::Value::String(text) => !text.trim().is_empty(),
+            serde_json::Value::Array(items) => !items.is_empty(),
+            _ => false,
+        })
+    })
 }
 
 fn validate_annotation(now: &Snapshot, shown: Option<&Snapshot>, pick: &CitationItem) -> Result<(), CitationError> {

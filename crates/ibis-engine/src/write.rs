@@ -20,11 +20,13 @@
 //! Applies run one at a time, across Ibis processes.
 
 mod bib;
+mod folder;
 mod key;
 mod store;
 #[cfg(test)]
 mod tests;
 
+pub use folder::{KEEP_BATCH, Kept};
 pub use key::citation_key;
 pub use store::{MAX_BACKUPS, MAX_KEPT, MAX_PENDING, MAX_PROPOSAL_BYTES, Proposals};
 
