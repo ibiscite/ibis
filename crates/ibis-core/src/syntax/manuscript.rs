@@ -540,6 +540,30 @@ enum Mode {
     Content { brackets: usize },
 }
 
+/// The end of the block comment at `at`: Typst's block comments nest.
+fn block_comment(text: &str, at: usize, work: &mut Work<'_>) -> Option<usize> {
+    let mut depth = 0_usize;
+    let mut j = at;
+    while j < text.len() {
+        if !work.spend(1) {
+            return None;
+        }
+        if text[j..].starts_with("/*") {
+            depth += 1;
+            j += 2;
+        } else if text[j..].starts_with("*/") {
+            depth -= 1;
+            j += 2;
+            if depth == 0 {
+                return Some(j);
+            }
+        } else {
+            j += text[j..].chars().next().map_or(1, char::len_utf8);
+        }
+    }
+    Some(text.len())
+}
+
 fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
     let mut bytes = text.as_bytes().to_vec();
     let mut code = Vec::new();
@@ -563,27 +587,7 @@ fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
             continue;
         }
         if rest.starts_with("/*") {
-            let mut depth = 0_usize;
-            let mut end = text.len();
-            let mut j = at;
-            while j < text.len() {
-                if !work.spend(1) {
-                    return None;
-                }
-                if text[j..].starts_with("/*") {
-                    depth += 1;
-                    j += 2;
-                } else if text[j..].starts_with("*/") {
-                    depth -= 1;
-                    j += 2;
-                    if depth == 0 {
-                        end = j;
-                        break;
-                    }
-                } else {
-                    j += text[j..].chars().next().map_or(1, char::len_utf8);
-                }
-            }
+            let end = block_comment(text, at, work)?;
             blank(&mut bytes, at..end);
             at = end;
             continue;
@@ -598,11 +602,12 @@ fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
                     return None;
                 }
                 // Comments in math hold no delimiters.
-                if !string && (text[j..].starts_with("//") || text[j..].starts_with("/*")) {
-                    let close = if text[j..].starts_with("//") { "\n" } else { "*/" };
-                    j = work
-                        .find_str(&text[j + 2..], close)
-                        .map_or(text.len(), |end| j + 2 + end + close.len());
+                if !string && text[j..].starts_with("//") {
+                    j = text[j..].find('\n').map_or(text.len(), |end| j + end);
+                    continue;
+                }
+                if !string && text[j..].starts_with("/*") {
+                    j = block_comment(text, j, work)?;
                     continue;
                 }
                 j += d.len_utf8();

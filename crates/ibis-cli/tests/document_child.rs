@@ -8,13 +8,15 @@ use std::process::{Command, Stdio};
 #[test]
 fn the_engine_checks_a_manuscript_through_the_child() {
     let folder = tempfile::tempdir().unwrap();
-    let library = folder.path().join("refs.bib");
+    // macOS reaches its temporary folder through a link; documents are read without following one.
+    let root = folder.path().canonicalize().unwrap();
+    let library = root.join("refs.bib");
     std::fs::write(
         &library,
         "@book{vale2024, author = {Vale, Avery}, title = {Lanterns of the North}, year = {2024}}\n",
     )
     .unwrap();
-    let draft = folder.path().join("draft.tex");
+    let draft = root.join("draft.tex");
     std::fs::write(&draft, "As \\textcite{vale2024} and \\cite{ghost} show.\n").unwrap();
     let engine = Engine::new()
         .unwrap()
@@ -25,8 +27,9 @@ fn the_engine_checks_a_manuscript_through_the_child() {
         document: draft.clone(),
         set: None,
     };
-    let CheckResult::Checked(checked) = engine.check_document(&request, &Cancellation::default()).unwrap().value else {
-        panic!()
+    let checked = match engine.check_document(&request, &Cancellation::default()).unwrap().value {
+        CheckResult::Checked(checked) => checked,
+        refused => panic!("{refused:?}"),
     };
     assert_eq!((checked.read.citations, checked.read.keys), (2, 2));
     assert_eq!(checked.read.findings.len(), 1);

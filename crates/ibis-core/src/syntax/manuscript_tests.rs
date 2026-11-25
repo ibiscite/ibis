@@ -226,3 +226,11 @@ fn a_comment_inside_typst_math_holds_no_delimiter() {
         of(&[(1, 15, &["ghost"])])
     );
 }
+
+#[test]
+fn nested_comments_inside_typst_math_hold_no_delimiter() {
+    assert_eq!(
+        keys(TextKind::Typst, "$ x /* \" /* */ \" */ $ @ghost\n"),
+        of(&[(1, 23, &["ghost"])])
+    );
+}
