@@ -17,7 +17,9 @@ use crate::request::{ItemSelector, KeyCitationRequest, KeyItem, RecordsRequest};
 use ibis_core::contract::{
     CitationError, CitationForm, CitationResult, EngineError, ErrorCode, ErrorReason, KeySyntax, OutputSpec,
 };
-use ibis_core::contract::{Cite, MAX_TEXT_BYTES, Manuscript, Place, ScanProblem, TextKind};
+use ibis_core::contract::{
+    Cite, LibraryObject, MAX_TEXT_BYTES, Manuscript, Place, ScanProblem, SnapshotObject, TextKind,
+};
 use ibis_sources::document::Refusal;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -135,6 +137,9 @@ pub struct Finding {
     pub place: Option<Place>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    /// For a renamed key, the key the library uses now.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current: Option<String>,
     pub problem: Problem,
 }
 
@@ -167,6 +172,12 @@ pub enum Problem {
     NotInSet,
     /// The record changed since the reference set was written.
     Changed,
+    /// The record could not be written out to compare it with the set.
+    Uncompared,
+    /// The key is an old name: the library now calls the reference `current`.
+    Renamed,
+    /// `\nocite{*}`: the export holds what is cited by key, not the whole bibliography.
+    CitesEverything,
 }
 
 impl From<ScanProblem> for Problem {
@@ -196,9 +207,9 @@ fn key_problem(failure: &EngineError) -> Problem {
 struct Scanned {
     kind: TextKind,
     manuscript: Manuscript,
-    /// Each different key, in first-citation order, with what the libraries
-    /// said of it.
-    keys: Vec<(String, Option<Problem>)>,
+    /// Each different key, in first-citation order, with the key its record
+    /// goes by now, or why the libraries cannot give it.
+    keys: Vec<(String, Result<String, Problem>)>,
     findings: Vec<Finding>,
 }
 
@@ -213,11 +224,14 @@ impl Scanned {
             cites_everything: self.manuscript.cites_everything,
         }
     }
-    fn found(&self) -> impl Iterator<Item = &str> {
+    /// The records found, by the key each goes by now, once each.
+    fn found(&self) -> Vec<&str> {
+        let mut seen = HashSet::new();
         self.keys
             .iter()
-            .filter(|(_, problem)| problem.is_none())
-            .map(|(key, _)| key.as_str())
+            .filter_map(|(_, found)| found.as_deref().ok())
+            .filter(|current| seen.insert(*current))
+            .collect()
     }
 }
 
@@ -250,32 +264,45 @@ impl Engine {
             .map(|problem| Finding {
                 place: Some(problem.place),
                 key: None,
+                current: None,
                 problem: problem.kind.into(),
             })
             .collect();
-        let mut keys: Vec<(String, Option<Problem>)> = Vec::new();
-        let mut known: BTreeMap<&str, Option<Problem>> = BTreeMap::new();
+        let mut keys: Vec<(String, Result<String, Problem>)> = Vec::new();
+        let mut known: BTreeMap<&str, Result<String, Problem>> = BTreeMap::new();
         for cited in &manuscript.citations {
             for cite in &cited.cites {
-                let problem = match known.get(cite.key.as_str()) {
-                    Some(problem) => *problem,
+                let found = match known.get(cite.key.as_str()) {
+                    Some(found) => found.clone(),
                     None => {
                         cancel.check()?;
-                        let problem = select(snapshot, &state.libraries, &ItemSelector::Key(cite.key.clone()))
-                            .err()
-                            .map(|failure| key_problem(&failure));
-                        known.insert(&cite.key, problem);
-                        keys.push((cite.key.clone(), problem));
-                        problem
+                        let found = match select(snapshot, &state.libraries, &ItemSelector::Key(cite.key.clone())) {
+                            Ok(SnapshotObject {
+                                object: LibraryObject::Record(record),
+                                ..
+                            }) => match record.citation_key() {
+                                Ok(Some(current)) => Ok(current.to_owned()),
+                                _ => Err(Problem::Invalid),
+                            },
+                            Ok(_) => Err(Problem::Invalid),
+                            Err(failure) => Err(key_problem(&failure)),
+                        };
+                        known.insert(&cite.key, found.clone());
+                        keys.push((cite.key.clone(), found.clone()));
+                        found
                     }
                 };
-                if let Some(problem) = problem {
-                    findings.push(Finding {
-                        place: Some(cited.place),
-                        key: Some(cite.key.clone()),
-                        problem,
-                    });
-                }
+                let (problem, current) = match found {
+                    Ok(current) if current == cite.key => continue,
+                    Ok(current) => (Problem::Renamed, Some(current)),
+                    Err(problem) => (problem, None),
+                };
+                findings.push(Finding {
+                    place: Some(cited.place),
+                    key: Some(cite.key.clone()),
+                    current,
+                    problem,
+                });
             }
         }
         findings.sort_by_key(|finding| finding.place);
@@ -344,14 +371,24 @@ impl Engine {
                 });
             }
         };
-        let keys: Vec<KeyItem> = scanned.found().map(|key| KeyItem::from(key.to_owned())).collect();
+        let keys: Vec<KeyItem> = scanned
+            .found()
+            .into_iter()
+            .map(|key| KeyItem::from(key.to_owned()))
+            .collect();
+        let mut read = scanned.read();
+        if read.cites_everything {
+            read.findings.push(Finding {
+                place: None,
+                key: None,
+                current: None,
+                problem: Problem::CitesEverything,
+            });
+        }
         if keys.is_empty() {
             return Ok(health::Checked {
                 source_health: health::SourceHealth::of(self.state()?.libraries.values()),
-                value: ExportResult::Exported {
-                    read: scanned.read(),
-                    records: None,
-                },
+                value: ExportResult::Exported { read, records: None },
             });
         }
         let records = self.cite_keys_checked(
@@ -368,7 +405,7 @@ impl Engine {
         Ok(health::Checked {
             source_health: records.source_health,
             value: ExportResult::Exported {
-                read: scanned.read(),
+                read,
                 records: Some(Box::new(records.value)),
             },
         })
@@ -396,7 +433,7 @@ impl Engine {
         let in_set = if records.is_empty() {
             BTreeMap::new()
         } else {
-            match self.cite_records(
+            match self.cite_records_within(
                 &RecordsRequest {
                     strict: false,
                     records,
@@ -405,14 +442,25 @@ impl Engine {
                     output_locale: None,
                     items: None,
                 },
+                MAX_SET_BYTES as usize,
                 cancel,
             ) {
                 Ok(result) => by_key(&result.text),
                 Err(failure) if failure.code == ErrorCode::Cancelled => return Err(failure),
+                Err(failure)
+                    if failure.code == ErrorCode::ResourceLimit
+                        || failure.citation_error == Some(CitationError::TooManyRecords) =>
+                {
+                    return Ok(Err(Refusal::TooLarge));
+                }
                 Err(_) => return Ok(Err(Refusal::Damaged)),
             }
         };
-        let found: Vec<KeyItem> = scanned.found().map(|key| KeyItem::from(key.to_owned())).collect();
+        let found: Vec<KeyItem> = scanned
+            .found()
+            .into_iter()
+            .map(|key| KeyItem::from(key.to_owned()))
+            .collect();
         let current = if found.is_empty() {
             BTreeMap::new()
         } else {
@@ -431,24 +479,28 @@ impl Engine {
         };
         let mut findings = Vec::new();
         // A key no library holds is already named; the set cannot add to that.
-        let mut named: HashSet<&str> = scanned
+        let now: BTreeMap<&str, &str> = scanned
             .keys
             .iter()
-            .filter(|(_, problem)| problem.is_some())
-            .map(|(key, _)| key.as_str())
+            .filter_map(|(key, found)| Some((key.as_str(), found.as_deref().ok()?)))
             .collect();
+        let mut named = HashSet::new();
         for cited in &scanned.manuscript.citations {
             for Cite { key, .. } in &cited.cites {
-                let problem = match (in_set.get(key), current.get(key)) {
+                // A renamed key is compared under the name the set was written with.
+                let Some(&name) = now.get(key.as_str()) else { continue };
+                let problem = match (in_set.get(name), current.get(name)) {
                     (None, _) => Problem::NotInSet,
+                    (Some(_), None) => Problem::Uncompared,
                     (Some(then), Some(now)) if then != now => Problem::Changed,
                     _ => continue,
                 };
                 // The set is fixed once per key, so each is named once, at its first citation.
-                if named.insert(key.as_str()) {
+                if named.insert(name) {
                     findings.push(Finding {
                         place: Some(cited.place),
-                        key: Some(key.clone()),
+                        key: Some(name.to_owned()),
+                        current: None,
                         problem,
                     });
                 }

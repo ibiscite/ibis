@@ -137,3 +137,49 @@ fn kinds_follow_the_extension() {
         assert_eq!(TextKind::of(Path::new(name)), kind, "{name}");
     }
 }
+
+#[test]
+fn comments_and_code_spans_are_read_in_one_pass_within_paragraphs() {
+    assert_eq!(
+        keys(TextKind::Markdown, "Use `<!--` then [@ghost].\n"),
+        of(&[(1, 17, &["ghost"])])
+    );
+    assert_eq!(
+        keys(TextKind::Markdown, "`\r\n\r\n[@ghost]\r\n\r\n`\r\n"),
+        of(&[(3, 1, &["ghost"])])
+    );
+    assert_eq!(
+        keys(TextKind::Markdown, "`\n  \n[@ghost]\n \n`\n"),
+        of(&[(3, 1, &["ghost"])])
+    );
+}
+
+#[test]
+fn typst_strings_are_code_only_and_comments_never_hide_a_citation() {
+    assert_eq!(
+        keys(TextKind::Typst, "#cite(/* why */ <ghost>)\n"),
+        of(&[(1, 1, &["ghost"])])
+    );
+    assert!(keys(TextKind::Typst, "#let note = \"@ghost\"\nText.\n").is_empty());
+    assert_eq!(
+        keys(TextKind::Typst, "#text(\"hi\") \"See @ghost\"\n"),
+        of(&[(1, 18, &["ghost"])])
+    );
+    assert_eq!(
+        keys(TextKind::Typst, "#figure([See @ghost], caption: \"@not\")\n"),
+        of(&[(1, 14, &["ghost"])])
+    );
+}
+
+#[test]
+fn damaged_latex_and_unusual_delimiters_are_read_safely() {
+    let read = scan(TextKind::Latex, "Fine \\cite{a}. \\cite[see", &|| false);
+    assert_eq!(read.citations.len(), 1);
+    assert_eq!(read.problems[0].kind, ScanProblem::Unclosed);
+    assert_eq!(
+        keys(TextKind::Latex, "\\verb§x§ \\cite{ghost}\n"),
+        of(&[(1, 10, &["ghost"])])
+    );
+    let begins = "\\begin{".repeat(200_000);
+    let _ = scan(TextKind::Latex, &begins, &|| false);
+}

@@ -726,6 +726,16 @@ impl Engine {
     /// Cite or export records sent with the request (#1539). No library is
     /// opened or changed: the records live only for this call.
     pub fn cite_records(&self, request: &RecordsRequest, cancel: &Cancellation) -> Result<CitationResult, EngineError> {
+        self.cite_records_within(request, MAX_RECORDS_BYTES, cancel)
+    }
+    /// [`Self::cite_records`] with records of up to `max_bytes` in all: a
+    /// reference set read from a file is bounded as a file, not a request.
+    pub(crate) fn cite_records_within(
+        &self,
+        request: &RecordsRequest,
+        max_bytes: usize,
+        cancel: &Cancellation,
+    ) -> Result<CitationResult, EngineError> {
         cancel.check()?;
         if request.records.is_empty() {
             return Err(error(ErrorCode::BadInput));
@@ -735,7 +745,7 @@ impl Engine {
         ibis_core::citation::check_item_limit(request.records.len())
             .map_err(|_| EngineError::citation(CitationError::TooManyRecords))?;
         if request.records.iter().any(|record| depth(record) > MAX_RECORD_DEPTH)
-            || crate::wire::serialized_size(&request.records, MAX_RECORDS_BYTES).is_err()
+            || crate::wire::serialized_size(&request.records, max_bytes).is_err()
         {
             return Err(error(ErrorCode::ResourceLimit));
         }
