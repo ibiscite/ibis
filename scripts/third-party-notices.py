@@ -55,12 +55,32 @@ NO_LICENCE_FILE = {
 }
 LICENCE_FILE_PREFIXES = ("license", "licence", "copying", "notice", "unlicense")
 # Attribution a package passes on for code it includes: THIRDPARTYNOTICES,
-# third_party_licenses.md, ThirdPartyNotices.txt and the like.
+# third_party_licenses.md, ThirdPartyNotices.txt and the like. A third-party
+# name alone is not enough (third_party.css is code); it must also name
+# notices, licences or attribution.
 THIRD_PARTY_MARKERS = ("thirdparty", "third-party", "third_party")
-# Source, data and build files never are licence texts, whatever their name.
-NOT_TEXT = (".rs", ".js", ".mjs", ".cjs", ".ts", ".c", ".h", ".cc", ".cpp", ".py", ".json", ".toml", ".yml", ".yaml", ".map", ".lock")
+ATTRIBUTION_WORDS = ("notice", "licen", "copying", "attribution", "credits")
+LICENCE_FOLDERS = ("license", "licenses", "licence", "licences")
+# A licence is never source, data, a stylesheet, an image, a font or a binary.
+CODE_SUFFIXES = (".rs", ".js", ".mjs", ".cjs", ".ts", ".c", ".h", ".cc", ".cpp", ".py", ".json", ".toml", ".yml",
+                 ".yaml", ".map", ".lock", ".css", ".scss", ".wasm", ".png", ".svg", ".jpg", ".gif", ".woff",
+                 ".woff2", ".ttf", ".node", ".dll", ".so", ".dylib", ".a", ".o", ".exe")
 # Folders a package carries but does not ship in what it builds.
 NOT_SHIPPED = {"node_modules", ".git", "target", "tests", "test", "benches", "examples", "fixtures", "testdata"}
+
+
+def is_licence_file(relative):
+    """Whether a package-relative path names a licence, NOTICE or attribution text."""
+    path = Path(relative)
+    lower = path.name.lower()
+    if path.suffix.lower() in CODE_SUFFIXES:
+        return False
+    if lower.startswith(LICENCE_FILE_PREFIXES):
+        return True
+    if any(marker in lower for marker in THIRD_PARTY_MARKERS):
+        return any(word in lower for word in ATTRIBUTION_WORDS)
+    # Anything in a licence folder at any depth, such as licenses/vendor/BSD.txt.
+    return any(part.lower() in LICENCE_FOLDERS for part in path.parent.parts)
 
 
 def licence_files(directory):
@@ -70,14 +90,12 @@ def licence_files(directory):
     for folder, folders, names in os.walk(directory):
         folders[:] = sorted(f for f in folders if f.lower() not in NOT_SHIPPED)
         for name in sorted(names):
-            lower = name.lower()
             path = Path(folder, name)
-            if path.is_symlink() or lower.endswith(NOT_TEXT):
-                continue
-            in_licence_folder = Path(folder).name.lower() in ("license", "licenses", "licence", "licences")
-            if in_licence_folder or lower.startswith(LICENCE_FILE_PREFIXES) or any(m in lower for m in THIRD_PARTY_MARKERS):
+            if not path.is_symlink() and is_licence_file(path.relative_to(directory)):
                 found.append(path)
     return found
+
+
 HEADER = "Third-party notices for Ibis"
 
 

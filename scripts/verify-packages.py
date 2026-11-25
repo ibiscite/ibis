@@ -18,7 +18,6 @@ import hashlib
 import io
 import lzma
 import os
-import re
 import shutil
 import struct
 import subprocess
@@ -69,25 +68,23 @@ def expected_packages(target, names):
     return [name for name in required + optional if name in names]
 
 
-# Where each kind of package must hold the notices: the command line at the
-# archive's top, the app in its installed resource folder (notices/ beside
-# the program on Windows, Contents/Resources on macOS, /usr/lib/<app> on Linux).
-NAMES = "(LICENSE|NOTICE\\.md|THIRD-PARTY-NOTICES\\.txt)"
-PLACES = {
-    "command line": re.compile(NAMES),
-    "macOS app": re.compile(r"[^/]+\.app/Contents/Resources/notices/" + NAMES),
-    "Linux app": re.compile(r"usr/lib/[^/]+/notices/" + NAMES),
-    "Windows app": re.compile(r"(?:\$INSTDIR/)?notices/" + NAMES),
-}
+# The command line holds the notices at its archive's top. An app holds them
+# in its own resource folder: beside the `resources/samples.csljson` every app
+# package carries (tauri.bundle.conf.json), which names the one app in it.
+ANCHOR = "resources/samples.csljson"
 
 
 def collect(found, path, read):
-    """Every file named like a notice, by its normalized path."""
+    """Every notice-named file and every app anchor, by normalized path. A path
+    written twice keeps both, so a stale copy cannot hide behind a good one."""
     path = path.replace("\\", "/")
     while path.startswith("./"):
         path = path[2:]
+    path = path.lstrip("/")
     if path.rsplit("/", 1)[-1] in NOTICE_FILES:
-        found[path.lstrip("/")] = read()
+        found.setdefault(path, []).append(read())
+    elif path == ANCHOR or path.endswith("/" + ANCHOR):
+        found.setdefault(path, []).append(b"")
 
 
 def from_tar(data):
@@ -220,17 +217,6 @@ def nsis(path):
         return from_dir(work)
 
 
-def place(name):
-    """Which rule says where this package holds its notices."""
-    if name.startswith("ibis-"):
-        return "command line"
-    if name.endswith((".dmg", ".app.tar.gz")):
-        return "macOS app"
-    if name.endswith("-setup.exe"):
-        return "Windows app"
-    return "Linux app"
-
-
 def contents(path):
     name = path.name
     if name.endswith(".tar.gz"):
@@ -274,17 +260,19 @@ def check_package(path, notices):
     except (OSError, ValueError, EOFError, tarfile.TarError, zipfile.BadZipFile, lzma.LZMAError,
             subprocess.SubprocessError, struct.error, IndexError) as error:
         raise Failure(f"{path.name} could not be opened: {error}") from error
-    rule = place(path.name)
-    placed = {}
-    for member, data in found.items():
-        match = PLACES[rule].fullmatch(member)
-        if match:
-            placed.setdefault(match.group(1), []).append(data)
     problems = []
+    if path.name.startswith("ibis-"):
+        root, where = "", "at the archive's top"
+    else:
+        anchors = [member for member in found if member == ANCHOR or member.endswith("/" + ANCHOR)]
+        if len(anchors) != 1:
+            raise Failure(f"{path.name}: {len(anchors)} apps (found by {ANCHOR}), not one")
+        root, where = anchors[0][: -len(ANCHOR)], "in the app's resource folder"
+        root += "notices/"
     for name, digest in notices.items():
-        copies = placed.get(name, [])
+        copies = found.get(root + name, [])
         if len(copies) != 1:
-            problems.append(f"{len(copies)} copies of {name} where the {rule} keeps it")
+            problems.append(f"{len(copies)} copies of {name} {where}")
         elif hashlib.sha256(copies[0]).hexdigest() != digest:
             problems.append(f"{name} differs from the generated notice")
     if problems:
