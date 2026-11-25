@@ -1,4 +1,5 @@
 use super::*;
+use std::path::Path;
 
 fn keys(kind: TextKind, text: &str) -> Vec<(usize, usize, Vec<String>)> {
     let read = scan(kind, text, &|| false);
@@ -45,9 +46,9 @@ fn a_damaged_marker_stops_only_its_paragraph() {
     let read = scan(TextKind::Markdown, text, &|| false);
     assert_eq!(
         read.problems,
-        [Problem {
+        [ScanFinding {
             place: Place { line: 1, column: 8 },
-            kind: MarkerProblemKind::Unclosed
+            kind: ScanProblem::Unclosed
         }]
     );
     assert_eq!(read.citations.len(), 1);
@@ -88,7 +89,7 @@ fn an_unclosed_latex_citation_is_a_problem() {
         false
     });
     assert_eq!(read.citations.len(), 1);
-    assert_eq!(read.problems[0].kind, MarkerProblemKind::Unclosed);
+    assert_eq!(read.problems[0].kind, ScanProblem::Unclosed);
     assert_eq!(read.problems[0].place, Place { line: 1, column: 30 });
 }
 
@@ -112,7 +113,7 @@ fn typst_references_to_the_documents_own_labels_are_not_citations() {
 fn a_pathological_text_is_read_in_part_and_says_so() {
     let text = "[@a ".repeat(200_000);
     let read = scan(TextKind::Markdown, &text, &|| false);
-    assert!(!read.complete() || read.problems.iter().any(|p| p.kind == MarkerProblemKind::Unclosed));
+    assert!(!read.complete() || read.problems.iter().any(|p| p.kind == ScanProblem::Unclosed));
     let brackets = "[".repeat(300_000);
     let read = scan(TextKind::Markdown, &brackets, &|| false);
     assert!(read.citations.is_empty());

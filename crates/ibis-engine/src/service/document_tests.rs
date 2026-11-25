@@ -18,7 +18,10 @@ impl Fixture {
         let folder = tempfile::tempdir().unwrap();
         let path = folder.path().join("refs.bib");
         std::fs::write(&path, library).unwrap();
-        let engine = Engine::new().unwrap().without_file_watches();
+        let engine = Engine::new()
+            .unwrap()
+            .without_file_watches()
+            .with_documents_in_process();
         engine.open_file(&path, &Cancellation::default()).unwrap();
         Self { engine, folder }
     }

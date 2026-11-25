@@ -9,7 +9,9 @@ use crate::contract::*;
 
 mod bibtex;
 pub(crate) mod escape;
+#[cfg(feature = "documents")]
 pub mod manuscript;
+#[cfg(feature = "documents")]
 pub mod marker;
 pub(crate) mod read;
 mod render;

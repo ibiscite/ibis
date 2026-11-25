@@ -4,86 +4,13 @@
 //! Each reader first blanks what is not prose (front matter, code, comments,
 //! verbatim), keeping every byte offset, then reads citations from what is
 //! left. One work allowance covers the whole text: a pathological text stops
-//! with a [`MarkerProblemKind::TooLong`] problem and is reported as read only
+//! with a [`ScanProblem::TooLong`] problem and is reported as read only
 //! in part, never as a clean check.
 
-use super::marker::{self, Found, MarkerCite, MarkerProblemKind};
+use super::marker::{self, Found};
 use super::read::{group, pandoc_key_start, typst};
+use crate::contract::{Cite, Cited, Manuscript, Place, ScanFinding, ScanProblem, TextKind};
 use crate::scan::Work;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-
-/// The largest manuscript read, in bytes.
-pub const MAX_TEXT_BYTES: usize = 16 * 1024 * 1024;
-
-/// How a manuscript writes its citations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum TextKind {
-    /// Markdown, Quarto and R Markdown: Pandoc's `[@key, p. 4]` and `@key`.
-    Markdown,
-    /// LaTeX with BibTeX, natbib or BibLaTeX commands.
-    Latex,
-    /// Typst's `@key` and `#cite(<key>)`.
-    Typst,
-}
-
-impl TextKind {
-    /// The kind a file's extension names.
-    pub fn of(path: &Path) -> Option<Self> {
-        let extension = path.extension()?.to_str()?.to_ascii_lowercase();
-        Some(match extension.as_str() {
-            "md" | "markdown" | "qmd" | "rmd" => Self::Markdown,
-            "tex" | "ltx" => Self::Latex,
-            "typ" => Self::Typst,
-            _ => return None,
-        })
-    }
-}
-
-/// Where something is, as a person finds it in an editor: line and
-/// character, both from 1.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
-pub struct Place {
-    pub line: usize,
-    pub column: usize,
-}
-
-/// One citation, with its references in order.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Cited {
-    pub place: Place,
-    /// The author is part of the sentence (`@key`, `\textcite`).
-    pub narrative: bool,
-    pub cites: Vec<MarkerCite>,
-}
-
-/// Text that starts a citation but is not one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Problem {
-    pub place: Place,
-    pub kind: MarkerProblemKind,
-}
-
-/// A manuscript's citations and problems, in document order.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Manuscript {
-    pub citations: Vec<Cited>,
-    pub problems: Vec<Problem>,
-    /// `\nocite{*}`: every entry of the bibliography counts as cited.
-    pub cites_everything: bool,
-}
-
-impl Manuscript {
-    /// Whether the whole text was read: no limit or cancellation stopped it.
-    pub fn complete(&self) -> bool {
-        !self
-            .problems
-            .iter()
-            .any(|problem| problem.kind == MarkerProblemKind::TooLong)
-    }
-}
 
 /// Read `text` as `kind`. `stop` is polled as the allowance is spent.
 pub fn scan(kind: TextKind, text: &str, stop: &dyn Fn() -> bool) -> Manuscript {
@@ -103,9 +30,9 @@ pub fn scan(kind: TextKind, text: &str, stop: &dyn Fn() -> bool) -> Manuscript {
         }
     }
     if work.check().is_err() && out.complete() {
-        out.problems.push(Problem {
+        out.problems.push(ScanFinding {
             place: places.at(text.len()),
-            kind: MarkerProblemKind::TooLong,
+            kind: ScanProblem::TooLong,
         });
     }
     out
@@ -302,7 +229,7 @@ fn markdown(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut 
                         cites: found.cites,
                     });
                 }
-                Found::Problem(problem) => out.problems.push(Problem {
+                Found::Problem(problem) => out.problems.push(ScanFinding {
                     place: places.at(start + problem.start),
                     kind: problem.kind,
                 }),
@@ -523,21 +450,21 @@ fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Man
         }
         let place = places.at(start);
         if unclosed {
-            out.problems.push(Problem {
+            out.problems.push(ScanFinding {
                 place,
-                kind: MarkerProblemKind::Unclosed,
+                kind: ScanProblem::Unclosed,
             });
             return;
         }
         if keys.contains(&"*") {
             out.cites_everything = true;
         }
-        let cites: Vec<MarkerCite> = keys
+        let cites: Vec<Cite> = keys
             .into_iter()
             .filter(|key| *key != "*")
-            .map(|key| MarkerCite {
+            .map(|key| Cite {
                 key: key.to_owned(),
-                ..MarkerCite::default()
+                ..Cite::default()
             })
             .collect();
         if !cites.is_empty() {
@@ -671,12 +598,12 @@ fn typst_text(original: &str, text: &str, work: &mut Work<'_>, places: &mut Plac
                 .flatten()
             {
                 Some(read) => {
-                    let cites: Vec<MarkerCite> = read
+                    let cites: Vec<Cite> = read
                         .keys
                         .iter()
-                        .map(|key| MarkerCite {
+                        .map(|key| Cite {
                             key: key.to_string(),
-                            ..MarkerCite::default()
+                            ..Cite::default()
                         })
                         .collect();
                     if !cites.is_empty() {
@@ -704,9 +631,9 @@ fn typst_text(original: &str, text: &str, work: &mut Work<'_>, places: &mut Plac
             out.citations.push(Cited {
                 place: places.at(start),
                 narrative: true,
-                cites: vec![MarkerCite {
+                cites: vec![Cite {
                     key: key.to_owned(),
-                    ..MarkerCite::default()
+                    ..Cite::default()
                 }],
             });
         }

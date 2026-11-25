@@ -7,7 +7,7 @@
 //! is not a whole citation is a problem, never guessed at or left in place.
 
 use super::read::{bare_key, pandoc_bracket, pandoc_key_start};
-use crate::contract::Locator;
+use crate::contract::{Cite, Locator, ScanProblem};
 use crate::locator::read_given;
 use crate::scan::Work;
 
@@ -21,39 +21,12 @@ pub struct Marker {
     pub end: usize,
     /// `@key`, the author as part of the sentence.
     pub narrative: bool,
-    pub cites: Vec<MarkerCite>,
-}
-
-/// One reference in a marker.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct MarkerCite {
-    pub key: String,
-    pub prefix: String,
-    pub locator: Option<Locator>,
-    pub suffix: String,
-    /// `-@key`.
-    pub suppress_author: bool,
-}
-
-/// Why text that starts a citation is not one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum MarkerProblemKind {
-    /// `[@key` with no closing bracket.
-    Unclosed,
-    /// A part between semicolons, or an `@`, with no key.
-    WithoutKey,
-    /// Two keys without a semicolon between them.
-    TwoKeys,
-    /// A braced locator that is not one, such as `{about here}`.
-    Locator,
-    /// More text than one reading may spend; nothing after `start` was read.
-    TooLong,
+    pub cites: Vec<Cite>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MarkerProblem {
-    pub kind: MarkerProblemKind,
+    pub kind: ScanProblem,
     pub start: usize,
     pub end: usize,
 }
@@ -65,7 +38,7 @@ pub enum Found {
 }
 
 /// Every marker and marker problem in `text`, in order. Linear in `text`:
-/// a pathological text stops with one [`MarkerProblemKind::TooLong`].
+/// a pathological text stops with one [`ScanProblem::TooLong`].
 pub fn markers(text: &str) -> Vec<Found> {
     let stop = || false;
     let mut work = Work::new(text.len().max(MAX_MARKER_BYTES), &stop);
@@ -91,14 +64,14 @@ pub(crate) fn read(text: &str, work: &mut Work<'_>) -> Vec<Found> {
         };
         if work.check().is_err() {
             found.push(Found::Problem(MarkerProblem {
-                kind: MarkerProblemKind::TooLong,
+                kind: ScanProblem::TooLong,
                 start: at,
                 end: text.len(),
             }));
             break;
         }
         match read {
-            Some(Found::Problem(problem)) if problem.kind == MarkerProblemKind::Unclosed => {
+            Some(Found::Problem(problem)) if problem.kind == ScanProblem::Unclosed => {
                 // Nothing after an unclosed marker can be placed with certainty.
                 found.push(Found::Problem(problem));
                 break;
@@ -172,7 +145,7 @@ fn bracket(text: &str, start: usize, work: &mut Work<'_>) -> Option<Found> {
         }
         return (!key_starts(open).is_empty()).then(|| {
             Found::Problem(MarkerProblem {
-                kind: MarkerProblemKind::Unclosed,
+                kind: ScanProblem::Unclosed,
                 start,
                 end: start + 1 + open.len(),
             })
@@ -189,22 +162,22 @@ fn bracket(text: &str, start: usize, work: &mut Work<'_>) -> Option<Found> {
     for segment in segments(body) {
         let keys = key_starts(segment);
         let Some(&at) = keys.first() else {
-            return problem(MarkerProblemKind::WithoutKey);
+            return problem(ScanProblem::WithoutKey);
         };
         if keys.len() > 1 {
-            return problem(MarkerProblemKind::TwoKeys);
+            return problem(ScanProblem::TwoKeys);
         }
         let (key, used) = bare_key(&segment[at + 1..], work);
         if key.is_empty() {
-            return problem(MarkerProblemKind::WithoutKey);
+            return problem(ScanProblem::WithoutKey);
         }
         let before = &segment[..at];
         let suppress_author = before.ends_with('-');
         let prefix = before.strip_suffix('-').unwrap_or(before);
         let Some((locator, suffix)) = notes(&segment[at + 1 + used..]) else {
-            return problem(MarkerProblemKind::Locator);
+            return problem(ScanProblem::Locator);
         };
-        cites.push(MarkerCite {
+        cites.push(Cite {
             key: key.to_owned(),
             prefix: unescape(prefix.trim()),
             locator,
@@ -232,9 +205,9 @@ fn narrative(text: &str, start: usize, work: &mut Work<'_>) -> Option<Marker> {
         start,
         end: start + 1 + used,
         narrative: true,
-        cites: vec![MarkerCite {
+        cites: vec![Cite {
             key: key.to_owned(),
-            ..MarkerCite::default()
+            ..Cite::default()
         }],
     };
     if let Some(open) = text[marker.end..].strip_prefix(" [") {
@@ -311,10 +284,10 @@ mod tests {
             other => panic!("{text}: {other:?}"),
         }
     }
-    fn cite(key: &str) -> MarkerCite {
-        MarkerCite {
+    fn cite(key: &str) -> Cite {
+        Cite {
             key: key.into(),
-            ..MarkerCite::default()
+            ..Cite::default()
         }
     }
     fn page(value: &str) -> Option<Locator> {
@@ -334,7 +307,7 @@ mod tests {
         assert_eq!(&text[first.start..first.end], "[@vale2024, p. 12]");
         assert_eq!(
             first.cites,
-            [MarkerCite {
+            [Cite {
                 locator: page("12"),
                 ..cite("vale2024")
             }]
@@ -357,14 +330,14 @@ mod tests {
         // Ibis's own escaping of a suffix and a braced locator.
         assert_eq!(
             only("[@a, {}see note]").cites[0],
-            MarkerCite {
+            Cite {
                 suffix: "see note".into(),
                 ..cite("a")
             }
         );
         assert_eq!(
             only("[@a, {pp. 3-4}, and passim]").cites[0],
-            MarkerCite {
+            Cite {
                 locator: page("3-4"),
                 suffix: "and passim".into(),
                 ..cite("a")
@@ -392,10 +365,10 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         };
-        assert_eq!(kinds("[@a; see]"), [Some(MarkerProblemKind::WithoutKey)]);
-        assert_eq!(kinds("[@a @b]"), [Some(MarkerProblemKind::TwoKeys)]);
-        assert_eq!(kinds("[@a, {here}]"), [Some(MarkerProblemKind::Locator)]);
-        assert_eq!(kinds("[@a, p. 3 and on"), [Some(MarkerProblemKind::Unclosed)]);
-        assert_eq!(kinds(&"[".repeat(200_000)), [Some(MarkerProblemKind::TooLong)]);
+        assert_eq!(kinds("[@a; see]"), [Some(ScanProblem::WithoutKey)]);
+        assert_eq!(kinds("[@a @b]"), [Some(ScanProblem::TwoKeys)]);
+        assert_eq!(kinds("[@a, {here}]"), [Some(ScanProblem::Locator)]);
+        assert_eq!(kinds("[@a, p. 3 and on"), [Some(ScanProblem::Unclosed)]);
+        assert_eq!(kinds(&"[".repeat(200_000)), [Some(ScanProblem::TooLong)]);
     }
 }

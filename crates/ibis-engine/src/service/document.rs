@@ -8,16 +8,16 @@
 //! - **Export** writes the cited records in a record format, through the same
 //!   share-safe exports as `cite`. Its CSL-JSON is a reference set.
 //!
-//! Plain text is read in place by `ibis-core`'s bounded readers; nothing here
-//! parses a container. A text read only in part says so, and never passes.
+//! Only the document child parses a file; this module reads its bytes under
+//! the local-file rules and checks what the child answers. A text read only
+//! in part says so, and never passes.
 
-use super::{Cancellation, Engine, error, health, select};
+use super::{Cancellation, Engine, health, select};
 use crate::request::{ItemSelector, KeyCitationRequest, KeyItem, RecordsRequest};
 use ibis_core::contract::{
     CitationError, CitationForm, CitationResult, EngineError, ErrorCode, ErrorReason, KeySyntax, OutputSpec,
 };
-use ibis_core::syntax::manuscript::{self, Manuscript, Place, TextKind};
-use ibis_core::syntax::marker::{MarkerCite, MarkerProblemKind};
+use ibis_core::contract::{Cite, MAX_TEXT_BYTES, Manuscript, Place, ScanProblem, TextKind};
 use ibis_sources::document::Refusal;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -169,14 +169,14 @@ pub enum Problem {
     Changed,
 }
 
-impl From<MarkerProblemKind> for Problem {
-    fn from(kind: MarkerProblemKind) -> Self {
+impl From<ScanProblem> for Problem {
+    fn from(kind: ScanProblem) -> Self {
         match kind {
-            MarkerProblemKind::Unclosed => Self::Unclosed,
-            MarkerProblemKind::WithoutKey => Self::WithoutKey,
-            MarkerProblemKind::TwoKeys => Self::TwoKeys,
-            MarkerProblemKind::Locator => Self::Locator,
-            MarkerProblemKind::TooLong => Self::TooLong,
+            ScanProblem::Unclosed => Self::Unclosed,
+            ScanProblem::WithoutKey => Self::WithoutKey,
+            ScanProblem::TwoKeys => Self::TwoKeys,
+            ScanProblem::Locator => Self::Locator,
+            ScanProblem::TooLong => Self::TooLong,
         }
     }
 }
@@ -232,17 +232,16 @@ impl Engine {
         let Some(kind) = TextKind::of(document) else {
             return Ok(Err(Refusal::Unsupported));
         };
-        let text = match ibis_sources::document::read_text(document, manuscript::MAX_TEXT_BYTES as u64, stop(cancel)) {
-            Ok(text) => text,
-            Err(Refusal::TimedOut) => {
-                cancel.check()?;
-                return Ok(Err(Refusal::TimedOut));
-            }
+        let Some(reader) = &self.documents else {
+            return Ok(Err(Refusal::Unavailable));
+        };
+        let read = ibis_sources::document::read_text(document, MAX_TEXT_BYTES as u64, stop(cancel))
+            .and_then(|text| reader.scan_text(kind, &text, &*stop(cancel)));
+        cancel.check()?;
+        let manuscript = match read {
+            Ok(manuscript) => manuscript,
             Err(refusal) => return Ok(Err(refusal)),
         };
-        let stopped = stop(cancel);
-        let manuscript = manuscript::scan(kind, &text, &*stopped);
-        cancel.check()?;
         let state = self.state()?;
         let snapshot = state.index.snapshot();
         let mut findings: Vec<Finding> = manuscript
@@ -431,9 +430,15 @@ impl Engine {
             by_key(&result.text)
         };
         let mut findings = Vec::new();
-        let mut named = HashSet::new();
+        // A key no library holds is already named; the set cannot add to that.
+        let mut named: HashSet<&str> = scanned
+            .keys
+            .iter()
+            .filter(|(_, problem)| problem.is_some())
+            .map(|(key, _)| key.as_str())
+            .collect();
         for cited in &scanned.manuscript.citations {
-            for MarkerCite { key, .. } in &cited.cites {
+            for Cite { key, .. } in &cited.cites {
                 let problem = match (in_set.get(key), current.get(key)) {
                     (None, _) => Problem::NotInSet,
                     (Some(then), Some(now)) if then != now => Problem::Changed,
