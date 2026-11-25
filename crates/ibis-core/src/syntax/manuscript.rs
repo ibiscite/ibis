@@ -17,17 +17,18 @@ pub fn scan(kind: TextKind, text: &str, stop: &dyn Fn() -> bool) -> Manuscript {
     let mut work = Work::new(text.len().max(marker::MAX_MARKER_BYTES), stop);
     let mut places = Places::new(text);
     let mut out = Manuscript::default();
-    let masked = match kind {
-        TextKind::Markdown => mask_markdown(text, &mut work),
-        TextKind::Latex => mask_latex(text, &mut work),
-        TextKind::Typst => mask_typst(text, &mut work),
-    };
-    if let Some(masked) = masked {
-        match kind {
-            TextKind::Markdown => markdown(&masked, &mut work, &mut places, &mut out),
-            TextKind::Latex => latex(&masked, &mut work, &mut places, &mut out),
-            TextKind::Typst => typst_text(text, &masked, &mut work, &mut places, &mut out),
+    match kind {
+        TextKind::Markdown => {
+            if let Some(masked) = mask_markdown(text, &mut work) {
+                markdown(&masked, &mut work, &mut places, &mut out);
+            }
         }
+        TextKind::Latex => {
+            if let Some(masked) = mask_latex(text, &mut work) {
+                latex(&masked, &mut work, &mut places, &mut out);
+            }
+        }
+        TextKind::Typst => typst_text(text, &mut work, &mut places, &mut out),
     }
     if work.check().is_err() && out.complete() {
         out.problems.push(ScanFinding {
@@ -161,54 +162,70 @@ fn mask_markdown(text: &str, work: &mut Work<'_>) -> Option<String> {
     }
     let text = into_text(bytes);
     let mut bytes = text.as_bytes().to_vec();
-    // Comments, then code spans, outside fenced blocks.
-    let mut at = 0;
-    while let Some(offset) = work.find_str(&text[at..], "<!--") {
-        let from = at + offset;
-        let end = work
-            .find_str(&text[from + 4..], "-->")
-            .map_or(text.len(), |close| from + 4 + close + 3);
-        blank(&mut bytes, from..end);
-        at = end;
-    }
-    let text = into_text(bytes);
-    let mut bytes = text.as_bytes().to_vec();
-    code_spans(&text, &mut bytes, work);
+    inline(&text, &mut bytes, work);
     work.check().ok()?;
     Some(into_text(bytes))
 }
 
-/// Blank `` `code` `` spans: a run of backticks closed by a run of the same
-/// length within the paragraph.
-fn code_spans(text: &str, bytes: &mut [u8], work: &mut Work<'_>) {
+/// One left-to-right pass over what fenced blocks left: an HTML comment or a
+/// `` `code` `` span, whichever opens first, so neither hides the other. A
+/// span is a run of backticks closed by a run of the same length within its
+/// paragraph; a length that found no closer there is not looked for again.
+fn inline(text: &str, bytes: &mut [u8], work: &mut Work<'_>) {
+    let ends: Vec<usize> = paragraphs(text)
+        .into_iter()
+        .map(|(start, block)| start + block.len())
+        .collect();
+    let mut unclosed: (usize, std::collections::HashSet<usize>) = (usize::MAX, Default::default());
     let mut at = 0;
-    while let Some(offset) = work.find(&text[at..], |c| c == '`') {
+    while let Some(offset) = work.find(&text[at..], |c| c == '`' || c == '<') {
         let from = at + offset;
+        if text[from..].starts_with("<!--") {
+            let end = work
+                .find_str(&text[from + 4..], "-->")
+                .map_or(text.len(), |close| from + 4 + close + 3);
+            blank(bytes, from..end);
+            at = end;
+            continue;
+        }
+        if text.as_bytes()[from] == b'<' {
+            at = from + 1;
+            continue;
+        }
         let length = text[from..].bytes().take_while(|&b| b == b'`').count();
         let body = from + length;
-        let paragraph_end = work
-            .find_str(&text[body..], "\n\n")
-            .map_or(text.len(), |end| body + end);
+        let limit = ends
+            .get(ends.partition_point(|end| *end < body))
+            .copied()
+            .unwrap_or(text.len());
+        if unclosed.0 != limit {
+            unclosed = (limit, Default::default());
+        }
         let mut close = None;
-        let mut i = body;
-        while let Some(next) = text[i..paragraph_end].find('`') {
-            let run_start = i + next;
-            let run = text[run_start..].bytes().take_while(|&b| b == b'`').count();
-            if !work.spend(run_start - i + run) {
-                return;
+        if !unclosed.1.contains(&length) {
+            let mut i = body;
+            while let Some(next) = text[i..limit].find('`') {
+                let run_start = i + next;
+                let run = text[run_start..limit].bytes().take_while(|&b| b == b'`').count();
+                if !work.spend(run_start - i + run) {
+                    return;
+                }
+                if run == length {
+                    close = Some(run_start + run);
+                    break;
+                }
+                i = run_start + run;
             }
-            if run == length {
-                close = Some(run_start + run);
-                break;
-            }
-            i = run_start + run;
         }
         match close {
             Some(end) => {
                 blank(bytes, from..end);
                 at = end;
             }
-            None => at = body,
+            None => {
+                unclosed.1.insert(length);
+                at = body;
+            }
         }
     }
 }
@@ -283,7 +300,10 @@ fn mask_latex(text: &str, work: &mut Work<'_>) -> Option<String> {
         }
         let rest = &text[i + 1..];
         if let Some(after) = rest.strip_prefix("begin{")
-            && let Some(name) = after.split_once('}').map(|(name, _)| name)
+            && let Some(name) = after
+                .get(..after.len().min(16))
+                .and_then(|head| head.split_once('}'))
+                .map(|(name, _)| name)
             && VERBATIM.contains(&name)
         {
             let close = format!("\\end{{{name}}}");
@@ -298,10 +318,9 @@ fn mask_latex(text: &str, work: &mut Work<'_>) -> Option<String> {
             && !delimiter.is_whitespace()
         {
             let body = i + 1 + 4 + usize::from(after.starts_with('*')) + delimiter.len_utf8();
-            let end = text[body..]
-                .find([delimiter, '\n'])
-                .map_or(text.len(), |close| body + close + 1)
-                .min(text.len());
+            let end = text[body..].find([delimiter, '\n']).map_or(text.len(), |close| {
+                body + close + text[body + close..].chars().next().map_or(0, char::len_utf8)
+            });
             work.spend(end - i);
             blank(&mut bytes, i..end);
             at = end;
@@ -387,6 +406,15 @@ const TEX_NARRATIVE: [&str; 7] = [
     "citeauthor",
 ];
 
+/// One optional `open … close` group at the start of `rest`, consumed:
+/// `None` when there is none, `Some(false)` when it runs to the end unclosed.
+fn optional(rest: &mut &str, open: char, close: char, work: &mut Work<'_>) -> Option<bool> {
+    let after = work.trim_start(rest).strip_prefix(open)?;
+    let (body, next) = group(after, open, close, false, work);
+    *rest = next;
+    Some(body.len() < after.len())
+}
+
 fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Manuscript) {
     let mut at = 0;
     while let Some(offset) = work.find(&text[at..], |c| c == '\\') {
@@ -405,18 +433,26 @@ fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Man
         let mut unclosed = false;
         if multi {
             for _ in 0..2 {
-                match work.trim_start(rest).strip_prefix('(') {
-                    Some(after) => rest = group(after, '(', ')', false, work).1,
+                match optional(&mut rest, '(', ')', work) {
+                    Some(true) => {}
+                    Some(false) => unclosed = true,
                     None => break,
                 }
             }
         }
         loop {
             for _ in 0..2 {
-                match work.trim_start(rest).strip_prefix('[') {
-                    Some(after) => rest = group(after, '[', ']', false, work).1,
+                if unclosed {
+                    break;
+                }
+                match optional(&mut rest, '[', ']', work) {
+                    Some(true) => {}
+                    Some(false) => unclosed = true,
                     None => break,
                 }
+            }
+            if unclosed {
+                break;
             }
             let Some(open) = work.trim_start(rest).strip_prefix('{') else {
                 break;
@@ -427,7 +463,12 @@ fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Man
                 // Skip the volume and its optional pages; the key follows.
                 rest = after;
                 if let Some(pages) = work.trim_start(rest).strip_prefix('[') {
-                    rest = group(pages, '[', ']', false, work).1;
+                    let (body, next) = group(pages, '[', ']', false, work);
+                    if body.len() == pages.len() {
+                        unclosed = true;
+                        break;
+                    }
+                    rest = next;
                 }
                 let Some(key) = work.trim_start(rest).strip_prefix('{') else {
                     break;
@@ -480,25 +521,53 @@ fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Man
 
 // ---- Typst ----
 
-fn mask_typst(text: &str, work: &mut Work<'_>) -> Option<String> {
+/// Keywords whose code runs to the end of the line.
+const TYPST_LINE: [&str; 5] = ["let", "set", "show", "import", "include"];
+
+/// Typst text with comments and raw text blanked, and the byte ranges that
+/// are code, where `@` is never a reference. Code is what follows `#`: the
+/// rest of a `#let`, `#set`, `#show`, `#import` or `#include` line, or a
+/// call's parentheses; a content block (`[…]`) inside code is markup again.
+/// Strings exist only in code.
+struct Typst {
+    masked: String,
+    code: Vec<std::ops::Range<usize>>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    /// Code: parentheses open in it, and whether a line ends it.
+    Code { parens: usize, line: bool },
+    /// A content block inside code: brackets open in it.
+    Content { brackets: usize },
+}
+
+fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
     let mut bytes = text.as_bytes().to_vec();
+    let mut code = Vec::new();
+    let mut code_from: Option<usize> = None;
+    let mut stack: Vec<Mode> = Vec::new();
+    let in_code = |stack: &[Mode]| matches!(stack.last(), Some(Mode::Code { .. }));
     let mut at = 0;
     while at < text.len() {
-        let Some(offset) = work.find(&text[at..], |c| matches!(c, '/' | '`' | '\\' | '"')) else {
-            break;
-        };
-        let i = at + offset;
-        let rest = &text[i..];
-        if rest.starts_with("//") && !text[..i].ends_with(':') {
-            let end = rest.find('\n').map_or(text.len(), |n| i + n);
-            work.spend(end - i);
-            blank(&mut bytes, i..end);
+        if !work.spend(1) {
+            return None;
+        }
+        let rest = &text[at..];
+        let c = rest.chars().next().unwrap_or(' ');
+        let code_now = in_code(&stack);
+        // Comments and raw text are blanked in markup and code alike.
+        if rest.starts_with("//") && (code_now || !text[..at].ends_with(':')) {
+            let end = rest.find('\n').map_or(text.len(), |n| at + n);
+            work.spend(end - at);
+            blank(&mut bytes, at..end);
             at = end;
-        } else if rest.starts_with("/*") {
-            // Block comments nest.
+            continue;
+        }
+        if rest.starts_with("/*") {
             let mut depth = 0_usize;
             let mut end = text.len();
-            let mut j = i;
+            let mut j = at;
             while j < text.len() {
                 if !work.spend(1) {
                     return None;
@@ -517,86 +586,164 @@ fn mask_typst(text: &str, work: &mut Work<'_>) -> Option<String> {
                     j += text[j..].chars().next().map_or(1, char::len_utf8);
                 }
             }
-            blank(&mut bytes, i..end);
+            blank(&mut bytes, at..end);
             at = end;
-        } else if rest.starts_with('`') {
+            continue;
+        }
+        if c == '`' {
             let length = rest.bytes().take_while(|&b| b == b'`').count();
-            let fence = &rest[..length];
-            let body = i + length;
+            let body = at + length;
             let end = if length == 2 {
                 body // An empty raw span.
             } else {
-                work.find_str(&text[body..], fence)
+                work.find_str(&text[body..], &rest[..length])
                     .map_or(text.len(), |close| body + close + length)
             };
-            blank(&mut bytes, i..end);
+            blank(&mut bytes, at..end);
             at = end;
-        } else if rest.starts_with('"') && text[..i].ends_with(['(', ',', ' ', '=']) && in_code(&text[..i]) {
-            // A string inside code: `@` there is not a reference.
-            let end = rest[1..]
-                .find(['"', '\n'])
-                .map_or(text.len(), |close| i + 1 + close + 1);
-            work.spend(end - i);
-            blank(&mut bytes, i..end);
-            at = end;
-        } else {
-            at = i
-                + 1
-                + rest[1..]
-                    .chars()
-                    .next()
-                    .filter(|_| rest.starts_with('\\'))
-                    .map_or(0, char::len_utf8);
+            continue;
         }
+        let mut next = at + c.len_utf8();
+        match (stack.last().copied(), c) {
+            (Some(Mode::Code { .. }), '"') => {
+                // A string, to its unescaped closing quote.
+                let mut j = at + 1;
+                while let Some(d) = text[j..].chars().next() {
+                    if !work.spend(d.len_utf8()) {
+                        return None;
+                    }
+                    j += d.len_utf8();
+                    match d {
+                        '\\' => j += text[j..].chars().next().map_or(0, char::len_utf8),
+                        '"' => break,
+                        _ => {}
+                    }
+                }
+                next = j.min(text.len());
+            }
+            (Some(Mode::Code { parens, line }), '(') => {
+                stack.pop();
+                stack.push(Mode::Code {
+                    parens: parens + 1,
+                    line,
+                });
+            }
+            (Some(Mode::Code { parens, line }), ')') => {
+                stack.pop();
+                if parens > 1 || line {
+                    stack.push(Mode::Code {
+                        parens: parens.saturating_sub(1),
+                        line,
+                    });
+                }
+            }
+            (Some(Mode::Code { parens: 0, line: true }), '\n') => {
+                stack.pop();
+            }
+            (Some(Mode::Code { .. }), '[') => stack.push(Mode::Content { brackets: 0 }),
+            (Some(Mode::Content { brackets }), '[') => {
+                stack.pop();
+                stack.push(Mode::Content { brackets: brackets + 1 });
+            }
+            (Some(Mode::Content { brackets }), ']') => {
+                stack.pop();
+                if brackets > 0 {
+                    stack.push(Mode::Content { brackets: brackets - 1 });
+                }
+            }
+            (_, '\\') if !code_now => next += text[next..].chars().next().map_or(0, char::len_utf8),
+            (_, '#') if !code_now => {
+                let name_len = text[next..]
+                    .find(|d: char| !(d.is_alphanumeric() || d == '_' || d == '-' || d == '.'))
+                    .unwrap_or(text.len() - next);
+                let name = &text[next..next + name_len];
+                if TYPST_LINE.contains(&name) {
+                    stack.push(Mode::Code { parens: 0, line: true });
+                } else if name_len > 0 && text[next + name_len..].starts_with('(') {
+                    stack.push(Mode::Code { parens: 0, line: false });
+                }
+                next += name_len;
+            }
+            _ => {}
+        }
+        if stack.len() > 256 {
+            return None;
+        }
+        match (code_from, in_code(&stack)) {
+            (None, true) => code_from = Some(at),
+            (Some(from), false) => {
+                code.push(from..next);
+                code_from = None;
+            }
+            _ => {}
+        }
+        at = next;
+    }
+    if let Some(from) = code_from {
+        code.push(from..text.len());
     }
     work.check().ok()?;
-    Some(into_text(bytes))
-}
-
-/// Whether the text before a quote is inside a `#function(` call on its line.
-fn in_code(before: &str) -> bool {
-    let line = before.rsplit('\n').next().unwrap_or(before);
-    line.rfind('#').is_some_and(|hash| line[hash..].contains('('))
+    Some(Typst {
+        masked: into_text(bytes),
+        code,
+    })
 }
 
 fn label_char(c: char) -> bool {
     c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | ':')
 }
 
-/// Labels the document defines (`<intro>`): `@intro` refers to them.
-fn labels(text: &str, work: &mut Work<'_>) -> std::collections::BTreeSet<String> {
+/// Whether `offset` is in code; offsets are asked in order.
+struct Ranges<'a> {
+    ranges: &'a [std::ops::Range<usize>],
+    next: usize,
+}
+
+impl Ranges<'_> {
+    fn contains(&mut self, offset: usize) -> bool {
+        while self.ranges.get(self.next).is_some_and(|range| range.end <= offset) {
+            self.next += 1;
+        }
+        self.ranges.get(self.next).is_some_and(|range| range.contains(&offset))
+    }
+}
+
+fn typst_text(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Manuscript) {
+    let Some(lexed) = lex_typst(text, work) else {
+        return;
+    };
+    let masked = lexed.masked.as_str();
+    // Labels the document defines in markup (`<intro>`): `@intro` refers to them.
     let mut labels = std::collections::BTreeSet::new();
+    let mut code = Ranges {
+        ranges: &lexed.code,
+        next: 0,
+    };
     let mut at = 0;
-    while let Some(offset) = work.find(&text[at..], |c| c == '<') {
+    while let Some(offset) = work.find(&masked[at..], |c| c == '<') {
         let start = at + offset + 1;
-        let length = text[start..]
+        let length = masked[start..]
             .find(|c: char| !label_char(c))
-            .unwrap_or(text.len() - start);
-        if length > 0 && text[start + length..].starts_with('>') && !text[..start - 1].ends_with("#cite(") {
-            labels.insert(text[start..start + length].to_owned());
+            .unwrap_or(masked.len() - start);
+        if length > 0 && masked[start + length..].starts_with('>') && !code.contains(start - 1) {
+            labels.insert(&masked[start..start + length]);
         }
         at = start + length;
     }
-    labels
-}
-
-/// `text` is the original, for `#cite(` arguments whose strings `masked` blanked.
-fn typst_text(original: &str, text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Manuscript) {
-    let labels = labels(text, work);
+    let mut code = Ranges {
+        ranges: &lexed.code,
+        next: 0,
+    };
     let mut at = 0;
-    while let Some(offset) = work.find(&text[at..], |c| c == '@' || c == '#' || c == '\\') {
+    while let Some(offset) = work.find(&masked[at..], |c| c == '@' || c == '#' || c == '\\') {
         let start = at + offset;
-        let rest = &text[start..];
+        let rest = &masked[start..];
         if let Some(escaped) = rest.strip_prefix('\\') {
             at = start + 1 + escaped.chars().next().map_or(0, char::len_utf8);
             continue;
         }
         if rest.starts_with('#') {
-            match rest
-                .starts_with("#cite(")
-                .then(|| typst(&original[start..], work))
-                .flatten()
-            {
+            match rest.starts_with("#cite(").then(|| typst(rest, work)).flatten() {
                 Some(read) => {
                     let cites: Vec<Cite> = read
                         .keys
@@ -613,20 +760,20 @@ fn typst_text(original: &str, text: &str, work: &mut Work<'_>, places: &mut Plac
                             cites,
                         });
                     }
-                    at = original.len() - read.rest.len();
+                    at = masked.len() - read.rest.len();
                 }
                 None => at = start + 1,
             }
             continue;
         }
-        if !pandoc_key_start(&text[..start]) {
+        if code.contains(start) || !pandoc_key_start(&masked[..start]) {
             at = start + 1;
             continue;
         }
-        let length = text[start + 1..]
+        let length = masked[start + 1..]
             .find(|c: char| !label_char(c))
-            .unwrap_or(text.len() - start - 1);
-        let key = text[start + 1..start + 1 + length].trim_end_matches(['.', ':']);
+            .unwrap_or(masked.len() - start - 1);
+        let key = masked[start + 1..start + 1 + length].trim_end_matches(['.', ':']);
         if !key.is_empty() && !labels.contains(key) {
             out.citations.push(Cited {
                 place: places.at(start),
@@ -637,7 +784,7 @@ fn typst_text(original: &str, text: &str, work: &mut Work<'_>, places: &mut Plac
                 }],
             });
         }
-        at = start + 1 + key.len().max(1).min(text.len() - start - 1);
+        at = start + 1 + key.len().max(1).min(masked.len() - start - 1);
         if work.check().is_err() {
             return;
         }

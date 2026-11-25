@@ -201,3 +201,26 @@ fn export_writes_bibtex_and_refuses_citation_outputs() {
         .unwrap_err();
     assert_eq!(failure, EngineError::citation(CitationError::UnsupportedOutput));
 }
+
+#[test]
+fn a_large_set_reads_back_and_a_wildcard_is_named_on_export() {
+    let title = "Lanterns ".repeat(6_000);
+    let library: String = (0..12)
+        .map(|n| format!("@book{{vale{n}, author = {{Vale, Avery}}, title = {{{title}{n}}}, year = {{2024}}}}\n"))
+        .collect();
+    let fixture = Fixture::new(&library);
+    let cites: String = (0..12).map(|n| format!("\\cite{{vale{n}}} ")).collect();
+    let draft = fixture.file("draft.tex", &format!("{cites}\\nocite{{*}}\n"));
+    let ExportResult::Exported {
+        read,
+        records: Some(records),
+    } = fixture.export(&draft, KeySyntax::CslJson)
+    else {
+        panic!()
+    };
+    assert!(records.text.len() > 512 * 1024, "{} {:?}", records.text.len(), read);
+    assert_eq!(problems(&read), [(0, None, Problem::CitesEverything)]);
+    let set = fixture.file("references.json", &records.text);
+    let read = super::tests::read(fixture.check(&draft, Some(&set)));
+    assert!(read.settled(), "{read:?}");
+}

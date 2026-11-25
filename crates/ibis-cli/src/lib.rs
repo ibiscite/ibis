@@ -20,6 +20,16 @@ mod human;
 mod keys;
 mod out;
 pub mod pdf_text;
+
+/// `ibis __document`: the document child, under the PDF child's CPU, core
+/// and address-space limits (decision 0060).
+pub fn run_document_child() -> u8 {
+    #[cfg(unix)]
+    if pdf_text::limit_resources().is_err() {
+        return 1;
+    }
+    ibis_sources::document::child::serve(std::io::stdin().lock(), std::io::stdout().lock())
+}
 mod proposals;
 mod settings_backup;
 mod sources;

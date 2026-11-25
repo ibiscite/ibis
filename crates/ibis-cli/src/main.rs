@@ -16,10 +16,7 @@ fn main() -> std::process::ExitCode {
         .get(1)
         .is_some_and(|argument| argument == ibis_sources::document::CHILD_ARGUMENT)
     {
-        return std::process::ExitCode::from(ibis_sources::document::child::serve(
-            std::io::stdin().lock(),
-            std::io::stdout().lock(),
-        ));
+        return std::process::ExitCode::from(ibis::run_document_child());
     }
     // A built-in source adapter, started only by `ibis` itself (decision 0056).
     if arguments
