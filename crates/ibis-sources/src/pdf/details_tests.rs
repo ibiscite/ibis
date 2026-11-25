@@ -226,7 +226,7 @@ fn a_value_longer_than_the_child_sends_refuses_the_answer() {
         Err(Refusal::TooLarge)
     );
     let info = Stated {
-        creators: vec!["Invented Person;".repeat(200)[..MAX_STATED_BYTES].to_owned()],
+        creators: vec!["Invented Person;".repeat(300)[..MAX_STATED_BYTES].to_owned()],
         ..Stated::default()
     };
     assert!(
