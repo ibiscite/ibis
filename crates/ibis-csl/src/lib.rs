@@ -117,6 +117,7 @@ pub struct Formatter {
     service: Arc<service::Service>,
 }
 pub use input::ResolvedOutput;
+pub use output::DocumentAnswer;
 
 impl Formatter {
     pub fn new() -> Result<Self, FormatError> {
@@ -160,6 +161,27 @@ impl Formatter {
     pub fn submit(&self, snapshot: Arc<Snapshot>, request: CitationRequest) -> Result<FormatTask, FormatError> {
         self.service
             .submit(input::prepare(&snapshot, &request, self.service.limits())?)
+    }
+    /// One document's citations as one sequence, with its reference list
+    /// (`ibis format`). `clusters` hold the indices of `request.items` each
+    /// citation cites, in document order; every item is in exactly one.
+    /// Note styles are refused: their citations belong in footnotes.
+    pub fn format_document(
+        &self,
+        snapshot: &Snapshot,
+        request: &CitationRequest,
+        output: &ResolvedOutput,
+        clusters: &[Vec<usize>],
+    ) -> Result<DocumentAnswer, FormatError> {
+        let prepared = input::prepare_document(snapshot, request, self.service.limits(), output, clusters)?;
+        match self.service.submit(prepared)?.formatted()? {
+            output::Formatted::Document(answer) => Ok(answer),
+            output::Formatted::Citation(_) => Err(FormatError::Runtime),
+        }
+    }
+    /// Whether the style `id` writes its citations as notes.
+    pub fn style_writes_notes(id: &str) -> Result<bool, FormatError> {
+        input::style_writes_notes(id)
     }
     /// Best-effort startup work. Call off the UI thread; no library is read and
     /// no citation is published. A foreground request retires late warm-ups.

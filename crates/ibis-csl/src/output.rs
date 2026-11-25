@@ -28,6 +28,140 @@ struct Span {
     text: String,
 }
 
+/// What the formatter's worker answers.
+pub(crate) enum Formatted {
+    Citation(CitationResult),
+    Document(DocumentAnswer),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DocumentAnswer {
+    Formatted(DocumentCitations),
+    /// The items the style cannot cite, by their place in the request; none
+    /// named when the style cannot write the document's citations as a whole.
+    Refused(Vec<(usize, CitationError)>),
+}
+
+pub(crate) fn refused_formatted(input: &Prepared) -> Formatted {
+    if input.document {
+        Formatted::Document(DocumentAnswer::Refused(
+            input
+                .outcomes
+                .iter()
+                .filter_map(|outcome| match outcome {
+                    ItemOutcome::Refused { item, error } => Some((*item, *error)),
+                    _ => None,
+                })
+                .collect(),
+        ))
+    } else {
+        Formatted::Citation(refused(input))
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "status", rename_all = "kebab-case", deny_unknown_fields)]
+enum DocumentOutputs {
+    Refused,
+    Rendered {
+        citations: Vec<String>,
+        entries: Vec<String>,
+        hanging_indent: bool,
+    },
+}
+
+/// The processor's HTML for a document, as runs: only its passive tags,
+/// whitespace folded as HTML shows it.
+pub(crate) fn document(json: &str) -> Result<DocumentAnswer, FormatError> {
+    let output: DocumentOutputs = serde_json::from_str(json).map_err(|_| FormatError::Runtime)?;
+    let DocumentOutputs::Rendered {
+        citations,
+        entries,
+        hanging_indent,
+    } = output
+    else {
+        return Ok(DocumentAnswer::Refused(Vec::new()));
+    };
+    let citations = citations
+        .iter()
+        .map(|html| {
+            let runs = folded(parse_html(html)?.runs);
+            if runs.is_empty() {
+                return Err(FormatError::Runtime);
+            }
+            Ok(runs)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let entries = entries
+        .iter()
+        .map(|html| {
+            let Parsed { runs, blocks } = parse_html(html)?;
+            let entry = blocks
+                .iter()
+                .find(|block| block.kind == DisplayBlockKind::Entry)
+                .map_or(0..runs.len(), |block| block.start..block.end);
+            let margin = blocks
+                .iter()
+                .find(|block| block.kind == DisplayBlockKind::Margin && entry.contains(&block.start))
+                .map(|block| block.start..block.end.min(entry.end));
+            let (margin, content) = match margin {
+                Some(margin) => (runs[margin.clone()].to_vec(), runs[margin.end..entry.end].to_vec()),
+                None => (Vec::new(), runs[entry].to_vec()),
+            };
+            Ok(DocumentEntry {
+                margin: folded(margin),
+                content: folded(content),
+            })
+        })
+        .collect::<Result<Vec<_>, FormatError>>()?;
+    if citations
+        .iter()
+        .chain(entries.iter().flat_map(|entry| [&entry.margin, &entry.content]))
+        .flatten()
+        .any(|run| unsupported_controls(&run.text))
+    {
+        return Err(FormatError::Runtime);
+    }
+    Ok(DocumentAnswer::Formatted(DocumentCitations {
+        citations,
+        entries,
+        hanging_indent,
+    }))
+}
+
+/// Runs with each stretch of whitespace one space, trimmed at both ends.
+fn folded(runs: Vec<DisplayRun>) -> Vec<DisplayRun> {
+    let mut out: Vec<DisplayRun> = Vec::new();
+    let mut space = true;
+    for mut run in runs {
+        let mut text = String::with_capacity(run.text.len());
+        for ch in run.text.chars() {
+            if js_space(ch) {
+                if !space {
+                    text.push(' ');
+                }
+                space = true;
+            } else {
+                text.push(ch);
+                space = false;
+            }
+        }
+        run.text = text;
+        if !run.text.is_empty() {
+            out.push(run);
+        }
+    }
+    while let Some(last) = out.last_mut() {
+        let trimmed = last.text.trim_end_matches(' ').len();
+        last.text.truncate(trimmed);
+        if !last.text.is_empty() {
+            break;
+        }
+        out.pop();
+    }
+    out
+}
+
 pub(crate) fn refused(input: &Prepared) -> CitationResult {
     CitationResult::new(
         String::new(),

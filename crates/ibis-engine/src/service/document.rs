@@ -474,6 +474,9 @@ fn by_key(text: &str) -> BTreeMap<String, Value> {
         .collect()
 }
 
+mod format;
+pub use format::{FormatIssue, FormatRefusal, FormatReport, FormatRequest, FormatResult, Issue as FormatIssueKind};
+
 #[cfg(test)]
 #[path = "document_tests.rs"]
 mod tests;

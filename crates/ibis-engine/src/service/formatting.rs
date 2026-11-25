@@ -37,7 +37,7 @@ struct Registration {
 #[derive(Clone, Default)]
 pub struct Formatting(Arc<Mutex<Option<ibis_csl::Formatter>>>);
 impl Formatting {
-    fn formatter(&self) -> Result<ibis_csl::Formatter, EngineError> {
+    pub(super) fn formatter(&self) -> Result<ibis_csl::Formatter, EngineError> {
         let mut current = self.0.recover_lock();
         if let Some(formatter) = current.as_ref() {
             return Ok(formatter.clone());

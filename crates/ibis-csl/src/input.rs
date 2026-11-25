@@ -160,6 +160,8 @@ pub(crate) struct Prepared {
     pub notices: Vec<Notice>,
     pub warnings: Vec<CitationWarning>,
     pub empty: bool,
+    /// Formatted as one document's citations, in order (see `document`).
+    pub document: bool,
 }
 
 /// Whether the requested style and locale exist, before any item is looked at.
@@ -215,6 +217,10 @@ pub(crate) fn style_writes_entries(id: &str) -> Result<bool, FormatError> {
     Ok(catalog::resolve(id)?.traits.numeric)
 }
 
+pub(crate) fn style_writes_notes(id: &str) -> Result<bool, FormatError> {
+    Ok(catalog::resolve(id)?.traits.note)
+}
+
 pub(crate) fn prepare(
     snapshot: &Snapshot,
     request: &CitationRequest,
@@ -242,6 +248,7 @@ pub(crate) fn warm(style: &str, locale: Option<&str>) -> Result<Prepared, Format
         notices: vec![],
         warnings: vec![],
         empty: false,
+        document: false,
     })
 }
 
@@ -251,6 +258,41 @@ pub(crate) fn prepare_resolved(
     limits: &Limits,
     resolved: &ResolvedOutput,
     project_fields: FieldProjection,
+) -> Result<Prepared, FormatError> {
+    prepare_with(snapshot, request, limits, resolved, None)
+}
+
+/// A document's citations as one sequence: `clusters` are the indices of
+/// `request.items` each citation holds, in document order. In-text
+/// citations, never entries; numbers, year letters and positions follow the
+/// whole document.
+pub(crate) fn prepare_document(
+    snapshot: &Snapshot,
+    request: &CitationRequest,
+    limits: &Limits,
+    resolved: &ResolvedOutput,
+    clusters: &[Vec<usize>],
+) -> Result<Prepared, FormatError> {
+    let mut seen = vec![false; request.items.len()];
+    for index in clusters.iter().flatten() {
+        // Every item in exactly one citation, in order.
+        if seen.get(*index).copied() != Some(false) {
+            return Err(FormatError::InvalidRequest);
+        }
+        seen[*index] = true;
+    }
+    if clusters.iter().any(Vec::is_empty) || seen.contains(&false) || resolved.style.traits.note {
+        return Err(FormatError::InvalidRequest);
+    }
+    prepare_with(snapshot, request, limits, resolved, Some(clusters))
+}
+
+fn prepare_with(
+    snapshot: &Snapshot,
+    request: &CitationRequest,
+    limits: &Limits,
+    resolved: &ResolvedOutput,
+    clusters: Option<&[Vec<usize>]>,
 ) -> Result<Prepared, FormatError> {
     let style = &*resolved.style;
     let traits = style.traits;
@@ -279,22 +321,38 @@ pub(crate) fn prepare_resolved(
     // Reference entries when the style numbers them, or when every reference
     // asks for its entry, through the request's form or its own.
     let entry = |form: CitationForm| matches!(form, CitationForm::BibliographyOnly | CitationForm::Full);
-    let bibliography = traits.numeric
-        || if request.items.is_empty() {
-            entry(request.form)
-        } else {
-            request
-                .items
-                .iter()
-                .all(|pick| entry(pick.form.unwrap_or(request.form)))
-        };
+    let document = clusters.is_some();
+    let mut cluster_size = vec![request.items.len(); request.items.len()];
+    for cluster in clusters.into_iter().flatten() {
+        for index in cluster {
+            cluster_size[*index] = cluster.len();
+        }
+    }
+    let bibliography = !document
+        && (traits.numeric
+            || if request.items.is_empty() {
+                entry(request.form)
+            } else {
+                request
+                    .items
+                    .iter()
+                    .all(|pick| entry(pick.form.unwrap_or(request.form)))
+            });
+    // The validator may skip items it refuses, so each pick finds its own place.
+    let size = |pick: &CitationItem| {
+        request
+            .items
+            .iter()
+            .position(|item| std::ptr::eq(item, pick))
+            .map_or(request.items.len(), |index| cluster_size[index])
+    };
     let checked = citation::check(snapshot, None, request, |pick| ItemSupport {
         locator: true,
         form: !refuses_form(
             style,
             pick.form.unwrap_or(request.form),
             bibliography,
-            request.items.len(),
+            size(pick),
             pick.suppress_author,
         ),
     })
@@ -308,7 +366,9 @@ pub(crate) fn prepare_resolved(
     let mut notices = Vec::new();
     let mut warnings = Vec::new();
     let mut affixes = Vec::new();
-    if traits.numeric {
+    if document {
+        // The whole document is the context these notices ask for.
+    } else if traits.numeric {
         notices.extend([Notice::NeedsDocumentContext, Notice::ReferenceEntry]);
     } else if traits.note && !bibliography {
         notices.extend([Notice::NeedsDocumentContext, Notice::FullFirstNote]);
@@ -419,7 +479,10 @@ pub(crate) fn prepare_resolved(
             });
             continue;
         }
-        if matches!(form, CitationForm::AuthorOnly | CitationForm::Narrative) && !has_authors {
+        // A numbered style's citation has no author form to name in a sentence.
+        if matches!(form, CitationForm::AuthorOnly | CitationForm::Narrative)
+            && (!has_authors || document && traits.numeric)
+        {
             outcomes.push(ItemOutcome::Refused {
                 item: index,
                 error: CitationError::UnsupportedForm,
@@ -496,7 +559,7 @@ pub(crate) fn prepare_resolved(
         cites.push(cite);
         outcomes.push(ItemOutcome::Rendered { item: index });
     }
-    if traits.year_suffix && shares_author_and_year(&items) {
+    if !document && traits.year_suffix && shares_author_and_year(&items) {
         notices.push(Notice::YearSuffixWithheld);
     }
     if bibliography && request.keep_order {
@@ -507,7 +570,11 @@ pub(crate) fn prepare_resolved(
         });
     }
     let language = locale.clone().unwrap_or_else(|| style.language.clone());
-    let json=String::from_utf8(bounded_json(&json!({"style":style.rules,"numeric":traits.numeric,"sentence_titles":style.sentence_titles,"items":items,"cites":cites,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
+    let mut body = json!({"style":style.rules,"numeric":traits.numeric,"sentence_titles":style.sentence_titles,"items":items,"cites":cites,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":locale});
+    if let Some(clusters) = clusters {
+        body["clusters"] = json!(clusters);
+    }
+    let json = String::from_utf8(bounded_json(&body, limits.input_bytes)?).map_err(|_| FormatError::InvalidRequest)?;
     // Each placeholder (in its cite and in the affix list) must be the only
     // place its sentinel occurs, or the bridge could write an affix into a
     // record's own text.
@@ -524,7 +591,9 @@ pub(crate) fn prepare_resolved(
         losses,
         notices,
         warnings,
-        empty: cites.is_empty(),
+        // A document is formatted whole or not at all.
+        empty: cites.is_empty() || document && cites.len() != request.items.len(),
+        document,
     })
 }
 

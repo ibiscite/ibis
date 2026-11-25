@@ -39,8 +39,9 @@ mod project;
 mod reading;
 mod share;
 pub use document::{
-    CheckRequest, CheckResult, Checked as DocumentChecked, ExportRequest, ExportResult, Finding,
-    Problem as DocumentProblem, Read as DocumentRead, Which,
+    CheckRequest, CheckResult, Checked as DocumentChecked, ExportRequest, ExportResult, Finding, FormatIssue,
+    FormatIssueKind, FormatRefusal, FormatReport, FormatRequest, FormatResult, Problem as DocumentProblem,
+    Read as DocumentRead, Which,
 };
 pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
 pub use project::{
