@@ -207,6 +207,7 @@ pub(super) fn deliver<D: Desk>(
                     copied(CopyReason::NoPermission)
                 }
                 PostResult::SecureField => copied(CopyReason::SecureField),
+                PostResult::PasteOff => copied(CopyReason::PasteOff),
                 #[cfg(any(target_os = "windows", test))]
                 PostResult::KeyReleaseFailed => key_release_failed(),
                 PostResult::Refused => copied(CopyReason::PasteUnavailable),

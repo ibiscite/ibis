@@ -83,6 +83,10 @@ impl ibis_native::paste::macos::Host for Host {
         crate::picker::command_key(tauri_plugin_global_shortcut::Code::KeyV, crate::picker::typing())
     }
 
+    fn paste_consent(&self) -> Option<bool> {
+        paste_setting(&self.0)
+    }
+
     fn paste_choice(&self, id: &AppId, identity: Option<&str>) -> Option<(Option<AppPaste>, bool)> {
         let preference = self
             .0
