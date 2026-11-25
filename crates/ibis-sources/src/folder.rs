@@ -27,6 +27,12 @@ pub fn library_file(path: &Path) -> PathBuf {
     }
 }
 
+/// `folder`, resolved, in the form the PDF reader's local-file checks take:
+/// links resolved, and on Windows the plain `C:\` form of a `\\?\C:\` path.
+pub fn readable(folder: &Path) -> std::io::Result<PathBuf> {
+    std::fs::canonicalize(folder).map(|resolved| crate::file::plain_disk(&resolved))
+}
+
 /// Whether the library file at `path` is a folder's, by its name alone.
 pub fn is_folder_library(path: &Path) -> bool {
     path.file_name().is_some_and(|name| name == LIBRARY_FILE)

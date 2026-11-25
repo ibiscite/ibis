@@ -55,12 +55,15 @@ impl Engine {
     ) -> Result<Kept, WriteError> {
         let reader: &PdfReader = self.pdf_reader().ok_or(WriteProblem::Unreadable)?;
         let _lock = store.lock()?;
-        // PDFs are opened by the path as given, which the reader's local-file
-        // checks take on every system; the write goes to the resolved folder,
-        // which must still be the same folder when it is replaced.
+        // PDFs are opened through the resolved folder in the plain form the
+        // reader's local-file checks take; the write goes to the resolved
+        // folder, which must still be the same folder when it is replaced. A
+        // swap inside the moment between that check and the rename is not
+        // caught, as for an applied proposal (write::apply_proposal).
         let given = std::path::absolute(folder).map_err(|_| WriteProblem::Unreadable)?;
         let resolved = std::fs::canonicalize(&given).map_err(|_| WriteProblem::Unreadable)?;
         let identity = FolderIdentity::of(&resolved).ok_or(WriteProblem::Unreadable)?;
+        let readable = ibis_sources::folder::readable(&given).map_err(|_| WriteProblem::Unreadable)?;
         let path = resolved.join(LIBRARY_FILE);
         let before = state(&path)?;
         let text = before.clone().unwrap_or_default();
@@ -81,7 +84,7 @@ impl Engine {
         for relative in waiting.iter().take(KEEP_BATCH) {
             attempted += 1;
             let stop = cancel.clone();
-            let details = match reader.details(&given.join(relative), Arc::new(move || stop.is_cancelled())) {
+            let details = match reader.details(&readable.join(relative), Arc::new(move || stop.is_cancelled())) {
                 Ok(details) => Some(details),
                 // Settled: this file will never say more.
                 Err(Refusal::Damaged | Refusal::NotPdf | Refusal::TooLarge) => None,

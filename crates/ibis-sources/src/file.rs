@@ -547,7 +547,7 @@ pub(crate) fn attachment_path(
 }
 
 #[cfg(windows)]
-fn plain_disk(path: &Path) -> PathBuf {
+pub(crate) fn plain_disk(path: &Path) -> PathBuf {
     use std::path::{Component, Prefix};
     let mut parts = path.components();
     if let Some(Component::Prefix(prefix)) = parts.next()
@@ -563,7 +563,7 @@ fn plain_disk(path: &Path) -> PathBuf {
 }
 
 #[cfg(not(windows))]
-fn plain_disk(path: &Path) -> PathBuf {
+pub(crate) fn plain_disk(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
