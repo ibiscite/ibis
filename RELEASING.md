@@ -26,8 +26,8 @@ with `cargo about` and `pnpm licenses`): every licence and NOTICE file each
 dependency ships, and the standard text of its declared licence for the few that
 ship none (listed in the job log; npm ones only after review in the script). It
 fails when a crate's licence cannot be read or named, or an npm package has no
-licence file and no review; each build then opens every package and requires them byte for byte
-(`scripts/verify-packages.py`). `cargo deny` remains the licence policy. Checksums
+licence file and no review. The verify job requires them in every package byte
+for byte. `cargo deny` remains the licence policy. Checksums
 and provenance accompany packages.
 
 ## The note people read
@@ -47,8 +47,16 @@ versions/changelog and tags through the release app token, starting
 
 1. Build Windows, macOS Apple silicon/Intel and Linux packages. Compare CSL
    output with the preceding release; new failures block numbered publication.
-2. Apply configured [macOS signing](docs/code-signing.md), verify provenance,
-   install/start packages and run native checks. Intel macOS is build-only.
+2. Apply configured [macOS signing](docs/code-signing.md) and verify provenance.
+   The verify job then opens every package on its own system
+   (`scripts/verify-packages.py`): checksums, notices, the version from the tag
+   or commit in the package's metadata and executables, the processor, the
+   macOS signature (by the pinned certificate) and identity, and the command
+   line's `--version`. It first plants bad copies (cut in half, a wrong
+   version, notices removed) and fails unless each is refused. Install, publish
+   and nightly jobs require it. Packages are then installed and started; a
+   numbered release also runs the installed journey (chooser, delivery, Quit).
+   Intel macOS is verified but not run, and its release-notes row says so.
 3. Stable publishing waits in `updates` for approval. It verifies exact-tag
    checksums/provenance, signs updater archives and publishes the draft.
    Numbered publishing is serialized and does not overwrite public releases.

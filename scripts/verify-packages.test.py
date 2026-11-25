@@ -1,8 +1,11 @@
 """verify-packages.py against invented packages, good and planted bad ones."""
 
+import argparse
 import gzip
+import hashlib
 import importlib.util
 import io
+import plistlib
 import shutil
 import struct
 import subprocess
@@ -22,32 +25,58 @@ NOTICES = {
     "NOTICE.md": b"# Notices\nsynthetic\n",
     "THIRD-PARTY-NOTICES.txt": b"Third-party notices for Ibis\nRust crates (1)\n  example 1.0.0: MIT\n",
 }
+VERSION = "0.4.1-nightly.20261125000000"
+BUILD = VERSION + "+abc1234"
+OPTIONS = argparse.Namespace(version=VERSION, build=BUILD, identifier=None, signing_leaf=None)
 
 
-def tar_bytes(files, compress=True):
+def options(**changes):
+    return argparse.Namespace(**{**vars(OPTIONS), **changes})
+
+
+def elf(build=BUILD, machine=62):
+    return b"\x7fELF" + b"\0" * 14 + struct.pack("<H", machine) + b"\0" * 44 + build.encode()
+
+
+def pe(build=BUILD, machine=0x8664):
+    head = b"MZ" + b"\0" * 58 + struct.pack("<I", 64)
+    return head + b"PE\0\0" + struct.pack("<H", machine) + b"\0" * 18 + build.encode()
+
+
+def version_resource(version):
+    """A version resource's String entry: header, key, alignment pad, value."""
+    return struct.pack("<HHH", 0, len(version) + 1, 1) + "ProductVersion".encode("utf-16-le") + b"\0\0" + b"\0\0" + version.encode("utf-16-le") + b"\0\0"
+
+
+def tar_bytes(files):
     buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz" if compress else "w") as archive:
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         for name, data in files.items():
             info = tarfile.TarInfo(name)
             info.size = len(data)
+            info.mode = 0o755
             archive.addfile(info, io.BytesIO(data))
     return buffer.getvalue()
 
 
-def app_files(prefix, notices=NOTICES):
-    """An app's resource folder at `prefix`: its notices beside the resource that names it."""
-    return {f"{prefix}/notices/{name}": data for name, data in notices.items()} | {
-        f"{prefix}/resources/samples.csljson": b"[]", f"{prefix}/ibis-desktop": b"synthetic app"}
+def app_files(prefix, programs, notices=NOTICES):
+    return {f"{prefix}/notices/{name}": data for name, data in notices.items()} | programs
 
 
-def deb_bytes(files):
+def linux_app(prefix="./usr", build=BUILD):
+    return app_files(f"{prefix}/lib/Ibis Nightly", {f"{prefix}/bin/ibis-nightly": elf(build), f"{prefix}/bin/ibis": elf(build)})
+
+
+def deb_bytes(files, version=VERSION):
     def member(name, data):
         header = f"{name:<16}{0:<12}{0:<6}{0:<6}{100644:<8}{len(data):<10}`\n".encode()
         return header + data + (b"\n" if len(data) % 2 else b"")
-    return b"!<arch>\n" + member("debian-binary", b"2.0\n") + member("control.tar.gz", tar_bytes({"./control": b"Package: ibis\n"})) + member("data.tar.gz", tar_bytes(files))
+
+    control = tar_bytes({"./control": f"Package: ibis-nightly\nVersion: {version}\nArchitecture: amd64\n".encode()})
+    return b"!<arch>\n" + member("debian-binary", b"2.0\n") + member("control.tar.gz", control) + member("data.tar.gz", tar_bytes(files))
 
 
-def rpm_bytes(files):
+def rpm_bytes(files, version=VERSION):
     def header(tags):
         store, index = b"", b""
         for tag, value in tags.items():
@@ -58,13 +87,17 @@ def rpm_bytes(files):
     cpio = b""
     for name, data in list(files.items()) + [("TRAILER!!!", b"")]:
         encoded = name.encode() + b"\0"
-        fields = [0, 0o100644, 0, 0, 1, 0, len(data), 0, 0, 0, 0, len(encoded), 0]
+        fields = [0, 0o100755, 0, 0, 1, 0, len(data), 0, 0, 0, 0, len(encoded), 0]
         entry = b"070701" + b"".join(f"{value:08x}".encode() for value in fields) + encoded
         entry += b"\0" * ((4 - len(entry) % 4) % 4) + data
         cpio += entry + b"\0" * ((4 - len(entry) % 4) % 4)
     signature = header({1000: "synthetic"})
     signature += b"\0" * ((8 - len(signature) % 8) % 8)
-    return b"\xed\xab\xee\xdb" + b"\0" * 92 + signature + header({1125: "gzip"}) + gzip.compress(cpio)
+    return b"\xed\xab\xee\xdb" + b"\0" * 92 + signature + header({1001: version, 1125: "gzip"}) + gzip.compress(cpio)
+
+
+def cli_tar(build=BUILD, notices=NOTICES):
+    return tar_bytes({**notices, "ibis": elf(build)})
 
 
 class Packages(unittest.TestCase):
@@ -76,85 +109,68 @@ class Packages(unittest.TestCase):
         for name, data in NOTICES.items():
             (self.notices / name).write_bytes(data)
         self.digests = verify.load_notices(self.notices)
+        # Invented programs never start; the real ones do in Preview.
+        original = verify.runs_here
+        verify.runs_here = lambda data: False
+        self.addCleanup(setattr, verify, "runs_here", original)
 
     def write(self, name, data):
         path = self.dir / name
         path.write_bytes(data)
         return path
 
-    def check(self, path):
-        verify.check_package(path, self.digests, "Ibis")
+    def check(self, path, target="x86_64-unknown-linux-gnu", opts=OPTIONS):
+        verify.check_package(path, self.digests, opts, target)
 
-    def assertFails(self, path, pattern):
+    def assertFails(self, path, pattern, target="x86_64-unknown-linux-gnu", opts=OPTIONS):
         with self.assertRaisesRegex(verify.Failure, pattern):
-            self.check(path)
+            self.check(path, target, opts)
 
-    def test_command_line_archives_carry_the_notices_at_their_top(self):
-        self.check(self.write("ibis-Linux.tar.gz", tar_bytes({**NOTICES, "ibis": b"synthetic"})))
+    def test_command_line_archives_carry_notices_and_the_built_program(self):
+        self.check(self.write("ibis-Linux.tar.gz", cli_tar()))
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w") as archive:
-            for name, data in {**NOTICES, "ibis.exe": b"synthetic"}.items():
+            for name, data in {**NOTICES, "ibis.exe": pe()}.items():
                 archive.writestr(name, data)
-        self.check(self.write("ibis-Windows.zip", buffer.getvalue()))
-        # The same files one folder down are not where people look.
-        self.assertFails(self.write("ibis-macOS-Intel.tar.gz", tar_bytes({f"cli/{n}": d for n, d in NOTICES.items()})), "0 copies of LICENSE")
+        self.check(self.write("ibis-Windows.zip", buffer.getvalue()), "x86_64-pc-windows-msvc")
+        nested = tar_bytes({f"cli/{n}": d for n, d in NOTICES.items()} | {"ibis": elf()})
+        self.assertFails(self.write("ibis-Linux.tar.gz", nested), "0 copies of LICENSE")
+        self.assertFails(self.write("ibis-Linux.tar.gz", cli_tar(build="0.4.0")), "does not embed version")
+        self.assertFails(self.write("ibis-Linux.tar.gz", tar_bytes({**NOTICES, "ibis": elf(machine=183)})), "built for arm64, not x86_64")
 
     def test_notices_outside_their_place_do_not_count(self):
         # The command line's belong at the archive's top, not in a folder.
         self.assertFails(self.write("ibis-Linux.tar.gz", tar_bytes({f"notices/{n}": d for n, d in NOTICES.items()})),
-                         "0 copies of LICENSE at the archive's top")
-        # An app's belong in its own resource folder, not beside the app or in another app.
-        beside = {f"notices/{n}": d for n, d in NOTICES.items()} | {"Ibis.app/Contents/Resources/resources/samples.csljson": b"[]"}
-        self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(beside)), "0 copies of LICENSE in the app's resource folder")
-        other = {k: v for k, v in app_files("Old.app/Contents/Resources").items() if "samples" not in k}
-        other["Ibis.app/Contents/Resources/resources/samples.csljson"] = b"[]"
-        self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(other)), "0 copies of LICENSE in the app's resource folder")
-        elsewhere = {k: v for k, v in app_files("./usr/share/doc/ibis").items() if "samples" not in k}
-        elsewhere["./usr/lib/Ibis/resources/samples.csljson"] = b"[]"
-        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(elsewhere)), "0 copies of LICENSE in the app's resource folder")
-        # Another product's resource folder is not this app's.
-        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(app_files("./usr/lib/Ibis Nightly"))), "0 Linux apps")
-        # Another app's complete resources do not stand in for this product's.
-        self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(app_files("Old.app/Contents/Resources"))), "0 macOS apps")
-        # Resources and notices moved together out of where the app installs them.
-        for name, build, root in [("Ibis-Linux.deb", deb_bytes, "./usr/share/doc/ibis"), ("Ibis-Linux.rpm", rpm_bytes, "./usr/share/doc/ibis"),
-                                  ("Ibis-macOS-Intel.app.tar.gz", tar_bytes, "docs")]:
-            self.assertFails(self.write(name, build(app_files(root))), "0 (macOS|Linux) apps with resources")
-        # A path leaving the package is refused, not read as one inside it.
-        escaping = tar_bytes({f"../{n}": d for n, d in NOTICES.items()} | {"ibis": b"synthetic"})
-        self.assertFails(self.write("ibis-Linux.tar.gz", escaping), "leaves its folder")
-        # Another spelling of the same path is the same path.
-        aliased = app_files("Ibis.app/Contents/Resources") | {"Ibis.app/Contents/Resources/notices/./LICENSE": b"stale"}
-        self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(aliased)), "2 copies of LICENSE")
-
-    def test_a_stale_copy_cannot_hide_behind_a_good_one(self):
-        buffer = io.BytesIO()
-        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
-            for name, data in [("LICENSE", b"stale licence"), *NOTICES.items(), ("ibis", b"synthetic")]:
-                info = tarfile.TarInfo(name)
-                info.size = len(data)
-                archive.addfile(info, io.BytesIO(data))
-        self.assertFails(self.write("ibis-Linux.tar.gz", buffer.getvalue()), "2 copies of LICENSE")
+                         "0 copies of LICENSE where the command line keeps it")
+        # An app's belong in its installed resource folder, not beside the app.
+        beside = {f"notices/{n}": d for n, d in NOTICES.items()} | {"Ibis.app/Contents/MacOS/ibis-desktop": b"x"}
+        self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(beside)), "0 copies of LICENSE where the macOS app keeps it")
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(app_files("./usr/share/doc/ibis"))),
+                         "0 copies of LICENSE where the Linux app keeps it")
 
     def test_a_missing_changed_or_doubled_notice_fails(self):
         missing = {k: v for k, v in NOTICES.items() if k != "THIRD-PARTY-NOTICES.txt"}
-        self.assertFails(self.write("ibis-Linux.tar.gz", tar_bytes(missing)), "0 copies of THIRD-PARTY-NOTICES.txt")
+        self.assertFails(self.write("ibis-Linux.tar.gz", cli_tar(notices=missing)), "0 copies of THIRD-PARTY-NOTICES.txt")
         changed = {**NOTICES, "THIRD-PARTY-NOTICES.txt": b"Third-party notices for Ibis\nstale\n"}
-        self.assertFails(self.write("ibis-Linux.tar.gz", tar_bytes(changed)), "THIRD-PARTY-NOTICES.txt differs")
+        self.assertFails(self.write("ibis-Linux.tar.gz", cli_tar(notices=changed)), "THIRD-PARTY-NOTICES.txt differs")
+        doubled = linux_app() | app_files("./usr/share/Old", {})
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(doubled)), "2 copies of LICENSE")
 
-    def test_app_archives_debian_and_rpm_packages_are_opened(self):
-        self.check(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(app_files("Ibis.app/Contents/Resources"))))
-        self.check(self.write("Ibis-Linux.deb", deb_bytes(app_files("./usr/lib/Ibis"))))
-        self.check(self.write("Ibis-Linux.rpm", rpm_bytes(app_files("./usr/lib/Ibis"))))
-        bare = {"./usr/lib/Ibis/ibis-desktop": b"synthetic app", "./usr/lib/Ibis/resources/samples.csljson": b"[]"}
-        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(bare)), "0 copies of LICENSE")
-        self.assertFails(self.write("Ibis-Linux.rpm", rpm_bytes(bare)), "0 copies of LICENSE")
+    def test_debian_and_rpm_packages_state_the_version(self):
+        self.check(self.write("Ibis-Linux.deb", deb_bytes(linux_app())))
+        self.check(self.write("Ibis-Linux.rpm", rpm_bytes(linux_app())))
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(linux_app(), version="0.4.0")), "says version '0.4.0'")
+        self.assertFails(self.write("Ibis-Linux.rpm", rpm_bytes(linux_app(), version="0.4.0")), "says version '0.4.0'")
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(linux_app(build="0.4.0"))), "the app does not embed version")
+        no_program = {k: v for k, v in linux_app().items() if "/bin/ibis-nightly" not in k}
+        self.assertFails(self.write("Ibis-Linux.rpm", rpm_bytes(no_program)), "0 app programs")
 
-    def test_a_damaged_or_unknown_package_fails(self):
-        good = deb_bytes(app_files("./usr/lib/Ibis"))
+    def test_a_damaged_escaping_or_unknown_package_fails(self):
+        good = deb_bytes(linux_app())
         self.assertFails(self.write("Ibis-Linux.deb", good[: len(good) // 2]), "could not be opened|damaged")
         self.assertFails(self.write("Ibis-Linux.rpm", b"not an rpm"), "not an rpm")
         self.assertFails(self.write("ibis-Linux.tar.gz", b"\x1f\x8b broken"), "could not be opened")
+        self.assertFails(self.write("ibis-Linux.tar.gz", tar_bytes({"../escape": b"x"})), "leaves its folder")
         self.assertFails(self.write("Ibis-Linux.snap", b""), "no way to open")
 
     def test_the_generated_notices_folder_is_required(self):
@@ -178,53 +194,87 @@ class Packages(unittest.TestCase):
         with self.assertRaisesRegex(verify.Failure, "no packages are known"):
             verify.expected_packages("riscv64gc-unknown-linux-gnu", [])
 
-    def test_one_bad_package_fails_the_whole_target(self):
+    def test_checksums_must_list_exactly_the_packages(self):
         dist = self.dir / "dist"
         dist.mkdir()
-        (dist / "SHA256SUMS-x86_64-pc-windows-msvc.txt").write_text("")
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w") as archive:
-            archive.writestr("ibis.exe", b"synthetic")
-        (dist / "ibis-Windows.zip").write_bytes(buffer.getvalue())
-        (dist / "Ibis-Windows-setup.exe").write_bytes(b"MZ synthetic")
-        with self.assertRaisesRegex(verify.Failure, "2 of 2 packages failed"):
-            verify.verify(dist, "x86_64-pc-windows-msvc", self.notices, "Ibis")
+        (dist / "ibis-Linux.tar.gz").write_bytes(cli_tar())
+        digest = hashlib.sha256((dist / "ibis-Linux.tar.gz").read_bytes()).hexdigest()
+        sums = dist / "SHA256SUMS-x86_64-unknown-linux-gnu.txt"
+        sums.write_text(f"{digest}  ibis-Linux.tar.gz\n")
+        verify.check_sums(dist, "x86_64-unknown-linux-gnu", ["ibis-Linux.tar.gz"])
+        sums.write_text(f"{'0' * 64}  ibis-Linux.tar.gz\n")
+        with self.assertRaisesRegex(verify.Failure, "does not match its checksum"):
+            verify.check_sums(dist, "x86_64-unknown-linux-gnu", ["ibis-Linux.tar.gz"])
+        sums.write_text(f"{digest}  ibis-Linux.tar.gz\n{digest}  extra.bin\n")
+        with self.assertRaisesRegex(verify.Failure, "lists"):
+            verify.check_sums(dist, "x86_64-unknown-linux-gnu", ["ibis-Linux.tar.gz"])
 
-    @unittest.skipUnless(sys.platform == "darwin", "disk images open only on macOS")
-    def test_a_disk_image_is_mounted_and_read(self):
-        # One image (each takes seconds): its notices match, then a newer notice does not.
-        source = self.dir / "image"
-        for path, data in app_files("Ibis.app/Contents/Resources").items():
-            (source / path).parent.mkdir(parents=True, exist_ok=True)
-            (source / path).write_bytes(data)
-        image = self.dir / "Ibis-macOS-Apple-silicon.dmg"
-        subprocess.run(["hdiutil", "create", "-quiet", "-fs", "HFS+", "-srcfolder", str(source), "-format", "UDZO", str(image)], check=True)
-        self.check(image)
-        (self.notices / "THIRD-PARTY-NOTICES.txt").write_bytes(NOTICES["THIRD-PARTY-NOTICES.txt"] + b"  newer 2.0.0: MIT\n")
-        self.digests = verify.load_notices(self.notices)
-        self.assertFails(image, "THIRD-PARTY-NOTICES.txt differs")
+    def test_executable_headers_name_their_processor(self):
+        self.assertEqual(verify.architecture(elf()), "x86_64")
+        self.assertEqual(verify.architecture(pe(machine=0xAA64)), "arm64")
+        self.assertEqual(verify.architecture(b"\xcf\xfa\xed\xfe" + struct.pack("<I", 0x0100000C)), "arm64")
+        self.assertEqual(verify.architecture(b"\x7fELF"), "unknown")
+        self.assertEqual(verify.product_version(b"junk" + version_resource("0.4.1")), "0.4.1")
+
+    @unittest.skipUnless(sys.platform == "linux", "AppImages open only on Linux")
+    def test_a_whole_linux_build_and_its_planted_bad_copies(self):
+        dist = self.dir / "dist"
+        dist.mkdir()
+        payload = self.dir / "payload.tar.gz"
+        payload.write_bytes(tar_bytes(linux_app(prefix="usr")))
+        appimage = f"#!/bin/sh\n[ \"$1\" = --appimage-extract ] || exit 9\nmkdir squashfs-root && tar -xzf '{payload}' -C squashfs-root\n"
+        packages = {"Ibis-Linux.deb": deb_bytes(linux_app()), "Ibis-Linux.AppImage": appimage.encode(), "ibis-Linux.tar.gz": cli_tar()}
+        for name, data in packages.items():
+            (dist / name).write_bytes(data)
+        (dist / "SHA256SUMS-x86_64-unknown-linux-gnu.txt").write_text(
+            "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in packages.items()))
+        verify.self_test(dist, "x86_64-unknown-linux-gnu", self.notices, OPTIONS)
+        verify.verify(dist, "x86_64-unknown-linux-gnu", self.notices, OPTIONS)
+        # A verifier that accepted anything fails its own self-test.
+        accept_all = verify.check_package
+        verify.check_package = lambda *args: None
+        self.addCleanup(setattr, verify, "check_package", accept_all)
+        with self.assertRaisesRegex(verify.Failure, "planted bad packages passed"):
+            verify.self_test(dist, "x86_64-unknown-linux-gnu", self.notices, OPTIONS)
 
     @unittest.skipUnless(shutil.which("7z"), "needs 7-Zip")
     def test_a_setup_executable_is_unpacked_with_7zip(self):
-        for name, files in (("good", app_files("$INSTDIR")), ("bare", {"ibis-desktop.exe": b"x", "resources/samples.csljson": b"[]"})):
+        for name, version in (("good", VERSION), ("old", "0.4.0")):
             source = self.dir / name
+            files = app_files("res", {"ibis-desktop.exe": pe() + version_resource(version), "uninstall.exe": pe()})
             for path, data in files.items():
                 (source / path).parent.mkdir(parents=True, exist_ok=True)
                 (source / path).write_bytes(data)
             archive = self.dir / f"{name}-setup.exe"
-            subprocess.run(["7z", "a", "-t7z", str(archive), "."], cwd=source, check=True, capture_output=True)
+            # Stored, not compressed: the program's version resource is readable as the installer's.
+            subprocess.run(["7z", "a", "-t7z", "-mx0", str(archive), "."], cwd=source, check=True, capture_output=True)
             if name == "good":
-                self.check(archive)
+                self.check(archive, "x86_64-pc-windows-msvc")
             else:
-                self.assertFails(archive, "0 copies of LICENSE")
+                self.assertFails(archive, "says version '0.4.0'", "x86_64-pc-windows-msvc")
 
-    @unittest.skipUnless(sys.platform == "linux", "AppImages open only on Linux")
-    def test_an_appimage_is_extracted(self):
-        payload = tar_bytes(app_files("usr/lib/Ibis"))
-        (self.dir / "payload.tar.gz").write_bytes(payload)
-        script = f"#!/bin/sh\n[ \"$1\" = --appimage-extract ] || exit 9\nmkdir squashfs-root && tar -xzf '{self.dir}/payload.tar.gz' -C squashfs-root\n"
-        self.check(self.write("Ibis-Linux.AppImage", script.encode()))
-        self.assertFails(self.write("Ibis-Linux.AppImage", b"#!/bin/sh\nexit 1\n"), "could not be opened")
+    @unittest.skipUnless(sys.platform == "darwin" and shutil.which("cc"), "disk images and signatures need macOS")
+    def test_a_disk_image_holds_a_signed_app_of_this_version(self):
+        source = self.dir / "image"
+        app = source / "Ibis Nightly.app/Contents"
+        (app / "MacOS").mkdir(parents=True)
+        (app / "Resources/notices").mkdir(parents=True)
+        for name, data in NOTICES.items():
+            (app / "Resources/notices" / name).write_bytes(data)
+        program = self.dir / "main.c"
+        program.write_text(f'const char *version = "{BUILD}";\nint main(void) {{ return version[0] == 0; }}\n')
+        subprocess.run(["cc", "-arch", "arm64", "-o", str(app / "MacOS/ibis-desktop"), str(program)], check=True)
+        info = {"CFBundleShortVersionString": VERSION, "CFBundleIdentifier": "com.example.invented",
+                "CFBundleExecutable": "ibis-desktop", "CFBundlePackageType": "APPL"}
+        (app / "Info.plist").write_bytes(plistlib.dumps(info))
+        subprocess.run(["codesign", "-s", "-", str(app.parent)], check=True, capture_output=True)
+        image = self.dir / "Ibis-macOS-Apple-silicon.dmg"
+        subprocess.run(["hdiutil", "create", "-quiet", "-fs", "HFS+", "-srcfolder", str(source), "-format", "UDZO", str(image)], check=True)
+        # One image (each takes seconds), checked three ways.
+        target = "aarch64-apple-darwin"
+        self.check(image, target, options(identifier="com.example.invented"))
+        self.assertFails(image, "names 'com.example.invented', not com.example.other", target, options(identifier="com.example.other"))
+        self.assertFails(image, "signed by .*, not the pinned certificate", target, options(signing_leaf="0" * 40))
 
 
 if __name__ == "__main__":
