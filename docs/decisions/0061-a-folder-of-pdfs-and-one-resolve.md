@@ -75,13 +75,16 @@ Everything below is the engineering design that carries it out.
 
 ## Known details
 
-A folder record with neither a title nor an author or editor is not cited:
-styled and key outputs refuse with `missing-details`, naming what is missing,
-with the recovery to look it up (when it has a DOI) or edit
-`ibis-references.bib`. Other sources keep today's behaviour. Its passages stay
-searchable and readable. Anything else a style needs and a record lacks
-renders as the style renders a missing field. Previews of a folder record show
-title, author, date and container as unknown when absent.
+A record with no title, no author and no editor is not cited, from any
+source: the shared eligibility check (`ibis_core::citation::check`) refuses
+styled and key outputs with `missing-details`, recovery Review Library. Every
+style renders such a record as a bare date or nothing at all, so this changes
+what was never a usable citation; it is one rule rather than a branch on the
+source. A folder's PDF that said nothing is therefore listed and its passages
+stay searchable and readable, but it is cited only once its entry has a title,
+author or editor. Anything else a style needs and a record lacks renders as
+the style renders a missing field. Previews of a folder record show title,
+author, date and container as unknown when absent.
 
 ## One `resolve`
 
