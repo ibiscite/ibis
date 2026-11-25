@@ -19,6 +19,10 @@ const MAX_ENTRIES: usize = 50_000;
 
 /// The library file `path` names: a folder's [`LIBRARY_FILE`], or the path
 /// itself when it is not a folder.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "Callers run this on the bounded source I/O worker (inspect_io)."
+)]
 pub fn library_file(path: &Path) -> PathBuf {
     if std::fs::metadata(path).is_ok_and(|metadata| metadata.is_dir()) {
         path.join(LIBRARY_FILE)
@@ -29,6 +33,10 @@ pub fn library_file(path: &Path) -> PathBuf {
 
 /// `folder`, resolved, in the form the PDF reader's local-file checks take:
 /// links resolved, and on Windows the plain `C:\` form of a `\\?\C:\` path.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "One resolution of the folder a person named to keep."
+)]
 pub fn readable(folder: &Path) -> std::io::Result<PathBuf> {
     std::fs::canonicalize(folder).map(|resolved| crate::file::plain_disk(&resolved))
 }
@@ -51,6 +59,10 @@ pub struct Listing {
 }
 
 /// The PDFs in `folder` and its subfolders, never following a link.
+#[allow(
+    clippy::disallowed_methods,
+    reason = "Listing is the folder source's own read, bounded in entries and depth, never following a link."
+)]
 pub fn list(folder: &Path, cancelled: &dyn Fn() -> bool) -> Result<Listing, SourceError> {
     let mut listing = Listing::default();
     let mut pending = vec![(folder.to_path_buf(), String::new(), 0usize)];

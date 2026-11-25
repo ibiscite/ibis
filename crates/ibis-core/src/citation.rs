@@ -66,10 +66,6 @@ pub fn check<'a>(
             };
             validate_annotation(now, shown, pick)?;
             let support = form_support(pick);
-            // Nothing to cite it by: never filled in from elsewhere (decision 0061).
-            if support.details && !has_details(record) {
-                return Err(CitationError::MissingDetails);
-            }
             if pick
                 .locator
                 .as_ref()
@@ -80,6 +76,10 @@ pub fn check<'a>(
             }
             if !support.form {
                 return Err(CitationError::UnsupportedForm);
+            }
+            // Nothing to cite it by: never filled in from elsewhere (decision 0061).
+            if support.details && !has_details(record) {
+                return Err(CitationError::MissingDetails);
             }
             Ok(record)
         })

@@ -37,7 +37,9 @@ fn markup_wrapped_device_paths_never_reach_any_export_representation() {
         "title":"<i>/Users/invented/secret.pdf</i>", "publisher":"Invented Press",
         "author":[{"family":"<b>/Users/invented/secret.pdf</b>"}],
         "issued":{"literal":"<i>/Users/invented/secret.pdf</i>"},
-        "abstract":"<i>/Users/invented/secret.pdf</i>", "DOI":"10.1000/Invented"
+        "abstract":"<i>/Users/invented/secret.pdf</i>", "DOI":"10.1000/Invented",
+        // Something to cite it by once the private title and author are gone.
+        "editor":[{"family":"Invented Editor"}]
     }]);
     for format in ["csl-json", "bibtex", "doi-links", "apa"] {
         let (_, result) = cite(&records, format);
@@ -117,7 +119,7 @@ fn non_global_literal_addresses_and_local_names_cannot_leave_as_urls_or_prose() 
                 json!({
                     "id":format!("r{index}"), "citation-key":format!("r{index}"), "type":"book",
                     "title":format!("See https://{host}/secret"), "URL":format!("https://{host}/secret"),
-                    "publisher":"Invented Press"
+                    "publisher":"Invented Press", "editor":[{"family":"Invented Editor"}]
                 })
             })
             .collect(),
