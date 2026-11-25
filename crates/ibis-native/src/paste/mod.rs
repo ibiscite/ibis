@@ -242,18 +242,20 @@ impl LastTarget {
         #[cfg(target_os = "macos")] diagnostic: Option<macos::diagnostics::Snapshot>,
     ) -> CopyAttempt {
         let written = Instant::now();
-        #[cfg(target_os = "windows")]
+        // In-crate tests drive the macOS/Linux capture state on every system;
+        // the Windows capture is covered through `publish_capture`.
+        #[cfg(all(target_os = "windows", not(test)))]
         let presentation = presentation();
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(any(not(target_os = "windows"), test))]
         let _ = presentation;
         let (target, policy) = self
             .0
             .lock()
             .ok()
             .map(|last| {
-                #[cfg(target_os = "windows")]
+                #[cfg(all(target_os = "windows", not(test)))]
                 let target = last.target.clone().filter(|target| target.presentation == presentation);
-                #[cfg(not(target_os = "windows"))]
+                #[cfg(any(not(target_os = "windows"), test))]
                 let target = Some(CopyTarget {
                     captured: last.captured.clone(),
                     window: None,
@@ -564,6 +566,7 @@ pub struct CopyTarget<W = HostWindow> {
     #[cfg_attr(not(any(target_os = "windows", test)), allow(dead_code))]
     window: Option<W>,
     /// The picker presentation the capture belongs to.
+    #[cfg_attr(not(any(target_os = "macos", target_os = "windows", test)), allow(dead_code))]
     presentation: u64,
 }
 
