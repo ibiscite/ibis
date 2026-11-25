@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Runtime};
-use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::diagnostics::{NativeIssue, report};
@@ -704,14 +703,8 @@ fn menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
     } else if event.id == Row::Update.id() {
         updater::setting::check_from_menu(app);
     } else if event.id == Row::Version.id() {
-        if app
-            .clipboard()
-            .write_text(version_line(
-                &app.package_info().name,
-                &app.package_info().version.to_string(),
-            ))
-            .is_err()
-        {
+        let line = version_line(&app.package_info().name, &app.package_info().version.to_string());
+        if crate::copy::write_plain(app, &line).is_err() {
             app.dialog()
                 .message(words("app-tray-version-copy-failed", &[]))
                 .title(&app.package_info().name)

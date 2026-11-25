@@ -105,3 +105,31 @@ fn delayed_citations_write_only_for_their_original_picker_and_clipboard() -> Res
     }
     Ok(())
 }
+
+/// Plain copies (the tray's version line, a link that could not open, a
+/// project entry) write through the same owner as citations: each one moves
+/// the mark an older bibliography or citation is checked against, even on
+/// Linux, which keeps no system count, and retires the pending ticket. The
+/// write itself is faked: the test never touches the clipboard.
+#[test]
+fn a_plain_copy_through_the_owner_cancels_an_older_pending_copy() -> Result<(), String> {
+    let owner = crate::paste::LastTarget::default();
+    let began = clipboard_mark();
+    let intent = CopyIntent {
+        presentation: 1,
+        clipboard: began,
+    };
+    let older = owner.write_copy(None, || Ok(None))?;
+    let newer = owner.write_copy(None, || Ok(None))?;
+    assert!(newer > older, "each owner write takes a newer receipt");
+    assert_ne!(clipboard_mark(), began);
+    let mut written = false;
+    let older_copy = intent.write(1, clipboard_mark(), || {
+        written = true;
+        Ok(())
+    });
+    assert_eq!(older_copy.err(), Some(CommandError::Cancelled));
+    assert!(!written, "the older copy never overwrites the newer one");
+    assert!(owner.take_ticket(Some(newer)).is_none(), "a plain copy never pastes");
+    Ok(())
+}
