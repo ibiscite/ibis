@@ -432,10 +432,7 @@ mod tests {
         let text = "Invented Tides, vol. 3. doi:10.5555/Tides.2031 Received 2030.\n\
                     See https://doi.org/10.5555/Second (ref. 12), and 10.5555/third.\n\
                     Not a DOI: v10.5555/x, 210.5555/y, 10.55/z, 10.5555/";
-        assert_eq!(
-            dois_in(text),
-            ["10.5555/tides.2031", "10.5555/second", "10.5555/third"]
-        );
+        assert_eq!(dois_in(text), ["10.5555/tides.2031", "10.5555/second", "10.5555/third"]);
         assert!(dois_in(&"10.5555/a ".repeat(100)).len() == MAX_FOUND);
         assert!(dois_in("").is_empty());
     }

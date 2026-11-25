@@ -33,7 +33,9 @@ pub fn details(bytes: &[u8]) -> Result<Said, Refusal> {
     Ok(Said {
         pages: count,
         info: info(&document),
-        xmp: metadata_stream(&document).map(|packet| xmp(&packet)).unwrap_or_default(),
+        xmp: metadata_stream(&document)
+            .map(|packet| xmp(&packet))
+            .unwrap_or_default(),
         text,
     })
 }
@@ -164,7 +166,8 @@ impl Names {
             .map(|(_, _, property)| *property)
     }
     fn is_rdf(&self, name: &str, local: &str) -> bool {
-        self.usual(name).is_some_and(|(prefix, l)| prefix == "rdf" && l == local)
+        self.usual(name)
+            .is_some_and(|(prefix, l)| prefix == "rdf" && l == local)
     }
 }
 
@@ -228,7 +231,9 @@ fn read_xmp(packet: &str, found: &mut BTreeMap<&'static str, Vec<String>>) -> Re
                 }
                 if let Some(current) = &mut open {
                     if names.is_rdf(name, "li") {
-                        let default = attributes.iter().any(|(key, value)| key == "xml:lang" && value == "x-default");
+                        let default = attributes
+                            .iter()
+                            .any(|(key, value)| key == "xml:lang" && value == "x-default");
                         current.item = Some((String::new(), default));
                     }
                     continue;

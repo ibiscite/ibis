@@ -10,7 +10,7 @@
 //! may be a cited work's. Nothing is filled in from elsewhere: a detail the
 //! file does not state stays unknown.
 
-use super::{Refusal, MAX_PAGES};
+use super::{MAX_PAGES, Refusal};
 use ibis_core::contract::Fingerprint;
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
@@ -114,12 +114,19 @@ pub fn checked_details(said: Said) -> Result<PdfDetails, Refusal> {
         .find_map(|title| title.as_deref().and_then(value).filter(|title| !noise_title(title)));
     let mut authors: Vec<String> = xmp.creators.iter().filter_map(|name| author(name)).collect();
     if authors.is_empty() {
-        authors = info.creators.iter().flat_map(|names| split_names(names)).filter_map(author).collect();
+        authors = info
+            .creators
+            .iter()
+            .flat_map(|names| split_names(names))
+            .filter_map(author)
+            .collect();
     }
     authors.dedup();
     authors.truncate(MAX_AUTHORS);
     let first = |pick: fn(&Stated) -> &Option<String>| {
-        [xmp, info].into_iter().find_map(|block| pick(block).as_deref().and_then(value))
+        [xmp, info]
+            .into_iter()
+            .find_map(|block| pick(block).as_deref().and_then(value))
     };
     let page = match (first(|b| &b.first_page), first(|b| &b.last_page)) {
         (Some(first), Some(last)) if short(&first) && short(&last) && first != last => Some(format!("{first}-{last}")),
@@ -172,9 +179,17 @@ fn short(value: &str) -> bool {
 fn noise_title(title: &str) -> bool {
     let lower = title.to_lowercase();
     !title.chars().any(char::is_alphabetic)
-        || ["microsoft word -", "microsoft powerpoint -", "untitled", "title", "no title", "document", "slide 1"]
-            .iter()
-            .any(|noise| lower == *noise || noise.ends_with('-') && lower.starts_with(noise))
+        || [
+            "microsoft word -",
+            "microsoft powerpoint -",
+            "untitled",
+            "title",
+            "no title",
+            "document",
+            "slide 1",
+        ]
+        .iter()
+        .any(|noise| lower == *noise || noise.ends_with('-') && lower.starts_with(noise))
         || file_name(&lower)
 }
 
@@ -192,11 +207,22 @@ fn file_name(lower: &str) -> bool {
 /// Software and publishers that write themselves into the author field.
 fn producer(name: &str) -> bool {
     const PRODUCERS: [&str; 11] = [
-        "adobe", "microsoft", "acrobat", "latex", "pdftex", "tex", "ghostscript", "administrator", "admin", "user",
+        "adobe",
+        "microsoft",
+        "acrobat",
+        "latex",
+        "pdftex",
+        "tex",
+        "ghostscript",
+        "administrator",
+        "admin",
+        "user",
         "owner",
     ];
     let lower = name.to_lowercase();
-    PRODUCERS.iter().any(|producer| lower == *producer || lower.starts_with(&format!("{producer} ")))
+    PRODUCERS
+        .iter()
+        .any(|producer| lower == *producer || lower.starts_with(&format!("{producer} ")))
 }
 
 /// The Info dictionary's one author string, split where it lists several:
@@ -227,10 +253,20 @@ fn login(name: &str) -> bool {
 fn date(text: &str) -> Option<String> {
     let text = text.trim();
     let parts: Vec<&str> = text.get(..text.len().min(10))?.split('-').collect();
-    let number = |part: &&str, digits: usize| (part.len() == digits && part.bytes().all(|b| b.is_ascii_digit())).then(|| part.parse::<u32>().ok()).flatten();
+    let number = |part: &&str, digits: usize| {
+        (part.len() == digits && part.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| part.parse::<u32>().ok())
+            .flatten()
+    };
     let year = number(parts.first()?, 4).filter(|year| (1450..=2200).contains(year))?;
-    let month = parts.get(1).and_then(|part| number(part, 2)).filter(|month| (1..=12).contains(month));
-    let day = parts.get(2).and_then(|part| number(part, 2)).filter(|day| (1..=31).contains(day));
+    let month = parts
+        .get(1)
+        .and_then(|part| number(part, 2))
+        .filter(|month| (1..=12).contains(month));
+    let day = parts
+        .get(2)
+        .and_then(|part| number(part, 2))
+        .filter(|day| (1..=31).contains(day));
     Some(match (month, day) {
         (Some(month), Some(day)) => format!("{year:04}-{month:02}-{day:02}"),
         (Some(month), None) => format!("{year:04}-{month:02}"),

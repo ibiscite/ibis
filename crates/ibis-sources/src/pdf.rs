@@ -34,7 +34,9 @@ mod ceiling;
 
 #[path = "pdf/details.rs"]
 mod details;
-pub use details::{DETAIL_PAGES, MAX_LIST, MAX_PAGE_TEXT_BYTES, MAX_VALUE_CHARS, PdfDetails, Said, Stated, checked_details};
+pub use details::{
+    DETAIL_PAGES, MAX_LIST, MAX_PAGE_TEXT_BYTES, MAX_VALUE_CHARS, PdfDetails, Said, Stated, checked_details,
+};
 
 /// The argument that makes `ibis` the extractor's child process.
 pub const CHILD_ARGUMENT: &str = "__extract-pdf";

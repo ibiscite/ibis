@@ -43,7 +43,13 @@ fn a_pdfs_own_details_come_back_checked() {
     assert_eq!(details.page_doi, None);
 
     std::fs::write(root.join("notes.pdf"), "Invented notes saved as text.").unwrap();
-    assert_eq!(reader.details(&root.join("notes.pdf"), Arc::new(|| false)), Err(Refusal::NotPdf));
-    assert_eq!(reader.details(&root.join("gone.pdf"), Arc::new(|| false)), Err(Refusal::Missing));
+    assert_eq!(
+        reader.details(&root.join("notes.pdf"), Arc::new(|| false)),
+        Err(Refusal::NotPdf)
+    );
+    assert_eq!(
+        reader.details(&root.join("gone.pdf"), Arc::new(|| false)),
+        Err(Refusal::Missing)
+    );
     let _ = std::fs::remove_dir_all(&root);
 }

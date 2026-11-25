@@ -24,7 +24,11 @@ const XMP: &str = r#"<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
 fn the_info_dictionary_and_xmp_are_reported_as_stated() {
     let pdf = invented_pdf_with_details(
         &["Invented first page.", "Invented second page.", "Invented third page."],
-        &[("Title", "Erfundene Gezeiten — Entwurf"), ("Author", "Ada Quillfeather; Bo Venn-Harrow"), ("doi", "10.5555/info")],
+        &[
+            ("Title", "Erfundene Gezeiten — Entwurf"),
+            ("Author", "Ada Quillfeather; Bo Venn-Harrow"),
+            ("doi", "10.5555/info"),
+        ],
         Some(XMP),
     );
     let said = details(&pdf).unwrap();
@@ -40,7 +44,10 @@ fn the_info_dictionary_and_xmp_are_reported_as_stated() {
     assert_eq!(xmp.identifiers, ["doi:10.5555/invented.tides"]);
     assert_eq!(xmp.container.as_deref(), Some("Journal of Invented Oceans"));
     assert_eq!(xmp.volume.as_deref(), Some("12"));
-    assert_eq!((xmp.first_page.as_deref(), xmp.last_page.as_deref()), (Some("101"), Some("119")));
+    assert_eq!(
+        (xmp.first_page.as_deref(), xmp.last_page.as_deref()),
+        (Some("101"), Some("119"))
+    );
     assert_eq!(xmp.date.as_deref(), Some("2031-04-02"));
 }
 
@@ -63,7 +70,9 @@ fn a_damaged_or_hostile_packet_keeps_the_rest() {
 #[test]
 fn values_and_lists_are_bounded_here_too() {
     let long = "w".repeat(MAX_VALUE_BYTES * 2);
-    let creators: String = (0..MAX_LIST + 20).map(|i| format!("<rdf:li>Invented Person {i}</rdf:li>")).collect();
+    let creators: String = (0..MAX_LIST + 20)
+        .map(|i| format!("<rdf:li>Invented Person {i}</rdf:li>"))
+        .collect();
     let xmp = format!(
         "<rdf:Description xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\
          <dc:title>{long}</dc:title><dc:creator><rdf:Seq>{creators}</rdf:Seq></dc:creator></rdf:Description>"
@@ -79,7 +88,10 @@ fn values_and_lists_are_bounded_here_too() {
 fn a_file_without_details_says_nothing_and_a_non_pdf_is_refused() {
     let said = details(&crate::pdf_text::invented_pdf(&["Invented page."], None)).unwrap();
     assert_eq!((said.info, said.xmp), (Stated::default(), Stated::default()));
-    assert_eq!(details(b"Invented notes saved as text.").map(|_| ()), Err(Refusal::NotPdf));
+    assert_eq!(
+        details(b"Invented notes saved as text.").map(|_| ()),
+        Err(Refusal::NotPdf)
+    );
 }
 
 #[test]
