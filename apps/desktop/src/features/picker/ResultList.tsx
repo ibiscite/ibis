@@ -18,7 +18,7 @@ import { bibliographyText } from "./useBibliography";
 export const rowWords = { itemType: (type: string): string | null => say("row-item-type", { type }) || null };
 
 /** "et al." in its own isolate, so it keeps its reading order beside a right-to-left name. */
-const etAl = <bdi>{say("row-et-al")}</bdi>;
+const etAl = () => <bdi>{say("row-et-al")}</bdi>;
 /** A spoken pause between parts that sit apart on screen but make one accessible name. */
 const pause = <span className="visually-hidden">, </span>;
 
@@ -94,7 +94,7 @@ export function ResultList({ results, active, selected, density, hoverAllowed = 
 function ResultGroup({ record, previous, children }: { record: SearchResult; previous?: SearchResult; children: React.ReactNode }) {
   // The first group's heading is the list's, in the frame's line (PickerResults).
   return <>{record.recent && previous && record.recent !== previous.recent && <Band as="li" role="presentation" className="ui-list-heading">
-    <h2 id={`recent-${record.recent}`}>{record.recent === "cited" ? "Cited here recently" : "Recently added"}</h2>
+    <h2 id={`recent-${record.recent}`}>{say("picker-recent-heading", { state: record.recent })}</h2>
   </Band>}{children}</>;
 }
 
@@ -152,10 +152,10 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
     >
       <span className="result-body" title={r.key || undefined}>
         <span className="result-line">
-          <strong className="result-title">{r.sample && <><bdi>{say("setup-sample-label")}</bdi>{" · "}</>}{r.title}</strong>
+          <strong className="result-title" dir="auto">{r.sample && <><bdi>{say("setup-sample-label")}</bdi>{" · "}</>}{r.title}</strong>
           {/* Spoken pauses: the parts are separate on screen but one accessible name. */}
           <span className="visually-hidden">, </span>
-          {compact && r.first_author && <><span className="result-first-author" dir="auto">{abbreviatedAuthors(r) ? <>{r.first_author} {etAl}</> : r.authors}</span><span className="visually-hidden">, </span></>}
+          {compact && r.first_author && <><span className="result-first-author" dir="auto">{abbreviatedAuthors(r) ? <>{r.first_author} {etAl()}</> : r.authors}</span><span className="visually-hidden">, </span></>}
           <span className="result-year">{r.year ?? say("picker-no-date")}</span>
           <span className="visually-hidden">, </span>
         </span>
@@ -164,12 +164,12 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
               right-to-left row is cut at its end. The separator is its own part. */}
           <span className="result-byline">
             <span className="result-authors" dir="auto">
-              {abbreviatedAuthors(r) ? <><span aria-hidden="true">{r.first_author} {etAl}</span><span className="visually-hidden">{r.authors}</span></> : r.authors}
+              {abbreviatedAuthors(r) ? <><span aria-hidden="true">{r.first_author} {etAl()}</span><span className="visually-hidden">{r.authors}</span></> : r.authors}
             </span>
             {!compact && r.container && r.authors && <><span className="result-separator" aria-hidden="true">{" · "}</span>{pause}</>}
             {!compact && r.container && <span className="result-container" dir="auto">{r.container}</span>}
           </span>
-          {library && <>{pause}<span className="result-library">{library}</span></>}
+          {library && <>{pause}<span className="result-library" dir="auto">{library}</span></>}
         </span>
         {why && <>{pause}<span className="result-why">{say("picker-matched-in", { field: why })}</span></>}
         {/* Only some search words matched this row: it says so itself, not only its group. */}

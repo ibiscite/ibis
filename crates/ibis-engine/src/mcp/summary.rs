@@ -194,11 +194,14 @@ fn cite(data: &Map<String, Value>) -> Vec<String> {
     for loss in array(data, "losses").iter() {
         let field = loss["field"].as_str().unwrap_or_default();
         let what = catalogue::text(&format!("loss-{field}"), None, &[]).unwrap_or_else(|| field.to_owned());
-        let target = loss["item"]
-            .as_u64()
-            .map(|item| format!(" for item {}", item + 1))
-            .unwrap_or_default();
-        let sentence = catalogue::text("app-loss", None, &[("what", &what), ("target", &target)]).unwrap_or_default();
+        let sentence = match loss["item"].as_u64() {
+            Some(item) => {
+                let reference = format!("item {}", item + 1);
+                catalogue::text("app-loss", Some("named"), &[("what", &what), ("reference", &reference)])
+            }
+            None => catalogue::text("app-loss", None, &[("what", &what)]),
+        }
+        .unwrap_or_default();
         lines.push(format!("Loss: {sentence}"));
     }
     for warning in array(data, "warnings").iter() {

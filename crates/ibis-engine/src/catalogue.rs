@@ -12,8 +12,80 @@ use ibis_core::contract::{EngineError, ErrorCode};
 use serde::Serialize;
 use std::sync::OnceLock;
 
-/// The catalogue, as it is bundled into every build.
+/// The English catalogue, as it is bundled into every build: the source every
+/// translation follows message for message.
 pub const SOURCE: &str = include_str!("../../../locales/en-US.ftl");
+
+/// A language the catalogue is written in. The interface language only: a
+/// citation's language stays its style's or locale's own.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub enum Language {
+    #[default]
+    #[serde(rename = "en-US")]
+    English,
+    #[serde(rename = "de")]
+    German,
+    #[serde(rename = "ar")]
+    Arabic,
+}
+
+impl Language {
+    pub const ALL: [Self; 3] = [Self::English, Self::German, Self::Arabic];
+
+    /// Its BCP 47 tag, as the catalogue file and the app's `lang` use it.
+    pub const fn tag(self) -> &'static str {
+        match self {
+            Self::English => "en-US",
+            Self::German => "de",
+            Self::Arabic => "ar",
+        }
+    }
+
+    /// Its catalogue, bundled into every build.
+    pub const fn source(self) -> &'static str {
+        match self {
+            Self::English => SOURCE,
+            Self::German => include_str!("../../../locales/de.ftl"),
+            Self::Arabic => include_str!("../../../locales/ar.ftl"),
+        }
+    }
+
+    /// The first of the system's preferred languages Ibis speaks, else English.
+    pub fn negotiate<'a>(preferred: impl IntoIterator<Item = &'a str>) -> Self {
+        preferred
+            .into_iter()
+            .find_map(|tag| {
+                let primary = tag.split(['-', '_', '.', '@']).next()?.to_ascii_lowercase();
+                Self::ALL
+                    .into_iter()
+                    .find(|language| language.tag().split('-').next() == Some(primary.as_str()))
+            })
+            .unwrap_or_default()
+    }
+}
+
+static CURRENT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Speak this language for the rest of the process. The app calls it once at
+/// start; the command line and MCP never do, so they stay English.
+pub fn use_language(language: Language) {
+    let index = Language::ALL
+        .iter()
+        .position(|each| *each == language)
+        .unwrap_or_default();
+    CURRENT.store(
+        u8::try_from(index).unwrap_or_default(),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+}
+
+/// The language this process speaks.
+pub fn language() -> Language {
+    Language::ALL
+        .get(usize::from(CURRENT.load(std::sync::atomic::Ordering::Relaxed)))
+        .copied()
+        .unwrap_or_default()
+}
 
 /// Who reads a message, for the attribute that tells them what to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,16 +121,20 @@ pub const GROUPS: [&str; 9] = [
     "cause",
 ];
 
-fn bundle() -> &'static FluentBundle<FluentResource> {
-    static BUNDLE: OnceLock<FluentBundle<FluentResource>> = OnceLock::new();
-    BUNDLE.get_or_init(|| {
-        let resource = FluentResource::try_new(SOURCE.to_owned()).unwrap_or_else(|(resource, _)| resource);
-        let english: unic_langid::LanguageIdentifier = "en-US".parse().unwrap_or_default();
-        let mut bundle = FluentBundle::new_concurrent(vec![english]);
-        // Terminals, agents and accessible names read plain text: no
-        // invisible direction marks around arguments.
+fn bundle_in(language: Language) -> &'static FluentBundle<FluentResource> {
+    static BUNDLES: [OnceLock<FluentBundle<FluentResource>>; 3] = [OnceLock::new(), OnceLock::new(), OnceLock::new()];
+    let index = Language::ALL
+        .iter()
+        .position(|each| *each == language)
+        .unwrap_or_default();
+    BUNDLES[index].get_or_init(|| {
+        let resource = FluentResource::try_new(language.source().to_owned()).unwrap_or_else(|(resource, _)| resource);
+        let tag: unic_langid::LanguageIdentifier = language.tag().parse().unwrap_or_default();
+        let mut bundle = FluentBundle::new_concurrent(vec![tag]);
+        // Terminals, agents, native menus and accessible names read plain
+        // text: no invisible direction marks around arguments.
         bundle.set_use_isolating(false);
-        // A duplicate id keeps the first; the catalogue test refuses both.
+        // A duplicate id keeps the first; the catalogue tests refuse both.
         let _ = bundle.add_resource(resource);
         bundle
     })
@@ -76,7 +152,12 @@ pub fn id(group: &str, code: impl Serialize) -> String {
 /// A message's value, or its attribute, with these arguments. A missing
 /// message reads as its id, which the catalogue test makes impossible.
 pub fn text(id: &str, attribute: Option<&str>, args: &[(&str, &str)]) -> Option<String> {
-    let bundle = bundle();
+    text_in(language(), id, attribute, args)
+}
+
+/// [`text`] in a given language, whatever this process speaks.
+pub fn text_in(language: Language, id: &str, attribute: Option<&str>, args: &[(&str, &str)]) -> Option<String> {
+    let bundle = bundle_in(language);
     let message = bundle.get_message(id)?;
     let pattern = match attribute {
         Some(name) => message.get_attribute(name)?.value(),
@@ -296,5 +377,31 @@ mod tests {
                 "{id} has a sentence"
             );
         }
+    }
+
+    #[test]
+    fn every_language_parses_and_says_every_engine_code() {
+        for language in Language::ALL {
+            assert!(
+                FluentResource::try_new(language.source().to_owned()).is_ok(),
+                "{} parses",
+                language.tag()
+            );
+            for id in engine_ids() {
+                assert!(
+                    text_in(language, &id, None, &[]).is_some_and(|text| !text.is_empty()),
+                    "{id} has a sentence in {}",
+                    language.tag()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_system_language_picks_the_first_one_ibis_speaks() {
+        assert_eq!(Language::negotiate(["fr-FR", "de-AT", "en-GB"]), Language::German);
+        assert_eq!(Language::negotiate(["ar_EG.UTF-8"]), Language::Arabic);
+        assert_eq!(Language::negotiate(["en-GB", "ar"]), Language::English);
+        assert_eq!(Language::negotiate(["fr", "C", ""]), Language::English);
     }
 }

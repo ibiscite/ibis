@@ -538,30 +538,37 @@ fn preview(proposal: Proposal, text: Result<&str, &WriteError>) -> Preview {
     preview
 }
 
-/// One sentence on what applying a proposal does, naming no file.
+/// One sentence on what applying a proposal does, naming no file, in the
+/// language this process speaks (English for the command line and MCP).
 pub fn summary(proposal: &Proposal) -> String {
+    let say = |id: &str, args: &[(&str, &str)]| crate::catalogue::text(id, None, args).unwrap_or_default();
     match &proposal.change {
-        Change::Add { key, fields } => format!(
-            "Add “{}” as {key}.",
-            fields.get("title").map(display).unwrap_or_default()
-        ),
+        Change::Add { key, fields } => {
+            let title = fields.get("title").map(display).unwrap_or_default();
+            say("app-proposal-add", &[("title", &title), ("key", key)])
+        }
         Change::Fields { label, fields, .. } => {
             let names: Vec<&str> = fields.keys().map(String::as_str).collect();
-            format!("Change {} of “{label}”.", names.join(", "))
+            say(
+                "app-proposal-fields",
+                &[("fields", &names.join(", ")), ("label", label)],
+            )
         }
         Change::Tags { label, add, remove, .. } => {
-            let mut parts = Vec::new();
-            if !add.is_empty() {
-                parts.push(format!("add the tags {}", add.join(", ")));
-            }
-            if !remove.is_empty() {
-                parts.push(format!("remove the tags {}", remove.join(", ")));
-            }
-            let mut sentence = parts.join(" and ");
-            if let Some(first) = sentence.get(..1) {
-                sentence = first.to_uppercase() + &sentence[1..];
-            }
-            format!("{sentence} on “{label}”.")
+            let state = match (add.is_empty(), remove.is_empty()) {
+                (false, true) => "add",
+                (true, false) => "remove",
+                _ => "both",
+            };
+            say(
+                "app-proposal-tags",
+                &[
+                    ("state", state),
+                    ("add", &add.join(", ")),
+                    ("remove", &remove.join(", ")),
+                    ("label", label),
+                ],
+            )
         }
     }
 }

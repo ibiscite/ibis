@@ -1066,12 +1066,10 @@ fn citation_warnings(result: &CitationResult, labels: &[Option<String>]) -> Vec<
     }
     for loss in &result.losses {
         let what = catalogue::text(&catalogue::id("loss", loss.field), None, &[]).unwrap_or_default();
-        let target = loss.item.map(|item| format!(" for {}", name(item))).unwrap_or_default();
-        warnings.push(warning(
-            loss.item,
-            "app-loss".into(),
-            &[("what", what), ("target", target)],
-        ));
+        // `.named` says which reference, in the catalogue's own words.
+        let reference = loss.item.map(|item| ("reference", name(item)));
+        let args: Vec<_> = [("what", what)].into_iter().chain(reference).collect();
+        warnings.push(warning(loss.item, "app-loss".into(), &args));
     }
     warnings
 }

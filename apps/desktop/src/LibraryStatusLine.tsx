@@ -1,10 +1,10 @@
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import type { LibraryStatus, ZoteroLibrary } from "./bindings";
-import { isolate, say } from "./i18n";
+import { interfaceLocale, isolate, say } from "./i18n";
 import { Menu, MenuDetail } from "./ui/Menu";
 import { usePickerShown } from "./features/picker/pickerShown";
 import "./ui/LibraryStatus.css";
-import { appLocale, libraryMessages } from "./libraryWords";
+import { libraryMessages } from "./libraryWords";
 import { Status } from "./ui/Status";
 
 export type LibraryCondition = { health: "done" | "look" | "stop" | "idle"; problem: string | null };
@@ -26,7 +26,7 @@ export function libraryCondition(library: LibraryStatus | null | undefined, { gr
   return { health: library.warnings > 0 || library.references === 0 ? "look" : "done", problem };
 }
 
-const lists = new Intl.ListFormat(appLocale, { style: "short", type: "unit" });
+const lists = { format: (names: string[]) => new Intl.ListFormat(interfaceLocale(), { style: "short", type: "unit" }).format(names) };
 
 /** "My Library, Lab group", naming groups once their names are known. */
 export function zoteroLibraryNames(status: LibraryStatus, groupName: (id: number) => string) {

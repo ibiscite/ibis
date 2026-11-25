@@ -33,6 +33,8 @@
 }
 .ui-paste-guide-switch[data-on] { background: var(--accent); }
 .ui-paste-guide-switch[data-on] > span { background: var(--text-on-accent); transform: translateX(11px); }
+/* The picture of the system switch mirrors whole, as the system draws it right to left. */
+.ui-paste-guide-switch:dir(rtl) { scale: -1 1; }
 @media (prefers-reduced-motion: reduce) { .ui-paste-guide-switch, .ui-paste-guide-switch > span { transition: none; } }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-paste-guide-switch { border: var(--border-width) solid CanvasText; }

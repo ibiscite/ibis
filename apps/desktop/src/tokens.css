@@ -284,6 +284,12 @@
     }
   }
 }
+/* Reading direction as a sign, for the motions CSS has no logical form for: a
+   move along the line is calc(var(--inline-sign) * distance). Arabic mirrors
+   the window by `dir` alone; every other edge and alignment is logical. */
+:root { --inline-sign: 1; }
+:root[dir="rtl"] { --inline-sign: -1; }
+
 /* Every window: light-dark() has no value without a scheme. */
 :root { color-scheme: light dark; }
 :root[data-appearance="light"] { color-scheme: light; }
