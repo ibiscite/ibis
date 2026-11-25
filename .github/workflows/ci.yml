@@ -516,12 +516,14 @@ jobs:
       - name: Release-mode, minimum Rust and budgets
         run: bash scripts/ci-release-checks.sh
 
-  bibtex-fuzz:
-    name: Damaged BibTeX and PDF fuzzing (five minutes each)
+  # Every parser in docs/threat-model.md, fuzzed for two minutes each. The
+  # corpus each night grows is kept in the cache for the next night.
+  fuzz:
+    name: Parser fuzzing (two minutes each)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    # Compilation and tool setup are outside the five-minute fuzzing budgets.
-    timeout-minutes: 30
+    # Compilation and tool setup are outside the fuzzing budgets.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -534,36 +536,51 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          key: bibtex-fuzz
+          key: parser-fuzz
+
+      - name: Restore the grown corpus
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: fuzz/cached-corpus
+          key: fuzz-corpus-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: fuzz-corpus-
 
       - name: Install cargo-fuzz
         run: cargo +stable install cargo-fuzz --version 0.13.1 --locked
 
       - name: Test the seed corpus
-        run: cargo +nightly test -p ibis-fuzz --locked seed_corpus
+        run: cargo +nightly test -p ibis-fuzz --locked
 
       - name: Build the fuzz targets
+        run: cargo +nightly fuzz build --features fuzzing --target-dir target/fuzz
+
+      # New inputs go to the cached corpus; the committed seeds stay as they are.
+      - name: Fuzz every parser
+        timeout-minutes: 25
         run: |
-          cargo +nightly fuzz build damaged_bibtex --features fuzzing --target-dir target/fuzz
-          cargo +nightly fuzz build damaged_pdf --features fuzzing --target-dir target/fuzz
-
-      - name: Fuzz the real BibTeX loader for five minutes
-        timeout-minutes: 6
-        run: cargo +nightly fuzz run damaged_bibtex --features fuzzing --target-dir target/fuzz -- -max_total_time=300 -timeout=5 -max_len=65536 -rss_limit_mb=2048
-
-      - name: Fuzz the PDF extractor's parsing for five minutes
-        if: always()
-        timeout-minutes: 6
-        run: cargo +nightly fuzz run damaged_pdf --features fuzzing --target-dir target/fuzz -- -max_total_time=300 -timeout=5 -max_len=1048576 -rss_limit_mb=2048
+          status=0
+          for file in fuzz/fuzz_targets/*.rs; do
+            target=$(basename "$file" .rs)
+            max_len=65536
+            if [ "$target" = damaged_pdf ]; then max_len=1048576; fi
+            mkdir -p "fuzz/cached-corpus/$target"
+            echo "::group::$target"
+            if ! cargo +nightly fuzz run "$target" --features fuzzing --target-dir target/fuzz \
+                "fuzz/cached-corpus/$target" "fuzz/corpus/$target" -- \
+                -max_total_time=120 -timeout=5 -max_len="$max_len" -rss_limit_mb=2048; then
+              status=1
+              echo "::error::Fuzzing $target found a failure; its input is in the fuzz-failures artifact."
+            fi
+            echo "::endgroup::"
+          done
+          exit "$status"
 
       - name: Keep fuzz failures
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: bibtex-fuzz-failures-${{ github.sha }}-${{ github.run_attempt }}
-          path: |
-            fuzz/artifacts/damaged_bibtex/
-            fuzz/artifacts/damaged_pdf/
+          name: fuzz-failures-${{ github.sha }}-${{ github.run_attempt }}
+          path: fuzz/artifacts/
           if-no-files-found: ignore
           retention-days: 14
 
@@ -649,7 +666,7 @@ jobs:
   result:
     name: CI result
     if: always()
-    needs: [plan, interface, rust, web, pictures, webkit, dependencies, release-checks, bibtex-fuzz, installed, conformance]
+    needs: [plan, interface, rust, web, pictures, webkit, dependencies, release-checks, fuzz, installed, conformance]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -666,7 +683,7 @@ jobs:
           # Each planned job as name:selected:result; see scripts/ci-result.sh.
           SELECTED: rust:${{ needs.plan.outputs.rust }}:${{ needs.rust.result }} pictures:${{ needs.plan.outputs.pictures }}:${{ needs.pictures.result }} csl:${{ needs.plan.outputs.csl }}:${{ needs.conformance.result }} release:${{ needs.plan.outputs.workspace }}:${{ needs.release-checks.result }}
           WORKSPACE: ${{ needs.plan.outputs.workspace }}
-          QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
+          QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.fuzz.result }} ${{ needs.installed.result }}
           EVENT: ${{ github.event_name }}
         run: scripts/ci-result.sh
 

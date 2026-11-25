@@ -169,7 +169,14 @@ impl SourceAdapter {
         if cancelled() {
             return Err(AdapterError::Cancelled);
         }
-        let response = response::decode(&answer.stdout).map_err(|_| AdapterError::Failed)?;
+        self.answer(&answer.stdout)
+    }
+
+    /// Check what the program wrote and make it a library: the second half
+    /// of [`Self::read`], after the program exited successfully. Any bytes
+    /// give a library or a fixed error; the parsers are fuzzed through here.
+    pub fn answer(&self, stdout: &[u8]) -> Result<AdapterLoad, AdapterError> {
+        let response = response::decode(stdout).map_err(|_| AdapterError::Failed)?;
         if response.ibis != ADAPTER_PROTOCOL {
             return Err(AdapterError::Failed);
         }

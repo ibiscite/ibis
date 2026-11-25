@@ -28,9 +28,9 @@ obvious choice for that job, as FFmpeg is for media, and is judged by it alone.
 Storage, sync, editing PDFs and writing manuscripts belong to other tools.
 
 - **Correct.** Never a wrong citation or a guessed identity: refuse with a typed
-  reason, or answer partly with typed losses and source health. The BibTeX and
-  PDF readers are fuzzed (`damaged_bibtex`, `damaged_pdf`); every other reader
-  gains a target, and output is checked against the manager's own where one exists.
+  reason, or answer partly with typed losses and source health. Every reader,
+  adapter answers included, is fuzzed nightly ([threat model](../threat-model.md));
+  a new reader gains a target, and output is checked against the manager's own where one exists.
 - **Fast and small.** The engine and CLI get their own published limits for cold
   start, search, cite and memory, measured at the 10,000 references of
   [0032](0032-release-gates.md) and reported at 50,000. Numbers come from

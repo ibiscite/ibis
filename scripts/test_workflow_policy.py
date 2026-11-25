@@ -117,7 +117,7 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(result["env"]["RESULTS"], " ".join(f"${{{{ needs.{name}.result }}}}" for name in ["plan", "interface", "web", "dependencies"]))
         # Every job the result needs is either always required, planned or qualification.
         planned = {"rust", "pictures", "conformance", "release-checks"}
-        qualification = {"webkit", "bibtex-fuzz", "installed"}
+        qualification = {"webkit", "fuzz", "installed"}
         self.assertEqual(set(jobs["result"]["needs"]), {"plan", "interface", "web", "dependencies"} | planned | qualification)
         for name, job in jobs.items():
             if "needs.plan.outputs" in str(job.get("if", "")):
@@ -171,7 +171,7 @@ class CiResultTest(unittest.TestCase):
     def test_daily_qualification_and_failure_reporting_remain_required(self):
         jobs = self.workflow["jobs"]
         self.assertIn("release-checks", jobs["result"]["needs"])
-        for name in ["webkit", "installed", "bibtex-fuzz"]:
+        for name in ["webkit", "installed", "fuzz"]:
             self.assertEqual(jobs[name]["if"], "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'")
             self.assertIn(name, jobs["result"]["needs"])
         self.assertEqual(jobs["nightly-report"]["needs"], "result")
