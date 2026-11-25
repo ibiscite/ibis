@@ -34,9 +34,6 @@ pub trait Host: Clone + Send + Sync + 'static {
     fn open_paste_guide(&self);
     /// The key that types V with ⌘ on the active layout, read on the main thread.
     fn paste_key(&self) -> Option<u16>;
-    /// Whether Paste is on, read from the settings owner now; `None` when it
-    /// cannot be read. Called inside the final main-thread post.
-    fn paste_consent(&self) -> Option<bool>;
     /// The person's paste choice for `id` and whether paste is on, or `None`
     /// when either cannot be read.
     fn paste_choice(
@@ -532,11 +529,6 @@ impl<H: Host> PostDesk for Ready<'_, H> {
 
     fn refused(&self, reason: CopyReason) -> CopyReason {
         focus::refused(self.request.pid, reason)
-    }
-
-    fn paste_consent(&self) -> Option<bool> {
-        diagnostics::stage("consent");
-        self.host.paste_consent()
     }
 
     fn change_count(&self) -> Option<i64> {

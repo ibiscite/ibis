@@ -27,9 +27,6 @@ pub trait TicketDesk {
     /// UI Automation checks the focused field in the target process. Failure
     /// or timeout is unproven, not evidence of a password field.
     fn secure_field(&self, pid: i32) -> Option<bool>;
-    /// Whether Paste is on, read from the settings owner now; `None` when it
-    /// cannot be read. Read after the field query, outside the injection locks.
-    fn paste_consent(&self) -> Option<bool>;
     fn paste_key(&self) -> Option<u16>;
     fn wait(&self, time: Duration);
     fn generation(&self) -> u64;
@@ -166,12 +163,6 @@ impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
             Some(true) => return PostResult::SecureField,
             None => return PostResult::Refused,
             Some(false) => {}
-        }
-        // Consent once more after the field query's wait, before admission.
-        match self.desk.paste_consent() {
-            Some(true) => {}
-            Some(false) => return PostResult::PasteOff,
-            None => return PostResult::Refused,
         }
         let Some(key) = self.desk.paste_key() else {
             return PostResult::Refused;

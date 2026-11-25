@@ -29,8 +29,6 @@ struct Fake {
     secure: Cell<Option<bool>>,
     /// The target's focused control hides what is typed, as a password field.
     hides_typing: bool,
-    /// What the settings owner answers inside the final post.
-    consent_at_post: Cell<Option<bool>>,
     query_delay: Duration,
     queue_delay: Duration,
     /// How long a readiness check takes, as on a heavily loaded system.
@@ -80,7 +78,6 @@ impl Fake {
             change_count: Cell::new(COUNT),
             secure: Cell::new(Some(false)),
             hides_typing: false,
-            consent_at_post: Cell::new(Some(true)),
             query_delay: Duration::ZERO,
             queue_delay: Duration::ZERO,
             ready_stall: Duration::ZERO,
@@ -292,10 +289,6 @@ impl PostDesk for Fake {
         self.checks.borrow_mut().push("input");
         check_input_since(self, began)
     }
-    fn paste_consent(&self) -> Option<bool> {
-        self.checks.borrow_mut().push("consent");
-        self.consent_at_post.get()
-    }
     fn post(&self, pid: i32) -> bool {
         self.posted_windows.borrow_mut().push(self.window.get());
         self.posted_documents.borrow_mut().push(self.document.get());
@@ -475,7 +468,6 @@ fn an_editor_with_verified_window_identity_pastes_once_after_returning() {
             "secure-input",
             "change-count",
             "selection",
-            "consent",
             "secure-input",
             "change-count",
             "foreground",
@@ -1048,17 +1040,4 @@ fn a_changed_citation_never_pastes_when_the_old_one_is_not_selected() {
         copied("citation-not-selected")
     );
     assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-fn paste_turned_off_while_the_final_post_waits_never_posts() {
-    // Delivery's own reads said yes; the owner says no inside the final post,
-    // after the main-thread queue and provider waits.
-    for (now, expected) in [(Some(false), "paste-off"), (None, "paste-unavailable")] {
-        let desk = Fake::new();
-        desk.consent_at_post.set(now);
-        assert_eq!(deliver(&desk, Some(&proof()), consent(true)), copied(expected));
-        assert!(desk.posts.borrow().is_empty());
-        assert!(desk.checks.borrow().contains(&"consent"));
-    }
 }

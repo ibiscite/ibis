@@ -66,8 +66,6 @@ pub(super) enum PostResult {
     AccessibilityRequired,
     NoPermission,
     SecureField,
-    /// Paste was turned off while the post waited.
-    PasteOff,
     #[cfg(any(target_os = "windows", test))]
     KeyReleaseFailed,
 }
@@ -108,8 +106,6 @@ pub(super) trait PostDesk {
     fn input_unchanged(&self, began: Instant) -> Result<(), PostResult> {
         check_input_since(self, began)
     }
-    /// The paste setting as its owner reads it now; `None` when unreadable.
-    fn paste_consent(&self) -> Option<bool>;
     fn post(&self, pid: i32) -> bool;
 }
 
@@ -247,13 +243,6 @@ fn post_checked(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
             CopyReason::AccessibilityRequired => PostResult::AccessibilityRequired,
             _ => PostResult::Unavailable,
         };
-    }
-    // Consent once more after the queue and provider waits: Paste turned off
-    // since delivery's own read, by any route, never posts.
-    match desk.paste_consent() {
-        Some(true) => {}
-        Some(false) => return PostResult::PasteOff,
-        None => return PostResult::Refused,
     }
     // All shared-state locks precede this last target check. Its bounded AX
     // read includes lock-free completion/continuity checks before comparison.

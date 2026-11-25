@@ -293,10 +293,6 @@ impl TicketDesk for Win {
         password_focused(pid)
     }
 
-    fn paste_consent(&self) -> Option<bool> {
-        super::paste_setting(&self.app)
-    }
-
     /// Windows' shortcuts follow the V key's virtual key on every layout.
     fn paste_key(&self) -> Option<u16> {
         Some(co::VK::CHAR_V.raw())

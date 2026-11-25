@@ -11,7 +11,6 @@ struct Fake {
     front_id: Cell<&'static str>,
     clipboard_reads: Cell<u32>,
     password: Option<bool>,
-    consent_at_post: Cell<Option<bool>>,
     password_queries: Option<std::sync::Arc<PasswordQueries>>,
     after_password: Option<fn(&Fake)>,
     after_focus_wait: Option<fn(&Fake)>,
@@ -49,7 +48,6 @@ impl Fake {
             front_id: Cell::new("winword.exe"),
             clipboard_reads: Cell::new(0),
             password: Some(false),
-            consent_at_post: Cell::new(Some(true)),
             password_queries: None,
             after_password: None,
             after_focus_wait: None,
@@ -198,9 +196,6 @@ impl TicketDesk for Fake {
     }
     fn clipboard_sequence(&self) -> Option<u32> {
         self.sequence.get()
-    }
-    fn paste_consent(&self) -> Option<bool> {
-        self.consent_at_post.get()
     }
     fn post_if(&self, pid: i32, key: u16, ready: impl Fn() -> bool) -> bool {
         self.post_when_ready(pid, key, ready)
@@ -611,15 +606,4 @@ fn terminals_and_missing_permission_copy_with_a_reason_and_ask_once_per_copy() {
     );
     assert_eq!(desk.asked.get(), 1);
     assert!(desk.posts.borrow().is_empty());
-}
-
-#[test]
-fn paste_turned_off_during_the_field_query_never_injects() {
-    for (now, expected) in [(Some(false), "paste-off"), (None, "paste-unavailable")] {
-        let desk = Fake::new("[@synthetic]");
-        desk.consent_at_post.set(now);
-        assert_eq!(deliver_ticket(&desk, &ticket(), consent(true)), copied(expected));
-        assert!(desk.posts.borrow().is_empty());
-        assert!(desk.input_requests.borrow().is_empty(), "no key went down");
-    }
 }
