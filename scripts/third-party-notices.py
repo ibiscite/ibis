@@ -11,12 +11,14 @@ then puts that folder into the app and the command-line archive.
 
 `cargo about` (CARGO_ABOUT, default `cargo-about` on PATH) reads the crates
 offline, for every target Ibis ships, using deny.toml's licence list, so
-`cargo deny` stays the one licence policy; every licence and NOTICE file a
-crate ships is passed on as well, since cargo about may match one to the
-standard text and drop its copyright line. A crate that ships no licence file
-gets the standard text of its declared licence, and the script lists those
-crates. `pnpm licenses list --prod` names the npm packages; one that ships no
-licence file needs an entry in NO_LICENCE_FILE, reviewed by hand. The script
+`cargo deny` stays the one licence policy. Every licence, NOTICE and
+third-party attribution file a package ships, nested ones included, is passed
+on as well (`licence_files`), since cargo about may match one to the standard
+text and drop its copyright line. A crate that ships no licence file gets the
+standard SPDX text of its declared licence (maintainer, 2026-11-25), and the
+script lists those crates. `pnpm licenses list --prod` names the npm packages;
+one that ships no licence file needs an entry in NO_LICENCE_FILE, reviewed by
+hand. The script
 fails when cargo about cannot read or name a crate's licence, or an npm package
 has neither. Nothing here runs in the app.
 """
@@ -43,14 +45,39 @@ TARGETS = [
 # The crates whose binaries ship; ibis-fuzz and test helpers never do.
 SHIPPED = ["apps/desktop/src-tauri/Cargo.toml", "crates/ibis-cli/Cargo.toml"]
 # npm packages that ship no licence file, keyed by exact name@version so an
-# update is reviewed again. The text is the licence's standard text in
-# scripts/licences/, with the copyright line the package itself states.
+# update is reviewed again. The text is the licence's standard SPDX text in
+# scripts/licences/, with the copyright line the package itself states
+# (maintainer, 2026-11-25; docs/decisions/0002-licence.md).
 NO_LICENCE_FILE = {
     "@fluent/bundle@0.19.1": {"licence": "Apache-2.0", "copyright": "Project Fluent Authors (Mozilla)"},
     "@fluent/syntax@0.19.0": {"licence": "Apache-2.0", "copyright": "Project Fluent Authors (Mozilla)"},
     "client-only@0.0.1": {"licence": "MIT", "copyright": "the client-only authors (https://reactjs.org/); the package names no holder"},
 }
 LICENCE_FILE_PREFIXES = ("license", "licence", "copying", "notice", "unlicense")
+# Attribution a package passes on for code it includes: THIRDPARTYNOTICES,
+# third_party_licenses.md, ThirdPartyNotices.txt and the like.
+THIRD_PARTY_MARKERS = ("thirdparty", "third-party", "third_party")
+# Source, data and build files never are licence texts, whatever their name.
+NOT_TEXT = (".rs", ".js", ".mjs", ".cjs", ".ts", ".c", ".h", ".cc", ".cpp", ".py", ".json", ".toml", ".yml", ".yaml", ".map", ".lock")
+# Folders a package carries but does not ship in what it builds.
+NOT_SHIPPED = {"node_modules", ".git", "target", "tests", "test", "benches", "examples", "fixtures", "testdata"}
+
+
+def licence_files(directory):
+    """Every licence, NOTICE and third-party attribution file in a package,
+    nested ones included (a crate may bundle C code with its own licence)."""
+    found = []
+    for folder, folders, names in os.walk(directory):
+        folders[:] = sorted(f for f in folders if f.lower() not in NOT_SHIPPED)
+        for name in sorted(names):
+            lower = name.lower()
+            path = Path(folder, name)
+            if path.is_symlink() or lower.endswith(NOT_TEXT):
+                continue
+            in_licence_folder = Path(folder).name.lower() in ("license", "licenses", "licence", "licences")
+            if in_licence_folder or lower.startswith(LICENCE_FILE_PREFIXES) or any(m in lower for m in THIRD_PARTY_MARKERS):
+                found.append(path)
+    return found
 HEADER = "Third-party notices for Ibis"
 
 
@@ -111,10 +138,10 @@ def rust_crates(tool, directory):
         # cargo about may match a crate's own licence file to the standard text
         # and drop its copyright line; pass on every licence and NOTICE file
         # the crate ships as well (Apache-2.0 section 4(d) for NOTICE).
-        shipped = [path for path in sorted(crate["dir"].iterdir())
-                   if path.is_file() and path.name.lower().startswith(LICENCE_FILE_PREFIXES)]
+        shipped = licence_files(crate["dir"])
         for path in shipped:
-            crate["texts"].add(("file", f"{name} {path.name}", path.read_text(encoding="utf-8", errors="replace")))
+            label = f"{name} {path.relative_to(crate['dir']).as_posix()}"
+            crate["texts"].add(("file", label, path.read_text(encoding="utf-8", errors="replace")))
         if not shipped:
             standard_only.append(f"{name} {version}")
     if standard_only:
@@ -138,9 +165,9 @@ def npm_packages():
             for version, path in zip(entry["versions"], entry["paths"]):
                 key = (entry["name"], version)
                 texts = set()
-                for file in sorted(Path(path).iterdir()):
-                    if file.is_file() and file.name.lower().startswith(LICENCE_FILE_PREFIXES):
-                        texts.add((licence, f"{entry['name']} {file.name}", file.read_text(encoding="utf-8", errors="replace")))
+                for file in licence_files(path):
+                    label = f"{entry['name']} {file.relative_to(path).as_posix()}"
+                    texts.add((licence, label, file.read_text(encoding="utf-8", errors="replace")))
                 if not texts:
                     reviewed = NO_LICENCE_FILE.get(f"{entry['name']}@{version}")
                     if reviewed is None:

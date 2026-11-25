@@ -97,6 +97,16 @@ class Packages(unittest.TestCase):
         # The same files one folder down are not where people look.
         self.assertFails(self.write("ibis-macOS-Intel.tar.gz", tar_bytes({f"cli/{n}": d for n, d in NOTICES.items()})), "0 copies of LICENSE")
 
+    def test_notices_outside_their_place_do_not_count(self):
+        # The command line's belong at the archive's top, not in a folder.
+        self.assertFails(self.write("ibis-Linux.tar.gz", tar_bytes({f"notices/{n}": d for n, d in NOTICES.items()})),
+                         "0 copies of LICENSE where the command line keeps it")
+        # An app's belong in its installed resource folder, not beside the app.
+        beside = {f"notices/{n}": d for n, d in NOTICES.items()} | {"Ibis.app/Contents/MacOS/ibis-desktop": b"x"}
+        self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(beside)), "0 copies of LICENSE where the macOS app keeps it")
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(app_files("./usr/share/doc/ibis"))),
+                         "0 copies of LICENSE where the Linux app keeps it")
+
     def test_a_missing_changed_or_doubled_notice_fails(self):
         missing = {k: v for k, v in NOTICES.items() if k != "THIRD-PARTY-NOTICES.txt"}
         self.assertFails(self.write("ibis-Linux.tar.gz", tar_bytes(missing)), "0 copies of THIRD-PARTY-NOTICES.txt")

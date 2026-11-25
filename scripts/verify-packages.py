@@ -18,6 +18,7 @@ import hashlib
 import io
 import lzma
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -68,27 +69,33 @@ def expected_packages(target, names):
     return [name for name in required + optional if name in names]
 
 
-def wanted(path, top_level):
-    """The notice file name this archive member is, or None."""
-    path = path.replace("\\", "/").lstrip("./")
-    for name in NOTICE_FILES:
-        if (top_level and path == name) or path == f"notices/{name}" or path.endswith(f"/notices/{name}"):
-            return name
-    return None
+# Where each kind of package must hold the notices: the command line at the
+# archive's top, the app in its installed resource folder (notices/ beside
+# the program on Windows, Contents/Resources on macOS, /usr/lib/<app> on Linux).
+NAMES = "(LICENSE|NOTICE\\.md|THIRD-PARTY-NOTICES\\.txt)"
+PLACES = {
+    "command line": re.compile(NAMES),
+    "macOS app": re.compile(r"[^/]+\.app/Contents/Resources/notices/" + NAMES),
+    "Linux app": re.compile(r"usr/lib/[^/]+/notices/" + NAMES),
+    "Windows app": re.compile(r"(?:\$INSTDIR/)?notices/" + NAMES),
+}
 
 
-def collect(found, path, read, top_level=False):
-    name = wanted(path, top_level)
-    if name is not None:
-        found.setdefault(name, []).append(read())
+def collect(found, path, read):
+    """Every file named like a notice, by its normalized path."""
+    path = path.replace("\\", "/")
+    while path.startswith("./"):
+        path = path[2:]
+    if path.rsplit("/", 1)[-1] in NOTICE_FILES:
+        found[path.lstrip("/")] = read()
 
 
-def from_tar(data, top_level=False):
+def from_tar(data):
     found = {}
     with tarfile.open(fileobj=io.BytesIO(data)) as archive:
         for member in archive:
             if member.isfile():
-                collect(found, member.name, lambda: archive.extractfile(member).read(), top_level)
+                collect(found, member.name, lambda: archive.extractfile(member).read())
     return found
 
 
@@ -213,18 +220,27 @@ def nsis(path):
         return from_dir(work)
 
 
+def place(name):
+    """Which rule says where this package holds its notices."""
+    if name.startswith("ibis-"):
+        return "command line"
+    if name.endswith((".dmg", ".app.tar.gz")):
+        return "macOS app"
+    if name.endswith("-setup.exe"):
+        return "Windows app"
+    return "Linux app"
+
+
 def contents(path):
     name = path.name
-    if name.endswith(".app.tar.gz"):
-        return from_tar(path.read_bytes())
     if name.endswith(".tar.gz"):
-        return from_tar(path.read_bytes(), top_level=True)
+        return from_tar(path.read_bytes())
     if name.endswith(".zip"):
         found = {}
         with zipfile.ZipFile(path) as archive:
             for member in archive.infolist():
                 if not member.is_dir():
-                    collect(found, member.filename, lambda: archive.read(member), True)
+                    collect(found, member.filename, lambda: archive.read(member))
         return found
     if name.endswith(".deb"):
         return deb(path)
@@ -258,11 +274,17 @@ def check_package(path, notices):
     except (OSError, ValueError, EOFError, tarfile.TarError, zipfile.BadZipFile, lzma.LZMAError,
             subprocess.SubprocessError, struct.error, IndexError) as error:
         raise Failure(f"{path.name} could not be opened: {error}") from error
+    rule = place(path.name)
+    placed = {}
+    for member, data in found.items():
+        match = PLACES[rule].fullmatch(member)
+        if match:
+            placed.setdefault(match.group(1), []).append(data)
     problems = []
     for name, digest in notices.items():
-        copies = found.get(name, [])
+        copies = placed.get(name, [])
         if len(copies) != 1:
-            problems.append(f"{len(copies)} copies of {name}")
+            problems.append(f"{len(copies)} copies of {name} where the {rule} keeps it")
         elif hashlib.sha256(copies[0]).hexdigest() != digest:
             problems.append(f"{name} differs from the generated notice")
     if problems:
