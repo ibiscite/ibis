@@ -1531,7 +1531,8 @@ def _first_run_preferences_main(args):
             current = snapshot()
             controls = [node.get("name") for node in current["nodes"]
                         if node.get("role", "").lower().replace(" ", "") in MENU_BUTTON_ROLES]
-            return current["visible"] and current["foreground"] and controls.count(FORMAT_APA) == controls.count("Copy as APA") == 1
+            # The pop-up names the format; the bar's action names what Enter does, never the format.
+            return current["visible"] and current["foreground"] and controls.count(FORMAT_APA) == controls.count("Copy") == 1
 
         wait_for(distinct_format_and_copy, "citation format and copy have distinct accessible names")
         passed("citation format and copy have distinct accessible names")
