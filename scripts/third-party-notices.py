@@ -11,10 +11,14 @@ then puts that folder into the app and the command-line archive.
 
 `cargo about` (CARGO_ABOUT, default `cargo-about` on PATH) reads the crates
 offline, for every target Ibis ships, using deny.toml's licence list, so
-`cargo deny` stays the one licence policy. `pnpm licenses list --prod` names
-the npm packages. The script fails when any crate or package has no licence
-text: a package that ships no licence file needs an entry in NO_LICENCE_FILE,
-reviewed by hand. Nothing here runs in the app.
+`cargo deny` stays the one licence policy; every licence and NOTICE file a
+crate ships is passed on as well, since cargo about may match one to the
+standard text and drop its copyright line. A crate that ships no licence file
+gets the standard text of its declared licence, and the script lists those
+crates. `pnpm licenses list --prod` names the npm packages; one that ships no
+licence file needs an entry in NO_LICENCE_FILE, reviewed by hand. The script
+fails when cargo about cannot read or name a crate's licence, or an npm package
+has neither. Nothing here runs in the app.
 """
 
 import hashlib
@@ -100,13 +104,22 @@ def rust_crates(tool, directory):
                 crates[key]["texts"].add((licence["id"], licence["name"], licence["text"]))
     if not crates:
         fail("cargo about found no crates")
+    standard_only = []
     for (name, version), crate in crates.items():
         if not any(text.strip() for _, _, text in crate["texts"]):
             fail(f"no licence text for the Rust crate {name} {version}")
-        # Apache-2.0 section 4(d): pass on the NOTICE file a crate ships.
-        for path in sorted(crate["dir"].glob("NOTICE*")):
-            if path.is_file():
-                crate["texts"].add(("NOTICE", f"{name} NOTICE file", path.read_text(encoding="utf-8", errors="replace")))
+        # cargo about may match a crate's own licence file to the standard text
+        # and drop its copyright line; pass on every licence and NOTICE file
+        # the crate ships as well (Apache-2.0 section 4(d) for NOTICE).
+        shipped = [path for path in sorted(crate["dir"].iterdir())
+                   if path.is_file() and path.name.lower().startswith(LICENCE_FILE_PREFIXES)]
+        for path in shipped:
+            crate["texts"].add(("file", f"{name} {path.name}", path.read_text(encoding="utf-8", errors="replace")))
+        if not shipped:
+            standard_only.append(f"{name} {version}")
+    if standard_only:
+        print(f"{len(standard_only)} crates ship no licence file; their declared licence's standard text is used: "
+              + ", ".join(sorted(standard_only)))
     return crates
 
 
@@ -149,6 +162,8 @@ def render(crates, packages):
     for kind, items in (("Rust crate", crates), ("npm package", packages)):
         for (name, version), item in items.items():
             for licence_id, licence_name, text in item["texts"]:
+                # A standard text for a package that ships none names no holder.
+                text = text.replace("<year> <copyright holders>", "the authors named for each package listed above")
                 digest = hashlib.sha256(text.strip().encode()).hexdigest()
                 group = groups.setdefault(digest, {"id": licence_id, "name": licence_name, "text": text.strip(), "users": set()})
                 group["users"].add(f"{name} {version}")
