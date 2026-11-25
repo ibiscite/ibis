@@ -289,10 +289,10 @@ pub fn request_schema(method: Method) -> Value {
         Method::Read => schema_for!(ReadRequest),
         Method::FindIn => schema_for!(FindInRequest),
         Method::Share => schema_for!(ShareRequest),
-        Method::Styles => schema_for!(StylesRequest),
-        Method::Outputs => schema_for!(OutputsRequest),
-        Method::Schema => schema_for!(SchemaRequest),
         Method::Call => schema_for!(CallRequest),
+        Method::Styles | Method::Outputs | Method::Schema => {
+            return method.row().map(|row| (row.params)()).unwrap_or_default();
+        }
     }
     .into()
 }

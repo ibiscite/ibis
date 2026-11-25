@@ -125,26 +125,28 @@ native and are declared later in the same form.
 
 ## The series
 
-Before it: #1981 to #1985 and #1991 (`ibis format`) merge, because each adds
-a method or changes the schemas and all are already in flight. #1987's differ
-is welcome but not required: each step's proof is its unchanged fixtures. No
-new feature lane starts before step 1 lands, so no further hand match is
-added; `format` moves into the table with its family. Each step lands alone on a
+Before it: #1981, #1982, #1983 and #1985 merged first. #1984 (DOI lookup)
+and #1991 (`ibis format`) no longer gate step 1 (amended 2026-11-25): they
+re-land later as rows of the table, keeping their engine modules. #1987's
+differ is welcome but not required: each step's proof is its unchanged
+fixtures. No new feature lane adds a hand match once step 1 lands; new
+methods arrive as rows. Each step lands alone on a
 green main; the old path goes in the last step of its family.
 
 1. **The table and the catalogue family.** `styles`, `outputs` and `schema`
    become rows in `method.rs`: they read no library and take small requests.
    The method list, names and both schema functions read the table, and
-   dispatch routes these three through `call`; the other eleven keep their
+   dispatch routes these three through `call`; the other twelve keep their
    match arms. Step 1 derives only the per-method schemas, so its proof is
    `node scripts/gen.mjs --check` with `fixtures/cli-schema.json` unchanged,
-   plus a test that every schema is non-empty and one that the rows list every
-   method. CLI options, MCP tools and bindings follow in steps 3, 5 and 9.
-   Blocked by the open pull requests that own `method.rs`, `request.rs` and
-   `service.rs`: #1982, #1983, #1985 and #1991.
-2. **Every engine method.** The other eleven rows; delete the hand `ALL`, the
+   plus a test that the rows name their methods. CLI options, MCP tools and
+   bindings follow in steps 3, 5 and 9.
+2. **Every engine method.** The other twelve rows; delete the hand `ALL`, the
    name match, both schema matches, the dispatch match and the untyped
-   fallback.
+   fallback. `schema` and `call` still declare an untyped result here, so the
+   fixture stays unchanged; one small pull request after this step types
+   both, adds the test that every schema is non-empty, and lists the two
+   changed entries of `fixtures/cli-schema.json`.
 3. **CLI, catalogue and library reads** derived from the table.
 4. **CLI, the rest**; delete the hand subcommands and hand-built parameters.
 5. **MCP, search, show, styles and cite** as projections; parity gains an MCP
