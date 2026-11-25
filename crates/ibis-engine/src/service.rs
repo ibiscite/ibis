@@ -34,9 +34,14 @@ mod receipt;
 pub use prepared::{CitationCommitError, PreparedCitation};
 pub(crate) mod answers;
 pub use answers::MethodSchema;
+mod document;
 mod project;
 mod reading;
 mod share;
+pub use document::{
+    CheckRequest, CheckResult, Checked as DocumentChecked, ExportRequest, ExportResult, Finding,
+    Problem as DocumentProblem, Read as DocumentRead, Which,
+};
 pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
 pub use project::{
     EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectResult, WritingCitation, project_name,
@@ -359,6 +364,7 @@ pub struct Engine {
     watch_files: bool,
     /// Reads PDFs in a child process; without one, PDFs stay unread.
     pdf: Option<ibis_sources::pdf::PdfReader>,
+    documents: Option<ibis_sources::document::DocumentReader>,
     /// The `ibis` executable that serves built-in source adapters.
     built_in_sources: Option<std::path::PathBuf>,
     external_sources: Arc<BTreeMap<String, std::path::PathBuf>>,
@@ -380,6 +386,19 @@ impl Engine {
     /// never parses a PDF itself.
     pub fn with_pdf_reader(mut self, program: std::path::PathBuf) -> Self {
         self.pdf = Some(ibis_sources::pdf::PdfReader::new(program));
+        self
+    }
+    /// Read documents (manuscripts for `check` and `export`) with `program`,
+    /// an `ibis` executable started as `ibis __document` for each file
+    /// (decision 0060). The engine never parses a document itself.
+    pub fn with_document_reader(mut self, program: std::path::PathBuf) -> Self {
+        self.documents = Some(ibis_sources::document::DocumentReader::new(program));
+        self
+    }
+    /// Read documents in this process: tests only.
+    #[cfg(test)]
+    pub(crate) fn with_documents_in_process(mut self) -> Self {
+        self.documents = Some(ibis_sources::document::DocumentReader::in_process());
         self
     }
     /// Serve built-in source adapters with `program`, an `ibis` executable
@@ -429,6 +448,7 @@ impl Engine {
             resources: Arc::new(sources::Owners::default()),
             watch_files: true,
             pdf: None,
+            documents: None,
             built_in_sources: None,
             external_sources: Arc::default(),
             attachment_text_outside_library: false,

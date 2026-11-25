@@ -702,7 +702,10 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
             // PDFs and built-in source adapters run in this same executable,
             // each in a child process.
             let engine = match std::env::current_exe() {
-                Ok(program) => engine.with_pdf_reader(program.clone()).with_built_in_sources(program),
+                Ok(program) => engine
+                    .with_pdf_reader(program.clone())
+                    .with_document_reader(program.clone())
+                    .with_built_in_sources(program),
                 Err(_) => engine,
             };
             run_engine(engine, arguments, input, output, errors, mode, Defaults::App)

@@ -10,6 +10,17 @@ fn main() -> std::process::ExitCode {
     {
         return std::process::ExitCode::from(ibis::pdf_text::run_child(&arguments[2..]));
     }
+    // The document child, started only by `ibis` itself: it parses one
+    // document's bytes from stdin and reads no settings (decision 0060).
+    if arguments
+        .get(1)
+        .is_some_and(|argument| argument == ibis_sources::document::CHILD_ARGUMENT)
+    {
+        return std::process::ExitCode::from(ibis_sources::document::child::serve(
+            std::io::stdin().lock(),
+            std::io::stdout().lock(),
+        ));
+    }
     // A built-in source adapter, started only by `ibis` itself (decision 0056).
     if arguments
         .get(1)
