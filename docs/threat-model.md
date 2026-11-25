@@ -43,7 +43,12 @@ record at 1 MiB; each load has a deadline and a cancellation token.
 | EndNote XML export | the built-in EndNote adapter, then its parent | `endnote_export` |
 | Zotero local API answers | `zotero_local::live::LiveReader`, then `zotero::map_item` | `zotero_live` |
 | Better BibTeX's `read-only.json` | `zotero_local::bbt::read_only_keys` | `bbt_keys` |
-| Zotero's closed database and Better BibTeX's store | SQLite on a private copy, opened read-only | Not fuzzed here: SQLite is fuzzed upstream (OSS-Fuzz); rows reach the same `map_item` as `zotero_live` |
+| A `.bib` file Ibis edits in place (decision 0055) | `bibtex_edit::BibFile` | `bibtex_edit` |
+| A project's bibliography, read to check keys | `project::ProjectRead` | `project_bib` |
+| Zotero's `profiles.ini` and `prefs.js` | `zotero_local::discovery::discover` | `zotero_profiles` |
+| An open EndNote library (macOS scripting) | the same XML reader as an export | `endnote_export` |
+| Zotero's full-text cache | `zotero_local::fulltext::pages` splits text on page breaks; nothing is parsed | — |
+| Zotero's closed database and Better BibTeX's store | SQLite on a private copy, opened read-only | Not yet: SQLite itself is fuzzed upstream (OSS-Fuzz), and the rows reach the same `map_item` as `zotero_live`, but the reading of rows is not fuzzed here |
 
 Attachment paths in a library are data: they are probed in one bounded batch
 per load, a caller's CSL-JSON `file` field is dropped unread, and
@@ -59,13 +64,15 @@ any input takes under five seconds.
 
 ## Output injection
 
-A record's text is data in every output. LaTeX, Typst, Pandoc Markdown, HTML
-and RTF writers escape it for their syntax; citation keys are checked against
-each key syntax before they are written; links in shared packs come only from
-DOIs and public URLs. Terminal output escapes control characters. The
-clipboard receives only the checked citation, re-cited and compared with the
-shown hash at commit. Tests: the syntax contract and formatted fixtures
-(`fixtures/formatted/`), the delivery guards, and the CLI error transcripts.
+A record's text is data in every output. Each citation syntax escapes what it
+writes (`escaping_properties_for_every_current_syntax` and
+`control_characters_are_refused_in_every_affix_target` in
+`crates/ibis-core/tests/syntax_contract.rs`). Terminal output cannot carry
+control sequences or extra lines (`untrusted_controls_cannot_execute_in_terminal_output_and_json_stays_literal`,
+`human_result_rows_cannot_inject_extra_lines_or_terminal_controls` in
+`crates/ibis-cli/tests/`). Links in shared packs come only from DOIs and public
+URLs, and the clipboard receives only the checked citation, re-cited and
+compared with the shown hash at commit ([architecture](architecture.md)).
 
 ## Local endpoints
 
@@ -79,12 +86,13 @@ results mark library text as data so an agent does not act on it.
 ## Updates
 
 Update packages are signed with a key built into the app, separate for Ibis and
-Ibis Nightly ([decision 0019](decisions/0019-updates.md)). The app accepts only
-a signed archive whose version is newer and whose signature names its key;
-the feed is fetched over HTTPS from GitHub. Release packages carry build
-provenance attestations, verified before publishing and verifiable by anyone
-([RELEASING.md](../RELEASING.md), which also covers the keys). Tests: the update-feed and signing scripts' tests and the
-daily installed-update qualification.
+Ibis Nightly, and checks read an HTTPS feed from GitHub
+([decision 0019](decisions/0019-updates.md)). Publishing refuses a feed signed
+by any other key (`scripts/update-feed.test.mjs`), and release packages carry
+build provenance attestations, verified before publishing and verifiable by
+anyone ([RELEASING.md](../RELEASING.md), which also covers the keys). The
+daily installed-update qualification (`scripts/update-e2e.py`) updates one
+nightly to the next.
 
 ## Extensions
 

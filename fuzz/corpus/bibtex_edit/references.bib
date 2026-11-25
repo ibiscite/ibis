@@ -1,0 +1,8 @@
+% Invented macro/inheritance graphs: cycles, missing parents, and valid edges.
+@string{first = second}
+@string{second = first}
+@xdata{shared, publisher={Imaginary Press}, year={2026}}
+@book{child, title={Synthetic Child}, xdata={shared}, note=first}
+@book{one, title={Synthetic One}, crossref={two}}
+@book{two, title={Synthetic Two}, crossref={one}}
+@article{orphan, title={Synthetic Orphan}, crossref={missing}}

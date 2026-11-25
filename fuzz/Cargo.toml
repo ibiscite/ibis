@@ -93,5 +93,29 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "bibtex_edit"
+path = "fuzz_targets/bibtex_edit.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "project_bib"
+path = "fuzz_targets/project_bib.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "zotero_profiles"
+path = "fuzz_targets/zotero_profiles.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
 [lints]
 workspace = true

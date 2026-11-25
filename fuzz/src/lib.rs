@@ -1,7 +1,9 @@
 //! Parser oracles shared by libFuzzer and the ordinary seed-corpus tests, one
 //! per untrusted input in `docs/threat-model.md`: library files here, damaged
 //! PDFs in [`pdf`], source-adapter answers and EndNote exports in [`adapter`],
-//! Zotero's local API and Better BibTeX's key export in [`zotero`]. Every
+//! Zotero's local API and Better BibTeX's key export in [`zotero`], and the
+//! other files Ibis reads (edited `.bib`, project bibliography, Zotero's
+//! profiles) in [`files`]. Every
 //! target is listed in [`TARGETS`].
 #![allow(clippy::panic, reason = "a fuzz oracle reports a failed property by panicking")]
 
@@ -13,6 +15,7 @@ use ibis_core::contract::{CitationKeySource, LibraryObject, Record, Snapshot};
 use ibis_sources::{SourceError, load_file};
 
 pub mod adapter;
+pub mod files;
 pub mod pdf;
 pub mod zotero;
 
@@ -32,6 +35,9 @@ pub const TARGETS: &[Target] = &[
     ("endnote_export", adapter::check_endnote_export, MAX_INPUT_BYTES),
     ("zotero_live", zotero::check_zotero_live, MAX_INPUT_BYTES),
     ("bbt_keys", zotero::check_bbt_keys, MAX_INPUT_BYTES),
+    ("bibtex_edit", files::check_bibtex_edit, MAX_INPUT_BYTES),
+    ("project_bib", files::check_project_bib, MAX_INPUT_BYTES),
+    ("zotero_profiles", files::check_zotero_profiles, MAX_INPUT_BYTES),
 ];
 
 pub(crate) const MAX_INPUT_BYTES: usize = 64 * 1024;
@@ -167,7 +173,9 @@ fn check_library_file(format: Format, data: &[u8]) {
         // Rejecting malformed or unfinished input is allowed; publishing
         // invalid records is not. Other errors indicate a broken harness or an
         // unexpected I/O path.
-        Err(SourceError::InvalidData | SourceError::Incomplete) => assert!(std::str::from_utf8(data).is_ok()),
+        Err(SourceError::InvalidData) => assert!(std::str::from_utf8(data).is_ok()),
+        // Only the CSL-JSON reader reports an unfinished file.
+        Err(SourceError::Incomplete) if matches!(format, Format::CslJson) => assert!(std::str::from_utf8(data).is_ok()),
         Err(SourceError::CsvTemplate) if matches!(format, Format::Csv) => assert!(std::str::from_utf8(data).is_ok()),
         Err(error) => panic!("unexpected file loader failure: {error:?}"),
     }
