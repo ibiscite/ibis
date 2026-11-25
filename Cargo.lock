@@ -2289,7 +2289,6 @@ version = "0.3.12"
 dependencies = [
  "block2",
  "ibis-core",
- "ibis-engine",
  "objc2",
  "objc2-app-kit",
  "objc2-core-foundation",
@@ -2298,7 +2297,6 @@ dependencies = [
  "schemars 1.2.3",
  "serde",
  "serde_json",
- "tempfile",
  "winsafe",
 ]
 

@@ -233,12 +233,17 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
     }
 }
 
-pub fn with_paste_settings(path: &std::path::Path, deliver: impl FnOnce(bool) -> Delivered) -> Delivered {
-    let loaded = ibis_engine::settings::load(path);
-    let Ok(settings) = loaded.cites() else {
-        return Delivered::copied(CopyReason::PasteUnavailable);
-    };
-    deliver(settings.portable.paste())
+/// Decide with the paste setting as its owner reads it now, at delivery, so
+/// turning Paste off after the picker opened still only copies. `None`, a
+/// setting that cannot be read, only copies too.
+pub fn with_paste_setting(
+    setting: impl FnOnce() -> Option<bool>,
+    deliver: impl FnOnce(bool) -> Delivered,
+) -> Delivered {
+    match setting() {
+        Some(enabled) => deliver(enabled),
+        None => Delivered::copied(CopyReason::PasteUnavailable),
+    }
 }
 
 pub fn key_release_failed() -> Delivered {

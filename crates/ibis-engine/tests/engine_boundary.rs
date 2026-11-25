@@ -23,8 +23,8 @@ const LAYERS: [(&str, &[&str]); 9] = [
     ("crates/ibis-engine", &["ibis-core", "ibis-csl", "ibis-sources"]),
     // The CLI also serves the built-in EndNote adapter in a child process.
     ("crates/ibis-cli", &["ibis-core", "ibis-engine", "ibis-sources"]),
-    // Native paste for any front end; it reads only the engine's settings file.
-    ("crates/ibis-native", &["ibis-core", "ibis-engine"]),
+    // Native paste for any front end; the host supplies the paste setting.
+    ("crates/ibis-native", &["ibis-core"]),
     (
         "apps/desktop/src-tauri",
         &["ibis-core", "ibis-desktop-macros", "ibis-engine", "ibis-native"],
