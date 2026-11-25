@@ -30,7 +30,7 @@ struct Span {
 
 /// What the formatter's worker answers.
 pub(crate) enum Formatted {
-    Citation(CitationResult),
+    Citation(Box<CitationResult>),
     Document(DocumentAnswer),
 }
 
@@ -55,7 +55,7 @@ pub(crate) fn refused_formatted(input: &Prepared) -> Formatted {
                 .collect(),
         ))
     } else {
-        Formatted::Citation(refused(input))
+        Formatted::Citation(Box::new(refused(input)))
     }
 }
 

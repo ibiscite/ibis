@@ -92,7 +92,7 @@ impl Session {
         let formatted = if prepared.document {
             output::document(&json).map(Formatted::Document)
         } else {
-            output::result(&json, prepared, &self.superscripts).map(Formatted::Citation)
+            output::result(&json, prepared, &self.superscripts).map(|result| Formatted::Citation(Box::new(result)))
         };
         formatted.inspect_err(|_| {
             #[cfg(test)]

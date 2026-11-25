@@ -59,7 +59,7 @@ impl FormatTask {
     }
     pub fn wait(self) -> Result<CitationResult, FormatError> {
         match self.formatted()? {
-            Formatted::Citation(result) => Ok(result),
+            Formatted::Citation(result) => Ok(*result),
             Formatted::Document(_) => Err(FormatError::Runtime),
         }
     }
