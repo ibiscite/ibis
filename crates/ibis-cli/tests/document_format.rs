@@ -1,5 +1,6 @@
 //! `format` end to end through the engine and the real `ibis __document`
 //! child (decision 0060). Every document and reference is invented here.
+#![cfg(test)]
 use ibis_engine::{Cancellation, Engine, FormatRefusal, FormatRequest, FormatResult};
 use ibis_sources::document::Refusal;
 use std::io::{Cursor, Read, Write};
