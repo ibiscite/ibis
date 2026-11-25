@@ -4,7 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { SearchResult } from "../../api";
 import type { CitationReference } from "./choice";
-import { CitationShelf } from "./CitationShelf";
+import { CitationShelf, type CitationLineActions } from "./CitationShelf";
 import { useCitationInspector } from "./useCitationInspector";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -109,4 +109,34 @@ test("Copied shows the exact receipt between matching beaks, with one polite con
   rerender(shelf({ shown: output("New preview") }));
   expect(screen.queryByRole("status", { name: "Copied" })).toBeNull();
   expect(document.querySelector(".preview-text")?.textContent).toBe("New preview");
+});
+
+test("More's Move Left and Right go the way the keys do in a right-to-left citation", () => {
+  // Sol's probe: on the last of three Arabic tokens Shift+→ steps -1, so More's
+  // Move Right must too, and interior tokens follow their label.
+  const records = [record("a", "حداد"), record("b", "سالم"), record("c", "نصار")];
+  const formatted = { ...output("(حداد، 2021؛ سالم، 2021؛ نصار، 2021)"), display: displayTree([
+    { item: null, text: "(" }, { item: 0, text: "حداد، 2021" }, { item: null, text: "؛ " },
+    { item: 1, text: "سالم، 2021" }, { item: null, text: "؛ " }, { item: 2, text: "نصار، 2021" }, { item: null, text: ")" },
+  ]) };
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((node, pseudo) => {
+    const style = computed(node, pseudo);
+    return node instanceof Element && node.closest(".shelf-fragments") ? { ...style, direction: "rtl", getPropertyValue: style.getPropertyValue.bind(style) } as CSSStyleDeclaration : style;
+  });
+  const moved = vi.fn(), actions = { current: null as CitationLineActions | null };
+  render(shelf({ selected: chosen(records), shown: formatted, keepOrder: true, actionsRef: actions, onMoveReference: (reference, _order, step) => moved(reference.key, step) }));
+  const last = screen.getByRole("button", { name: /^Edit نصار/ });
+  act(() => last.focus());
+  fireEvent.keyDown(last, { key: "ArrowRight", shiftKey: true });
+  act(() => last.focus());
+  act(() => actions.current!.move(1));
+  expect(moved.mock.calls).toEqual([["c", -1], ["c", -1]]);
+  moved.mockClear();
+  const middle = screen.getByRole("button", { name: /^Edit سالم/ });
+  act(() => middle.focus());
+  act(() => actions.current!.move(-1));
+  act(() => middle.focus());
+  fireEvent.keyDown(middle, { key: "ArrowLeft", shiftKey: true });
+  expect(moved.mock.calls).toEqual([["b", 1], ["b", 1]]);
 });

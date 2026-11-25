@@ -50,7 +50,13 @@ test("the built scenario list renders, switches and reopens without Tauri or net
     await vi.waitFor(() => {
       expect(window.document.documentElement.dataset.appearance).toBe(theme);
       expect(window.document.querySelector("[src], [href]")).toBeNull();
-      if (scenario.startsWith("settings-")) {
+      // A language scene speaks its language and takes its direction; the next scene speaks English again.
+      const language = /-(de|ar)$/.exec(scenario)?.[1];
+      expect(window.document.documentElement.lang).toBe(language ?? "en-US");
+      if (language) {
+        expect(window.document.documentElement.dir).toBe(language === "ar" ? "rtl" : "ltr");
+        expect(host.querySelector(scenario.startsWith("settings-") ? ".ui-row" : scenario.startsWith("first-run") ? '[role="option"]' : "#search")).not.toBeNull();
+      } else if (scenario.startsWith("settings-")) {
         expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain({ look: "appearance", "ai-apps": "ai apps", details: "general", newer: "general", broken: "general" }[scenario.slice(9)] ?? scenario.slice(9));
         expect(host.querySelector(scenario === "settings-shortcuts" ? ".ui-shortcut-table" : ".ui-row")).not.toBeNull();
         if (scenario === "settings-broken") expect(host.querySelector('[role="alert"]')?.textContent).toContain("settings.json isn’t valid, so Ibis is using your last good settings.");

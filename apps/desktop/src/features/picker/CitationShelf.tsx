@@ -35,7 +35,8 @@ export function referenceLabels(records: SearchResult[], libraryName?: (r: Searc
 export type CitationLineActions = {
   /** Has tokens; `selected` when at least one is in the citation, so it can move or go. */
   state: () => { tokens: number; selected: number };
-  focusLast: () => void; edit: () => void; move: (step: -1 | 1) => void; remove: () => void;
+  /** `side` is on screen: -1 left, 1 right, whatever the line's direction. */
+  focusLast: () => void; edit: () => void; move: (side: -1 | 1) => void; remove: () => void;
 };
 
 /** Whether a reference's words in the output name it, or it needs its handle beside them. */
@@ -214,6 +215,10 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     if (!keepOrder && style) setOrderNote(say("picker-order-kept"));
     onMoveReference(reference, lineOrder, step);
   };
+  /** Left or right on screen, as the keys and More both say it: a right-to-left
+   * line runs its order the other way. */
+  const moveToward = (reference: CitationReference, side: -1 | 1, at: Element | null = tokenButton(idKey(reference.id)) ?? output.current) =>
+    move(reference, (side * (at && getComputedStyle(at).direction === "rtl" ? -1 : 1)) as -1 | 1);
   // The token last focused, for More's commands once focus has moved into the menu;
   // focus going anywhere else forgets it, and cancels a pending refocus.
   const remembered = useRef<string | null>(null);
@@ -258,8 +263,9 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     const plain = !event.altKey && !event.metaKey && !event.ctrlKey;
     if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && plain) {
       event.preventDefault();
-      const step = (event.key === "ArrowRight" ? 1 : -1) * (getComputedStyle(event.currentTarget).direction === "rtl" ? -1 : 1) as -1 | 1;
-      if (event.shiftKey) move(reference, step);
+      const side = event.key === "ArrowRight" ? 1 : -1;
+      const step = (side * (getComputedStyle(event.currentTarget).direction === "rtl" ? -1 : 1)) as -1 | 1;
+      if (event.shiftKey) moveToward(reference, side, event.currentTarget);
       else {
         const tokens = [...output.current?.querySelectorAll<HTMLButtonElement>(".citation-token-button") ?? []];
         tokens[Math.min(tokens.length - 1, Math.max(0, tokens.indexOf(event.currentTarget as HTMLButtonElement) + step))]?.focus();
@@ -290,7 +296,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     state: () => ({ tokens: copied ? 0 : references.length, selected: copied ? 0 : records.length }),
     focusLast: () => { const last = lineOrder.at(-1); if (last) tokenButton(last)?.focus(); },
     edit: () => { const reference = target(); if (reference && !inspecting(reference)) open("reference", tokenButton(idKey(reference.id)) ?? output.current!, reference); },
-    move: (step) => { const reference = target(); if (reference) move(reference, step); },
+    move: (side) => { const reference = target(); if (reference) moveToward(reference, side); },
     remove: () => { const reference = target(); if (reference && isSelected(reference)) remove(reference); },
   }));
   // A token is the reference's own words; the brackets and separators the output

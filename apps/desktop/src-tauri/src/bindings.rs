@@ -181,6 +181,8 @@ fn contract() -> Value {
     if let Some(fields) = defaults.as_object_mut() {
         fields.remove("output");
         fields.remove("key_output");
+        // The language the app speaks is reported, never a default to fall back on.
+        fields.remove("speaking");
     }
     json!({
         "commands": commands,

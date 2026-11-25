@@ -1,7 +1,7 @@
 // Drives the guards of canvas/geometry.ts through the canvas scenarios in one
 // page, so the runners (gallery/webkit.swift, gallery/canvas.mjs) only choose a
 // window size and an appearance and print what this returns. Invented data only.
-import { englishMessages, type MessageId } from "../src/i18n";
+import { LANGUAGES, say, setInterfaceLanguage, type InterfaceLanguage, type MessageId } from "../src/i18n";
 import { libraryOperations, OPERATION_FAILURES, type Operation } from "../src/features/picker/Notices";
 import { HOLD_MS } from "../src/ui/HeldKeys";
 import { currentPlatform } from "../src/platform";
@@ -10,14 +10,16 @@ import { anchorBoxes, anchorMoves, frameStates, geometry, heldKeys, layerRoles, 
 type Mount = (host: HTMLElement, options: { scenario: string; theme: string }) => () => void;
 
 /** Picker screens held to the single-picture layout rules (geometry()). */
-export const geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "reader", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "compact", "long-titles", "stale", "more", "format-menu", "library-menu", "text-80", "text-120"];
+export const geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "reader", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "compact", "long-titles", "stale", "more", "format-menu", "library-menu", "text-80", "text-120",
+  // German runs longest and Arabic mirrors: the same rules hold in both.
+  "results-de", "results-ar", "first-run-de", "first-run-ar"];
 
 /** Scenarios with something floating, for the layer check in every appearance. */
 export const layerScreens = ["more", "format-menu", "library-menu", "show-as-menu", "reference-details", "peek", "shortcuts", "writing-projects", "cited-since-opening"];
 
 /** Screens checked again while ⌘ (Ctrl elsewhere) is held, as a person holds it:
  * every held key and the row numbers drawn over a list with a citation. */
-export const heldScreens = ["shelf", "compact", "right-to-left", "pinned"];
+export const heldScreens = ["shelf", "compact", "right-to-left", "pinned", "results-ar"];
 
 /** Holds the command key alone for longer than the hold (ui/HeldKeys), returns what
  * the check finds, and lets go. The same keydown a person's key sends. */
@@ -109,12 +111,16 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
       const words = document.querySelector<HTMLElement>(slots[slot].selector);
       if (!words) { failures.push(`[C24 words] ${slot}: no slot drawn to measure in ${slots[slot].scenario}`); continue; }
       const actions = [...words.parentElement!.children].filter((part): part is HTMLElement => part !== words && part instanceof HTMLElement);
-      for (const { id, args, actions: offer } of messages) {
-        words.textContent = englishMessages.text(id, args);
-        // A remark has the whole line; an offer shares it with its actions.
-        for (const action of actions) action.style.display = offer ? "" : "none";
-        const problem = overflow(words, slots[slot].lines);
-        if (problem) failures.push(`[C24 words] ${slot} "${id}": ${problem} at ${document.documentElement.clientWidth}px`);
+      // Every language's words fit their slot, German's longest among them.
+      for (const language of Object.keys(LANGUAGES) as InterfaceLanguage[]) {
+        const { text } = setInterfaceLanguage(language);
+        for (const { id, args, actions: offer } of messages) {
+          words.textContent = text(id, args);
+          // A remark has the whole line; an offer shares it with its actions.
+          for (const action of actions) action.style.display = offer ? "" : "none";
+          const problem = overflow(words, slots[slot].lines);
+          if (problem) failures.push(`[C24 words] ${slot} "${id}" (${language}): ${problem} at ${document.documentElement.clientWidth}px`);
+        }
       }
     }
     return failures;
@@ -122,8 +128,9 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
 
   // A message no slot declares is caught wherever a scenario shows it.
   // Each declared message as a pattern: any value may fill its variables.
+  // In the language the scenario speaks, so a German scene is held to German words.
   const plain = (text: string) => text.replace(/[\u2068\u2069]/g, "");
-  const declared = Object.values(slotMessages).flat().map(({ id, args }) => new RegExp(`^${plain(englishMessages.text(id, Object.fromEntries(Object.keys(args ?? {}).map((name) => [name, "\u0001"]))))
+  const declared = () => Object.values(slotMessages).flat().map(({ id, args }) => new RegExp(`^${plain(say(id, Object.fromEntries(Object.keys(args ?? {}).map((name) => [name, "\u0001"]))))
     .replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\u0001/g, ".+")}$`));
   const idle: { boxes?: ReturnType<typeof anchorBoxes> } = {};
   const states = new Map<string, ReturnType<typeof anchorBoxes>>();
@@ -136,8 +143,9 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
       ...layerRoles(),
       ...oneSurface(),
     ];
+    const patterns = declared();
     for (const [slot, { selector }] of Object.entries(slots).filter(([, { catalogue }]) => catalogue)) for (const words of document.querySelectorAll(selector))
-      if (words.textContent && !declared.some((pattern) => pattern.test(plain(words.textContent!)))) found.push(`[C24 words] ${slot} shows a message it does not declare: "${words.textContent}"`);
+      if (words.textContent && !patterns.some((pattern) => pattern.test(plain(words.textContent!)))) found.push(`[C24 words] ${slot} shows a message it does not declare: "${words.textContent}"`);
     failures.push(...found.map((failure) => `${scenario}: ${failure}`));
     if (heldScreens.includes(scenario)) {
       const held = await whileHeld(() => document.documentElement.hasAttribute("data-keys-held") ? [...heldKeys(), ...occlusion()] : ["[C24 held] the hold drew nothing"]);

@@ -88,7 +88,7 @@ export function PickerResults({
   return <>{emptyState && !listShown && <FrameNotices />}<ResultsArea options={listShown} ref={resultArea}>
     {/* The list's heading sits in the frame's line, where a notice can stand in for it. */}
     {library?.has_snapshot && results.length > 0 && library.state !== "loading" && showCitations && <FrameHeading>{recent
-      ? <div className="ui-list-heading"><h2 id={`recent-${recent}`}>{recent === "cited" ? "Cited here recently" : "Recently added"}</h2></div>
+      ? <div className="ui-list-heading"><h2 id={`recent-${recent}`}>{say("picker-recent-heading", { state: recent })}</h2></div>
       : <div className="ui-list-heading" aria-hidden="true">
         <span>{list ? say("picker-pasted-list") : results.some((r) => r.partial) ? say("picker-closest-matches") : query ? say("picker-best-matches") : say("picker-references")}</span><bdi>{say("picker-result-count", { count: results.length })}</bdi>
       </div>}</FrameHeading>}

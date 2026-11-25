@@ -308,13 +308,13 @@ fn macos_shortcut(
         .unwrap_or_else(|| shortcut.key.to_string());
     let mut parts = Vec::new();
     for (modifier, name) in [
-        (Modifiers::CONTROL, "Control"),
-        (Modifiers::ALT, "Option"),
-        (Modifiers::SHIFT, "Shift"),
-        (Modifiers::SUPER, "Command"),
+        (Modifiers::CONTROL, "app-key-control"),
+        (Modifiers::ALT, "app-key-option"),
+        (Modifiers::SHIFT, "app-key-shift"),
+        (Modifiers::SUPER, "app-key-command"),
     ] {
         if shortcut.mods.contains(modifier) {
-            parts.push(name.to_owned());
+            parts.push(words(name, &[]));
         }
     }
     parts.push(key);

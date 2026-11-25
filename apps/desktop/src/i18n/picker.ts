@@ -448,6 +448,8 @@ export const PICKER_IDS = [
   "picker-entry-output",
   "picker-missing-citations",
   "picker-matched-in",
+  "picker-recent-heading",
+  "picker-more-references",
   "picker-result-count",
   "picker-selection-count",
   "picker-shortcut-not-used",

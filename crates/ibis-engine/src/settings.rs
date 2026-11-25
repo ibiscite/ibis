@@ -305,6 +305,22 @@ macro_rules! resolved {
 }
 resolved!(Portable, Interface);
 
+impl Portable {
+    /// The saved language if this build speaks it, else the system's.
+    pub fn interface_language(&self) -> InterfaceLanguage {
+        self.interface_language
+            .as_ref()
+            .and_then(SavedLanguage::known)
+            .unwrap_or_default()
+    }
+}
+
+impl Interface {
+    pub fn interface_language(&self) -> InterfaceLanguage {
+        self.interface_language.unwrap_or_default()
+    }
+}
+
 /// Picker content size in logical pixels and optional top-left position as
 /// fractions of the display's usable width and height. Keys are native stable
 /// display IDs.
@@ -351,6 +367,52 @@ pub enum Accent {
     #[default]
     System,
     Ibis,
+}
+
+/// The interface language chosen in Settings; `System` follows the system's
+/// preferred languages. Citations keep their style's or locale's language.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub enum InterfaceLanguage {
+    #[default]
+    #[serde(rename = "system")]
+    System,
+    #[serde(rename = "en-US")]
+    English,
+    #[serde(rename = "de")]
+    German,
+    #[serde(rename = "ar")]
+    Arabic,
+}
+
+impl InterfaceLanguage {
+    /// The language chosen, or `None` to follow the system.
+    pub fn chosen(self) -> Option<crate::catalogue::Language> {
+        use crate::catalogue::Language;
+        match self {
+            Self::System => None,
+            Self::English => Some(Language::English),
+            Self::German => Some(Language::German),
+            Self::Arabic => Some(Language::Arabic),
+        }
+    }
+}
+
+/// A language as the file holds it: one this build speaks, or another build's,
+/// kept as written so a downgrade and upgrade keep the person's choice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum SavedLanguage {
+    Known(InterfaceLanguage),
+    Other(String),
+}
+
+impl SavedLanguage {
+    pub fn known(&self) -> Option<InterfaceLanguage> {
+        match self {
+            Self::Known(language) => Some(*language),
+            Self::Other(_) => None,
+        }
+    }
 }
 
 /// Default picker placement on the active display; a deliberate move wins there.
@@ -433,6 +495,10 @@ pub struct Portable {
     pub appearance: Option<Appearance>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accent: Option<Accent>,
+    /// The interface language; absent, or one this build does not speak,
+    /// follows the system.
+    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "language_or_none")]
+    pub interface_language: Option<SavedLanguage>,
 }
 
 /// Choices and capabilities that belong to this computer.
@@ -530,6 +596,7 @@ impl Default for Portable {
             schema_version: SCHEMA_VERSION,
             appearance: None,
             accent: None,
+            interface_language: None,
             small_surprises: None,
             shortcut: Shortcuts::default(),
             library: None,
@@ -599,6 +666,7 @@ pub struct Interface {
     pub key_output: Option<String>,
     pub appearance: Option<Appearance>,
     pub accent: Option<Accent>,
+    pub interface_language: Option<InterfaceLanguage>,
     pub density: Option<Density>,
     pub picker_placement: Option<PickerPlacement>,
     pub larger_text: Option<bool>,
@@ -619,6 +687,7 @@ impl From<&Settings> for Interface {
             key_output: portable.key_output.clone(),
             appearance: portable.appearance,
             accent: portable.accent,
+            interface_language: portable.interface_language.as_ref().and_then(SavedLanguage::known),
             density: portable.density,
             picker_placement: portable.picker_placement,
             larger_text: portable.larger_text,
@@ -657,6 +726,17 @@ fn backup_path(path: &Path) -> PathBuf {
 
 /// A stored choice read leniently: anything but text, as another version may
 /// have written, is no choice at all.
+/// A language another build wrote, or one a later build removed, follows the
+/// system instead of making the whole file invalid.
+fn language_or_none<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<SavedLanguage>, D::Error> {
+    Ok(match Value::deserialize(deserializer)? {
+        Value::String(tag) => Some(
+            serde_json::from_value(Value::String(tag.clone())).map_or(SavedLanguage::Other(tag), SavedLanguage::Known),
+        ),
+        _ => None,
+    })
+}
+
 fn text_or_none<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
     Ok(match Value::deserialize(deserializer)? {
         Value::String(text) => Some(text),
@@ -1580,6 +1660,47 @@ mod tests {
         assert_eq!(saved["output"], "apa");
         assert_eq!(saved["window_position"], newer_build["window_position"]);
         assert_eq!(saved["later_flag"], newer_build["later_flag"]);
+    }
+
+    #[test]
+    fn a_language_this_build_does_not_speak_follows_the_system_and_is_kept_when_saving() {
+        let directory = dir("language");
+        let path = directory.path().join("settings.json");
+        let other_build =
+            serde_json::json!({"schema_version": 2, "output": "apa", "density": "compact", "interface_language": "fr"});
+        fs::write(&path, other_build.to_string()).unwrap_or_else(|e| panic!("{e}"));
+        let loaded = load(&path);
+        assert!(loaded.problem.is_none(), "{:?}", loaded.problem);
+        assert_eq!(loaded.settings.portable.output.as_deref(), Some("apa"));
+        assert_eq!(loaded.settings.portable.density, Some(Density::Compact));
+        assert_eq!(loaded.settings.portable.interface_language(), InterfaceLanguage::System);
+        assert_eq!(
+            loaded.interface().map(|i| i.interface_language()).ok(),
+            Some(InterfaceLanguage::System)
+        );
+        let saved = update(&path, |s| s.portable.larger_text = Some(true)).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(saved.portable.output.as_deref(), Some("apa"));
+        assert_eq!(saved.portable.larger_text, Some(true));
+        // A downgrade that saves, then the upgrade, keeps the person's choice.
+        let written: Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(written["interface_language"], "fr");
+        let saved = update(&path, |s| {
+            s.portable.interface_language = Some(SavedLanguage::Known(InterfaceLanguage::German))
+        })
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(load(&path).settings, saved);
+        assert_eq!(saved.portable.interface_language(), InterfaceLanguage::German);
+        // A value of the wrong type reads as unset and leaves the rest alone.
+        fs::write(
+            &path,
+            r#"{"schema_version": 2, "output": "apa", "interface_language": 7}"#,
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        let loaded = load(&path);
+        assert!(loaded.problem.is_none(), "{:?}", loaded.problem);
+        assert_eq!(loaded.settings.portable.interface_language, None);
+        assert_eq!(loaded.settings.portable.output.as_deref(), Some("apa"));
     }
 
     #[test]

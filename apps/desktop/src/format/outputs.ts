@@ -2,6 +2,8 @@
 // Each has one id, stored and sent as it is, and one name, shown everywhere.
 import { DEFAULT_OUTPUT, DEFAULT_STYLE, OUTPUTS } from "../bindings";
 import type { CitedWarning, DisplayTree, Notice } from "../bindings";
+import { say } from "../i18n";
+import { OUTPUT_DESCRIPTIONS, OUTPUT_NAMES } from "../i18n/outputs";
 
 export type OutputChoice = (typeof OUTPUTS)[number];
 export type OutputId = OutputChoice["id"];
@@ -23,9 +25,23 @@ export function listedOutput(id: string | null | undefined): OutputId | null {
   return id && listed.has(id) ? id as OutputId : null;
 }
 
-/** The one name every surface shows. */
+/** The one name every surface shows, in the interface language. */
 export function outputName(id: OutputId): string {
-  return outputOf(id).name;
+  const output = outputOf(id), message = OUTPUT_NAMES[output.id as keyof typeof OUTPUT_NAMES];
+  return message ? say(message) : output.name;
+}
+
+/** What the name leaves out, such as a style's edition, in the interface language. */
+export function outputDescription(id: OutputId): string | null {
+  const output = outputOf(id), message = OUTPUT_DESCRIPTIONS[output.id as keyof typeof OUTPUT_DESCRIPTIONS];
+  return message ? say(message) : output.description;
+}
+
+/** Words a format menu also finds an output by: the engine's own name and
+ * description, so "Keys only" still finds it in any interface language. */
+export function outputKeywords(id: OutputId): string {
+  const output = outputOf(id);
+  return [...new Set([output.name, output.description, outputDescription(id)].filter(Boolean))].join(" ");
 }
 
 /** A citation style, written by the formatter. */

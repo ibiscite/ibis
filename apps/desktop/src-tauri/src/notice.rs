@@ -19,8 +19,6 @@ use crate::paste::Delivered;
 use crate::placement::{Area, display};
 
 pub(crate) const LABEL: &str = "notice";
-/// The window title, which screen readers may read; never the citation.
-const TITLE: &str = "Ibis notice";
 /// As long as the prototype shows it: a 120 ms fade in, then the page's
 /// 200 ms fade out, which this timer starts with `notice:leave`.
 const SHOWN_FOR: Duration = Duration::from_millis(2_800);
@@ -211,6 +209,8 @@ pub(crate) struct NoticeMessage {
     /// Ibis's own Light or Dark, set as the notice is shown; absent for System.
     #[serde(skip_serializing_if = "crate::preferences::Appearance::is_system")]
     appearance: crate::preferences::Appearance,
+    /// The language Ibis speaks: the notice window cannot ask for it.
+    language: ibis_engine::catalogue::Language,
 }
 
 impl NoticeMessage {
@@ -287,6 +287,7 @@ pub(crate) async fn deliver(
             plugin_note: false,
             suggested_format: None,
             appearance: Default::default(),
+            language: ibis_engine::catalogue::language(),
         },
         (receipt, epoch),
         target,
@@ -473,7 +474,8 @@ fn create(app: &AppHandle, showing: u64) -> Option<()> {
         "notice.html?surface=opaque"
     };
     let mut builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(page.into()))
-        .title(TITLE)
+        // The window title, which screen readers may read; never the citation.
+        .title(ibis_engine::catalogue::text("app-window-notice", None, &[]).unwrap_or_default())
         .inner_size(width, height)
         .min_inner_size(width, height)
         .max_inner_size(width, height)

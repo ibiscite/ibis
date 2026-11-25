@@ -3,7 +3,7 @@ use super::*;
 use serde_json::json;
 
 #[derive(Default)]
-struct InstallNotices(Mutex<Vec<&'static str>>);
+struct InstallNotices(Mutex<Vec<String>>);
 
 impl InstallationUi for tauri::test::MockRuntime {
     fn failed(app: &AppHandle<Self>) {
@@ -11,7 +11,7 @@ impl InstallationUi for tauri::test::MockRuntime {
             .0
             .lock()
             .unwrap_or_else(|e| panic!("{e}"))
-            .push(INSTALL_FAILURE_MESSAGE);
+            .push(install_failure());
     }
 
     fn restart(_: &AppHandle<Self>) {
@@ -225,7 +225,7 @@ fn production_install_timeout_reports_failure_and_allows_a_later_check() {
                 .lock()
                 .unwrap_or_else(|e| panic!("{e}"))
                 .as_slice(),
-            [INSTALL_FAILURE_MESSAGE],
+            [install_failure()],
             "the production failure path must request its recovery notice"
         );
         assert!(

@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use ibis_engine::settings::{self, Density, PickerPlacement};
+use ibis_engine::catalogue::Language;
+use ibis_engine::settings::{self, Density, InterfaceLanguage, PickerPlacement};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -400,6 +401,11 @@ pub(crate) struct PickerPreferences {
     pub(crate) recent_citations: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) small_surprises: Option<bool>,
+    /// The interface language chosen in Settings.
+    pub(crate) interface_language: InterfaceLanguage,
+    /// The language Ibis speaks until it next opens: the choice it opened
+    /// with, or the system's. Windows read it before they draw.
+    pub(crate) speaking: Language,
 }
 
 impl PickerPreferences {
@@ -428,6 +434,8 @@ impl PickerPreferences {
             menu_bar: settings.menu_bar(),
             recent_citations: Some(settings.recent_citations()),
             small_surprises: Some(settings.small_surprises()),
+            interface_language: settings.interface_language(),
+            speaking: ibis_engine::catalogue::language(),
         }
     }
 }
@@ -494,6 +502,8 @@ pub(crate) struct PickerPreferencesPatch {
     pub(crate) recent_citations: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) small_surprises: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) interface_language: Option<InterfaceLanguage>,
 }
 
 impl PickerPreferencesPatch {
@@ -521,6 +531,7 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
             menu_bar: Some(value.menu_bar),
             recent_citations: value.recent_citations,
             small_surprises: value.small_surprises,
+            interface_language: Some(value.interface_language),
         }
     }
 }
@@ -746,6 +757,10 @@ fn apply_preferences(s: &mut settings::Settings, preferences: PickerPreferencesP
     if let Some(v) = preferences.recent_citations {
         p.recent_citations = settings::unless_default(v, d.recent_citations);
     }
+    if let Some(v) = preferences.interface_language {
+        p.interface_language =
+            settings::unless_default(v, InterfaceLanguage::default()).map(settings::SavedLanguage::Known);
+    }
     Ok(())
 }
 
@@ -846,7 +861,8 @@ mod tests {
         preferences: PickerPreferences,
         output: Option<&str>,
     ) -> tauri::webview::InvokeRequest {
-        let mut patch = serde_json::to_value(preferences).unwrap_or_default();
+        // What a window sends: the choices, never what Ibis reports beside them.
+        let mut patch = serde_json::to_value(PickerPreferencesPatch::from(preferences)).unwrap_or_default();
         if let Some(patch) = patch.as_object_mut() {
             match output {
                 Some(id) => patch.insert("output".into(), id.into()),
@@ -1128,6 +1144,8 @@ mod tests {
             menu_bar: true,
             recent_citations: Some(true),
             small_surprises: Some(true),
+            interface_language: InterfaceLanguage::System,
+            speaking: Language::English,
         };
         let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(saved.portable.paste, Some(false));
@@ -1153,6 +1171,8 @@ mod tests {
             menu_bar: true,
             recent_citations: Some(true),
             small_surprises: Some(true),
+            interface_language: InterfaceLanguage::System,
+            speaking: Language::English,
         };
         let saved = file.save_preferences(defaults, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(file.picker_placement(), PickerPlacement::Centre);
@@ -1229,13 +1249,15 @@ mod tests {
         };
         let changed = patch(
             serde_json::json!({"appearance":"dark","accent":"ibis","picker_placement":"top-left",
-            "density":"compact","larger_text":true,"paste":false,"small_surprises":false,"menu_bar":false,"recent_citations":false}),
+            "density":"compact","larger_text":true,"paste":false,"small_surprises":false,"menu_bar":false,"recent_citations":false,
+            "interface_language":"de"}),
         );
         file.save_preferences(changed, None).unwrap_or_else(|e| panic!("{e}"));
         let mut defaults = serde_json::json!(PickerPreferences::defaults());
         let fields = defaults.as_object_mut().unwrap_or_else(|| panic!("an object"));
         fields.remove("output");
         fields.remove("key_output");
+        fields.remove("speaking");
         let saved = file
             .save_preferences(patch(defaults), None)
             .unwrap_or_else(|e| panic!("{e}"));

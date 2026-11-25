@@ -1,7 +1,7 @@
 import { useEffect, useState, type RefObject } from "react";
 import { keysFor } from "../../keys";
 import { isCancelled, type AppPaste } from "../../api";
-import { isStyle, keyOutputs, listedOutput, outputName, outputOf, previewOf, shareOutputs, sharesReferences, styleOutputs, type OutputChoice, type OutputId } from "../../format/outputs";
+import { isStyle, keyOutputs, listedOutput, outputKeywords, outputName, outputOf, previewOf, shareOutputs, sharesReferences, styleOutputs, type OutputChoice, type OutputId } from "../../format/outputs";
 import { isolate, say } from "../../i18n";
 import { Palette, type PaletteClose, type PaletteItem, type PaletteSection } from "../../ui/Palette";
 import { PopupButton } from "../../ui/PopupButton";
@@ -67,7 +67,7 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   const usual = usualFormat ?? yours;
   const back = app && onUseUsual && (writing || source === "remembered") ? usual ?? format : null;
   const row = (output: OutputChoice): PaletteItem => ({
-    id: output.id, label: output.name, checked: output.id === format, keywords: [output.example, output.description, output.shares && say("palette-words-share")].filter(Boolean).join(" "),
+    id: output.id, label: outputName(output.id), checked: output.id === format, keywords: [outputKeywords(output.id), output.example, output.shares && say("palette-words-share")].filter(Boolean).join(" "),
     ...output.style && !styles ? { disabled: true, detail: say("palette-style-unavailable") } : {},
   });
   const shortIds = [...new Set<OutputId>([format, ...recent, ...usual ? [usual] : []])].slice(0, 5);

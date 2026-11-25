@@ -134,3 +134,6 @@ the anchor older links use.
 
 ## 0057 One method table for every surface
 [0057](decisions/0057-one-method-table.md): each capability is one row in the engine's method table, which generates routing, schemas and the command line's, MCP's and the app's projections, never handlers.
+
+## 0058 Interface language
+[0058](decisions/0058-interface-language.md): one catalogue per language with every English message, checked by tests; the app speaks the Settings choice or the system's language from the next opening, the command line and MCP stay English; citations keep their style's language; right to left by `dir` and logical properties, with isolated arguments for mixed-direction text.

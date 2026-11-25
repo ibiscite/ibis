@@ -300,7 +300,7 @@ export const CITATION_FORMS = ["normal","narrative","author-only","year-only","f
 
 export const DEFAULT_OUTPUT = "pandoc" as const;
 
-export const DEFAULT_PREFERENCES = {"accent":"system","appearance":"system","density":"comfortable","larger_text":false,"menu_bar":true,"paste":true,"picker_placement":"centre","recent_citations":true,"small_surprises":true} as const;
+export const DEFAULT_PREFERENCES = {"accent":"system","appearance":"system","density":"comfortable","interface_language":"system","larger_text":false,"menu_bar":true,"paste":true,"picker_placement":"centre","recent_citations":true,"small_surprises":true} as const;
 
 export const DEFAULT_STYLE = "apa" as const;
 
@@ -639,6 +639,12 @@ export type FoundFile = {
 };
 
 /**
+ * The interface language chosen in Settings; `System` follows the system's
+ * preferred languages. Citations keep their style's or locale's language.
+ */
+export type InterfaceLanguage = "system" | "en-US" | "de" | "ar";
+
+/**
  * Identity inside one library; citation keys are intentionally separate.
  * Non-item kinds use source-namespaced keys (for example `tag:...`) so
  * source tags and collections cannot collide with native item keys.
@@ -649,6 +655,12 @@ export type ItemRef = {
 };
 
 export type KeySyntax = "pandoc" | "biblatex" | "natbib" | "latex" | "context" | "typst" | "org-cite" | "myst" | "multi-markdown" | "ascii-doc" | "jupyter" | "jekyll-scholar" | "scannable-cite" | "keys" | "csl-json" | "bibtex" | "doi-links" | "cayw-json";
+
+/**
+ * A language the catalogue is written in. The interface language only: a
+ * citation's language stays its style's or locale's own.
+ */
+export type Language = "en-US" | "de" | "ar";
 
 /**
  * A library's opaque token. It says nothing about the library: its kind and
@@ -802,6 +814,8 @@ export type NoticeMessage = {
 	/** Ibis's own Light or Dark, set as the notice is shown; absent for System. */
 	appearance?: Appearance;
 	delivered: Delivered;
+	/** The language Ibis speaks: the notice window cannot ask for it. */
+	language: Language;
 	milestone?: number | null;
 	more?: number | null;
 	/**
@@ -894,6 +908,8 @@ export type PickerPreferences = {
 	accent?: Accent | null;
 	appearance?: Appearance | null;
 	density: Density;
+	/** The interface language chosen in Settings. */
+	interface_language: InterfaceLanguage;
 	key_output?: string | null;
 	larger_text: boolean;
 	/** The menu bar item; on by default. */
@@ -909,6 +925,11 @@ export type PickerPreferences = {
 	/** Recent citations per app; on by default. Off records nothing. */
 	recent_citations?: boolean | null;
 	small_surprises?: boolean | null;
+	/**
+	 * The language Ibis speaks until it next opens: the choice it opened
+	 * with, or the system's. Windows read it before they draw.
+	 */
+	speaking: Language;
 };
 
 /** Only fields deliberately changed in one window cross the write boundary. */
@@ -916,6 +937,7 @@ export type PickerPreferencesPatch = {
 	accent?: Accent | null;
 	appearance?: Appearance | null;
 	density?: Density | null;
+	interface_language?: InterfaceLanguage | null;
 	key_output?: string | null;
 	larger_text?: boolean | null;
 	menu_bar?: boolean | null;
@@ -951,6 +973,8 @@ export type PreferenceChange = {
 	 * unchanged value in the snapshot.
 	 */
 	fields: string[];
+	/** The interface language chosen in Settings. */
+	interface_language: InterfaceLanguage;
 	key_output?: string | null;
 	larger_text: boolean;
 	/** The menu bar item; on by default. */
@@ -967,6 +991,11 @@ export type PreferenceChange = {
 	recent_citations?: boolean | null;
 	revision: number;
 	small_surprises?: boolean | null;
+	/**
+	 * The language Ibis speaks until it next opens: the choice it opened
+	 * with, or the system's. Windows read it before they draw.
+	 */
+	speaking: Language;
 };
 
 export type Preview = {

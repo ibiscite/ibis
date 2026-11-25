@@ -62,7 +62,7 @@ a recovery before it compiles. The JSON envelope, refusal outcomes, source-healt
 refresh failures, MCP tool errors and native command errors carry these facts.
 Desktop status also carries `failure` and `retained_failure` alongside its
 rendered status text; preview refusals carry `failure`. Clients render the
-message from `locales/en-US.ftl` and dispatch the declared recovery. Each
+message from the catalogue in `locales/` and dispatch the declared recovery. Each
 error's recovery and focus are in `crates/ibis-core/src/contract/recovery.rs`.
 
 Generated TypeScript treats `ItemRef.key` as an opaque `RecordId`, incompatible
@@ -229,7 +229,8 @@ older stamps, whose updates then never run. There is no setter and no way to
 ask whether work is still current.
 
 `locales/en-US.ftl` supplies interface text and messages for the CLI, MCP and
-native app. Generated bindings and output lists come from Rust; front ends
+native app; `de.ftl` and `ar.ftl` hold the same messages for the app, which
+speaks one language per run ([0058](decisions/0058-interface-language.md)). Generated bindings and output lists come from Rust; front ends
 do not maintain separate output vocabularies.
 
 `ibis_engine::settings::Owner` serializes settings changes; engine settings hold

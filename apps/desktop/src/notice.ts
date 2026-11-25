@@ -4,7 +4,7 @@ import type { NoticeMessage } from "./api";
 import { commands, DEFAULT_PREFERENCES } from "./bindings";
 import { events, listening } from "./nativeEvents";
 import { leaveNotice, noticePlatform, readNotice, renderNotice } from "./copyFeedback";
-import { say } from "./i18n";
+import { say, setInterfaceLanguage } from "./i18n";
 import { setPlatform } from "./nativeAppearance";
 import "./tokens.css";
 import "./ui/CopyReceipt.css";
@@ -22,6 +22,8 @@ if (root) {
   // Ibis's own Light or Dark, as the picker shows it; System follows the Mac.
   const show = (message: NoticeMessage) => {
     document.documentElement.dataset.appearance = message.appearance ?? DEFAULT_PREFERENCES.appearance;
+    // The app's language, which this window cannot ask for: it comes with the message.
+    if (document.documentElement.lang !== message.language) setInterfaceLanguage(message.language);
     render(readNotice(message));
   };
   const failed = () => console.error(say("copied-notice-notice-failed"));

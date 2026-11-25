@@ -214,8 +214,8 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
         const request = { text: copied.text, delivery: token };
         const noticeOwner = ++latestNotice;
         const delivered = await delivery.enqueue(request, () => deliver(request));
-        await notice.enqueue({ text: request.text, delivered }, () => {
-          if (noticeOwner === latestNotice) showReceipt(readNotice({ text: request.text, delivered }));
+        await notice.enqueue({ text: request.text, delivered, language: "en-US" }, () => {
+          if (noticeOwner === latestNotice) showReceipt(readNotice({ text: request.text, delivered, language: "en-US" }));
           return delivered;
         });
         return delivered.outcome === "pasted" ? { outcome: "pasted", copied, app: delivered.app }

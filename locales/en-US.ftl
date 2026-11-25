@@ -220,9 +220,49 @@ cli-file-unreadable = It cannot be read, or it is not a { -library-formats } lib
 app-file-dialog-title = Choose a library
 app-file-dialog-formats = { -library-formats }
 
+## The app’s native windows and dialogs, and its words about other apps.
+
+app-window-settings = Ibis Settings
+# Read by screen readers; never the citation.
+app-window-notice = Ibis notice
+app-open-link-title = Open Link
+app-open-link-copied = Ibis could not open your browser. The link was copied: paste it into your browser.
+# The link follows on its own line.
+app-open-link-failed = Ibis could not open your browser. Open this link in your browser:
+# The list in System Settings › Privacy & Security that holds the switch, as macOS names it.
+app-paste-list-before-27 = Accessibility
+app-paste-list-since-27 = Device Control and Data Access
+# ChatGPT's own menus, in the words its window uses.
+app-agent-steps-chatgpt = In ChatGPT desktop: Settings › MCP servers › Add server › STDIO, command ibis, arguments mcp --app-libraries.
+# A change an AI app proposes for the library. $title and $label name the reference.
+app-proposal-add = Add “{ $title }” as { $key }.
+app-proposal-fields = Change { $fields } of “{ $label }”.
+app-proposal-tags =
+    { $state ->
+        [add] Add the tags { $add } on “{ $label }”.
+        [remove] Remove the tags { $remove } on “{ $label }”.
+       *[both] Add the tags { $add } and remove the tags { $remove } on “{ $label }”.
+    }
+
+# The updater's dialogs. $version and $current are version numbers.
+app-update-question-title = Check for updates automatically?
+app-update-question = Ibis can check GitHub for a newer version a few times a day. It asks GitHub for one small file; GitHub sees your IP address and the Ibis version. Nothing from your library is sent, and updates install only when you agree.
+app-update-check-automatically = Check Automatically
+app-update-not-now = Not Now
+app-update-offer-title = An update is available
+app-update-offer = Ibis { $version } is available; you have { $current }.
+app-update-offer-steps = Ibis will download it, check its signature, install it and restart.
+app-update-offer-question = Install this update and restart Ibis?
+app-update-later = Later
+app-update-install = Install and Restart
+app-update-cancel = Cancel
+app-update-install-failed = The update could not be installed. Try again later. If Ibis no longer opens, download and reinstall the newest version from GitHub.
+app-updates-title = Updates
+
 ## The app’s own sentence about a citation.
 
-app-loss = This output cannot fully show { $what }{ $target }.
+app-loss = This output cannot fully show { $what }.
+    .named = This output cannot fully show { $what } for { $reference }.
 app-project-warning =
     { $state ->
         [missing] { $key } is missing from { $name }.
@@ -232,6 +272,11 @@ app-project-warning =
     }
 app-tray-open = Open Ibis
 app-tray-open-shortcut = Open Ibis ({ $shortcut })
+# The Mac's modifier keys by name, where a menu cannot draw its symbols.
+app-key-control = Control
+app-key-option = Option
+app-key-shift = Shift
+app-key-command = Command
 app-tray-choose = Choose File…
 app-tray-zotero = Zotero
 app-tray-retry = Try Again
@@ -349,6 +394,14 @@ general-login-refused = The system did not let { $name } change this. You can ch
 general-login-unreadable = { $name } could not check whether it starts when you { general-login-when }. Look in { general-login-place }.
 
 general-menu-bar-label = Show in menu bar
+general-language = Language
+general-language-description = Menus, Settings and messages, from the next time Ibis opens. Citations keep their style’s language.
+general-language-system = Same as the system
+general-language-words = language interface translation english german deutsch arabic
+# Each language by its own name, the same in every catalogue.
+language-english = English
+language-german = Deutsch
+language-arabic = العربية
 general-placement = Where Ibis opens
 general-placement-description = On the display you’re working on, unless you’ve moved Ibis there.
 general-placement-words = position screen display corner centre center opens
@@ -456,6 +509,24 @@ shortcuts-action-menu-ends = Go to the first or last item
 shortcuts-action-menu-choose = Choose the item
 shortcuts-action-menu-leave = Leave the menu and return to the search
 shortcuts-or = or
+# Keys named by a word, as the system's own menus and keyboards write them.
+key-enter = Enter
+key-escape = Esc
+key-home = Home
+key-end = End
+key-tab = Tab
+key-space = Space
+key-backspace = Backspace
+key-delete = Delete
+key-plus = Plus
+key-minus = Minus
+key-ctrl = Ctrl
+key-alt = Alt
+key-shift = Shift
+key-super = Super
+key-click = Click
+# After the keys held while clicking: ⌘-click, Ctrl+click.
+key-click-held = click
 
 about-automatic = Check for updates automatically
 about-automatic-description = Reads a small update file from GitHub a few times a day.
@@ -561,6 +632,22 @@ settings-read-only = The settings file is read-only; the saved value is shown.
 
 citations-key-formats = Citation keys
 citations-style-formats = Citation styles
+# Output names and descriptions that are words, not proper names; English repeats the engine's own.
+output-name-pandoc-bare = Pandoc without brackets
+output-name-keys = Keys only
+output-name-doi-links = DOI links
+output-name-scannable-cite = Zotero RTF/ODF Scan
+output-name-chicago-author-date = Chicago (author-date)
+output-name-chicago-notes-bibliography = Chicago (notes)
+output-name-gb-numeric = GB/T 7714 (numeric)
+output-name-gb-author-date = GB/T 7714 (author-date)
+output-name-gb-note = GB/T 7714 (notes)
+output-description-apa = APA (7th edition)
+output-description-chicago-notes-bibliography = Chicago (notes and bibliography)
+output-description-mla = MLA (9th edition)
+output-description-gb-numeric = GB/T 7714-2025 (numeric)
+output-description-gb-author-date = GB/T 7714-2025 (author-date)
+output-description-gb-note = GB/T 7714-2025 (notes)
 citations-filter-formats = Filter formats
 look-sample-title-2 = Paths through the orchard
 look-sample-title-3 = A map of quiet places
@@ -1136,6 +1223,14 @@ picker-matched-in =
         [identifier] Matched in an ISBN, PubMed ID or arXiv ID
        *[other] Matched in { $field }
     }
+# The list's heading when it shows recent references; $state is cited or added.
+picker-recent-heading =
+    { $state ->
+        [cited] Cited here recently
+       *[added] Recently added
+    }
+# After a copied citation's excerpt: how many more references it holds.
+picker-more-references = +{ $count } more
 picker-result-count =
     { $count ->
         [one] 1 result

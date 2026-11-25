@@ -22,6 +22,7 @@ mod errors;
 mod feedback;
 mod format_settings;
 mod instance;
+mod language;
 mod library;
 mod login_item;
 #[cfg(target_os = "macos")]
@@ -237,6 +238,13 @@ fn main() {
             let startup = app.state::<Startup>();
             let (settings_path, loaded) = (&startup.settings_path, &startup.loaded);
             let interface = loaded.interface().unwrap_or_default();
+            // Before any window or menu speaks: the saved language, else the
+            // system's. A new choice is spoken the next time Ibis opens.
+            ibis_engine::catalogue::use_language(language::resolve(
+                interface
+                    .interface_language
+                    .and_then(settings::InterfaceLanguage::chosen),
+            ));
             let cites = loaded.cites().ok();
             let remember = cites.is_some_and(|settings| settings.portable.recent_citations());
             session_references::manage(app.handle(), settings_path, remember);

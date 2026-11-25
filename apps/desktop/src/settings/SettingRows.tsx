@@ -7,10 +7,10 @@ import { PictureChoice } from "../ui/PictureChoice";
 import { Segmented } from "../ui/Segmented";
 import { Switch } from "../ui/Switch";
 import type { useSettingUndo } from "../ui/useSettingUndo";
-import { defaultOutput, defaultStyle, keyOutputs, listedOutput, outputName, styleOutputs } from "../format/outputs";
+import { defaultOutput, defaultStyle, keyOutputs, listedOutput, outputKeywords, outputName, styleOutputs } from "../format/outputs";
 import { ToolbarMenu } from "../ui/ToolbarMenu";
 import { PickerPicture } from "./PickerPicture";
-import { PREFERENCES, rowDetails, type SettingRow, type NativeSetting } from "./rows";
+import { PREFERENCES, REPORTED, rowDetails, type SettingRow, type NativeSetting } from "./rows";
 
 export type SettingState = {
   /** Null until the saved value is known: the row then shows no value at all. */
@@ -86,7 +86,7 @@ export function SettingRows({ rows, preferences, change, owners, feedback, reset
 /** Future fields remain visible without giving this build a way to overwrite them. */
 export function UnknownSettings({ preferences, saved }: { preferences: PickerPreferences | null; saved?: Record<string, unknown> | null }) {
   const { text } = useInterfaceMessages();
-  const unknown = Object.entries({ ...preferences, ...saved }).filter(([key]) => !Object.hasOwn(PREFERENCES, key));
+  const unknown = Object.entries({ ...preferences, ...saved }).filter(([key]) => !Object.hasOwn(PREFERENCES, key) && !(REPORTED as readonly string[]).includes(key));
   return unknown.length > 0 && <Section title={text("settings-newer-title")}><Group>{unknown.map(([key, value]) => <Row key={key} label={key} description={text("settings-newer-description")}>
     <output aria-label={key}>{typeof value === "string" ? value : JSON.stringify(value)}</output>
   </Row>)}</Group></Section>;
@@ -98,6 +98,6 @@ function FormatControl({ label, value, keys, onChange }: { label: string; value:
   const selected = listedOutput(value) ?? (keys ? defaultOutput : defaultStyle);
   return <ToolbarMenu buttonRef={button} returnFocusRef={button} label={label} value={outputName(selected)} selectedKey={selected}
     sections={[{ id: "defaults", label: text(keys ? "citations-key-formats" : "citations-style-formats"),
-      items: (keys ? keyOutputs : styleOutputs).map((output) => ({ id: output.id, label: output.name, detail: output.description ?? undefined })) }]}
+      items: (keys ? keyOutputs : styleOutputs).map((output) => ({ id: output.id, label: outputName(output.id), keywords: outputKeywords(output.id) })) }]}
     filterLabel={text("citations-filter-formats")} onAction={(choice) => { const output = listedOutput(choice); if (output) onChange(output); }} />;
 }
