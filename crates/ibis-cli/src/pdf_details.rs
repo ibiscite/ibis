@@ -1,5 +1,5 @@
 //! What a PDF says about itself, for `ibis __extract-pdf --details`
-//! (decision 0060): the Info dictionary, the XMP packet and the text of the
+//! (decision 0061): the Info dictionary, the XMP packet and the text of the
 //! first pages, reported as the file states them. The parent bounds, checks
 //! and chooses (`ibis_sources::pdf::checked_details`); this side only reads.
 //!

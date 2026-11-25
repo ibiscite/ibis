@@ -43,7 +43,7 @@ pub const CHILD_ARGUMENT: &str = "__extract-pdf";
 /// After [`CHILD_ARGUMENT`]: give page labels and the page count, not text.
 pub const LABELS_ONLY: &str = "--labels-only";
 /// After [`CHILD_ARGUMENT`]: give what the file says about itself and the
-/// text of its first pages (decision 0060).
+/// text of its first pages (decision 0061).
 pub const DETAILS: &str = "--details";
 /// The largest file read.
 pub const MAX_FILE_BYTES: u64 = 256 * 1024 * 1024;
@@ -207,7 +207,7 @@ impl PdfReader {
         Ok(document)
     }
 
-    /// What the PDF at `path` says about itself (decision 0060).
+    /// What the PDF at `path` says about itself (decision 0061).
     pub fn details(&self, path: &Path, cancelled: Arc<dyn Fn() -> bool + Send + Sync>) -> Result<PdfDetails, Refusal> {
         let (answer, before) = self.exchange(path, Ask::Details, cancelled)?;
         let mut details = match answer {

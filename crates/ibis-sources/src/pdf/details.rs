@@ -1,4 +1,4 @@
-//! What a PDF says about itself (decision 0060): its Info dictionary, its XMP
+//! What a PDF says about itself (decision 0061): its Info dictionary, its XMP
 //! packet and the DOI on its first page, read in the extractor's child and
 //! checked here before anything uses them.
 //!

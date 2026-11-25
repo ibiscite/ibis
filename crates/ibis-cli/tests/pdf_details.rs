@@ -1,5 +1,5 @@
 //! What a PDF says about itself, read through the real `ibis` executable as
-//! the extractor's child (decision 0060).
+//! the extractor's child (decision 0061).
 #![cfg(test)]
 
 use ibis_engine::pdf::{PdfReader, Refusal};
