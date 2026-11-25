@@ -590,15 +590,26 @@ fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
         }
         if c == '$' {
             // Math has no citations, and its braces and quotes are not code's.
+            // A string inside it is text, so its `$` does not close the math.
             let mut j = at + 1;
+            let mut string = false;
             while let Some(d) = text[j..].chars().next() {
                 if !work.spend(d.len_utf8()) {
                     return None;
                 }
+                // Comments in math hold no delimiters.
+                if !string && (text[j..].starts_with("//") || text[j..].starts_with("/*")) {
+                    let close = if text[j..].starts_with("//") { "\n" } else { "*/" };
+                    j = work
+                        .find_str(&text[j + 2..], close)
+                        .map_or(text.len(), |end| j + 2 + end + close.len());
+                    continue;
+                }
                 j += d.len_utf8();
                 match d {
                     '\\' => j += text[j..].chars().next().map_or(0, char::len_utf8),
-                    '$' => break,
+                    '"' => string = !string,
+                    '$' if !string => break,
                     _ => {}
                 }
             }

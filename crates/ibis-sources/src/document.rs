@@ -24,6 +24,7 @@ pub const DEADLINE: Duration = Duration::from_secs(30);
 /// The most citations, and of references in one citation, an answer may hold.
 pub const MAX_CITATIONS: usize = 100_000;
 const MAX_KEY_BYTES: usize = 64 * 1024;
+#[cfg(feature = "documents")]
 const MAX_COMMAND_BYTES: u64 = MAX_OFFICE_BYTES;
 /// The largest office file read.
 pub const MAX_OFFICE_BYTES: u64 = 64 * 1024 * 1024;
