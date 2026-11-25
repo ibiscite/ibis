@@ -7,9 +7,9 @@ use crate::syntax::{MAX_CITATION_BYTES, MAX_CITATION_ITEMS};
 pub struct ItemSupport {
     pub locator: bool,
     pub form: bool,
-    /// The output cites, so a record needs a title, author or editor to be
-    /// cited by (decision 0061). Record exports (BibTeX, CSL-JSON, DOI
-    /// links) carry whatever a record has and do not ask.
+    /// The output prints bibliographic data, so a record needs some public
+    /// details (decision 0061). Key citations and record exports can name a
+    /// record without descriptive metadata and do not ask.
     pub details: bool,
 }
 
@@ -86,22 +86,27 @@ pub fn check<'a>(
         .collect())
 }
 
-/// Whether a record has a title, an author or an editor to be cited by, in
-/// the fields a citation actually uses (note overrides applied).
+/// Whether a record has public bibliographic data beyond its item type, in
+/// the fields a citation actually uses (note overrides applied). Privacy
+/// filtering may leave only a publisher or date; the renderer decides whether
+/// those details have a printed form in the requested style.
 pub fn has_details(record: &Record) -> bool {
     let fields = crate::citable::CitableFields::new(record.csl.to_map());
-    let text = |part: &Option<String>| part.as_deref().is_some_and(|text| !text.trim().is_empty());
     fields
         .plain()
-        .get("title")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|title| !title.trim().is_empty())
-        || ["author", "editor"].iter().any(|role| {
-            fields
-                .names(role)
-                .iter()
-                .any(|name| text(&name.family) || text(&name.given) || text(&name.literal))
-        })
+        .iter()
+        .any(|(name, value)| name != "type" && has_value(value))
+}
+
+fn has_value(value: &serde_json::Value) -> bool {
+    use serde_json::Value;
+    match value {
+        Value::String(text) => !text.trim().is_empty(),
+        Value::Number(_) => true,
+        Value::Array(values) => values.iter().any(has_value),
+        Value::Object(values) => values.values().any(has_value),
+        Value::Null | Value::Bool(_) => false,
+    }
 }
 
 fn validate_annotation(now: &Snapshot, shown: Option<&Snapshot>, pick: &CitationItem) -> Result<(), CitationError> {
