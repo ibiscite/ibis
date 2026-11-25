@@ -51,12 +51,14 @@ import json
 import os
 import platform
 import plistlib
+import queue
 import re
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import MagicMock, patch
@@ -181,9 +183,8 @@ public static class IbisUpdateTaskDialog {
 '@
 """
 
-WINDOWS_LOOK = WINDOWS_WINDOW_SCOPE + WINDOWS_NATIVE_INSTALL + r"""
+WINDOWS_LOOK = WINDOWS_WINDOW_SCOPE + r"""
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $A = [System.Windows.Automation.AutomationElement]
 $S = [System.Windows.Automation.TreeScope]
 $seen = [System.Collections.Generic.List[string]]::new()
@@ -264,7 +265,7 @@ try {
       if (![IbisUpdateTaskDialog]::Click($handle,$owner)) { throw 'Update task dialog action outcome unknown' }
       Answer $true 'task-dialog'
     }
-    exit 0
+    return
   }
 } catch { $probe.blocked = $true; Note 0 $_ }
 Answer $false $null
@@ -274,24 +275,27 @@ Answer $false $null
 # single-instance Show command, never a global shortcut or a foreign window.
 WINDOWS_PICKER = WINDOWS_WINDOW_SCOPE + r"""
 $ErrorActionPreference = 'Stop'
-$probe = @{stage='picker-frameworks'; code=$null; failed=$false; trusted=$null; windows=0; pickers=0; offers=0}
+$probe = @{stage='scope'; code=$null; failed=$false; trusted=$null; windows=0; pickers=0; offers=0}
 $owner = $null; $focus = $null
 try {
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
-$probe.stage='picker-native-focus'
-Add-Type @'
-using System;
-using System.Runtime.InteropServices;
-public static class IbisUpdateFocus {
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-}
-'@
 $A = [System.Windows.Automation.AutomationElement]
 $S = [System.Windows.Automation.TreeScope]
 $pickerWindows = @(); $offerWindows = @()
 $scope = @{pids=0; windows=0; root_windows=0; nested_windows=0; tree_complete=$false}
-$probe.stage='scope'
 $ids = @($env:IBIS_PIDS -split ',' | Where-Object { $_ } | Select-Object -Unique)
+# UI Automation can block for seconds on a window that is not shown yet. A
+# clean Win32 census with no visible picker or offer can only mean absent, the
+# answer UI Automation would give; anything else takes the full owned scan,
+# with its scope and uniqueness assertions.
+$probe.stage='picker-census'
+$census = $null
+if ($ids.Count -le 20 -and @($ids | Where-Object { $_ -notmatch '^[1-9][0-9]{0,9}$' }).Count -eq 0) {
+  $census = [IbisUpdateCensus]::Read([int[]]$ids)
+}
+if ($null -ne $census -and $census['bound_hit'] -eq 0 -and $census['unavailable'] -eq 0 -and $census['owner_changes'] -eq 0 -and
+    $census['visible_pickers'] -eq 0 -and $census['visible_offers'] -eq 0) {
+  $probe.windows=$census['windows']; $probe.stage='picker-hidden'
+} else {
 $probe.stage='picker-windows'
 foreach ($window in @(Get-OwnedWindows $ids $scope)) {
   if ($window.Current.Name -ceq 'Ibis' -and !$window.Current.IsOffscreen) { $pickerWindows += $window }
@@ -331,6 +335,7 @@ if ($pickerWindows.Count -eq 1) {
   }
 }
 $probe.stage='complete'
+}
 } catch {
   $owner=$null; $focus=$null; $probe.failed=$true
   if ($scope -and $scope.failure_stage) { $probe.stage=$scope.failure_stage }
@@ -341,8 +346,7 @@ $probe.stage='complete'
 
 # Independent, read-only failure census. A native caption plus PID can tell a
 # missing dialog from one that UIA did not expose. It never authorizes a press.
-WINDOWS_NATIVE_CENSUS = r"""
-$ErrorActionPreference = 'Stop'
+WINDOWS_CENSUS_TYPE = r"""
 Add-Type @'
 using System;
 using System.Collections.Generic;
@@ -386,10 +390,62 @@ public static class IbisUpdateCensus {
   }
 }
 '@
+"""
+
+WINDOWS_NATIVE_CENSUS = r"""
+$ErrorActionPreference = 'Stop'
 $ids = @($env:IBIS_PIDS -split ',' | Where-Object { $_ } | Select-Object -Unique)
 if ($ids.Count -gt 20) { throw 'Native census process bound exceeded' }
 foreach ($id in $ids) { if ($id -notmatch '^[1-9][0-9]{0,9}$') { throw 'Invalid native census process' } }
 [IbisUpdateCensus]::Read([int[]]$ids) | ConvertTo-Json -Compress
+"""
+
+WINDOWS_FOCUS_TYPE = r"""
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class IbisUpdateFocus {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+}
+'@
+"""
+
+# One PowerShell per run (#2008). It loads UI Automation and compiles every
+# native type once, then answers one JSON request per input line with one JSON
+# line, so no probe pays for starting PowerShell or compiling C#. Each script
+# runs in its own child scope with its own environment values, removed after
+# it; only the compiled types outlive a request. Requests are ASCII JSON, so
+# the input code page cannot change them.
+WINDOWS_HOST = r"""[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+""" + WINDOWS_NATIVE_INSTALL + WINDOWS_FOCUS_TYPE + WINDOWS_CENSUS_TYPE + r"""
+# Scripts keep PowerShell's default error handling, as in their own process.
+$ErrorActionPreference = 'Continue'
+$ibisOut = [Console]::Out
+$ibisOut.WriteLine('{"ready":true}'); $ibisOut.Flush()
+while ($null -ne ($ibisLine = [Console]::In.ReadLine())) {
+  $ibisAnswer = [ordered]@{id=$null; exit=0; stdout=''}
+  $ibisNames = [System.Collections.Generic.List[string]]::new()
+  try {
+    $ibisRequest = ConvertFrom-Json $ibisLine -ErrorAction Stop
+    $ibisAnswer.id = $ibisRequest.id
+    foreach ($ibisValue in $ibisRequest.env.PSObject.Properties) {
+      $ibisNames.Add($ibisValue.Name)
+      [Environment]::SetEnvironmentVariable($ibisValue.Name, [string]$ibisValue.Value)
+    }
+    $ibisBlock = [scriptblock]::Create($ibisRequest.script)
+    # Only the success stream answers; nothing else may reach standard output.
+    $ibisAnswer.stdout = @(& $ibisBlock 3>$null 4>$null 5>$null 6>$null | ForEach-Object { [string]$_ }) -join "`n"
+  } catch {
+    $ibisAnswer.exit = 1; $ibisAnswer.error = $_.Exception.GetType().Name
+  } finally {
+    # Not SetEnvironmentVariable: PowerShell passes $null to it as an empty value.
+    foreach ($ibisName in $ibisNames) { Remove-Item -LiteralPath "Env:$ibisName" -ErrorAction Ignore }
+  }
+  $ibisOut.WriteLine((ConvertTo-Json -Compress -InputObject $ibisAnswer)); $ibisOut.Flush()
+}
 """
 
 MACOS_NATIVE = Path(__file__).with_name("update-macos.js").read_text(encoding="utf-8")
@@ -424,7 +480,7 @@ def picker_result(stdout, pids):
         probe = result["probe"]
         stages = {"scope", "frameworks", "cg-copy", "cg-bridge", "cg-decode", "cg-windows", "cg-window-title", "unique", "ax-system", "ax-owner", "offer-recheck", "ax-press",
                   "ax-owner-read", "ax-app", "ax-title-decode", "complete"}
-        stages.update(("picker-frameworks", "picker-native-focus", "picker-windows", "picker-owner", "picker-bounds", "picker-unique", "picker-search", "picker-search-unique", "picker-foreground"))
+        stages.update(("picker-census", "picker-hidden", "picker-windows", "picker-owner", "picker-bounds", "picker-unique", "picker-search", "picker-search-unique", "picker-foreground"))
         stages.update(f"ax-{kind}-{step}" for kind in ("focused", "window", "title") for step in ("copy", "read", "bridge"))
         stages.update(f"ax-{kind}-{step}" for kind in ("windows", "sheets", "role", "parent", "value", "children", "enabled") for step in ("copy", "read", "bridge"))
         base = {"stage", "code", "failed", "trusted", "windows", "pickers", "offers"}
@@ -1170,11 +1226,12 @@ class Windows:
         if uninstaller.exists():
             subprocess.run([str(uninstaller), "/S"], timeout=120)
         self.owned_settings.close()
+        POWERSHELL.close()
 
 
 class HelperProcessFailure(RuntimeError):
-    def __init__(self, name, result, stderr):
-        self.returncode = result.returncode
+    def __init__(self, name, returncode, stderr):
+        self.returncode = returncode
         super().__init__(f"{name} helper failed: {stderr.strip()[-500:]}")
 
 
@@ -1202,20 +1259,120 @@ def helper_stdout(result, name):
     stdout = result.stdout.decode("utf-8", errors="strict")
     stderr = result.stderr.decode("utf-8", errors="strict")
     if result.returncode:
-        raise HelperProcessFailure(name, result, stderr)
+        raise HelperProcessFailure(name, result.returncode, stderr)
     return stdout
 
 
+class PowerShell:
+    """The run's one PowerShell (#2008), started on first use and again only
+    after a request timed out or the helper exited. Starting and compiling
+    have their own budget, so they never use up a probe's timeout."""
+
+    START_TIMEOUT = 120
+
+    def __init__(self, program=("pwsh", "-NoProfile", "-NonInteractive", "-File")):
+        self.program = list(program)
+        self.process = None
+        self.requests = 0
+
+    def start(self):
+        self.folder = tempfile.TemporaryDirectory(prefix="ibis update helper ")
+        host = Path(self.folder.name) / "helper.ps1"
+        host.write_text(WINDOWS_HOST, encoding="utf-8")
+        # A file, not a pipe: nothing has to drain it while a probe runs.
+        self.errors = (Path(self.folder.name) / "errors.txt").open("w+b")
+        try:
+            self.process = subprocess.Popen([*self.program, str(host)], stdin=subprocess.PIPE,
+                                            stdout=subprocess.PIPE, stderr=self.errors)
+        except BaseException:
+            self.close()
+            raise
+        # Windows pipes cannot be polled: one reader thread hands over raw
+        # lines, and this thread decodes them so a decode error is never lost.
+        self.lines = queue.Queue()
+        threading.Thread(target=self.read, args=(self.process.stdout, self.lines), daemon=True).start()
+        if self.answer(self.START_TIMEOUT) != {"ready": True}:
+            self.close()
+            raise ValueError("PowerShell helper did not start")
+
+    @staticmethod
+    def read(stdout, lines):
+        with stdout:
+            for line in iter(stdout.readline, b""):
+                lines.put(line)
+        lines.put(None)
+
+    def answer(self, timeout):
+        deadline = time.monotonic() + timeout
+        try:
+            line = self.lines.get(timeout=timeout)
+        except queue.Empty:
+            # Its late answer must never meet a later request.
+            self.close()
+            raise subprocess.TimeoutExpired("PowerShell", timeout) from None
+        if line is None:
+            # A helper can close its output and live on: its exit code is
+            # waited for only within the request's own time.
+            try:
+                returncode = self.process.wait(timeout=max(0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                self.close()
+                raise subprocess.TimeoutExpired("PowerShell", timeout) from None
+            self.errors.seek(0)
+            stderr = self.errors.read().decode("utf-8", errors="replace")
+            self.close()
+            raise HelperProcessFailure("PowerShell", returncode, stderr)
+        try:
+            return json.loads(line.decode("utf-8", errors="strict"))
+        except ValueError:
+            self.close()
+            raise
+
+    def run(self, script, timeout, env):
+        if self.process is None:
+            self.start()
+        self.requests += 1
+        request = json.dumps({"id": self.requests, "script": script, "env": env}) + "\n"
+        try:
+            self.process.stdin.write(request.encode("ascii"))
+            self.process.stdin.flush()
+        except OSError:
+            self.close()
+            raise
+        answer = self.answer(timeout)
+        if (not isinstance(answer, dict) or answer.get("id") != self.requests or type(answer.get("exit")) is not int
+                or type(answer.get("stdout")) is not str):
+            self.close()
+            raise ValueError("PowerShell helper answered out of turn")
+        if answer["exit"]:
+            raise HelperProcessFailure("PowerShell", answer["exit"], str(answer.get("error", "")))
+        return answer["stdout"]
+
+    def close(self):
+        process, self.process = self.process, None
+        if process is not None:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            try:
+                process.stdin.close()
+            except OSError:
+                pass  # Already broken; its reader thread closes standard output.
+        if getattr(self, "errors", None) is not None:
+            self.errors.close()
+            self.errors = None
+        if getattr(self, "folder", None) is not None:
+            self.folder.cleanup()
+            self.folder = None
+
+
+POWERSHELL = PowerShell()
+
+
 def powershell(script, *, timeout=120, **env):
-    """Runs a script from a file: commands read from standard input end at the
-    first line break inside a block. Values arrive as environment variables."""
-    with tempfile.TemporaryDirectory(prefix="ibis update helper ") as folder:
-        path = Path(folder) / "helper.ps1"
-        # JSON and paths must survive Windows' non-UTF-8 default code page.
-        path.write_text("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n" + script, encoding="utf-8")
-        result = subprocess.run(["pwsh", "-NoProfile", "-NonInteractive", "-File", str(path)],
-                                capture_output=True, timeout=timeout, env=dict(os.environ, **env))
-    return helper_stdout(result, "PowerShell")
+    """Runs a script in the run's one PowerShell; values arrive as environment
+    variables. Scripts must not exit, which would end the shared helper."""
+    return POWERSHELL.run(script, timeout, env)
 
 
 def uninstall_entries():
@@ -1313,13 +1470,15 @@ def run(args):
                 # Observe without repairing focus or opening another window.
                 # This separates a missing startup picker from a reopen blur.
                 # A valid absent answer is diagnostic. Only unavailable
-                # observations retry, within the original startup deadline.
+                # observations retry, within their own deadline: starting the
+                # app never uses up the time to observe it.
+                observe_deadline = time.monotonic() + PICKER_TIMEOUT
                 def before_reopen():
                     pids = initial & install.instances()
                     if not pids:
                         raise AssertionError("the previous nightly exited before its reopen")
-                    return True, observe_picker(pids, "before-reopen", startup_deadline)
-                wait_for(before_reopen, remaining(startup_deadline, PICKER_TIMEOUT),
+                    return True, observe_picker(pids, "before-reopen", observe_deadline)
+                wait_for(before_reopen, remaining(observe_deadline, PICKER_TIMEOUT),
                          "the startup picker could not be observed", retry_observation=True)
                 reopen = subprocess.Popen(install.command, env=environment(os.environ, install.config),
                                           stdout=log, stderr=log, cwd=folder)
@@ -2094,10 +2253,10 @@ class Tests(unittest.TestCase):
                     (FileNotFoundError(2, "synthetic-private-sentinel"), "windows-helper-launch", 2),
                     (PermissionError(13, "synthetic-private-sentinel"), "windows-helper-launch", 13),
                     (subprocess.TimeoutExpired("synthetic-private-sentinel", 10), "windows-helper-timeout", None),
-                    (subprocess.CompletedProcess([], 23, stdout=b"", stderr=b"synthetic-private-sentinel"), "windows-helper-exit", 23),
-                    (subprocess.CompletedProcess([], 0, stdout=b"synthetic-private-sentinel", stderr=b""), "windows-helper-decode", None))
+                    (HelperProcessFailure("PowerShell", 23, "synthetic-private-sentinel"), "windows-helper-exit", 23),
+                    ("synthetic-private-sentinel", "windows-helper-decode", None))
         for outcome, stage, code in outcomes:
-            with self.subTest(stage=stage), patch("subprocess.run") as helper:
+            with self.subTest(stage=stage), patch(__name__ + ".powershell") as helper:
                 if isinstance(outcome, Exception):
                     helper.side_effect = outcome
                 else:
@@ -2212,6 +2371,17 @@ namespace IbisUpdateContract {
   public static Node RootElement=new Node();
  }
  public static class Focus { public static long Handle=101; public static IntPtr GetForegroundWindow() {return new IntPtr(Handle);} }
+ public static class Census {
+  public static int VisiblePickers=1, VisibleOffers=0, BoundHit=0;
+  public static System.Collections.Generic.Dictionary<string,int> Read(int[] ids) {
+   var result=new System.Collections.Generic.Dictionary<string,int>();
+   foreach(var key in new string[]{"windows","offers","visible_offers","foreground_offers","pickers","visible_pickers",
+     "foreground_pickers","owner_changes","bound_hit","unavailable"}) result[key]=0;
+   result["windows"]=ids.Length; result["pickers"]=1; result["visible_pickers"]=VisiblePickers;
+   result["offers"]=result["visible_offers"]=VisibleOffers; result["bound_hit"]=BoundHit;
+   return result;
+  }
+ }
  public class TreeWalker {
   public static TreeWalker RawViewWalker=new TreeWalker();
   public Node GetParent(Node node) {return node.Parent;}
@@ -2365,6 +2535,10 @@ if ($Scenario.StartsWith('picker-')) {
    [IbisUpdateContract.AutomationElement]::RootElement.Nodes=@($window,$window)
   }
   'picker-native-error' {[IbisUpdateContract.AutomationElement]::RootElement.FailFindAll=$true}
+  # A hidden picker is answered by the census alone: any UIA read would fail.
+  'picker-census-hidden' {[IbisUpdateContract.Census]::VisiblePickers=0; [IbisUpdateContract.AutomationElement]::RootElement.FailFindAll=$true}
+  'picker-census-offer' {[IbisUpdateContract.Census]::VisiblePickers=0; [IbisUpdateContract.Census]::VisibleOffers=1}
+  'picker-census-unclean' {[IbisUpdateContract.Census]::VisiblePickers=0; [IbisUpdateContract.Census]::BoundHit=1}
   'picker-unfocused' {[IbisUpdateContract.Focus]::Handle=102}
   'picker-unknown' {[IbisUpdateContract.Focus]::Handle=0}
   'picker-no-handle' {$window.NativeWindowHandle=0}
@@ -2440,8 +2614,7 @@ function Contract-Result($pressed,$how) {
 ''' + native[api_end:]
         model = model.replace("namespace IbisUpdateContract {", "namespace IbisUpdateContract {\n" + native)
         # Assert activation counters, retaining real serialization for the caller.
-        helper = WINDOWS_LOOK.replace(WINDOWS_NATIVE_INSTALL, "").replace("Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes", "")
-        helper = helper.replace("System.Windows.Automation.", "IbisUpdateContract.").replace("[IbisUpdateTaskDialog]", "[IbisUpdateContract.IbisUpdateTaskDialog]")
+        helper = WINDOWS_LOOK.replace("System.Windows.Automation.", "IbisUpdateContract.").replace("[IbisUpdateTaskDialog]", "[IbisUpdateContract.IbisUpdateTaskDialog]")
         helper = helper.replace("function Answer($pressed, $how) {",
                                 "function Answer($pressed, $how) {\n  Contract-Result $pressed $how")
         with tempfile.TemporaryDirectory() as temporary:
@@ -2472,19 +2645,16 @@ function Contract-Result($pressed,$how) {
                     self.assertEqual(pressed, expected)
 
             # Execute the production focus probe against the same private UIA
-            # provider; substitute only the native foreground observation.
-            picker_helper = WINDOWS_PICKER.replace("Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes", "")
-            native_start = picker_helper.index("Add-Type @'")
-            native_end = picker_helper.index("'@", native_start) + 2
-            picker_helper = picker_helper[:native_start] + picker_helper[native_end:]
-            picker_helper = picker_helper.replace("System.Windows.Automation.", "IbisUpdateContract.")
+            # provider; substitute only the native foreground and census reads.
+            picker_helper = WINDOWS_PICKER.replace("System.Windows.Automation.", "IbisUpdateContract.")
             picker_helper = picker_helper.replace("[IbisUpdateFocus]", "[IbisUpdateContract.Focus]")
+            picker_helper = picker_helper.replace("[IbisUpdateCensus]", "[IbisUpdateContract.Census]")
             script.write_text(model + picker_helper, encoding="utf-8")
             scenarios = ("success", "hidden", "title", "duplicate", "foreign", "unfocused", "unknown", "no-handle", "empty",
                              "offer", "offer-duplicate", "offer-foreign", "offer-hidden", "edit", "loading", "search-title",
                              "search-role", "search-disabled", "search-hidden", "search-unfocused", "search-duplicate", "search-bound",
                              "nested-offer", "nested-offer-foreign", "nested-offer-duplicate", "process-bound", "root-bound",
-                             "nested-bound", "total-bound", "native-error")
+                             "nested-bound", "total-bound", "native-error", "census-hidden", "census-offer", "census-unclean")
             results = contract_runs(script, ["picker-" + scenario for scenario in scenarios])
             for scenario in scenarios:
                 with self.subTest(picker=scenario):
@@ -2516,8 +2686,11 @@ function Contract-Result($pressed,$how) {
                                     wait_for(observe, 3, "synthetic deadline", retry_observation=True)
                                 helper.assert_called_once()
                     else:
-                        expected = (42, "offer") if scenario in ("offer", "nested-offer") else (42, "picker") if scenario in ("success", "edit") else None
+                        expected = ((42, "offer") if scenario in ("offer", "nested-offer")
+                                    else (42, "picker") if scenario in ("success", "edit", "census-offer", "census-unclean") else None)
                         self.assertEqual(picker_result(result.stdout, {42}), expected)
+                        stage = json.loads(result.stdout)["probe"]["stage"]
+                        self.assertEqual(stage, "picker-hidden" if scenario == "census-hidden" else "complete")
 
     def test_windows_activation_uncertainty_is_fatal_instead_of_pollable(self):
         windows = Windows.__new__(Windows)
@@ -2924,62 +3097,158 @@ function Contract-Result($pressed,$how) {
             with self.assertRaises(RuntimeError):
                 look_result(bad)
 
-    def test_native_helpers_preserve_utf8_when_the_default_encoding_is_cp1252(self):
+    def fake_powershell(self, folder):
+        """The real session against a stand-in host speaking its protocol."""
+        host = Path(folder) / "fake-host.py"
+        host.write_text(r"""
+import json, os, sys, time
+def say(data):
+    sys.stdout.buffer.write(data + b"\n"); sys.stdout.buffer.flush()
+say(b'{"ready": true}')
+for line in sys.stdin.buffer:
+    request = json.loads(line)
+    script, answer = request["script"], {"id": request["id"], "exit": 0, "stdout": ""}
+    if script == "pid": answer["stdout"] = str(os.getpid())
+    elif script == "env": answer["stdout"] = json.dumps(request["env"])
+    elif script == "host":
+        with open(sys.argv[1], encoding="utf-8") as file: answer["stdout"] = file.read()
+    elif script == "hang": time.sleep(60)
+    elif script == "fail": answer.update(exit=1, error="Synthetic 合成")
+    elif script == "stale": answer["id"] -= 1
+    elif script == "linger":
+        sys.stdout.close(); os.close(1); time.sleep(30)
+    elif script == "exit":
+        sys.stderr.buffer.write("Synthetic 合成".encode("utf-8")); sys.stderr.flush(); sys.exit(7)
+    elif script.startswith("raw:"):
+        say(bytes.fromhex(script[4:])); continue
+    else: answer["stdout"] = script
+    say(json.dumps(answer, ensure_ascii=False).encode("utf-8"))
+""", encoding="utf-8")
+        session = PowerShell(program=[sys.executable, "-I", str(host)])
+        self.addCleanup(session.close)
+        return session
+
+    def test_windows_helper_is_started_once_and_reused_until_it_fails(self):
+        launch_child = subprocess.Popen
+        def launch(command, **kwargs):
+            # Only bytes cross the reader thread; this thread decodes them.
+            self.assertFalse(kwargs.get("text", False))
+            self.assertIsNone(kwargs.get("encoding"))
+            self.assertIsNone(kwargs.get("errors"))
+            return launch_child(command, **kwargs)
+        with tempfile.TemporaryDirectory() as temporary, patch("subprocess.Popen", side_effect=launch) as launched:
+            session = self.fake_powershell(temporary)
+            with patch(__name__ + ".POWERSHELL", session):
+                first = powershell("pid", timeout=10, IBIS_PIDS="42")
+                self.assertEqual(powershell("env", timeout=10, IBIS_PIDS="43"), '{"IBIS_PIDS": "43"}')
+                self.assertEqual(powershell("pid", timeout=10), first)
+                self.assertEqual(launched.call_count, 1)
+                # A script's own failure leaves the helper in place.
+                with self.assertRaisesRegex(HelperProcessFailure, "helper failed: Synthetic 合成") as failure:
+                    powershell("fail", timeout=10)
+                self.assertEqual(failure.exception.returncode, 1)
+                self.assertEqual(powershell("pid", timeout=10), first)
+                self.assertEqual(launched.call_count, 1)
+                # A late answer can never meet the next request: the helper
+                # is replaced, and starting it again is not the probe's time.
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    powershell("hang", timeout=.5)
+                second = powershell("pid", timeout=10)
+                self.assertNotEqual(second, first)
+                with self.assertRaisesRegex(ValueError, "out of turn"):
+                    powershell("stale", timeout=10)
+                self.assertNotIn(powershell("pid", timeout=10), (first, second))
+                with self.assertRaisesRegex(HelperProcessFailure, "helper failed: Synthetic 合成") as failure:
+                    powershell("exit", timeout=10)
+                self.assertEqual(failure.exception.returncode, 7)
+                # Closed output with a live helper still ends within the
+                # request's time, and that helper is stopped.
+                started = time.monotonic()
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    powershell("linger", timeout=.5)
+                self.assertLess(time.monotonic() - started, 5)
+                self.assertIsNone(session.process)
+                self.assertEqual(launched.call_count, 4)
+                session.close()
+                self.assertIsNone(session.process)
+
+    def test_windows_helper_runs_utf8_host_and_decodes_strictly_in_the_caller(self):
+        expected = "Synthetic 合成 한국어 \u0081"
+        payload = json.dumps({"pressed": False, "seen": [expected], "probe": None}, ensure_ascii=False)
+        with tempfile.TemporaryDirectory() as temporary, patch("locale.getencoding", return_value="cp1252"):
+            session = self.fake_powershell(temporary)
+            host = session.run("host", 10, {})
+            self.assertEqual(host, WINDOWS_HOST)
+            self.assertTrue(host.startswith("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n"))
+            self.assertEqual(look_result(session.run(payload, 10, {})), (False, [expected], None))
+            with self.assertRaises(UnicodeDecodeError):
+                session.run("raw:ff", 10, {})
+            self.assertIsNone(session.process)
+
+    @unittest.skipUnless(os.name == "nt" and shutil.which("pwsh"), "the Windows helper needs PowerShell and UI Automation")
+    def test_windows_helper_compiles_once_and_isolates_each_request(self):
+        session = PowerShell()
+        self.addCleanup(session.close)
+        first = session.run("$PID; [IbisUpdateCensus].Name; [IbisUpdateFocus].Name; [IbisUpdateTaskDialog].Name; "
+                            "$env:IBIS_PRESS; $probe = 1", 60, {"IBIS_PRESS": "synthetic"}).split("\n")
+        self.assertEqual(first[1:], ["IbisUpdateCensus", "IbisUpdateFocus", "IbisUpdateTaskDialog", "synthetic"])
+        self.assertEqual(session.run("$PID; $null -eq $env:IBIS_PRESS; $null -eq $probe; return; 'unreached'", 60, {}).split("\n"),
+                         [first[0], "True", "True"])
+        with self.assertRaises(HelperProcessFailure) as failure:
+            session.run("throw 'synthetic'", 60, {})
+        self.assertEqual(failure.exception.returncode, 1)
+        # The production probes, against this test's own windowless process.
+        own = {"IBIS_PIDS": str(os.getpid())}
+        self.assertEqual(set(json.loads(session.run(WINDOWS_NATIVE_CENSUS, 60, own))),
+                         {"windows", "offers", "visible_offers", "foreground_offers", "pickers", "visible_pickers",
+                          "foreground_pickers", "owner_changes", "bound_hit", "unavailable"})
+        answer = session.run(WINDOWS_PICKER, 60, own)
+        self.assertIsNone(picker_result(answer, {os.getpid()}))
+        self.assertEqual(json.loads(answer)["probe"]["stage"], "picker-hidden")
+        pressed, _, probe = look_result(session.run(WINDOWS_LOOK, 60, dict(own, IBIS_PRESS="")))
+        self.assertFalse(pressed)
+        self.assertEqual((probe["blocked"], probe["tree_complete"], probe["errors"]), (False, True, []))
+        self.assertEqual(session.run("$PID", 60, {}), first[0])
+        with self.assertRaises(subprocess.TimeoutExpired):
+            session.run("Start-Sleep -Seconds 30", 1, {})
+        self.assertNotEqual(session.run("$PID", 60, {}), first[0])
+
+    def test_macos_helpers_preserve_utf8_when_the_default_encoding_is_cp1252(self):
         expected = "Synthetic 合成 한국어 \u0081"
         probe = self.macos_probe(attempted=False, pid=None, focus=None)
         payload = json.dumps({"pressed": False, "seen": [expected], "probe": probe}, ensure_ascii=False).encode("utf-8")
         run_child = subprocess.run
         command = [sys.executable, "-c", f"import sys; sys.stdout.buffer.write(bytes.fromhex('{payload.hex()}'))"]
-        mac = MacOS.__new__(MacOS)
-        for helper in (lambda: look_result(powershell("Write-Output 'synthetic'")), lambda: mac.look([123])):
-            with self.subTest(helper=helper), patch("locale.getencoding", return_value="cp1252"), \
-                    patch("subprocess.run", side_effect=lambda _command, **kwargs: run_child(command, **kwargs)):
-                self.assertEqual(helper(), (False, [expected], probe))
+        with patch("locale.getencoding", return_value="cp1252"), \
+                patch("subprocess.run", side_effect=lambda _command, **kwargs: run_child(command, **kwargs)):
+            self.assertEqual(MacOS.__new__(MacOS).look([123]), (False, [expected], probe))
 
-    def test_native_helpers_decode_binary_pipes_in_the_caller(self):
+    def test_macos_helpers_decode_binary_pipes_in_the_caller(self):
         probe = self.macos_probe(attempted=False, pid=None, focus=None)
         payload = json.dumps({"pressed": False, "seen": ["Synthetic 合成"], "probe": probe}, ensure_ascii=False).encode("utf-8")
-        mac = MacOS.__new__(MacOS)
-        for helper in (lambda: look_result(powershell("synthetic")), lambda: mac.look([123])):
-            def binary_result(command, **kwargs):
-                # Windows decodes text pipes on reader threads, where errors
-                # can be lost. Only bytes may cross that thread boundary.
-                self.assertTrue(kwargs["capture_output"])
-                self.assertFalse(kwargs.get("text", False))
-                self.assertIsNone(kwargs.get("encoding"))
-                self.assertIsNone(kwargs.get("errors"))
-                return subprocess.CompletedProcess(command, 0, stdout=payload, stderr=b"")
-            with self.subTest(helper=helper), patch("subprocess.run", side_effect=binary_result):
-                self.assertEqual(helper(), (False, ["Synthetic 合成"], probe))
+        def binary_result(command, **kwargs):
+            # Windows decodes text pipes on reader threads, where errors
+            # can be lost. Only bytes may cross that thread boundary.
+            self.assertTrue(kwargs["capture_output"])
+            self.assertFalse(kwargs.get("text", False))
+            self.assertIsNone(kwargs.get("encoding"))
+            self.assertIsNone(kwargs.get("errors"))
+            return subprocess.CompletedProcess(command, 0, stdout=payload, stderr=b"")
+        with patch("subprocess.run", side_effect=binary_result):
+            self.assertEqual(MacOS.__new__(MacOS).look([123]), (False, ["Synthetic 合成"], probe))
 
-    def test_native_helper_failure_keeps_decoded_utf8_diagnostics(self):
+    def test_macos_helper_failure_keeps_only_fixed_facts(self):
         failed = subprocess.CompletedProcess([], 1, stdout=b"", stderr="Synthetic 合成".encode("utf-8"))
         with patch("subprocess.run", return_value=failed):
-            with self.assertRaisesRegex(RuntimeError, "helper failed: Synthetic 合成"):
-                powershell("synthetic")
             with self.assertRaises(MacOSActivationFailure) as failure:
                 MacOS.__new__(MacOS).look({123}, BUTTON)
             self.assertEqual(failure.exception.probe, {"stage": "macos-helper-exit", "code": 1})
-
-    def test_powershell_sets_utf8_before_running_the_script(self):
-        def inspect_script(command, **_kwargs):
-            script = Path(command[-1]).read_text(encoding="utf-8")
-            self.assertTrue(script.startswith("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n"))
-            self.assertTrue(script.endswith("Write-Output '合成'"))
-            return subprocess.CompletedProcess(command, 0, stdout="合成".encode("utf-8"), stderr=b"")
-        with patch("subprocess.run", side_effect=inspect_script):
-            self.assertEqual(powershell("Write-Output '合成'"), "合成")
-
-    def test_malformed_native_helper_utf8_is_a_failure(self):
         run_child = subprocess.run
         command = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'\\xff')"]
         with patch("subprocess.run", side_effect=lambda _command, **kwargs: run_child(command, **kwargs)):
-            with self.assertRaises(UnicodeDecodeError):
-                powershell("synthetic")
             with self.assertRaises(MacOSActivationFailure) as failure:
                 MacOS.__new__(MacOS).look({123}, BUTTON)
             self.assertEqual(failure.exception.probe, {"stage": "macos-helper-decode", "code": None})
-
 
 def main():
     if sys.argv[1:] == ["--self-test"]:

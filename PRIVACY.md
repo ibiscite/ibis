@@ -109,7 +109,7 @@ MCP responses go to the client that started the server, as listed below.
 | --- | --- |
 | Running Zotero | `127.0.0.1:23119`, after choosing Zotero. Reads metadata and Better BibTeX keys; requests stay on this computer. |
 | Editor endpoint | Off by default. When enabled, listens on `127.0.0.1:23124`; token-protected, rejects browsers. [Protocol](docs/parity.md#better-bibtex-cite-as-you-write). |
-| App updates | Automatic checks require consent; Check for Updates… checks on request. GitHub receives IP address and app version, not library data. Downloads require agreement and a valid channel signature. |
+| App updates | Until 1.0, automatic checks are on by default, shown as a switch on the welcome screen before any check runs and in Settings › About; Check for Updates… checks on request. GitHub receives IP address and app version, not library data. Downloads require agreement and a valid channel signature. |
 | Windows installation | Downloads Microsoft's WebView2 bootstrapper/runtime if missing. Microsoft's runtime updates are separate. |
 | Feedback | Opens GitHub in your browser with app version and OS; you decide whether to submit. |
 | AI clients | `ibis mcp` passes bibliographic fields and citations over stdio to its caller, and attachment text from libraries where you allow it. With `--allow-writes` it also takes proposed changes, kept on this computer as above. That client may send what it receives to its own service. [MCP privacy boundary](docs/cli.md#ai-agents-mcp). |

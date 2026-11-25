@@ -34,6 +34,13 @@ counts of people or active installs; replacements reset counters and downloads
 between snapshots can be lost. No telemetry, identifiers, app changes or server:
 nothing leaves the app.
 
+Update checks (maintainer, 2026-11-25): until 1.0, automatic update checks are
+on by default. The welcome screen shows them as a switch, already on, and no
+check runs before that screen has been seen; Settings › About switches them off
+at any time. A check sends GitHub the IP address and app version, nothing from
+the library. Downloads and installation keep their own agreement. Whether the
+default stays on at 1.0 is decided then.
+
 "References cited since opening" holds record identities in memory, cleared by
 quitting or a reset. It leaves memory only through an explicit copy or saved file,
 with no network use.
