@@ -502,7 +502,13 @@ fn at_key<'a>(after: &'a str, work: &mut Work<'_>) -> (&'a str, &'a str) {
 
 /// Consume one group without recursion. TeX optional notes respect brace groups;
 /// Typst strings and nested content blocks cannot close a code argument.
-pub(super) fn group<'a>(text: &'a str, open: char, close: char, quoted: bool, work: &mut Work<'_>) -> (&'a str, &'a str) {
+pub(super) fn group<'a>(
+    text: &'a str,
+    open: char,
+    close: char,
+    quoted: bool,
+    work: &mut Work<'_>,
+) -> (&'a str, &'a str) {
     let mut depth = 1;
     let mut braces = 0_usize;
     let mut brackets = 0_usize;

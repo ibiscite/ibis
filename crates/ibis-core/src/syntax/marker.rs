@@ -332,10 +332,19 @@ mod tests {
             panic!("{found:?}")
         };
         assert_eq!(&text[first.start..first.end], "[@vale2024, p. 12]");
-        assert_eq!(first.cites, [MarkerCite { locator: page("12"), ..cite("vale2024") }]);
+        assert_eq!(
+            first.cites,
+            [MarkerCite {
+                locator: page("12"),
+                ..cite("vale2024")
+            }]
+        );
         assert_eq!(&text[second.start..second.end], "[see @fen2023, ch. 3; -@vale2024]");
         assert_eq!(second.cites[0].prefix, "see");
-        assert_eq!(second.cites[0].locator.as_ref().map(|l| l.term), Some(LocatorTerm::Chapter));
+        assert_eq!(
+            second.cites[0].locator.as_ref().map(|l| l.term),
+            Some(LocatorTerm::Chapter)
+        );
         assert!(second.cites[1].suppress_author);
 
         let narrative = only("@vale2024 [p. 4] argues.");
@@ -346,10 +355,20 @@ mod tests {
         assert_eq!(&"as @vale2024."[narrative.start..narrative.end], "@vale2024");
 
         // Ibis's own escaping of a suffix and a braced locator.
-        assert_eq!(only("[@a, {}see note]").cites[0], MarkerCite { suffix: "see note".into(), ..cite("a") });
+        assert_eq!(
+            only("[@a, {}see note]").cites[0],
+            MarkerCite {
+                suffix: "see note".into(),
+                ..cite("a")
+            }
+        );
         assert_eq!(
             only("[@a, {pp. 3-4}, and passim]").cites[0],
-            MarkerCite { locator: page("3-4"), suffix: "and passim".into(), ..cite("a") }
+            MarkerCite {
+                locator: page("3-4"),
+                suffix: "and passim".into(),
+                ..cite("a")
+            }
         );
         assert_eq!(only("[@{odd key}]").cites[0].key, "odd key");
     }
@@ -358,7 +377,9 @@ mod tests {
     fn prose_is_left_alone_and_damaged_markers_are_problems() {
         for prose in ["write to a@b.example", "[a note]", "costs \\@ 5", "[[@a] around]"] {
             assert!(
-                read(prose).iter().all(|found| matches!(found, Found::Marker(m) if m.cites[0].key == "a")),
+                read(prose)
+                    .iter()
+                    .all(|found| matches!(found, Found::Marker(m) if m.cites[0].key == "a")),
                 "{prose}"
             );
         }

@@ -78,7 +78,10 @@ pub struct Manuscript {
 impl Manuscript {
     /// Whether the whole text was read: no limit or cancellation stopped it.
     pub fn complete(&self) -> bool {
-        !self.problems.iter().any(|problem| problem.kind == MarkerProblemKind::TooLong)
+        !self
+            .problems
+            .iter()
+            .any(|problem| problem.kind == MarkerProblemKind::TooLong)
     }
 }
 
@@ -256,7 +259,9 @@ fn code_spans(text: &str, bytes: &mut [u8], work: &mut Work<'_>) {
         let from = at + offset;
         let length = text[from..].bytes().take_while(|&b| b == b'`').count();
         let body = from + length;
-        let paragraph_end = work.find_str(&text[body..], "\n\n").map_or(text.len(), |end| body + end);
+        let paragraph_end = work
+            .find_str(&text[body..], "\n\n")
+            .map_or(text.len(), |end| body + end);
         let mut close = None;
         let mut i = body;
         while let Some(next) = text[i..paragraph_end].find('`') {
@@ -384,11 +389,46 @@ fn mask_latex(text: &str, work: &mut Work<'_>) -> Option<String> {
 
 /// Commands that take one `{keys}` argument after up to two `[notes]`.
 const TEX_SINGLE: [&str; 40] = [
-    "cite", "Cite", "citep", "Citep", "citet", "Citet", "citealp", "Citealp", "citealt", "Citealt", "citeauthor",
-    "Citeauthor", "citeyear", "citeyearpar", "citenum", "parencite", "Parencite", "footcite", "footcitetext",
-    "textcite", "Textcite", "smartcite", "Smartcite", "autocite", "Autocite", "supercite", "citetitle", "Citetitle",
-    "citedate", "citeurl", "fullcite", "footfullcite", "nocite", "notecite", "Notecite", "pnotecite", "Pnotecite",
-    "fnotecite", "citeyearnp", "citelist",
+    "cite",
+    "Cite",
+    "citep",
+    "Citep",
+    "citet",
+    "Citet",
+    "citealp",
+    "Citealp",
+    "citealt",
+    "Citealt",
+    "citeauthor",
+    "Citeauthor",
+    "citeyear",
+    "citeyearpar",
+    "citenum",
+    "parencite",
+    "Parencite",
+    "footcite",
+    "footcitetext",
+    "textcite",
+    "Textcite",
+    "smartcite",
+    "Smartcite",
+    "autocite",
+    "Autocite",
+    "supercite",
+    "citetitle",
+    "Citetitle",
+    "citedate",
+    "citeurl",
+    "fullcite",
+    "footfullcite",
+    "nocite",
+    "notecite",
+    "Notecite",
+    "pnotecite",
+    "Pnotecite",
+    "fnotecite",
+    "citeyearnp",
+    "citelist",
 ];
 /// BibLaTeX's multicite commands: `(pre)(post)` then `[pre][post]{key}`, repeated.
 const TEX_MULTI: [&str; 13] = [
@@ -407,17 +447,24 @@ const TEX_MULTI: [&str; 13] = [
     "Autocites",
 ];
 /// `\volcite[pre]{volume}[pages]{key}`: the first braced argument is a volume.
-const TEX_VOLUME: [&str; 7] = ["volcite", "Volcite", "pvolcite", "Pvolcite", "fvolcite", "tvolcite", "avolcite"];
-const TEX_NARRATIVE: [&str; 7] = ["citet", "Citet", "textcite", "Textcite", "textcites", "Textcites", "citeauthor"];
+const TEX_VOLUME: [&str; 7] = [
+    "volcite", "Volcite", "pvolcite", "Pvolcite", "fvolcite", "tvolcite", "avolcite",
+];
+const TEX_NARRATIVE: [&str; 7] = [
+    "citet",
+    "Citet",
+    "textcite",
+    "Textcite",
+    "textcites",
+    "Textcites",
+    "citeauthor",
+];
 
 fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Manuscript) {
     let mut at = 0;
     while let Some(offset) = work.find(&text[at..], |c| c == '\\') {
         let start = at + offset;
-        let name_len = text[start + 1..]
-            .bytes()
-            .take_while(u8::is_ascii_alphabetic)
-            .count();
+        let name_len = text[start + 1..].bytes().take_while(u8::is_ascii_alphabetic).count();
         let name = &text[start + 1..start + 1 + name_len];
         let multi = TEX_MULTI.contains(&name);
         let volume = TEX_VOLUME.contains(&name);
@@ -444,7 +491,9 @@ fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Man
                     None => break,
                 }
             }
-            let Some(open) = work.trim_start(rest).strip_prefix('{') else { break };
+            let Some(open) = work.trim_start(rest).strip_prefix('{') else {
+                break;
+            };
             let (mut body, mut after) = group(open, '{', '}', false, work);
             let mut input = open;
             if volume {
@@ -453,7 +502,9 @@ fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Man
                 if let Some(pages) = work.trim_start(rest).strip_prefix('[') {
                     rest = group(pages, '[', ']', false, work).1;
                 }
-                let Some(key) = work.trim_start(rest).strip_prefix('{') else { break };
+                let Some(key) = work.trim_start(rest).strip_prefix('{') else {
+                    break;
+                };
                 (body, after) = group(key, '{', '}', false, work);
                 input = key;
             }
@@ -555,12 +606,20 @@ fn mask_typst(text: &str, work: &mut Work<'_>) -> Option<String> {
             at = end;
         } else if rest.starts_with('"') && text[..i].ends_with(['(', ',', ' ', '=']) && in_code(&text[..i]) {
             // A string inside code: `@` there is not a reference.
-            let end = rest[1..].find(['"', '\n']).map_or(text.len(), |close| i + 1 + close + 1);
+            let end = rest[1..]
+                .find(['"', '\n'])
+                .map_or(text.len(), |close| i + 1 + close + 1);
             work.spend(end - i);
             blank(&mut bytes, i..end);
             at = end;
         } else {
-            at = i + 1 + rest[1..].chars().next().filter(|_| rest.starts_with('\\')).map_or(0, char::len_utf8);
+            at = i
+                + 1
+                + rest[1..]
+                    .chars()
+                    .next()
+                    .filter(|_| rest.starts_with('\\'))
+                    .map_or(0, char::len_utf8);
         }
     }
     work.check().ok()?;
@@ -583,7 +642,9 @@ fn labels(text: &str, work: &mut Work<'_>) -> std::collections::BTreeSet<String>
     let mut at = 0;
     while let Some(offset) = work.find(&text[at..], |c| c == '<') {
         let start = at + offset + 1;
-        let length = text[start..].find(|c: char| !label_char(c)).unwrap_or(text.len() - start);
+        let length = text[start..]
+            .find(|c: char| !label_char(c))
+            .unwrap_or(text.len() - start);
         if length > 0 && text[start + length..].starts_with('>') && !text[..start - 1].ends_with("#cite(") {
             labels.insert(text[start..start + length].to_owned());
         }
@@ -604,7 +665,11 @@ fn typst_text(original: &str, text: &str, work: &mut Work<'_>, places: &mut Plac
             continue;
         }
         if rest.starts_with('#') {
-            match rest.starts_with("#cite(").then(|| typst(&original[start..], work)).flatten() {
+            match rest
+                .starts_with("#cite(")
+                .then(|| typst(&original[start..], work))
+                .flatten()
+            {
                 Some(read) => {
                     let cites: Vec<MarkerCite> = read
                         .keys

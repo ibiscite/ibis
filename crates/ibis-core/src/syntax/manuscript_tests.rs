@@ -58,10 +58,7 @@ fn a_damaged_marker_stops_only_its_paragraph() {
 #[test]
 fn an_unclosed_fence_hides_the_rest_and_unclosed_front_matter_hides_nothing() {
     assert!(keys(TextKind::Markdown, "Text.\n~~~~\n[@hidden]\n").is_empty());
-    assert_eq!(
-        keys(TextKind::Markdown, "---\n[@shown]\n"),
-        of(&[(2, 1, &["shown"])])
-    );
+    assert_eq!(keys(TextKind::Markdown, "---\n[@shown]\n"), of(&[(2, 1, &["shown"])]));
 }
 
 #[test]
@@ -87,7 +84,9 @@ and \\parencite[see][p.~4]{fen2023, okafor2031}, also \\autocites(all)[p.~1]{val
 
 #[test]
 fn an_unclosed_latex_citation_is_a_problem() {
-    let read = scan(TextKind::Latex, "Fine \\cite{vale2024}. Broken \\cite{fen2023", &|| false);
+    let read = scan(TextKind::Latex, "Fine \\cite{vale2024}. Broken \\cite{fen2023", &|| {
+        false
+    });
     assert_eq!(read.citations.len(), 1);
     assert_eq!(read.problems[0].kind, MarkerProblemKind::Unclosed);
     assert_eq!(read.problems[0].place, Place { line: 1, column: 30 });
