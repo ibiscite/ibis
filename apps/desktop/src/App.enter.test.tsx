@@ -1,6 +1,7 @@
 import { recordId } from "./test-fixtures";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { backend, prepared, receipt, resetApp, result } from "./testing/app";
 
@@ -129,4 +130,40 @@ test("a refusal is said for Enter on that citation only, never carried to anothe
   await act(async () => { fireEvent.change(searchBox(), { target: { value: "c" } }); });
   observer.disconnect();
   expect(added).not.toContain(`Not pasted or copied. ${reason}`);
+});
+
+test("returning to a refused citation is not a press: nothing is said until Enter", async () => {
+  const reason = "A key in thesis.bib identifies a different work.";
+  backend({
+    search: ({ query }) => [result(query.text || "a", `Invented ${query.text || "a"}`)],
+    preview_file_citation: ({ items }) => ({ ...receipt(`[@${items[0]!.id.key}]`), project_refusal: items[0]!.id.key === recordId("b") ? null : reason }),
+  });
+  await act(async () => { render(<App />); });
+  await enter();
+  await act(async () => { fireEvent.change(searchBox(), { target: { value: "b" } }); });
+  const added: string[] = [];
+  const observer = new MutationObserver((records) => { for (const record of records) for (const node of record.addedNodes) added.push(node.textContent ?? ""); });
+  observer.observe(document.querySelector(".delivery-bar")!, { childList: true, subtree: true });
+  await act(async () => { fireEvent.change(searchBox(), { target: { value: "a" } }); });
+  observer.disconnect();
+  expect(added).not.toContain(`Not pasted or copied. ${reason}`);
+});
+
+test("a refusal whose reason changes waits for a fresh press before it is said again", async () => {
+  let generation = 1;
+  const reason = () => `A key in ${generation === 1 ? "thesis.bib" : "article.bib"} identifies a different work.`;
+  backend({
+    search: () => [result("a", "Invented A")],
+    "project-status": () => ({ name: generation === 1 ? "thesis.bib" : "article.bib", generation, revision: 0, state: "ready", damaged_lines: [], reason: null }),
+    preview_file_citation: () => ({ ...receipt("[@a]"), project_refusal: reason() }),
+  });
+  await act(async () => { render(<App />); });
+  await enter();
+  generation = 2;
+  await act(async () => { await emit("project:changed", [2, 0]); });
+  expect(screen.getByText(reason())).toBeTruthy();
+  const said = [...document.querySelectorAll('.delivery-bar [role="alert"]')].find((node) => !node.closest(".bar-reason"));
+  expect(said?.textContent).toBe("");
+  await enter();
+  expect(said?.textContent).toBe(`Not pasted or copied. ${reason()}`);
 });

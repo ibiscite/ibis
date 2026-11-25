@@ -171,13 +171,15 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   });
   const practice = delights.practice;
   // Each Enter on a refused citation is said again, once per press (the bar's
-  // alert). The presses belong to this citation in this opening: another
-  // citation, or the next opening, starts from none.
-  const refusalOwner = `${state.presentation}:${choiceKey(shownChoice)}`;
+  // alert). The presses belong to this refusal of this citation in this
+  // opening, and are forgotten the moment any of them changes: only a press
+  // is ever announced, never a citation or reason arriving.
+  const refusalOwner = projectRefusal ? `${state.presentation}:${choiceKey(shownChoice)}:${projectRefusal}` : null;
   const [refusedEnter, setRefusedEnter] = useState<{ owner: string; presses: number } | null>(null);
-  const refusedPresses = projectRefusal && refusedEnter?.owner === refusalOwner ? refusedEnter.presses : 0;
+  useLayoutEffect(() => { setRefusedEnter((last) => last && last.owner !== refusalOwner ? null : last); }, [refusalOwner]);
+  const refusedPresses = refusalOwner && refusedEnter?.owner === refusalOwner ? refusedEnter.presses : 0;
   const copyChosen = () => {
-    if (projectRefusal) setRefusedEnter((last) => ({ owner: refusalOwner, presses: last?.owner === refusalOwner ? last.presses + 1 : 1 }));
+    if (refusalOwner) setRefusedEnter((last) => ({ owner: refusalOwner, presses: last?.owner === refusalOwner ? last.presses + 1 : 1 }));
     // Enter's outcome in the order the bar names it (enterLabel.ts): an
     // editor's request is sent, never turned into the first-run practice.
     rows.copyChosen(editor.label ? "deliver" : delights.actionForEnter());
@@ -243,6 +245,10 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     onLocate: project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined,
     disabled: !destination.ready || destination.saving || !ready || searchPending,
   };
+  // The bar's action, a token's Enter and the Page field's Enter do what the bar
+  // says, as Enter in Search does (usePickerKeys): in Find mode that opens the
+  // reference; Alt+Enter in Search still copies.
+  const enterChosen = () => { if (destination.findOpen) { if (results.length > 0) source.openSource(false, false); } else copyChosen(); };
   useNativeEvent(api.onWindowSizeSaved, (saved) => report("windowSize", !saved), { failed: () => report("windowSize") });
   // Peek (⌘Y): the highlighted reference's full details under its row, as Quick Look.
   const [peeked, setPeeked] = useState<string | null>(null);
@@ -277,7 +283,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
           refusal={projectRefusal} refusedPresses={refusedPresses}
           refusalActions={<BibliographyCheckFixes {...checkFixes} />}
           api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run} citationLine={citationLine}
-          copyChosen={copyChosen} recents={recents}
+          copyChosen={enterChosen} recents={recents}
           operations={operations} altHeld={altHeld}  emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
           project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
           peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />}
@@ -315,7 +321,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
         state={state} send={send} showCitations={showCitations} results={results} output={output} chosen={shownChoice}
-        changeReference={rows.changeReference} copyChosen={copyChosen} libraryOf={scope.libraryOf} format={format} input={input} inspector={inspector} citationLine={citationLine}
+        changeReference={rows.changeReference} copyChosen={enterChosen} libraryOf={scope.libraryOf} format={format} input={input} inspector={inspector} citationLine={citationLine}
         deliverable={!searchPending && preferences.ready && library?.state !== "reloading" && destination.ready && !destination.saving} />
       <PickerOverlays api={{ ...api, editWriting: destination.editWriting! }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />

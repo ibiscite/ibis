@@ -557,6 +557,10 @@ test("inside Zotero Enter opens the PDF or item, Command-O shows it, and Alt-Ent
   await waitFor(() => expect(open).toHaveBeenCalledTimes(3));
   expect(open.mock.calls[2]?.[0]).toMatchObject({ reveal: false });
   expect(calls).not.toContain("deliver_citation");
+  // The bar's action does what it says, as Enter does: it opens, never copies.
+  fireEvent.click(screen.getByRole("button", { name: "Open PDF, or show item in Zotero" }));
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(4));
+  expect(calls).not.toContain("deliver_citation");
   fireEvent.keyDown(search, { key: "Enter", altKey: true });
   await waitFor(() => expect(calls).toContain("deliver_citation"));
 });
