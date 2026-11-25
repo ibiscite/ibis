@@ -26,16 +26,17 @@ class LicenceFiles(unittest.TestCase):
     def test_licences_notices_and_third_party_attribution_are_passed_on(self):
         self.write("LICENSE-MIT", "LICENSE-APACHE", "COPYING", "NOTICE", "THIRDPARTYNOTICES",
                    "ThirdPartyNotices.txt", "third_party_licenses.md", "vendor/zstd/LICENSE",
-                   "licenses/BSD-3-Clause.txt", "licenses/vendor/BSD.txt", "LICENSE.APACHE2")
+                   "licenses/BSD-3-Clause.txt", "licenses/vendor/BSD.txt", "LICENSE.APACHE2", "licenses/third-party.txt")
         found = {path.relative_to(self.dir).as_posix() for path in notices.licence_files(self.dir)}
         self.assertEqual(found, {"LICENSE-MIT", "LICENSE-APACHE", "COPYING", "NOTICE", "THIRDPARTYNOTICES",
                                  "ThirdPartyNotices.txt", "third_party_licenses.md", "vendor/zstd/LICENSE",
-                                 "licenses/BSD-3-Clause.txt", "licenses/vendor/BSD.txt", "LICENSE.APACHE2"})
+                                 "licenses/BSD-3-Clause.txt", "licenses/vendor/BSD.txt", "LICENSE.APACHE2", "licenses/third-party.txt"})
 
     def test_source_and_unshipped_folders_are_not_licence_texts(self):
         self.write("README.md", "src/license.rs", "src/third_party.rs", "tests/LICENSE", "examples/NOTICE",
                    "node_modules/dep/LICENSE", "benches/COPYING", "package.json", "dist/third_party.css",
-                   "dist/third-party.js", "licenses/logo.png")
+                   "dist/third-party.js", "licenses/logo.png", "licenses/vendor/widget.tsx", "LICENSE.jsx",
+                   "licenses/photo.jpeg")
         self.assertEqual(notices.licence_files(self.dir), [])
 
 

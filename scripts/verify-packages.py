@@ -18,6 +18,8 @@ import hashlib
 import io
 import lzma
 import os
+import posixpath
+import re
 import shutil
 import struct
 import subprocess
@@ -72,15 +74,28 @@ def expected_packages(target, names):
 # in its own resource folder: beside the `resources/samples.csljson` every app
 # package carries (tauri.bundle.conf.json), which names the one app in it.
 ANCHOR = "resources/samples.csljson"
+# Where each kind of app package installs its resources, so an anchor (and
+# its notices) anywhere else cannot stand in for the app's own.
+RESOURCE_ROOTS = {
+    "macOS app": re.compile(r"[^/]+\.app/Contents/Resources/"),
+    "Linux app": re.compile(r"usr/lib/[^/]+/"),
+    "Windows app": re.compile(r"(?:\$INSTDIR/)?"),
+}
+
+
+def app_kind(name):
+    if name.endswith((".dmg", ".app.tar.gz")):
+        return "macOS app"
+    if name.endswith("-setup.exe"):
+        return "Windows app"
+    return "Linux app"
 
 
 def collect(found, path, read):
     """Every notice-named file and every app anchor, by normalized path. A path
     written twice keeps both, so a stale copy cannot hide behind a good one."""
-    path = path.replace("\\", "/")
-    while path.startswith("./"):
-        path = path[2:]
-    path = path.lstrip("/")
+    # One spelling per path: `a/./b`, `a//b` and `./a/b` are all `a/b`.
+    path = posixpath.normpath("/" + path.replace("\\", "/")).lstrip("/")
     if path.rsplit("/", 1)[-1] in NOTICE_FILES:
         found.setdefault(path, []).append(read())
     elif path == ANCHOR or path.endswith("/" + ANCHOR):
@@ -264,11 +279,12 @@ def check_package(path, notices):
     if path.name.startswith("ibis-"):
         root, where = "", "at the archive's top"
     else:
-        anchors = [member for member in found if member == ANCHOR or member.endswith("/" + ANCHOR)]
-        if len(anchors) != 1:
-            raise Failure(f"{path.name}: {len(anchors)} apps (found by {ANCHOR}), not one")
-        root, where = anchors[0][: -len(ANCHOR)], "in the app's resource folder"
-        root += "notices/"
+        kind = app_kind(path.name)
+        anchors = [member[: -len(ANCHOR)] for member in found if member == ANCHOR or member.endswith("/" + ANCHOR)]
+        roots = [root for root in anchors if RESOURCE_ROOTS[kind].fullmatch(root)]
+        if len(roots) != 1:
+            raise Failure(f"{path.name}: {len(roots)} {kind}s with resources where a {kind} installs them, not one")
+        root, where = roots[0] + "notices/", "in the app's resource folder"
     for name, digest in notices.items():
         copies = found.get(root + name, [])
         if len(copies) != 1:

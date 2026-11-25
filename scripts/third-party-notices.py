@@ -61,10 +61,15 @@ LICENCE_FILE_PREFIXES = ("license", "licence", "copying", "notice", "unlicense")
 THIRD_PARTY_MARKERS = ("thirdparty", "third-party", "third_party")
 ATTRIBUTION_WORDS = ("notice", "licen", "copying", "attribution", "credits")
 LICENCE_FOLDERS = ("license", "licenses", "licence", "licences")
-# A licence is never source, data, a stylesheet, an image, a font or a binary.
-CODE_SUFFIXES = (".rs", ".js", ".mjs", ".cjs", ".ts", ".c", ".h", ".cc", ".cpp", ".py", ".json", ".toml", ".yml",
-                 ".yaml", ".map", ".lock", ".css", ".scss", ".wasm", ".png", ".svg", ".jpg", ".gif", ".woff",
-                 ".woff2", ".ttf", ".node", ".dll", ".so", ".dylib", ".a", ".o", ".exe")
+# A file named LICENSE*, COPYING* or NOTICE* is a licence unless it is code,
+# data or an asset; anything else (in a licence folder, or a third-party
+# attribution name) must be plain text.
+CODE_SUFFIXES = (".rs", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".vue", ".svelte", ".c",
+                 ".h", ".cc", ".cpp", ".hpp", ".py", ".rb", ".go", ".java", ".json", ".toml", ".yml", ".yaml",
+                 ".xml", ".map", ".lock", ".css", ".scss", ".less", ".wasm", ".png", ".svg", ".jpg", ".jpeg",
+                 ".gif", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".otf", ".node", ".dll", ".so",
+                 ".dylib", ".a", ".o", ".exe", ".bin", ".gz", ".zip")
+TEXT_SUFFIXES = ("", ".txt", ".md", ".markdown", ".rst", ".html", ".htm")
 # Folders a package carries but does not ship in what it builds.
 NOT_SHIPPED = {"node_modules", ".git", "target", "tests", "test", "benches", "examples", "fixtures", "testdata"}
 
@@ -73,14 +78,15 @@ def is_licence_file(relative):
     """Whether a package-relative path names a licence, NOTICE or attribution text."""
     path = Path(relative)
     lower = path.name.lower()
-    if path.suffix.lower() in CODE_SUFFIXES:
-        return False
+    suffix = path.suffix.lower()
     if lower.startswith(LICENCE_FILE_PREFIXES):
-        return True
-    if any(marker in lower for marker in THIRD_PARTY_MARKERS):
-        return any(word in lower for word in ATTRIBUTION_WORDS)
+        return suffix not in CODE_SUFFIXES
+    if suffix not in TEXT_SUFFIXES:
+        return False
     # Anything in a licence folder at any depth, such as licenses/vendor/BSD.txt.
-    return any(part.lower() in LICENCE_FOLDERS for part in path.parent.parts)
+    if any(part.lower() in LICENCE_FOLDERS for part in path.parent.parts):
+        return True
+    return any(marker in lower for marker in THIRD_PARTY_MARKERS) and any(word in lower for word in ATTRIBUTION_WORDS)
 
 
 def licence_files(directory):

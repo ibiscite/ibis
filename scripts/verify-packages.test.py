@@ -114,7 +114,14 @@ class Packages(unittest.TestCase):
         self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(elsewhere)), "0 copies of LICENSE in the app's resource folder")
         # Two apps cannot share one package.
         two = app_files("Ibis.app/Contents/Resources") | app_files("Old.app/Contents/Resources")
-        self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(two)), "2 apps")
+        self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(two)), "2 macOS apps")
+        # Resources and notices moved together out of where the app installs them.
+        for name, build, root in [("Ibis-Linux.deb", deb_bytes, "./usr/share/doc/ibis"), ("Ibis-Linux.rpm", rpm_bytes, "./usr/share/doc/ibis"),
+                                  ("Ibis-macOS-Intel.app.tar.gz", tar_bytes, "docs")]:
+            self.assertFails(self.write(name, build(app_files(root))), "0 (macOS|Linux) apps with resources")
+        # Another spelling of the same path is the same path.
+        aliased = app_files("Ibis.app/Contents/Resources") | {"Ibis.app/Contents/Resources/notices/./LICENSE": b"stale"}
+        self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(aliased)), "2 copies of LICENSE")
 
     def test_a_stale_copy_cannot_hide_behind_a_good_one(self):
         buffer = io.BytesIO()
