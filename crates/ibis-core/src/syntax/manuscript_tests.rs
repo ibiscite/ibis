@@ -218,3 +218,11 @@ fn typst_math_never_changes_code_depth() {
         of(&[(1, 17, &["ghost"])])
     );
 }
+
+#[test]
+fn a_comment_inside_typst_math_holds_no_delimiter() {
+    assert_eq!(
+        keys(TextKind::Typst, "$ x /* \" */ $ @ghost\n"),
+        of(&[(1, 15, &["ghost"])])
+    );
+}
