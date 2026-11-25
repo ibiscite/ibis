@@ -70,8 +70,11 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       preferences: preferences.snapshotReceiver(), recents: recents.snapshotReceiver(),
     });
     const bootstrap = receivers();
-    const accept = (snapshot: nativeApi.PickerSnapshot | null, receive = receivers()) => {
+    // A live snapshot reserves only once accepted: reserving supersedes, so an
+    // ignored presentation must not retire a read in flight.
+    const accept = (snapshot: nativeApi.PickerSnapshot | null, reserved?: ReturnType<typeof receivers>) => {
       if (!mounted || !snapshot || snapshot.presentation <= presentation) return;
+      const receive = reserved ?? receivers();
       presentation = snapshot.presentation;
       const preserve = keepsOutput();
       flushSync(() => {
