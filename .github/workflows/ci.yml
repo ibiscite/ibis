@@ -523,7 +523,7 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     # Compilation and tool setup are outside the fuzzing budgets.
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -556,7 +556,7 @@ jobs:
 
       # New inputs go to the cached corpus; the committed seeds stay as they are.
       - name: Fuzz every parser
-        timeout-minutes: 25
+        timeout-minutes: 35
         run: |
           status=0
           for file in fuzz/fuzz_targets/*.rs; do
