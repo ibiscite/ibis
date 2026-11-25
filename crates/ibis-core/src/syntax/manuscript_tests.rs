@@ -196,3 +196,12 @@ fn typst_statements_strings_and_depth_follow_the_language() {
     let verbatim = "\\begin{verbatim}\n😀😀 \\cite{hidden}\n\\end{verbatim} \\cite{shown}";
     assert_eq!(keys(TextKind::Latex, verbatim), of(&[(3, 16, &["shown"])]));
 }
+
+#[test]
+fn a_typst_code_block_keeps_its_strings_until_it_closes() {
+    assert!(keys(TextKind::Typst, r#"#let x = { let y = 1; "@ghost" };"#).is_empty());
+    assert_eq!(
+        keys(TextKind::Typst, "#let x = {\n  1\n}; then @ghost\n"),
+        of(&[(3, 10, &["ghost"])])
+    );
+}

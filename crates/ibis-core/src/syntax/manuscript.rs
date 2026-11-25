@@ -534,7 +534,7 @@ struct Typst {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode {
-    /// Code: parentheses open in it, and whether a line ends it.
+    /// Code: parentheses and braces open in it, and whether a line or `;` ends it.
     Code { parens: usize, line: bool },
     /// A content block inside code: brackets open in it.
     Content { brackets: usize },
@@ -619,14 +619,14 @@ fn lex_typst(text: &str, work: &mut Work<'_>) -> Option<Typst> {
                 }
                 next = j.min(text.len());
             }
-            (Some(Mode::Code { parens, line }), '(') => {
+            (Some(Mode::Code { parens, line }), '(' | '{') => {
                 stack.pop();
                 stack.push(Mode::Code {
                     parens: parens + 1,
                     line,
                 });
             }
-            (Some(Mode::Code { parens, line }), ')') => {
+            (Some(Mode::Code { parens, line }), ')' | '}') => {
                 stack.pop();
                 if parens > 1 || line {
                     stack.push(Mode::Code {
