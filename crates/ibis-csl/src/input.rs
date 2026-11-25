@@ -259,7 +259,7 @@ pub(crate) fn prepare_resolved(
     resolved: &ResolvedOutput,
     project_fields: FieldProjection,
 ) -> Result<Prepared, FormatError> {
-    prepare_with(snapshot, request, limits, resolved, None)
+    prepare_with(snapshot, request, limits, resolved, project_fields, None)
 }
 
 /// A document's citations as one sequence: `clusters` are the indices of
@@ -284,7 +284,7 @@ pub(crate) fn prepare_document(
     if clusters.iter().any(Vec::is_empty) || seen.contains(&false) || resolved.style.traits.note {
         return Err(FormatError::InvalidRequest);
     }
-    prepare_with(snapshot, request, limits, resolved, Some(clusters))
+    prepare_with(snapshot, request, limits, resolved, CitableFields::new, Some(clusters))
 }
 
 fn prepare_with(
@@ -292,6 +292,7 @@ fn prepare_with(
     request: &CitationRequest,
     limits: &Limits,
     resolved: &ResolvedOutput,
+    project_fields: FieldProjection,
     clusters: Option<&[Vec<usize>]>,
 ) -> Result<Prepared, FormatError> {
     let style = &*resolved.style;
