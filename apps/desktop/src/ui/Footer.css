@@ -69,6 +69,8 @@ footer.delivery-bar { display: flex; flex-direction: column; border-block-start:
 .footer-status-minimum { flex: none; width: calc(var(--title-start) + var(--status-short)); }
 .footer-citation-minimum { flex: none; width: var(--bar-citation-min); }
 .footer-label-minimum { flex: none; width: 7rem; }
+/* Enter's outcome not known yet: the action keeps its room and shows nothing. */
+.library-bar .footer-action[aria-hidden="true"] { visibility: hidden; }
 .library-bar .footer-action .key-hint-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .library-bar[data-hints-compact] :is(.enter-hints, .more) .key-hint-label, .library-bar[data-alt-compact] .enter-hints .key-hint-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 

@@ -19,6 +19,9 @@ export function usePickerDelights(api: typeof nativeApi, presentation: number | 
   // The first screen's practice paste belongs to its opening; typing never retires it, a paste does.
   const [practice, setPractice] = useState<{ presentation: number; pasted: string | null; dismissed?: boolean } | null>(null);
   const request = useRef<{ presentation: number; answer: Promise<EnterAction> } | null>(null);
+  // The read that will decide what this opening's Enter does, until it answers:
+  // the bar names no action before Enter's own answer is known.
+  const [deciding, setDeciding] = useState<object | null>(null);
   const revision = library?.revision ?? null;
   const load = `${library?.state}:${library?.note}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a load finishing or clearing its notice can make the same snapshot eligible.
@@ -27,6 +30,7 @@ export function usePickerDelights(api: typeof nativeApi, presentation: number | 
     setView(null);
     if (presentation === null || !api.delightView) {
       request.current = null;
+      setDeciding(null);
       return;
     }
     // Only one read per opening can claim the offer. Finish an outstanding
@@ -46,7 +50,9 @@ export function usePickerDelights(api: typeof nativeApi, presentation: number | 
     };
     const pending = { presentation, answer: earlier ? earlier.then(read) : read("deliver") };
     request.current = pending;
+    setDeciding(pending);
     void pending.answer.then((action) => {
+      setDeciding((current) => current === pending ? null : current);
       if (request.current === pending && action === "deliver") request.current = null;
     });
     return () => { live = false; };
@@ -57,6 +63,8 @@ export function usePickerDelights(api: typeof nativeApi, presentation: number | 
   const actionForEnter = (): RequestedAction => current ? (current.pasted === null ? "practice" : "deliver")
     : request.current?.presentation === presentation ? request.current.answer : "deliver";
   return { practice: current?.dismissed ? null : current, actionForEnter,
+    /** Enter's outcome waits on this opening's offer: practice or deliver is not known yet. */
+    deciding: deciding !== null && current === null,
     practise: (citation: string) => setPractice((offered) => offered?.presentation === presentation ? { ...offered, pasted: citation } : offered),
     endPractice: () => setPractice((offered) => offered?.pasted ? { ...offered, dismissed: true } : offered), feedback: view?.status ? text(STATUS[view.status], { keys: keyLabel(keysFor("pin"), isMac) }) : null, peck: view?.peck ?? false, passive: view?.status !== "paste-tip", dismiss };
 }

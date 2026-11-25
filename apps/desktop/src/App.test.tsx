@@ -572,7 +572,16 @@ test("a known wrong-work key is refused and never reaches native copy, by Enter 
   const action = document.querySelector<HTMLButtonElement>(".footer-action")!;
   expect(action.getAttribute("aria-disabled")).toBe("true");
   expect(document.getElementById(action.getAttribute("aria-describedby")!)?.textContent).toBe("A key in thesis.bib identifies a different work.");
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  // Each Enter on the refusal is said again: a new announcement per press, the same words.
+  const said = [...document.querySelectorAll('.delivery-bar [role="alert"]')].find((node) => !node.closest(".bar-reason"))!;
+  const announced: string[] = [];
+  const observer = new MutationObserver((records) => { for (const record of records) for (const node of record.addedNodes) announced.push(node.textContent ?? ""); });
+  observer.observe(said, { childList: true, subtree: true });
+  for (let press = 0; press < 2; press++) {
+    await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
+  }
+  observer.disconnect();
+  expect(announced).toEqual(Array(2).fill("Not pasted or copied. A key in thesis.bib identifies a different work."));
   expect(called).not.toContain("deliver_citation");
   // Dragging delivers what Enter pastes, so it delivers nothing here either.
   const beak = document.querySelector<HTMLElement>(".shelf-leading")!;
@@ -698,4 +707,20 @@ test("words the engine kept as words say so in one notice line", async () => {
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "room 22" } });
   expect(await screen.findByText("Kept as words. For a page, add a comma: “room, 22”.")).toBeTruthy();
+});
+
+test("the drawer is read and tabbed to where it is seen: after the list, before the bar", async () => {
+  backend({ search: () => [result("a", "Invented work")], preview_file_citation: () => receipt("[@a]") });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^Edit / }));
+  const drawer = await screen.findByRole("dialog", { name: /Citation details|Invented work/ });
+  const list = document.getElementById("results")!, bar = document.querySelector("footer.delivery-bar")!;
+  expect(list.compareDocumentPosition(drawer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(drawer.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // Tab order follows: the details' fields come before the bar's Library, action and More.
+  const order = [...document.querySelectorAll<HTMLElement>("button, input, [tabindex='0']")].filter((node) => !node.closest("[inert], [aria-hidden='true']"));
+  const page = order.findIndex((node) => drawer.contains(node) && node.matches("input"));
+  const more = order.findIndex((node) => bar.contains(node) && /^More/.test(node.getAttribute("aria-label") ?? node.textContent ?? ""));
+  expect(page).toBeGreaterThanOrEqual(0);
+  expect(more).toBeGreaterThan(page);
 });

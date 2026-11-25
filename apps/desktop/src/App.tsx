@@ -170,7 +170,12 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     focusHome, pointer, requestCopy, report,
   });
   const practice = delights.practice;
-  const copyChosen = () => rows.copyChosen(delights.actionForEnter());
+  // Each Enter on a refused citation is said again, once per press (the bar's alert).
+  const [refusedEnter, setRefusedEnter] = useState<{ reason: string; presses: number } | null>(null);
+  const copyChosen = () => {
+    if (projectRefusal) setRefusedEnter((last) => ({ reason: projectRefusal, presses: last?.reason === projectRefusal ? last.presses + 1 : 1 }));
+    rows.copyChosen(delights.actionForEnter());
+  };
   const practiceLine = practice ? practice.pasted === null ? say("picker-practice-offer") : say("picker-practice-pasted", { citation: practice.pasted }) : null;
   const waitingForPractice = practice?.pasted === null && !zoomFeedback && !emptyFeedback.feedback;
   const nothingMatched = Boolean(query) && searchState.resultsQuery === queryKey && results.length === 0 && !error;
@@ -193,7 +198,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     shortcut, perform, dismissChooser: source.dismissChooser, toggle: rows.toggle,
     // A waiting editor's output replaces the picker's.
     writesStyle: editor.label ? editor.style : isStyle(destination.format),
-    practising: practice?.pasted === null, refusal: projectRefusal,
+    practising: practice?.pasted === null, deciding: delights.deciding, refusal: projectRefusal,
   });
   // The format chooser's preview reads the chosen references' keys; it never asks
   // for a preview, which would replace the ticket the shelf copies with. A way to
@@ -262,6 +267,14 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
             : say("picker-shortcut-unavailable", { shortcut: shortcut.shortcut, reason: fullStop(shortcut.error) })}${shortcut.desktop && !welcomeShown ? ` ${shortcut.desktop.guidance}` : ""}`}
         </LineNotice>,
       ].filter(Boolean)}
+      bar={<PickerStatusFooter
+          refusal={projectRefusal} refusedPresses={projectRefusal && refusedEnter?.reason === projectRefusal ? refusedEnter.presses : 0}
+          refusalActions={<BibliographyCheckFixes {...checkFixes} />}
+          api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run} citationLine={citationLine}
+          copyChosen={copyChosen} recents={recents}
+          operations={operations} altHeld={altHeld}  emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
+          project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
+          peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />}
       search={<PickerHeader
         hidden={welcomeShown} yours={preferences.format} preview={formatPreview} example={formatExample}
         onResetPosition={api.resetWindowPosition}
@@ -298,14 +311,6 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         state={state} send={send} showCitations={showCitations} results={results} output={output} chosen={shownChoice}
         changeReference={rows.changeReference} copyChosen={copyChosen} libraryOf={scope.libraryOf} format={format} input={input} inspector={inspector} citationLine={citationLine}
         deliverable={!searchPending && preferences.ready && library?.state !== "reloading" && destination.ready && !destination.saving} />
-      <PickerStatusFooter
-        refusal={projectRefusal} refused={Boolean(projectRefusal) && copyError === projectRefusal}
-        refusalActions={<BibliographyCheckFixes {...checkFixes} />}
-        api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run} citationLine={citationLine}
-        copyChosen={copyChosen} recents={recents}
-        operations={operations} altHeld={altHeld}  emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
-        project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
-        peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />
       <PickerOverlays api={{ ...api, editWriting: destination.editWriting! }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
       {peekRecord && peekOpen && <PeekDrawer record={peekRecord} onClose={() => setPeeked(null)} />}

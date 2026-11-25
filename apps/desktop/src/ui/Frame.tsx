@@ -26,8 +26,11 @@ export function useFrameSlot(slot: FrameSlot, present = true) {
  * (`FrameNotices`). The notices are drawn once, in the line, which moves to that
  * room, so a notice moving between the two keeps its state (an Undo keeps its
  * time). Callers never place a notice themselves. */
-export function Frame({ search, notice, children, ...main }: {
+export function Frame({ search, notice, bar, children, ...main }: {
   search: ReactNode;
+  /** The delivery bar, drawn last, after the drawer: what is read and tabbed to
+   * follows what is seen, top to bottom. */
+  bar?: ReactNode;
   /** The notices, most important first. */
   notice: ReactNode;
   children: ReactNode;
@@ -43,6 +46,7 @@ export function Frame({ search, notice, children, ...main }: {
       <Band className="ui-notice-line">{notice}<div className="ui-heading-slot" ref={setHeading} /></Band>
       {children}
       <div className="ui-drawer-slot" ref={setDrawer} />
+      {bar}
     </main>
   </Slots.Provider>;
 }

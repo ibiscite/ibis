@@ -18,7 +18,7 @@ import type { useOperations } from "./useOperations";
 
 export function usePickerActions({
   api, pickerSession, menus, libraryState, searchState, destination, shown, offered, canPaste, shortcut,
-  perform, dismissChooser, toggle, writesStyle, practising, refusal,
+  perform, dismissChooser, toggle, writesStyle, practising, deciding, refusal,
 }: {
   api: typeof nativeApi;
   pickerSession: ReturnType<typeof usePickerSession>;
@@ -38,6 +38,8 @@ export function usePickerActions({
   writesStyle: boolean;
   /** Enter's next paste is the first screen's practice, into Ibis itself. */
   practising: boolean;
+  /** Whether that is still being decided for this opening: Enter waits on it. */
+  deciding: boolean;
   /** Why the shown citation is refused, when it is. */
   refusal: string | null;
 }) {
@@ -82,7 +84,7 @@ export function usePickerActions({
   // outcome, named once by the bar's action; null when it does nothing.
   const enter = describeEnter({
     count: offered.length, preview: shown === "stale" || shown === "failed" ? shown : "ready",
-    editor: Boolean(delivery.editorFormat), findOpen: destination.findOpen, practising, changing: state.changing !== null,
+    editor: Boolean(delivery.editorFormat), findOpen: destination.findOpen, practising, deciding, changing: state.changing !== null,
     format, app: destination.app, canPaste, stayOpen, ownOrder: state.keepOrder && writesStyle, refusal,
   });
   // Only a row that answers the current query can be added or given a locator.
@@ -123,5 +125,5 @@ export function usePickerActions({
   // The keys sheet lists Change Last Citation only while there is one to change, as More does.
   // Keys outputs always keep the order, so only a style offers the choice.
   const keepOrder = writesStyle ? { checked: state.keepOrder, toggle: () => send({ type: "keep-order", value: !state.keepOrder }) } : null;
-  return { delivery, canChooseFormat: destination.canChooseFormat, keepOrder, bindings: bindings.filter((binding) => (lastCitation || binding.action !== "changeLast") && (destination.canChooseFormat || binding.action !== "format")), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, referenceList, enterOff: enter.off, hints: { enter: enter.label, shiftEnter: shiftEnterAction, escape: escapeAction } };
+  return { delivery, canChooseFormat: destination.canChooseFormat, keepOrder, bindings: bindings.filter((binding) => (lastCitation || binding.action !== "changeLast") && (destination.canChooseFormat || binding.action !== "format")), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, referenceList, enterOff: enter.off, enterHidden: enter.hidden, hints: { enter: enter.label, shiftEnter: shiftEnterAction, escape: escapeAction } };
 }

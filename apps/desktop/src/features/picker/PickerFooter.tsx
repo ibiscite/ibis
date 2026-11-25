@@ -19,16 +19,18 @@ export type KeyHints = { enter: string | null; shiftEnter: string | null; escape
  * never depends on the action: shorten the status, then truncate the label, then
  * fold labels to keys by width. A refusal turns the action off and says why on a
  * line of the bar's own, with its fixes; Enter then copies nothing. */
-export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status, emptyAction, refusal, refusalActions, refused }: {
+export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status, emptyAction, pending = false, refusal, refusalActions, refusedPresses = 0 }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string; hints: KeyHints; altHeld: boolean;
   actions: { copy: () => void; add: () => void; escape: () => void };
   more: React.ReactNode; status?: React.ReactNode; emptyAction?: boolean;
+  /** Enter's outcome is not known yet: the action keeps its room and says nothing. */
+  pending?: boolean;
   /** Why the citation cannot be delivered, in plain words; the action is off while it stands. */
   refusal?: string | null;
   /** The refusal's fixes, beside its words. */
   refusalActions?: React.ReactNode;
-  /** Enter was pressed on the refused citation: said again for screen readers. */
-  refused?: boolean;
+  /** How many times Enter met the refused citation: each press is said again. */
+  refusedPresses?: number;
 }) {
   const reasonId = useId();
   const bar = useRef<HTMLElement>(null);
@@ -90,7 +92,8 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
       {refusalActions}
     </div>}
     {/* The reason is an alert as it arrives; Enter meeting it is said here, mounted with the reason so it is heard. */}
-    {refusal && <Status className="visually-hidden" role="alert">{refused ? say("picker-bar-refused", { reason: refusal }) : ""}</Status>}
+    {/* A new node per press in the same live region, so the same words are heard again for each press. */}
+    {refusal && <Status className="visually-hidden" role="alert">{refusedPresses > 0 && <span key={refusedPresses}>{say("picker-bar-refused", { reason: refusal })}</span>}</Status>}
     {/* The region includes More and Copy. Its name must stay distinct from
         the Library button, so native name lookup cannot activate the region. */}
     <section ref={bar} aria-label={say("picker-picker-actions")} className="library-bar" data-empty-action={emptyAction || undefined}
@@ -102,7 +105,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
         {altHeld ? <>
           {hints.shiftEnter && <FooterAction label={hints.shiftEnter} keys={keysFor("add")} onAction={actions.add} />}
           <FooterAction label={hints.escape} keys={keysFor("escape")} onAction={actions.escape} />
-        </> : hints.enter ? <span className="footer-primary"><FooterAction label={hints.enter} keys={keysFor("copy")} primary onAction={actions.copy} unavailable={refusal ? reasonId : undefined} /></span>
+        </> : hints.enter ? <span className="footer-primary"><FooterAction label={hints.enter} keys={keysFor("copy")} primary onAction={actions.copy} unavailable={refusal ? reasonId : undefined} pending={pending} /></span>
           : emptyAction && <FooterAction label={say("key-copy")} keys={keysFor("copy")} disabled onAction={actions.copy} />}
       </small>
       <span key="more" ref={menu} className="more">{more}</span>
@@ -113,7 +116,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
 
 /** `unavailable` names the reason the action is off: it stays focusable and
  * spoken, its words say why, and a press only says why again. */
-function FooterAction({ label, keys, primary, onAction, disabled, unavailable }: { label: string; keys: string; primary?: boolean; onAction: () => void; disabled?: boolean; unavailable?: string }) {
-  return <Button variant={primary ? "action" : "quiet"} size="small" className="footer-action" label={label} keys={keys} title={label} isDisabled={disabled}
-    aria-disabled={unavailable ? true : undefined} aria-describedby={unavailable} onPress={onAction} />;
+function FooterAction({ label, keys, primary, onAction, disabled, unavailable, pending = false }: { label: string; keys: string; primary?: boolean; onAction: () => void; disabled?: boolean; unavailable?: string; pending?: boolean }) {
+  return <Button variant={primary ? "action" : "quiet"} size="small" className="footer-action" label={label} keys={keys} title={label} isDisabled={disabled || pending}
+    aria-disabled={unavailable ? true : undefined} aria-describedby={unavailable} aria-hidden={pending || undefined} onPress={onAction} />;
 }

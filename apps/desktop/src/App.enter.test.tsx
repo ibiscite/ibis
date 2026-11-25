@@ -75,3 +75,23 @@ test.each(["offer", "preview"] as const)("first Enter stays in Ibis when the %s 
   await enter();
   expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
 });
+
+test("the bar names no action until the opening's offer says what Enter does, then the practice", async () => {
+  let finishOffer!: () => void;
+  const calls = backend({
+    search: () => [result("aster2026", "Invented gardens")],
+    delight_view: () => new Promise((resolve) => { finishOffer = () => resolve({ practice: true, status: null, peck: false }); }),
+    preview_file_citation: () => receipt("[@aster2026]"),
+  });
+  await act(async () => { render(<App />); });
+  // The preview is ready first: the action keeps its room, but says nothing Enter may not do.
+  expect(screen.queryByRole("button", { name: /^(Copy|Paste)/ })).toBeNull();
+  expect(document.querySelector(".footer-action")?.getAttribute("aria-hidden")).toBe("true");
+  await act(async () => { finishOffer(); });
+  expect(screen.getByRole("button", { name: "Paste Here to Try" })).toBeTruthy();
+  await enter();
+  expect(calls).not.toContain("deliver_citation");
+  expect(screen.getByText(/\[@aster2026\].*pasted here/)).toBeTruthy();
+  // After the practice, the bar and Enter both deliver.
+  expect(screen.queryByRole("button", { name: "Paste Here to Try" })).toBeNull();
+});

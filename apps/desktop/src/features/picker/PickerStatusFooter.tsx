@@ -23,7 +23,7 @@ import { libraryMessages } from "../../libraryWords";
 
 export function PickerStatusFooter({
   api, library, scope, sourceState, menus, actions, run, copyChosen, recents,
-  operations, altHeld, lastOutcome, emptyAction, project, highlighted, refusal, refusalActions, refused, peek, citationLine,
+  operations, altHeld, lastOutcome, emptyAction, project, highlighted, refusal, refusalActions, refusedPresses, peek, citationLine,
 }: {
   /** The highlighted reference's details (⌘Y), when there is one. */
   peek?: (() => void) | null;
@@ -47,7 +47,7 @@ export function PickerStatusFooter({
   /** Why the citation cannot be delivered, its fixes, and whether Enter was just refused. */
   refusal?: string | null;
   refusalActions?: React.ReactNode;
-  refused?: boolean;
+  refusedPresses?: number;
 }) {
   const { reloadLibrary, useZotero } = api;
   const { groupName, offeredGroups, isChosen, chosenLibraries, toggleLibrary, searchAllLibraries } = scope;
@@ -57,7 +57,7 @@ export function PickerStatusFooter({
   const { toggleHighlighted, hints } = actions;
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
-  return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction} refusal={refusal} refusalActions={refusalActions} refused={refused}
+  return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction} pending={actions.enterHidden} refusal={refusal} refusalActions={refusalActions} refusedPresses={refusedPresses}
     status={<PickerLibraryStatus library={library} groupName={groupName} isOpen={libraryMenuOpen}
       onOpenChange={(open) => (open ? openLibrary() : closeLibrary())}
       searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}
