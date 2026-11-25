@@ -137,8 +137,8 @@ fn a_kept_folder_cites_what_its_pdfs_said_and_nothing_else() {
     let (status, stdout, stderr) = folder.run(&["sources", "check", "--file", &papers]);
     assert_eq!(status, 0, "{stdout}{stderr}");
     std::fs::copy(folder.papers.join("atlas.pdf"), folder.papers.join("atlas copy.pdf")).unwrap();
-    let (_, stdout, stderr) = folder.with_folder(&["search", "atlas"]);
-    assert!(format!("{stdout}{stderr}").contains("not kept yet"), "{stdout}{stderr}");
+    let libraries = folder.json(&["libraries"]).to_string();
+    assert!(libraries.contains("pdfs-not-kept") && libraries.contains("\"folder\""), "{libraries}");
     let _ = std::fs::remove_dir_all(&folder.home);
 }
 
