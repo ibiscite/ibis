@@ -145,7 +145,8 @@ class Packages(unittest.TestCase):
         # An app's belong in its installed resource folder, not beside the app.
         beside = {f"notices/{n}": d for n, d in NOTICES.items()} | {"Ibis.app/Contents/MacOS/ibis-desktop": b"x"}
         self.assertFails(self.write("Ibis-macOS-Intel.app.tar.gz", tar_bytes(beside)), "0 copies of LICENSE where the macOS app keeps it")
-        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(app_files("./usr/share/doc/ibis"))),
+        misplaced = app_files("./usr/share/doc/ibis", {"./usr/bin/ibis-nightly": elf(), "./usr/bin/ibis": elf()})
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(misplaced)),
                          "0 copies of LICENSE where the Linux app keeps it")
 
     def test_a_missing_changed_or_doubled_notice_fails(self):
@@ -153,7 +154,7 @@ class Packages(unittest.TestCase):
         self.assertFails(self.write("ibis-Linux.tar.gz", cli_tar(notices=missing)), "0 copies of THIRD-PARTY-NOTICES.txt")
         changed = {**NOTICES, "THIRD-PARTY-NOTICES.txt": b"Third-party notices for Ibis\nstale\n"}
         self.assertFails(self.write("ibis-Linux.tar.gz", cli_tar(notices=changed)), "THIRD-PARTY-NOTICES.txt differs")
-        doubled = linux_app() | app_files("./usr/share/Old", {})
+        doubled = linux_app() | app_files("./usr/lib/Old", {})
         self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(doubled)), "2 copies of LICENSE")
 
     def test_debian_and_rpm_packages_state_the_version(self):

@@ -38,6 +38,7 @@ import lzma
 import os
 import platform
 import plistlib
+import re
 import shutil
 import struct
 import subprocess
@@ -62,6 +63,27 @@ PLATFORMS = {
     "x86_64-unknown-linux-gnu": ("Linux", "x86_64"),
 }
 CLI_NAMES = ("ibis", "ibis.exe")
+# Where each kind of package must hold the notices: the command line at the
+# archive's top, the app in its installed resource folder (notices/ beside
+# the program on Windows, Contents/Resources on macOS, /usr/lib/<app> on Linux).
+NAMES = "(LICENSE|NOTICE\\.md|THIRD-PARTY-NOTICES\\.txt)"
+PLACES = {
+    "command line": re.compile(NAMES),
+    "macOS app": re.compile(r"[^/]+\.app/Contents/Resources/notices/" + NAMES),
+    "Linux app": re.compile(r"usr/lib/[^/]+/notices/" + NAMES),
+    "Windows app": re.compile(r"(?:\$INSTDIR/)?notices/" + NAMES),
+}
+
+
+def place(name):
+    """Which rule says where this package holds its notices."""
+    if name.startswith("ibis-"):
+        return "command line"
+    if name.endswith((".dmg", ".app.tar.gz")):
+        return "macOS app"
+    if name.endswith("-setup.exe"):
+        return "Windows app"
+    return "Linux app"
 OPEN_ERRORS = (OSError, ValueError, EOFError, tarfile.TarError, zipfile.BadZipFile, lzma.LZMAError,
                subprocess.SubprocessError, struct.error, IndexError, UnicodeDecodeError, plistlib.InvalidFileException)
 
@@ -326,16 +348,17 @@ class Check:
         if not condition:
             self.problems.append(problem)
 
-    def notice_files(self, tree, top_level):
-        found = {}
+    def notice_files(self, tree, rule):
+        """Each notice once, byte for byte, where this kind of package keeps it."""
+        placed = {}
         for rel, full in tree:
-            for name in NOTICE_FILES:
-                if (top_level and rel == name) or rel == f"notices/{name}" or rel.endswith(f"/notices/{name}"):
-                    found.setdefault(name, []).append(full)
+            match = PLACES[rule].fullmatch(rel)
+            if match:
+                placed.setdefault(match.group(1), []).append(full)
         for name, digest in self.notices.items():
-            copies = found.get(name, [])
+            copies = placed.get(name, [])
             if len(copies) != 1:
-                self.problems.append(f"{len(copies)} copies of {name}")
+                self.problems.append(f"{len(copies)} copies of {name} where the {rule} keeps it")
             elif hashlib.sha256(copies[0].read_bytes()).hexdigest() != digest:
                 self.problems.append(f"{name} differs from the generated notice")
 
@@ -372,7 +395,7 @@ class Check:
 
     def command_line(self, root):
         tree = list(files(root))
-        self.notice_files(tree, top_level=True)
+        self.notice_files(tree, "command line")
         binary = self.executable([full for rel, full in tree if rel in CLI_NAMES], "command-line")
         if binary is not None:
             self.reports_version(binary, "command line")
@@ -426,7 +449,7 @@ def check_package(path, notices, options, target):
             if name.startswith("ibis-"):
                 check.command_line(root)
             else:
-                check.notice_files(list(files(root)), top_level=False)
+                check.notice_files(list(files(root)), place(name))
                 if name.endswith((".dmg", ".app.tar.gz")):
                     check.mac_app(root)
                 elif name.endswith((".deb", ".rpm")):
