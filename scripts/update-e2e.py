@@ -1303,6 +1303,7 @@ class PowerShell:
         lines.put(None)
 
     def answer(self, timeout):
+        deadline = time.monotonic() + timeout
         try:
             line = self.lines.get(timeout=timeout)
         except queue.Empty:
@@ -1310,7 +1311,13 @@ class PowerShell:
             self.close()
             raise subprocess.TimeoutExpired("PowerShell", timeout) from None
         if line is None:
-            returncode = self.process.wait()
+            # A helper can close its output and live on: its exit code is
+            # waited for only within the request's own time.
+            try:
+                returncode = self.process.wait(timeout=max(0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                self.close()
+                raise subprocess.TimeoutExpired("PowerShell", timeout) from None
             self.errors.seek(0)
             stderr = self.errors.read().decode("utf-8", errors="replace")
             self.close()
@@ -3108,6 +3115,8 @@ for line in sys.stdin.buffer:
     elif script == "hang": time.sleep(60)
     elif script == "fail": answer.update(exit=1, error="Synthetic 合成")
     elif script == "stale": answer["id"] -= 1
+    elif script == "linger":
+        sys.stdout.close(); os.close(1); time.sleep(30)
     elif script == "exit":
         sys.stderr.buffer.write("Synthetic 合成".encode("utf-8")); sys.stderr.flush(); sys.exit(7)
     elif script.startswith("raw:"):
@@ -3152,7 +3161,14 @@ for line in sys.stdin.buffer:
                 with self.assertRaisesRegex(HelperProcessFailure, "helper failed: Synthetic 合成") as failure:
                     powershell("exit", timeout=10)
                 self.assertEqual(failure.exception.returncode, 7)
-                self.assertEqual(launched.call_count, 3)
+                # Closed output with a live helper still ends within the
+                # request's time, and that helper is stopped.
+                started = time.monotonic()
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    powershell("linger", timeout=.5)
+                self.assertLess(time.monotonic() - started, 5)
+                self.assertIsNone(session.process)
+                self.assertEqual(launched.call_count, 4)
                 session.close()
                 self.assertIsNone(session.process)
 
