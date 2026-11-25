@@ -1037,22 +1037,31 @@ fn sparse_members_never_become_copyable_cluster_placeholders_or_omissions() {
     let printable = library(std::slice::from_ref(&complete));
     let mut printable_request = selection(&printable, "modern-language-association", false);
     printable_request.keep_order = true;
-    for items in [[sparse.clone(), complete.clone()], [complete, sparse]] {
+    for (sparse_index, items) in [[sparse.clone(), complete.clone()], [complete, sparse]]
+        .into_iter()
+        .enumerate()
+    {
         let snapshot = library(&items);
         let mut request = selection(&snapshot, "modern-language-association", false);
         request.keep_order = true;
         let result = formatter.format(&snapshot, &request).unwrap();
         assert!(result.copy_content(2).is_none());
-        assert!(result.text.is_empty());
-        // The sparse record has nothing to cite it by (decision 0061); the
-        // cluster it was in is still refused whole.
-        assert!(result.outcomes.iter().all(|outcome| matches!(
-            outcome,
+        assert_eq!(result.text, "(Taylor)");
+        // The sparse record is refused before CSL formatting (decision 0061).
+        // The complete record can be previewed, but the selection cannot be copied.
+        assert_eq!(result.outcomes.len(), 2);
+        assert_eq!(
+            result.outcomes[sparse_index],
             ItemOutcome::Refused {
-                error: CitationError::UnsupportedForm | CitationError::MissingDetails,
-                ..
+                item: sparse_index,
+                error: CitationError::MissingDetails,
             }
-        )));
+        );
+        assert_eq!(
+            result.outcomes[1 - sparse_index],
+            ItemOutcome::Rendered { item: 1 - sparse_index }
+        );
+        assert!(result.display.nodes.iter().all(|node| node.item != Some(sparse_index)));
         let recovered = formatter.format(&printable, &printable_request).unwrap();
         assert_eq!(recovered.text, "(Taylor)");
         assert!(recovered.copy_content(1).is_some());
