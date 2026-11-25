@@ -87,7 +87,7 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   const useUsual = writing && destination?.writing_context && editWriting
     ? () => { void editWriting(destination.writing_context!, { kind: "select", id: null }).catch(() => report("appChoice")); }
     : destination?.app_id && forgetAppOutput ? () => {
-      void session.editDestination(() => forgetAppOutput(destination.app_id!, destination.app_identity)).catch(() => report("appChoice"));
+      void session.editDestination(() => forgetAppOutput(destination.app_id!, destination.app_identity, destination.site_id ?? null)).catch(() => report("appChoice"));
     } : undefined;
   const remembering = { ...d, remembers: Boolean(rememberAppOutput) };
   const askPaste = asksPaste(remembering);

@@ -34,6 +34,7 @@ A boundary with no safe binding gets one scoped module allowance, a crate-level
   on the main thread. It is a system-wide flag, not proof of a password field.
 - Its `paste/macos/focus/native.rs` owns public Accessibility calls and retained
   object identities. `paste/macos/safety.rs` owns SDK clocks and notifications.
+- Its `site/macos.rs` reads which website is in front in a browser (below).
 - `paste/permission/drag.rs` implements the AppKit drag source and image setter.
   A live Settings drag publishes only the bundled app's file URL, accepts no
   path and permits only copy. The stateless source stays on the main thread.
@@ -131,6 +132,38 @@ queue. Display-name reads have a separate 50 ms worker and executable-name
 fallback. Final injection resolves Ibis's HWND before destination/key locks
 and never waits for the UI thread under them. Partial `SendInput` releases
 only accepted keys; failed releases remain for recovery before another paste.
+
+## Site in front of a browser
+
+`ibis-native/src/site.rs` reads, once per picker opening and only for a
+browser the destination table lists, the address of the page in front, and
+reduces it at once to its site name (`ibis_core::destination::site`); only
+that name leaves the module. It never prompts, writes an attribute or sends an
+Apple Event, uses no network and has 50 ms, as one paste query. Missing permission, a slow or
+absent answer, or an address that is not a web page leaves no site, and the
+browser's own format applies. Linux reads nothing.
+
+On macOS, with `AXIsProcessTrusted` already true, `site/macos.rs` reads a
+closed set: `AXFocusedWindow`, then the window's `AXDocument`, else a bounded
+breadth-first walk (200 elements, depth 16) of `AXChildren` and `AXRole`
+through container roles only (window, groups, split and tab groups, scroll and
+layout areas) to the first `AXWebArea`, whose `AXURL` is read. Toolbars,
+controls and the web area itself are never entered, so no page content or
+typed field text is read. On Windows `site/windows.rs` asks UI Automation, on
+its own thread, for the foreground top-level window it checked (by HWND, owned
+by the browser's process) and the value of the first Edit control in that
+window's control view (200 elements), never entering a Document. At most two reads that outlived their
+opening may still run; a third opening reads nothing. These reads are separate from the paste
+proofs, which still allow no role, value or tree traversal.
+
+The read runs around the paste capture: the browser's focused window (macOS:
+the same `AXFocusedWindow` by `CFEqual`; Windows: the same foreground HWND) is
+looked at before and, within 15 ms, after it, and the site counts only when
+both are the same window of the same process, so it is the window the capture
+took. The site is then bound to the captured browser and its process; when an
+Ibis window has the keyboard, the earlier site is kept, as the paste capture
+keeps its app. A format choice or Forget carries the site the picker showed and is
+refused once another site is in front, so a late save never lands on it.
 
 ## Shared ownership and qualification limits
 

@@ -62,6 +62,13 @@ yourself in the app. It has no account or crash-upload service. This page descri
   secure-input and permission guards. Text stays in memory and is not saved
   or logged. Turning pasting off disables this read. It never reads clipboard
   contents to seed the search.
+- **Website in front of a browser:** when the picker opens over a browser Ibis
+  lists, it reads the front tab's address (macOS: through the Accessibility
+  permission, only if already granted; Windows: UI Automation of the address
+  field) and keeps only its site name, such as `overleaf.com`, so a format can
+  be remembered per site. Nothing is asked for, sent or logged; the path,
+  query and full address are dropped at once. A format you choose there is
+  saved for that site name in `settings.json`. Linux does not read it.
 - **Windows paste:** checks foreground window/process, integrity and password
   field status through UI Automation. Uncertain or disallowed targets copy
   instead. Delivery safeguards are in [architecture](docs/architecture.md#desktop-app).
@@ -77,7 +84,7 @@ yourself in the app. It has no account or crash-upload service. This page descri
   They read those files only to find that entry, and send nothing.
 - **Settings:** `settings.json` holds library choices, formats, appearance,
   shortcuts, update consent, optional project names/paths and selections per
-  app. Atomic saves use `.tmp`, `.bak` and a writer `.lock`. `apps.json` keeps
+  app, and formats per app or website site name. Atomic saves use `.tmp`, `.bak` and a writer `.lock`. `apps.json` keeps
   app paste choices, including an app-location fingerprint for unknown-app
   approval. [Backups](docs/moving-to-a-new-computer.md) exclude device-local
   choices and do not grant paste permission.

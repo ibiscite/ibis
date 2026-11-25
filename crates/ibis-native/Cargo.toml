@@ -24,17 +24,25 @@ schemars = "=1.2.3"
 objc2 = "0.6.5"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSScreen", "NSGraphics", "NSWorkspace", "NSRunningApplication", "libc", "NSAccessibility", "NSAccessibilityProtocols", "NSColor", "NSColorSpace", "NSEvent", "NSPasteboard", "NSApplication", "NSResponder", "NSView", "NSWindow", "NSDragging", "NSDraggingItem", "NSDraggingSession", "NSHapticFeedback", "NSImage", "objc2-core-graphics", "block2"] }
 objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "libc", "CGDirectDisplay", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
-objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString", "CFDictionary", "CFNumber", "CFUUID"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString", "CFDictionary", "CFNumber", "CFUUID", "CFArray", "CFURL"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSAppleEventManager", "NSAppleEventDescriptor", "NSData", "NSString", "NSValue", "NSThread", "NSArray", "NSBundle", "NSURL", "objc2-core-services", "NSNotification", "NSDistributedNotificationCenter", "NSOperation", "block2"] }
 block2 = "0.6.2"
 
 # Already locked through Tauri; the safe Win32 bindings of decision 0029.
 [target.'cfg(target_os = "windows")'.dependencies]
 winsafe = { version = "0.0.29", features = ["user", "advapi", "version", "comctl"] }
+# Already locked through the desktop app: the browser address field for the
+# site in front (site.rs).
+# uiautomation 0.25.1 compiles its input module always, so it needs "input"
+# and, for that module's WindowsAndMessaging imports, "dialog" beside "pattern".
+uiautomation = { version = "0.25.1", default-features = false, features = ["input", "dialog", "pattern"] }
+# Already locked through uiautomation and the desktop app: the HWND type its
+# element_from_handle takes, so the read starts from the window checked.
+windows = { version = "0.62.2", default-features = false, features = ["Win32_Foundation"] }
 
 # `forbid` cannot be narrowed by a module allowance. Match the workspace
-# policy, with unsafe allowed only in paste/macos/secure_input.rs, safety.rs
-# and focus/native.rs (decision 0029).
+# policy, with unsafe allowed only in paste/macos/secure_input.rs, safety.rs,
+# focus/native.rs and site/macos.rs (decision 0029).
 [lints.rust]
 unsafe_code = "deny"
 

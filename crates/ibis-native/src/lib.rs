@@ -2,5 +2,7 @@
 //! launcher or the command line can share them (decision 0029). Every
 //! `unsafe` block of the paste proofs lives here, in modules that allow it
 //! one by one; the host supplies windows, settings and the keyboard layout.
+//! [`site`] reads which website is in front in a browser, as its site name.
 
 pub mod paste;
+pub mod site;

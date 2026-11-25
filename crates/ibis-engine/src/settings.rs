@@ -433,6 +433,20 @@ impl Appearance {
     }
 }
 
+/// A website's format is kept by its site name alone: an entry holding
+/// anything else, such as a full address written by hand, is dropped as it is
+/// read, so it is never saved again or shown.
+fn site_names_only<'de, D: serde::Deserializer<'de>>(value: D) -> Result<Vec<AppOutput>, D::Error> {
+    let mut outputs = Vec::<AppOutput>::deserialize(value)?;
+    outputs.retain(|entry| {
+        entry.app.system != ibis_core::destination::System::Web || {
+            let name = entry.app.normalized();
+            !name.is_empty() && name == entry.app.id
+        }
+    });
+    Ok(outputs)
+}
+
 fn dropped<'de, D: serde::Deserializer<'de>>(value: D) -> Result<(), D::Error> {
     serde::de::IgnoredAny::deserialize(value).map(|_| ())
 }
@@ -515,7 +529,7 @@ pub struct Device {
     pub writing_apps: BTreeMap<String, String>,
     /// The format chosen for each app, the most recently chosen last, at most
     /// [`MAX_APP_OUTPUTS`]. It stays on this computer (decision 0040).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "site_names_only")]
     pub app_outputs: Vec<AppOutput>,
     /// Kinds whose first successful suggested paste has been explained.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -570,11 +584,15 @@ impl Settings {
     }
 
     /// Remember `output` for `app` as the most recent choice.
+    /// A website ID that is not a site name is never kept.
     pub fn remember_app_output(&mut self, app: &ibis_core::destination::AppId, output: String) {
         let app = ibis_core::destination::AppId {
             system: app.system,
             id: app.normalized(),
         };
+        if app.id.is_empty() {
+            return;
+        }
         self.device.app_outputs.retain(|entry| entry.app != app);
         self.device.app_outputs.push(AppOutput { app, output });
         let excess = self.device.app_outputs.len().saturating_sub(MAX_APP_OUTPUTS);

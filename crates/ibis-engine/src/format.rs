@@ -9,10 +9,16 @@
 //! 2026-11-16). A value of the other kind never applies, so a style chosen in
 //! Word never reaches a LaTeX file. The answer says which
 //! level won, for the picker's header ("MLA · for Word", "Thesis").
+//!
+//! In a browser the website in front stands in for the app when Ibis could
+//! read it (decision 0031): its own format, then what the destination table
+//! says it is, so Overleaf gets LaTeX keys while Google Docs keeps your
+//! style. A site Ibis does not list falls back to the browser. Projects stay
+//! with the app: an address never selects one.
 use crate::outputs;
 use crate::settings::Settings;
 use ibis_core::contract::{KeySyntax, OutputSpec};
-use ibis_core::destination::{AppId, OutputClass, lookup};
+use ibis_core::destination::{AppId, OutputClass, System, is_browser, lookup};
 pub use ibis_core::destination::{FormatChoice, FormatFrom, FormatKind, WritingName};
 
 /// The kind of `app`, what is suggested for it when nothing is chosen, and
@@ -29,6 +35,8 @@ fn kind(app: Option<&AppId>) -> (FormatKind, &'static str, bool) {
         Some(Some(OutputClass::Key(syntax))) => (FormatKind::Keys, key_id(syntax), true),
         Some(Some(OutputClass::Formatted)) => (FormatKind::Documents, outputs::DEFAULT_STYLE, true),
         Some(None) => (FormatKind::Documents, outputs::DEFAULT_STYLE, false),
+        // A website Ibis does not list is a page in a browser.
+        None if app.system == System::Web => (FormatKind::Documents, outputs::DEFAULT_STYLE, false),
         None => (FormatKind::Keys, outputs::DEFAULT, false),
     }
 }
@@ -56,18 +64,85 @@ fn choice(entry: &outputs::OutputInfo, from: FormatFrom, kind: FormatKind) -> Fo
 /// The format for a citation into `app` (none when no app was captured).
 pub fn choose(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
     let (kind, _, _) = kind(app);
-    if let Some(writing) = app.and_then(|app| writing_for(settings, app)) {
-        let name = WritingName {
-            id: writing.name.clone(),
-            name: writing.name.clone(),
-        };
-        return for_writing(&writing.format, name, app);
+    if let Some(chosen) = writing_choice(settings, app, app) {
+        return chosen;
     }
     // This app's format was chosen in it, so it holds whatever its kind.
     if let Some(entry) = app.and_then(|app| settings.app_output(app)).and_then(outputs::find) {
         return choice(entry, FormatFrom::App, kind);
     }
     usual(settings, app)
+}
+
+/// The project chosen for `app`, with `kind_of`'s kind.
+fn writing_choice(settings: &Settings, app: Option<&AppId>, kind_of: Option<&AppId>) -> Option<FormatChoice> {
+    let writing = writing_for(settings, app?)?;
+    let name = WritingName {
+        id: writing.name.clone(),
+        name: writing.name.clone(),
+    };
+    Some(for_writing(&writing.format, name, kind_of))
+}
+
+/// The website that chooses the format: `site`, when it is one and `app` is
+/// a browser. Anything else leaves the app to choose.
+fn site_for<'a>(app: Option<&AppId>, site: Option<&'a AppId>) -> Option<&'a AppId> {
+    site.filter(|site| site.system == System::Web && !site.normalized().is_empty() && app.is_some_and(is_browser))
+}
+
+/// Whose kind applies: a listed site's, or else the app's.
+fn kind_owner<'a>(app: Option<&'a AppId>, site: Option<&'a AppId>) -> Option<&'a AppId> {
+    site_for(app, site).filter(|site| lookup(site).is_some()).or(app)
+}
+
+/// As [`choose`], for `app` with the website in front in it, if any: the
+/// project chosen for the app, then the site's own format, then what the
+/// table says the site is; a site Ibis does not list goes on with the app.
+pub fn choose_at(settings: &Settings, app: Option<&AppId>, site: Option<&AppId>) -> FormatChoice {
+    let Some(at) = site_for(app, site) else {
+        return choose(settings, app);
+    };
+    let owner = kind_owner(app, site);
+    let mut chosen = if let Some(chosen) = writing_choice(settings, app, owner) {
+        chosen
+    } else if let Some(entry) = settings.app_output(at).and_then(outputs::find) {
+        choice(entry, FormatFrom::App, kind(owner).0)
+    } else if lookup(at).is_some() {
+        usual(settings, Some(at))
+    } else {
+        choose(settings, app)
+    };
+    chosen.kind = kind(owner).0;
+    chosen
+}
+
+/// As [`usual`], for `app` with the website in front in it.
+pub fn usual_at(settings: &Settings, app: Option<&AppId>, site: Option<&AppId>) -> FormatChoice {
+    usual(settings, kind_owner(app, site))
+}
+
+/// The app or website whose remembered format [`choose_at`] uses, if one does.
+fn remembered<'a>(settings: &Settings, app: Option<&'a AppId>, site: Option<&'a AppId>) -> Option<&'a AppId> {
+    let saved = |id: &&AppId| settings.app_output(id).and_then(outputs::find).is_some();
+    match site_for(app, site) {
+        Some(site) if saved(&site) => Some(site),
+        Some(site) if lookup(site).is_some() => None,
+        _ => app.filter(saved),
+    }
+}
+
+/// Where a format the person chooses now is remembered: the website, when
+/// one is in front in a browser, or else the app.
+pub fn remembers_for(app: Option<&AppId>, site: Option<&AppId>) -> Option<AppId> {
+    site_for(app, site).or(app).cloned()
+}
+
+/// Forget the remembered format [`choose_at`] uses, whichever of the website
+/// or the app it belongs to.
+pub fn forget_at(settings: &mut Settings, app: Option<&AppId>, site: Option<&AppId>) {
+    if let Some(id) = remembered(settings, app, site).cloned() {
+        settings.forget_app_output(&id);
+    }
 }
 
 /// Your format for this kind, or its suggestion, without an app override.
@@ -134,11 +209,16 @@ pub fn choose_with(settings: &Settings, app: Option<&AppId>, yours: Option<&Outp
 /// format of its own for this app, other than the usual one, may write more
 /// than one kind of document there. A saved project is always offered.
 pub fn offers_projects(settings: &Settings, app: Option<&AppId>) -> bool {
+    offers_projects_at(settings, app, None)
+}
+
+/// As [`offers_projects`], for `app` with the website in front in it.
+pub fn offers_projects_at(settings: &Settings, app: Option<&AppId>, site: Option<&AppId>) -> bool {
     !settings.device.writings.is_empty()
-        || app
-            .and_then(|app| settings.app_output(app))
+        || remembered(settings, app, site)
+            .and_then(|id| settings.app_output(id))
             .and_then(outputs::find)
-            .is_some_and(|saved| usual(settings, app).id.as_deref() != Some(saved.id.as_str()))
+            .is_some_and(|saved| usual_at(settings, app, site).id.as_deref() != Some(saved.id.as_str()))
 }
 
 fn kind_of(output: &OutputSpec) -> FormatKind {
@@ -149,7 +229,11 @@ fn kind_of(output: &OutputSpec) -> FormatKind {
     }
 }
 
+/// A website never selects a project, however it was named (docs/design/delivery.md).
 fn writing_for<'s>(settings: &'s Settings, app: &AppId) -> Option<&'s crate::settings::writings::Writing> {
+    if app.system == System::Web {
+        return None;
+    }
     let id = settings.device.writing_apps.get(&crate::app_context::app_key(app))?;
     settings.device.writings.iter().find(|writing| &writing.name == id)
 }

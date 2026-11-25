@@ -1,11 +1,13 @@
 //! Where a citation goes: the output for the app the picker was opened from,
-//! and whether pasting into that app is safe.
+//! or the website in front in it when that app is a browser, and whether
+//! pasting into that app is safe.
 //!
 //! Both are pure decisions on data the platform layer captures, so the app,
 //! the command line and agents agree (docs/architecture.md, "Pasting into the
 //! previous app"). Every refusal still leaves the citation on the clipboard,
 //! with a [`CopyReason`] the front end words for people.
 
+mod site;
 mod table;
 
 use schemars::JsonSchema;
@@ -13,15 +15,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::contract::citation::{KeySyntax, OutputSpec};
 
+pub use site::site;
 pub use table::{APPS, App};
 
-/// The operating system an app ID belongs to.
+/// Where an app ID belongs: the operating system it runs on, or the web for
+/// a website inside a browser, whose ID is only its site name (see [`site`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum System {
     Macos,
     Windows,
     Linux,
+    /// A website, such as `overleaf.com`: never a path, query or full address.
+    /// It only chooses a format; pasting is always decided for the browser.
+    Web,
 }
 
 impl System {
@@ -36,7 +43,8 @@ impl System {
 }
 
 /// An app as the platform names it: a bundle ID on macOS, an executable name
-/// on Windows. Never a window title or document name.
+/// on Windows, a site name on the web. Never a window title, document name or
+/// web address.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AppId {
@@ -47,9 +55,11 @@ pub struct AppId {
 impl AppId {
     /// The form the table uses: bundle IDs compare without case, as macOS
     /// does; a Windows executable is its lower-case file name, whatever path
-    /// the platform reported.
+    /// the platform reported; a site is its site name, or nothing when the ID
+    /// is not one, so no path or query is ever kept or compared.
     pub fn normalized(&self) -> String {
         match self.system {
+            System::Web => site::name(&self.id).unwrap_or_default(),
             System::Windows => self
                 .id
                 .rsplit(['\\', '/'])
@@ -69,7 +79,7 @@ impl AppId {
             system,
             id: id.to_owned(),
         };
-        [running, System::Macos, System::Windows]
+        [running, System::Macos, System::Windows, System::Web]
             .into_iter()
             .map(on)
             .find(|app| lookup(app).is_some())
@@ -180,10 +190,19 @@ pub enum Decision {
     Copy(CopyReason),
 }
 
-/// The table entry for an app, if Ibis knows it.
+/// The table entry for an app, if Ibis knows it. A site's entry also holds
+/// its subdomains, so `eu.overleaf.com` is Overleaf.
 pub fn lookup(app: &AppId) -> Option<&'static App> {
     let id = app.normalized();
+    if app.system == System::Web {
+        return site::row(&id);
+    }
     APPS.iter().find(|entry| entry.system == app.system && entry.id == id)
+}
+
+/// A browser, whose front tab's site may choose the format.
+pub fn is_browser(app: &AppId) -> bool {
+    lookup(app).is_some_and(|entry| entry.browser)
 }
 
 /// Zotero's default action finds a reference. An explicit citation copy must
@@ -199,7 +218,8 @@ pub fn finds_in_app(app: &AppId) -> bool {
 
 /// A word processor whose documents can hold live citations from a reference
 /// manager's plugin. Pasted text is not one, and Ibis cannot see a document, so
-/// only the app ID decides. Browsers stay out: Google Docs looks like any page.
+/// only the app ID decides. Browsers stay out: the note is kept per app, and a
+/// browser holds every site.
 pub fn has_citation_plugins(app: &AppId) -> bool {
     lookup(app).is_some_and(|app| matches!(app.name, "Microsoft Word" | "Pages" | "LibreOffice"))
 }
@@ -240,7 +260,8 @@ pub fn decide(target: &Target, permission: PastePermission) -> Decision {
 pub enum FormatFrom {
     /// The project chosen for this app (its id stays `writing`).
     Writing,
-    /// The format this app was given when the person changed it there.
+    /// The format this app, or this website in a browser, was given when
+    /// the person changed it there.
     App,
     /// Your format for this kind of app.
     Yours,
@@ -253,7 +274,8 @@ pub enum FormatFrom {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum FormatKind {
-    /// Formatted text: word processors, mail, browsers, unknown apps.
+    /// Formatted text: word processors, mail, browsers and websites Ibis does
+    /// not list, unknown apps.
     Documents,
     /// Citation keys: Markdown, LaTeX and Typst apps and code editors.
     Keys,

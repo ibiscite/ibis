@@ -9,6 +9,7 @@ fn owner() -> (tempfile::TempDir, Owner, Capture) {
             system: System::Macos,
             id: "org.example.Writer".into(),
         }),
+        site: None,
         generation: 1,
         editor: None,
     };

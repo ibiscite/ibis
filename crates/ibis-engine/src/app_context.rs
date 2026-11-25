@@ -145,6 +145,7 @@ pub fn app_key(id: &AppId) -> String {
         System::Macos => "macos",
         System::Windows => "windows",
         System::Linux => "linux",
+        System::Web => "web",
     };
     format!("{system}:{}", id.normalized())
 }
@@ -337,6 +338,9 @@ fn owner_for(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Capture {
     pub app: Option<AppId>,
+    /// The website in front in `app` when it is a browser and Ibis could read
+    /// its site name. It chooses only the format; projects stay with `app`.
+    pub site: Option<AppId>,
     pub generation: u64,
     pub editor: Option<EditorContext>,
 }
@@ -520,20 +524,20 @@ impl Owner {
                 },
                 capture.app.as_ref(),
             ),
-            None => crate::format::choose(&settings, capture.app.as_ref()),
+            None => crate::format::choose_at(&settings, capture.app.as_ref(), capture.site.as_ref()),
         };
         let mut writings = view_for(&settings, &target, session.as_deref());
         writings.context = self.token(&target);
         let (context_version, project) = self.project.observation();
         Ok(ContextView {
             format,
-            usual_format: crate::format::usual(&settings, capture.app.as_ref())
+            usual_format: crate::format::usual_at(&settings, capture.app.as_ref(), capture.site.as_ref())
                 .id
                 .unwrap_or_default(),
             writing: active.map(|writing| writing.view()),
             context_version,
             writing_context: Some(writings.context.clone()),
-            offers_projects: crate::format::offers_projects(&settings, capture.app.as_ref()),
+            offers_projects: crate::format::offers_projects_at(&settings, capture.app.as_ref(), capture.site.as_ref()),
             writings,
             project,
             paste_enabled: settings.portable.paste(),

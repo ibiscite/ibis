@@ -207,6 +207,8 @@ mod tests {
             .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
         let destination = crate::destination::PickerDestination {
             app: Some("Invented Writer".into()),
+            site: None,
+            site_id: None,
             app_id: Some("invented.writer".into()),
             app_identity: None,
             format: ibis_engine::format::choose_with(

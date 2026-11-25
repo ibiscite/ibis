@@ -4779,7 +4779,7 @@
         "$defs": {
           "AppId": {
             "additionalProperties": false,
-            "description": "An app as the platform names it: a bundle ID on macOS, an executable name\non Windows. Never a window title or document name.",
+            "description": "An app as the platform names it: a bundle ID on macOS, an executable name\non Windows, a site name on the web. Never a window title, document name or\nweb address.",
             "properties": {
               "id": {
                 "type": "string"
@@ -5605,7 +5605,7 @@
               },
               {
                 "const": "app",
-                "description": "The format this app was given when the person changed it there.",
+                "description": "The format this app, or this website in a browser, was given when\nthe person changed it there.",
                 "type": "string"
               },
               {
@@ -6466,13 +6466,22 @@
             "type": "object"
           },
           "System": {
-            "description": "The operating system an app ID belongs to.",
-            "enum": [
-              "macos",
-              "windows",
-              "linux"
-            ],
-            "type": "string"
+            "description": "Where an app ID belongs: the operating system it runs on, or the web for\na website inside a browser, whose ID is only its site name (see [`site`]).",
+            "oneOf": [
+              {
+                "enum": [
+                  "macos",
+                  "windows",
+                  "linux"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "web",
+                "description": "A website, such as `overleaf.com`: never a path, query or full address.\nIt only chooses a format; pasting is always decided for the browser.",
+                "type": "string"
+              }
+            ]
           },
           "TextRun": {
             "additionalProperties": false,
@@ -6899,7 +6908,7 @@
         "$defs": {
           "AppId": {
             "additionalProperties": false,
-            "description": "An app as the platform names it: a bundle ID on macOS, an executable name\non Windows. Never a window title or document name.",
+            "description": "An app as the platform names it: a bundle ID on macOS, an executable name\non Windows, a site name on the web. Never a window title, document name or\nweb address.",
             "properties": {
               "id": {
                 "type": "string"
@@ -7725,7 +7734,7 @@
               },
               {
                 "const": "app",
-                "description": "The format this app was given when the person changed it there.",
+                "description": "The format this app, or this website in a browser, was given when\nthe person changed it there.",
                 "type": "string"
               },
               {
@@ -8586,13 +8595,22 @@
             "type": "object"
           },
           "System": {
-            "description": "The operating system an app ID belongs to.",
-            "enum": [
-              "macos",
-              "windows",
-              "linux"
-            ],
-            "type": "string"
+            "description": "Where an app ID belongs: the operating system it runs on, or the web for\na website inside a browser, whose ID is only its site name (see [`site`]).",
+            "oneOf": [
+              {
+                "enum": [
+                  "macos",
+                  "windows",
+                  "linux"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "web",
+                "description": "A website, such as `overleaf.com`: never a path, query or full address.\nIt only chooses a format; pasting is always decided for the browser.",
+                "type": "string"
+              }
+            ]
           },
           "TextRun": {
             "additionalProperties": false,
@@ -14628,7 +14646,7 @@
                 "description": "The output a request names for it."
               },
               "zotero_items": {
-                "description": "It names Zotero items, so it writes only references read from Zotero\nand refuses any other (Zotero's RTF/ODF Scan markers).",
+                "description": "It names Zotero items, so it writes only references read from Zotero\nand refuses any other (markers for the RTF/ODF Scan add-on).",
                 "type": "boolean"
               }
             },

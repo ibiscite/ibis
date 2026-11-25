@@ -8,6 +8,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 fn capture(app: &AppHandle, captured: Option<&AppId>) -> Capture {
     Capture {
         app: captured.cloned(),
+        site: captured.and_then(|id| crate::destination::site::current(app, id)),
         generation: app
             .try_state::<crate::picker::PickerGeneration>()
             .map_or(0, |visits| visits.current()),

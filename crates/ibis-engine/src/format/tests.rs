@@ -137,3 +137,151 @@ fn projects_are_offered_once_an_app_has_a_second_format_or_one_exists() {
     });
     assert!(offers_projects(&settings, None));
 }
+
+fn site(address: &str) -> AppId {
+    ibis_core::destination::site(address).unwrap_or_else(|| panic!("{address} is a site"))
+}
+
+fn at(settings: &Settings, app: &AppId, site: Option<&AppId>) -> (String, FormatFrom, FormatKind) {
+    let chosen = choose_at(settings, Some(app), site);
+    (chosen.id.unwrap_or_default(), chosen.from, chosen.kind)
+}
+
+#[test]
+fn in_a_browser_each_listed_site_gets_its_own_kind_whatever_the_browser_remembers() {
+    let chrome = app(Macos, "com.google.chrome");
+    let overleaf = site("https://www.overleaf.com/project/0000");
+    let docs = site("https://docs.google.com/document/d/invented/edit");
+    let mut settings = Settings::default();
+    // A suggestion accepted in Chrome before sites were read.
+    settings.remember_app_output(&chrome, "apa".into());
+    assert_eq!(
+        at(&settings, &chrome, Some(&overleaf)),
+        ("autocite".into(), FormatFrom::Suggestion, FormatKind::Keys)
+    );
+    assert_eq!(
+        at(&settings, &chrome, Some(&docs)),
+        ("apa".into(), FormatFrom::Suggestion, FormatKind::Documents)
+    );
+    assert_eq!(
+        usual_at(&settings, Some(&chrome), Some(&overleaf)).id.as_deref(),
+        Some("autocite")
+    );
+    // The site cannot be read: the browser's own format, as before.
+    assert_eq!(
+        at(&settings, &chrome, None),
+        ("apa".into(), FormatFrom::App, FormatKind::Documents)
+    );
+}
+
+#[test]
+fn a_format_chosen_on_a_site_stays_with_that_site() {
+    let chrome = app(Windows, "chrome.exe");
+    let overleaf = site("overleaf.com/project/0000");
+    let docs = site("https://docs.google.com/");
+    let mut settings = Settings::default();
+    let owner = remembers_for(Some(&chrome), Some(&overleaf));
+    assert_eq!(owner.as_ref(), Some(&overleaf));
+    settings.remember_app_output(&overleaf, "natbib".into());
+    assert_eq!(
+        at(&settings, &chrome, Some(&overleaf)),
+        ("natbib".into(), FormatFrom::App, FormatKind::Keys)
+    );
+    // Google Docs keeps its style, and so does Chrome itself.
+    assert_eq!(at(&settings, &chrome, Some(&docs)).1, FormatFrom::Suggestion);
+    assert_eq!(at(&settings, &chrome, None).1, FormatFrom::Suggestion);
+    // The same site in another browser, or a subdomain, is the same site.
+    let safari = app(Macos, "com.apple.safari");
+    assert_eq!(
+        at(&settings, &safari, Some(&site("https://eu.overleaf.com/x"))).0,
+        "natbib"
+    );
+    assert!(offers_projects_at(&settings, Some(&chrome), Some(&overleaf)));
+    forget_at(&mut settings, Some(&chrome), Some(&overleaf));
+    assert!(settings.device.app_outputs.is_empty());
+    assert_eq!(at(&settings, &chrome, Some(&overleaf)).1, FormatFrom::Suggestion);
+}
+
+#[test]
+fn a_site_ibis_does_not_list_is_remembered_alone_and_otherwise_follows_the_browser() {
+    let firefox = app(Macos, "org.mozilla.firefox");
+    let wiki = site("https://wiki.example.org/page?id=0");
+    let other = site("https://notes.example.net/");
+    let mut settings = Settings::default();
+    settings.remember_app_output(&firefox, "ieee".into());
+    // Nothing remembered for the site: the browser's format, and Forget
+    // removes the browser's, since that is what chose it.
+    assert_eq!(
+        at(&settings, &firefox, Some(&wiki)),
+        ("ieee".into(), FormatFrom::App, FormatKind::Documents)
+    );
+    settings.remember_app_output(&wiki, "modern-language-association".into());
+    assert_eq!(at(&settings, &firefox, Some(&wiki)).0, "modern-language-association");
+    assert_eq!(at(&settings, &firefox, Some(&other)).0, "ieee");
+    forget_at(&mut settings, Some(&firefox), Some(&other));
+    assert_eq!(at(&settings, &firefox, Some(&other)).1, FormatFrom::Suggestion);
+    assert_eq!(at(&settings, &firefox, Some(&wiki)).0, "modern-language-association");
+}
+
+#[test]
+fn a_site_chooses_only_inside_a_browser_and_never_selects_a_project() {
+    let word = app(Macos, "com.microsoft.word");
+    let chrome = app(Macos, "com.google.chrome");
+    let overleaf = site("https://overleaf.com/");
+    let settings = Settings::default();
+    // A site reported for an app that is not a browser is ignored.
+    assert_eq!(at(&settings, &word, Some(&overleaf)).0, "apa");
+    assert_eq!(remembers_for(Some(&word), Some(&overleaf)).as_ref(), Some(&word));
+    // Projects bind to the browser; the site never picks one.
+    let mut settings = Settings::default();
+    let thesis: Writing = serde_json::from_value(serde_json::json!({
+        "name": "Thesis",
+        "format": {"kind": "csl", "style": "chicago-notes-bibliography"},
+    }))
+    .unwrap_or_else(|error| panic!("{error}"));
+    settings.device.writings.push(thesis);
+    settings
+        .device
+        .writing_apps
+        .insert(crate::app_context::app_key(&chrome), "Thesis".into());
+    let chosen = choose_at(&settings, Some(&chrome), Some(&overleaf));
+    assert_eq!(chosen.from, FormatFrom::Writing);
+    settings.device.writing_apps.clear();
+    settings
+        .device
+        .writing_apps
+        .insert(crate::app_context::app_key(&overleaf), "Thesis".into());
+    assert_eq!(
+        choose_at(&settings, Some(&chrome), Some(&overleaf)).from,
+        FormatFrom::Suggestion
+    );
+    // Nor when a request names the site itself.
+    assert_eq!(choose(&settings, Some(&overleaf)).from, FormatFrom::Suggestion);
+}
+
+#[test]
+fn a_site_named_by_a_request_resolves_like_an_app() {
+    // `--app overleaf.com` from the command line or an agent.
+    let overleaf = AppId::named("overleaf.com", Macos);
+    assert_eq!(overleaf.system, ibis_core::destination::System::Web);
+    assert_eq!(said(&Settings::default(), Some(&overleaf)).0, "autocite");
+    assert_eq!(
+        said(&Settings::default(), Some(&AppId::named("typst.app", Windows))).0,
+        "typst"
+    );
+}
+
+#[test]
+fn a_website_entry_holding_anything_but_a_site_name_is_dropped_when_read() {
+    let device: crate::settings::Device = serde_json::from_value(serde_json::json!({
+        "app_outputs": [
+            {"app": {"system": "web", "id": "https://example.org/private?token=invented"}, "output": "ieee"},
+            {"app": {"system": "web", "id": "www.overleaf.com"}, "output": "natbib"},
+            {"app": {"system": "web", "id": "overleaf.com"}, "output": "autocite"},
+            {"app": {"system": "macos", "id": "com.google.chrome"}, "output": "apa"},
+        ]
+    }))
+    .unwrap_or_else(|error| panic!("{error}"));
+    let kept: Vec<_> = device.app_outputs.iter().map(|entry| entry.app.id.as_str()).collect();
+    assert_eq!(kept, ["overleaf.com", "com.google.chrome"]);
+}
