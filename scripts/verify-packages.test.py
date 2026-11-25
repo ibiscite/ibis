@@ -233,16 +233,6 @@ class Packages(unittest.TestCase):
             "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in packages.items()))
         verify.self_test(dist, "x86_64-unknown-linux-gnu", self.notices, OPTIONS)
         verify.verify(dist, "x86_64-unknown-linux-gnu", self.notices, OPTIONS)
-        # An app package carrying another command line than the archive fails.
-        other = deb_bytes(app_files("./usr/lib/Ibis Nightly", {"./usr/bin/ibis-nightly": elf(), "./usr/bin/ibis": elf() + b"other"}))
-        (dist / "Ibis-Linux.deb").write_bytes(other)
-        (dist / "SHA256SUMS-x86_64-unknown-linux-gnu.txt").write_text("".join(
-            f"{hashlib.sha256((dist / name).read_bytes()).hexdigest()}  {name}\n" for name in packages))
-        with self.assertRaisesRegex(verify.Failure, "different command lines"):
-            verify.verify(dist, "x86_64-unknown-linux-gnu", self.notices, OPTIONS)
-        (dist / "Ibis-Linux.deb").write_bytes(packages["Ibis-Linux.deb"])
-        (dist / "SHA256SUMS-x86_64-unknown-linux-gnu.txt").write_text("".join(
-            f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in packages.items()))
         # A verifier that accepted anything fails its own self-test.
         accept_all = verify.check_package
         verify.check_package = lambda *args: None

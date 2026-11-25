@@ -17,6 +17,8 @@ zip, ar, rpm, disk image, AppImage, NSIS through 7-Zip) and must:
 - declare version V where its format records one (Info.plist, Debian control,
   rpm header, the setup executable's ProductVersion), and hold one app or
   command-line executable built for TARGET's processor that embeds --build;
+- on Windows and Linux, carry a command line that runs and reports --build
+  (the only version proof an AppImage has);
 - on macOS, have a valid code signature, made by --signing-leaf when given,
   and the bundle identifier --identifier;
 - run its command line, where this computer can, and report --build.
@@ -318,7 +320,6 @@ class Check:
         self.notices, self.options, self.arch = notices, options, arch
         self.problems = []
 
-        self.cli_digest = None
 
     def require(self, condition, problem):
         if not condition:
@@ -347,30 +348,33 @@ class Check:
         self.require(self.options.build.encode() in data, f"the {what} does not embed version {self.options.build}")
         return candidates[0]
 
+    def reports_version(self, binary, what):
+        """Start a command line this computer can run and require its version."""
+        if not runs_here(binary.read_bytes()):
+            return  # Cross-built (Intel on Apple silicon): checked from its header only.
+        binary.chmod(0o755)
+        try:
+            out = subprocess.run([str(binary), "--version"], capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError) as error:
+            self.problems.append(f"the {what} did not start: {error}")
+            return
+        self.require(out.returncode == 0 and self.options.build in out.stdout,
+                     f"the {what} did not report {self.options.build}")
+
     def bundled_command_line(self, root):
-        """The command line an app package carries (unsigned on Windows and Linux)."""
-        found = [full for rel, full in files(root) if Path(rel).name in CLI_NAMES]
-        if len(found) != 1:
-            self.problems.append(f"{len(found)} bundled command-line programs, not one")
-        else:
-            self.cli_digest = hashlib.sha256(found[0].read_bytes()).hexdigest()
+        """The command line an app package carries runs and reports its version,
+        which proves the version of a package (the AppImage) whose format
+        records none."""
+        binary = self.executable([full for rel, full in files(root) if Path(rel).name in CLI_NAMES], "bundled command-line")
+        if binary is not None:
+            self.reports_version(binary, "bundled command line")
 
     def command_line(self, root):
         tree = list(files(root))
         self.notice_files(tree, top_level=True)
         binary = self.executable([full for rel, full in tree if rel in CLI_NAMES], "command-line")
         if binary is not None:
-            self.cli_digest = hashlib.sha256(binary.read_bytes()).hexdigest()
-        if binary is None or not runs_here(binary.read_bytes()):
-            return  # Cross-built (Intel on Apple silicon): checked above, not run.
-        binary.chmod(0o755)
-        try:
-            out = subprocess.run([str(binary), "--version"], capture_output=True, text=True, timeout=30)
-        except (OSError, subprocess.SubprocessError) as error:
-            self.problems.append(f"the command line did not start: {error}")
-            return
-        self.require(out.returncode == 0 and self.options.build in out.stdout,
-                     f"`ibis --version` did not report {self.options.build}")
+            self.reports_version(binary, "command line")
 
     def mac_app(self, root):
         apps = [p for p in Path(root).rglob("*.app") if (p / "Contents/Info.plist").is_file()]
@@ -443,7 +447,6 @@ def check_package(path, notices, options, target):
                 subprocess.run(["hdiutil", "detach", str(mount), "-force"], capture_output=True)
     if check.problems:
         raise Failure(f"{path.name}: " + "; ".join(check.problems))
-    return check.cli_digest
 
 
 def load_notices(folder):
@@ -477,23 +480,17 @@ def verify(dist, target, notices_folder, options):
     notices = load_notices(notices_folder)
     packages = expected_packages(target, sorted(p.name for p in dist.iterdir()), options.version)
     check_sums(dist, target, packages)
-    failures, digests = [], {}
+    failures = []
     for name in packages:
         try:
-            digest = check_package(dist / name, notices, options, target)
-            if digest:
-                digests[name] = digest
+            check_package(dist / name, notices, options, target)
             print(f"ok   {name}")
         except Failure as failure:
             failures.append(str(failure))
             print(f"FAIL {failure}")
     if failures:
         raise Failure(f"{len(failures)} of {len(packages)} packages failed")
-    # On Windows and Linux every app package carries the very command line the
-    # archive holds, which ran here and reported its version: that proves the
-    # version of a package (the AppImage) whose format records none.
-    if len(set(digests.values())) > 1:
-        raise Failure("the packages carry different command lines: " + ", ".join(f"{n} {d[:12]}" for n, d in sorted(digests.items())))
+
 
 
 def repack_without_notice(source, planted):
