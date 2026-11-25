@@ -29,8 +29,14 @@ endpoints, updates and extensions. Report a gap through [SECURITY.md](../SECURIT
 
 Every reader takes bytes it did not write. Each must refuse or report a
 warning, never panic, never exceed its bounds, and publish only records that
-validate. File libraries are capped at 64 MiB and 200,000 records; one
-record at 1 MiB; each load has a deadline and a cancellation token.
+validate. File libraries are capped at 64 MiB and 200,000 records, and each
+load has a deadline and a cancellation token. One record is capped at 1 MiB of
+CSL data in every reader that builds CSL data directly (CSL-JSON, caller and
+adapter records, RIS and CSV; `MAX_RECORD_BYTES`, tested at the boundary in
+`crates/ibis-sources/tests/exported_libraries.rs`); BibTeX instead bounds each
+value at 64 KiB and the whole load by a work budget (`bibtex/resolve.rs`,
+`bibtex/mod.rs`). The fuzz targets use inputs up to 64 KiB (PDF: 1 MiB), so
+they exercise parsing, not these size limits, which the tests cover.
 
 | Input | Reader | Fuzz target (`fuzz/`) |
 | --- | --- | --- |
@@ -46,6 +52,7 @@ record at 1 MiB; each load has a deadline and a cancellation token.
 | A `.bib` file Ibis edits in place (decision 0055) | `bibtex_edit::BibFile` | `bibtex_edit` |
 | A project's bibliography, read to check keys | `project::ProjectRead` | `project_bib` |
 | Zotero's `profiles.ini` and `prefs.js` | `zotero_local::discovery::discover` | `zotero_profiles` |
+| An editor endpoint request (opt-in, loopback) | `ibis_engine::cayw::parse` | `editor_request` |
 | An open EndNote library (macOS scripting) | the same XML reader as an export | `endnote_export` |
 | Zotero's full-text cache | `zotero_local::fulltext::pages` splits text on page breaks; nothing is parsed | — |
 | Zotero's closed database and Better BibTeX's store | SQLite on a private copy, opened read-only | Not yet: SQLite itself is fuzzed upstream (OSS-Fuzz), and the rows reach the same `map_item` as `zotero_live`, but the reading of rows is not fuzzed here |
@@ -76,12 +83,31 @@ compared with the shown hash at commit ([architecture](architecture.md)).
 
 ## Local endpoints
 
-Ibis opens no listening socket: `ibis serve` and `ibis mcp` speak over stdio
-to the program that started them. It connects to Zotero's local API and Better
-BibTeX on 127.0.0.1 only. Any local program could answer there, so those
-answers are untrusted input (`zotero_live`, bounded requests, bytes, items and
-time) and refusals keep the last good snapshot. MCP tools are read-only; their
-results mark library text as data so an agent does not act on it.
+`ibis serve` and `ibis mcp` speak over stdio to the program that started them
+and open no socket. MCP tools are read-only; their results mark library text
+as data so an agent does not act on it.
+
+The **editor endpoint** (decision 0008) is the one listening socket: off
+until switched on in Settings, it binds a TCP port on 127.0.0.1 only
+(`apps/desktop/src-tauri/src/editor_endpoint.rs`) so an editor can ask for a
+citation, as Better BibTeX's Cite as You Write does. Any program on the
+computer, or a web page through the browser, can send it bytes, so
+`ibis_engine::cayw::parse` treats every request head as untrusted: a random
+token in the path, new for each address; requests carrying headers browsers
+add are refused, `Host` must name this computer (against DNS rebinding), and
+answers carry no CORS headers; only `GET`; a head of at most 8 KiB within five
+seconds; eight connections at once and one waiting request; fixed refusal
+text that repeats nothing sent. Tests: the `cayw.rs` unit tests (browser
+headers, host names, methods, oversized or broken heads) and the
+`editor_endpoint.rs` tests (probe, pick, a second request, silent or oversized
+clients, the port freed when switched off, a new token per address). Fuzzed:
+`editor_request` runs `cayw::parse` on any head and checks that an accepted
+one is a `GET` within the bound naming the token.
+
+Ibis connects to Zotero's local API and Better BibTeX on 127.0.0.1 only. Any
+local program could answer there, so those answers are untrusted input
+(`zotero_live`, bounded requests, bytes, items and time) and refusals keep the
+last good snapshot.
 
 ## Updates
 
