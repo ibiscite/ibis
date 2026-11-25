@@ -233,7 +233,11 @@ impl SourceCapability {
     pub const SNAPSHOT: &'static [Self] = &[Self::BibliographicRecords];
     /// A folder's kept `.bib`: BibTeX's, except proposals, since Ibis is that
     /// file's only automatic writer.
-    pub const FOLDER: &'static [Self] = &[Self::BibliographicRecords, Self::NativeCitationKeys, Self::AttachmentText];
+    pub const FOLDER: &'static [Self] = &[
+        Self::BibliographicRecords,
+        Self::NativeCitationKeys,
+        Self::AttachmentText,
+    ];
     const ZOTERO: &'static [Self] = &[
         Self::BibliographicRecords,
         Self::NativeCitationKeys,

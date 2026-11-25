@@ -59,7 +59,7 @@ pub fn list(folder: &Path, cancelled: &dyn Fn() -> bool) -> Result<Listing, Sour
                 listing.skipped += 1;
                 continue;
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(SourceError::NotFound),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(SourceError::Missing),
             Err(_) => return Err(SourceError::Unavailable),
         };
         for entry in entries {
@@ -157,7 +157,11 @@ pub fn kept_files(text: &str) -> BTreeSet<String> {
         crate::bibtex::Budget::for_input(text.len()),
         None,
     );
-    let mut objects: Vec<_> = parsed.records.into_iter().map(ibis_core::contract::LibraryObject::Record).collect();
+    let mut objects: Vec<_> = parsed
+        .records
+        .into_iter()
+        .map(ibis_core::contract::LibraryObject::Record)
+        .collect();
     let mut warnings = Vec::new();
     let references = crate::attachments::append(parsed.attachments, &mut objects, &mut warnings);
     named(references.into_iter().map(|(_, location)| location))

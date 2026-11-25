@@ -110,7 +110,11 @@ impl Engine {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
                 _ => bib::read(&path).ok(),
             };
-            if now == before { Ok(()) } else { Err(WriteProblem::Changed) }
+            if now == before {
+                Ok(())
+            } else {
+                Err(WriteProblem::Changed)
+            }
         };
         store.replace_library(&target, text.as_bytes(), after.as_bytes(), check)?;
         // The file watch would see it too; reading now shows the entries at once.
@@ -122,7 +126,11 @@ impl Engine {
 /// What a PDF said, as CSL fields: only what it stated.
 fn csl(details: &PdfDetails) -> Map<String, Value> {
     let mut fields = Map::new();
-    let kind = if details.container.is_some() { "article-journal" } else { "document" };
+    let kind = if details.container.is_some() {
+        "article-journal"
+    } else {
+        "document"
+    };
     fields.insert("type".into(), kind.into());
     let mut text = |name: &str, value: &Option<String>| {
         if let Some(value) = value {
@@ -137,10 +145,17 @@ fn csl(details: &PdfDetails) -> Map<String, Value> {
     text("page", &details.page);
     text("DOI", &details.doi);
     if !details.authors.is_empty() {
-        fields.insert("author".into(), details.authors.iter().map(|name| person(name)).collect());
+        fields.insert(
+            "author".into(),
+            details.authors.iter().map(|name| person(name)).collect(),
+        );
     }
     if let Some(issued) = &details.issued {
-        let parts: Vec<Value> = issued.split('-').filter_map(|part| part.parse::<u32>().ok()).map(Value::from).collect();
+        let parts: Vec<Value> = issued
+            .split('-')
+            .filter_map(|part| part.parse::<u32>().ok())
+            .map(Value::from)
+            .collect();
         fields.insert("issued".into(), json!({ "date-parts": [parts] }));
     }
     fields
@@ -161,7 +176,10 @@ fn person(name: &str) -> Value {
 /// The fields a key is made from: the PDF's own, or, when it says nothing a
 /// key uses, the words of its file name, for the key alone.
 fn key_fields(fields: &Map<String, Value>, relative: &str) -> Map<String, Value> {
-    if ["title", "author", "issued"].iter().any(|name| fields.contains_key(*name)) {
+    if ["title", "author", "issued"]
+        .iter()
+        .any(|name| fields.contains_key(*name))
+    {
         return fields.clone();
     }
     let stem = Path::new(relative)

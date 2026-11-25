@@ -25,11 +25,14 @@ fn pdfs_are_listed_to_the_depth_limit_without_links_or_hidden_entries() {
     #[cfg(unix)]
     std::os::unix::fs::symlink(root.join("tides.pdf"), root.join("link.pdf")).unwrap();
     let listing = list(&root, &|| false).unwrap();
-    assert_eq!(listing.pdfs, ["a/a.PDF", "a/b/b.PDF", "a/b/c/c.PDF", "a/b/c/d/d.PDF", "tides.pdf"]);
+    assert_eq!(
+        listing.pdfs,
+        ["a/a.PDF", "a/b/b.PDF", "a/b/c/c.PDF", "a/b/c/d/d.PDF", "tides.pdf"]
+    );
     assert!(!listing.cut_short);
     // The fifth level, the hidden file and folder, the braced name and the link.
     assert_eq!(listing.skipped, if cfg!(unix) { 5 } else { 4 });
-    assert_eq!(list(&root.join("missing"), &|| false), Err(SourceError::NotFound));
+    assert_eq!(list(&root.join("missing"), &|| false), Err(SourceError::Missing));
     assert_eq!(list(&root, &|| true), Err(SourceError::Cancelled));
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -50,7 +53,11 @@ fn unkept_pdfs_are_those_no_file_field_names_inside_the_folder() {
         pdfs: vec!["a/b.pdf".into(), "c.pdf".into(), "d:e.pdf".into()],
         ..Listing::default()
     };
-    let named = named(["./c.pdf".to_owned(), "../outside.pdf".to_owned(), "/abs/a/b.pdf".to_owned()]);
+    let named = named([
+        "./c.pdf".to_owned(),
+        "../outside.pdf".to_owned(),
+        "/abs/a/b.pdf".to_owned(),
+    ]);
     assert_eq!(unkept(&listing, &named), ["a/b.pdf", "d:e.pdf"]);
-    assert_eq!(file_value("d:e;f.pdf"), ":d\\:e\;f.pdf:application/pdf");
+    assert_eq!(file_value("d:e;f.pdf"), r":d\:e\;f.pdf:application/pdf");
 }
