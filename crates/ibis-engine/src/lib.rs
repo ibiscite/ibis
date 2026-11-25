@@ -3,7 +3,7 @@ pub mod agent_apps;
 pub mod discovery;
 mod method;
 mod sync;
-pub use method::Method;
+pub use method::{Method, Row, methods};
 
 pub mod cayw;
 
