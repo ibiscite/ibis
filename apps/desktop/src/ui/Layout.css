@@ -25,12 +25,12 @@
 /* A row whose control names itself (a picture choice) gives the control the card. */
 .ui-row[data-bare] { padding: var(--space-3); }
 /* The card owns its dividers: every row in it draws one above itself, inset to
-   its text on both sides as System Settings draws it, except the card's first
-   row. Whatever else sits in the card (the live picture over Appearance, a
-   Details' wrapper) never decides where a line falls. A highlighted or echoing
+   its text on both sides as System Settings draws it, unless it opens its
+   parent. Anything above a row in the card (the live picture over Appearance)
+   is divided from it the same way. `:nth-child(of S)` is avoided: Chromium
+   leaves the pseudo-element unpainted when rows mount. A highlighted or echoing
    row's fill is its own edge. */
-.ui-group .ui-row::before { content: ""; position: absolute; inset-block-start: 0; inset-inline: var(--row-pad); border-top: var(--border-width) solid var(--separator); }
-.ui-group > .ui-row:nth-child(1 of .ui-row)::before,
+.ui-group .ui-row:not(:first-child)::before { content: ""; position: absolute; inset-block-start: 0; inset-inline: var(--row-pad); border-top: var(--border-width) solid var(--separator); }
 .ui-row:is([data-highlighted], [data-echo])::before, .ui-row:is([data-highlighted], [data-echo]) + .ui-row::before { display: none; }
 .ui-row { transition: background-color var(--dur-1) ease-out; }
 .ui-row[data-highlighted] { background: var(--highlight); }
