@@ -41,7 +41,9 @@ export const initialDestination: DestinationState = {
 };
 
 type Save = { opening: number; choice: number; appId: string; output: OutputId | null; paste: AppPaste | null; identity: PickerDestination["app_identity"] | null;
-  /** What a saved format changes before the destination is read again. */
+  /** The website the choice was made on; native refuses it once another is in front. */
+  site: string | null;
+  /** The saved format and its owner apply before the destination is read again. */
   remembered: OutputId | null; reread: boolean; clearHeld: boolean; rereadOnFailure: boolean };
 
 export type DestinationEvent =
@@ -183,7 +185,7 @@ export function reduceDestination(d: DestinationState, event: DestinationEvent):
       if (!next.ready && next.reader && !rereadingDefault) return { destination: next, effects: [] };
       const id = d.destination?.app_id;
       if (event.pick === "app" && id) {
-        return save(next, { appId: id, output: event.choice, paste: null, identity: d.destination?.app_identity ?? null,
+        return save(next, { appId: id, output: event.choice, paste: null, identity: d.destination?.app_identity ?? null, site: d.destination?.site_id ?? null,
           remembered: event.choice, reread: Boolean(d.destination?.unreadable), clearHeld: true, rereadOnFailure: false });
       }
       if (event.pick !== "default") return { destination: next, effects: [] };
@@ -197,13 +199,14 @@ export function reduceDestination(d: DestinationState, event: DestinationEvent):
       // Read the native policy back before showing an intended paste in the footer.
       const next = { ...d, output: { ...d.output, delivery: d.output.delivery + 1 }, lastPolicy: undefined };
       // Its format saves before its delivery choice, so a failure can leave the format saved: read what was.
-      return save(next, { appId: id, output: event.output, paste: event.paste, identity: d.destination?.app_identity ?? null,
+      return save(next, { appId: id, output: event.output, paste: event.paste, identity: d.destination?.app_identity ?? null, site: d.destination?.site_id ?? null,
         remembered: null, reread: true, clearHeld: false, rereadOnFailure: event.output !== null });
     }
     case "destination-saved": {
       const { save: s } = event;
       if (s.opening !== d.output.opening) return null;
       let next = s.remembered && d.destination ? { ...d, destination: { ...d.destination,
+        remembered_for: s.site ?? d.destination.app,
         format: { ...d.destination.format, id: s.remembered, from: "app" as const } } } : d;
       if (s.clearHeld && s.choice === d.output.choice) next = { ...next, preserveOpeningOutput: false, held: null };
       const reports = [report("appChoice", false), report("appDelivery", false)];

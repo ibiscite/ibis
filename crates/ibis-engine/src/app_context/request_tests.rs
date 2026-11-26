@@ -9,6 +9,7 @@ fn owner() -> (tempfile::TempDir, Owner, Capture) {
             system: System::Macos,
             id: "org.example.Writer".into(),
         }),
+        site: None,
         generation: 1,
         editor: None,
     };
@@ -102,5 +103,48 @@ fn unreadable_settings_retire_the_previous_context_without_using_the_backup() {
             .project
             .capture(Some(owner.project.version()), Some(output::stored(Some("apa"))))
             .is_err()
+    );
+}
+
+#[test]
+fn a_saved_site_format_change_retires_prepared_citations_in_the_same_opening() {
+    let directory = tempfile::tempdir().unwrap();
+    let settings = Arc::new(settings::Owner::open(directory.path().join("settings.json")));
+    let bibliography = project::ProjectBibliography::default();
+    let owner = Owner::new(settings.clone(), bibliography.clone());
+    let capture = Capture {
+        app: Some(AppId {
+            system: System::Macos,
+            id: "com.google.Chrome".into(),
+        }),
+        site: ibis_core::destination::site("https://overleaf.com/project/invented"),
+        generation: 1,
+        editor: None,
+    };
+    let before = request(&owner, &capture, ContextRequest::Destination {});
+    let old_output = output::stored(before.format.id.as_deref());
+    assert!(
+        bibliography
+            .capture(Some(before.context_version), Some(old_output))
+            .is_ok()
+    );
+    settings
+        .change::<_, Error>(|settings| {
+            settings.remember_app_output(capture.site.as_ref().unwrap(), "typst".into());
+            Ok(())
+        })
+        .unwrap();
+    let after = request(&owner, &capture, ContextRequest::Destination {});
+    assert_eq!(after.format.id.as_deref(), Some("typst"));
+    assert_eq!(after.remembered_for, capture.site);
+    assert_ne!(after.context_version.0, before.context_version.0);
+    assert!(matches!(
+        bibliography.capture(Some(before.context_version), Some(old_output)),
+        Err(Error::Cancelled)
+    ));
+    assert!(
+        bibliography
+            .capture(Some(after.context_version), Some(output::stored(Some("typst"))))
+            .is_ok()
     );
 }

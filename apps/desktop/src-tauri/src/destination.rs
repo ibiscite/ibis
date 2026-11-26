@@ -1,5 +1,6 @@
 //! The output the picker starts with for the app it was opened from (#1202),
-//! and the per-app choices Ibis remembers (decision 0031,
+//! or for the website in front in it when it is a browser, and the per-app
+//! choices Ibis remembers (decision 0031,
 //! docs/decisions/0031-what-ibis-remembers-per-app.md).
 //!
 //! `apps.json`, beside `settings.json`, holds at most [`MAX_APPS`] app IDs,
@@ -22,6 +23,8 @@ use tauri::{AppHandle, Manager, State};
 use crate::library::CommandError;
 use crate::preferences::SettingsFile;
 
+pub(crate) mod site;
+
 /// Apps remembered; the least recently chosen goes first.
 const MAX_APPS: usize = 200;
 /// A file this large was not written by Ibis.
@@ -36,6 +39,10 @@ pub(crate) fn display_name(app: &AppId) -> String {
         && let Some(name) = installed_name(&app.id)
     {
         return name;
+    }
+    if app.system == ibis_core::destination::System::Web {
+        // Only ever a site name, whatever the stored ID held.
+        return lookup(app).map_or_else(|| app.normalized(), |known| known.name.to_owned());
     }
     lookup(app).map_or_else(|| app.id.clone(), |known| known.name.to_owned())
 }
@@ -66,6 +73,15 @@ fn installed_name(id: &str) -> Option<String> {
 pub(crate) struct PickerDestination {
     /// The app's own name; `None` when no app was captured.
     pub(crate) app: Option<String>,
+    /// The website in front in that app, by name, when it is a browser and
+    /// the site could be read: formats are remembered for it, while paste
+    /// choices stay with the app.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) site: Option<String>,
+    /// That website's site name, such as `overleaf.com`, which a format
+    /// choice echoes so it is refused once another site is in front.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) site_id: Option<String>,
     /// The captured OS app identifier, used to refuse a save after the target changes.
     pub(crate) app_id: Option<String>,
     /// Opaque app-location fingerprint; no path crosses IPC.
@@ -73,6 +89,9 @@ pub(crate) struct PickerDestination {
     /// The engine's answer: the format the next citation uses and which level
     /// chose it (decision 0042). The picker shows it as it is.
     pub(crate) format: ibis_engine::format::FormatChoice,
+    /// The app or site whose remembered format reset removes, named by the engine.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) remembered_for: Option<String>,
     /// Your format for this kind, used by the return-to-usual action.
     pub(crate) usual_format: String,
     pub(crate) find_open: bool,
@@ -342,9 +361,12 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
     let Some((id, name, app_identity)) = last else {
         return PickerDestination {
             app: None,
+            site: None,
+            site_id: None,
             app_id: None,
             app_identity: None,
             format,
+            remembered_for: None,
             usual_format,
             find_open: false,
             unreadable: false,
@@ -379,11 +401,22 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
             .and_then(|file| file.session_rows(&items).ok())
             .map_or(0, |rows| rows.len() as u32)
     };
+    let front_site = site::current(app, &id);
+    let remembered_for = context.remembered_for.as_ref().map(|owner| {
+        if owner.system == ibis_core::destination::System::Web {
+            owner.normalized()
+        } else {
+            name.clone()
+        }
+    });
     PickerDestination {
         app: Some(name),
+        site: front_site.as_ref().map(display_name),
+        site_id: front_site.map(|site| site.id),
         app_id: Some(id.normalized()),
         app_identity,
         format,
+        remembered_for,
         usual_format,
         find_open: ibis_core::destination::finds_in_app(&id),
         unreadable,
@@ -399,10 +432,13 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
     }
 }
 
-/// Remember a format, a delivery choice or both for the captured app. Whichever
+/// Remember a format, a delivery choice or both for the captured app; the
+/// format goes to the website in front instead when one was read. Whichever
 /// is absent keeps its saved value; only a delivery choice revokes outstanding
 /// proofs. The format goes to the settings file first, then the delivery choice
 /// to the per-app file; a delivery that fails after its format saved says so.
+// Tauri commands take their IPC arguments one by one.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) async fn remember_app_output<R: tauri::Runtime>(
@@ -413,6 +449,7 @@ pub(crate) async fn remember_app_output<R: tauri::Runtime>(
     output: Option<String>,
     paste: Option<AppPaste>,
     identity: Option<String>,
+    site: Option<String>,
 ) -> Result<(), AppChoiceError> {
     // Only an id the engine lists is remembered; anything else changes nothing.
     let output = output
@@ -452,7 +489,12 @@ pub(crate) async fn remember_app_output<R: tauri::Runtime>(
         |settings| {
             crate::paste::change_destination(&app, paste.is_some(), |captured| {
                 let id = target(captured)?;
-                settings.remember_app_output(&id, output.id().to_owned());
+                let front = captured.and_then(|captured| site::of_capture(&app, captured));
+                if !site::unchanged(site.as_deref(), front.as_ref()) {
+                    return Err("the website changed; open the format menu again".into());
+                }
+                let owner = ibis_engine::format::remembers_for(Some(&id), front.as_ref()).unwrap_or(id);
+                settings.remember_app_output(&owner, output.id().to_owned());
                 Ok(())
             })
             .map_err(|_| AppChoiceError::not_saved())
@@ -464,7 +506,8 @@ pub(crate) async fn remember_app_output<R: tauri::Runtime>(
     )
 }
 
-/// Forget only the current app's format, after checking the captured target.
+/// Forget only the format the current app or website uses, after checking the
+/// captured target.
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) async fn forget_app_output(
@@ -472,6 +515,7 @@ pub(crate) async fn forget_app_output(
     settings_file: State<'_, SettingsFile>,
     app_id: String,
     identity: Option<String>,
+    site: Option<String>,
 ) -> Result<(), CommandError> {
     settings_file
         .owner
@@ -482,7 +526,11 @@ pub(crate) async fn forget_app_output(
                 if id.normalized() != app_id || captured.app_identity != identity {
                     return Err("the app changed; open the format menu again".into());
                 }
-                settings.forget_app_output(id);
+                let front = site::of_capture(&app, captured);
+                if !site::unchanged(site.as_deref(), front.as_ref()) {
+                    return Err("the website changed; open the format menu again".into());
+                }
+                ibis_engine::format::forget_at(settings, Some(id), front.as_ref());
                 Ok(())
             })
             .map_err(|_| CommandError::SnapshotChanged)
@@ -548,6 +596,7 @@ fn test_identity(app: &AppId) -> Option<String> {
 /// Read the per-app file once the settings location is known.
 pub(crate) fn manage(app: &AppHandle, settings: &Path) {
     app.manage(AppMemory::open(memory_path(settings)));
+    app.manage(site::FrontSite::default());
 }
 
 #[cfg(test)]
@@ -591,6 +640,7 @@ mod tests {
                 .manage(SettingsFile::new(directory.path().join("settings.json")))
                 .manage(memory_in(&directory))
                 .manage(crate::paste::LastTarget::default())
+                .manage(site::FrontSite::default())
                 .build(tauri::test::mock_context(tauri::test::noop_assets()))
                 .map_err(io::Error::other)?;
             Ok(Self { directory, app })
@@ -610,6 +660,7 @@ mod tests {
         ) -> Result<(), CommandError> {
             let mut captured = crate::paste::Captured::unknown(app.system);
             captured.target.app = Some(app.clone());
+            captured.pid = Some(42);
             captured.app_identity = identity.clone();
             self.app.state::<crate::paste::LastTarget>().capture_fixture(captured);
             tauri::async_runtime::block_on(remember_app_output(
@@ -620,6 +671,11 @@ mod tests {
                 output.map(str::to_owned),
                 paste,
                 identity,
+                self.app
+                    .state::<crate::paste::LastTarget>()
+                    .with_captured(|captured| site::of_capture(self.app.handle(), captured?))
+                    .flatten()
+                    .map(|site| site.id),
             ))
         }
 
@@ -884,6 +940,85 @@ mod tests {
             assert_eq!(fs::read(path)?, bytes);
             assert_eq!(fs::metadata(path)?.permissions(), permissions?);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn a_format_chosen_on_a_website_is_kept_for_the_site_and_paste_for_the_browser() -> io::Result<()> {
+        let choices = Choices::new()?;
+        let chrome = mac("com.google.Chrome");
+        let overleaf = ibis_core::destination::site("https://www.overleaf.com/project/0000")
+            .ok_or_else(|| io::Error::other("a site"))?;
+        choices
+            .app
+            .state::<site::FrontSite>()
+            .record(Some(ibis_native::site::Front::App {
+                app: chrome.clone(),
+                pid: 42,
+                site: Some(overleaf.clone()),
+            }));
+        choices
+            .choose(&chrome, Some("natbib"), Some(AppPaste::Paste))
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        assert_eq!(
+            choices.format(&overleaf).map(|output| output.id().to_owned()),
+            Some("natbib".into())
+        );
+        assert_eq!(choices.format(&chrome), None);
+        assert_eq!(choices.reopened().paste(&chrome), Ok(Some(AppPaste::Paste)));
+        // The settings file holds the site name, never the address.
+        let saved = fs::read_to_string(choices.directory.path().join("settings.json"))?;
+        assert!(saved.contains("overleaf.com") && !saved.contains("project"));
+        // With no site read, the browser is one app again.
+        choices.app.state::<site::FrontSite>().record(None);
+        choices
+            .choose(&chrome, Some("ieee"), None)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        assert_eq!(
+            choices.format(&chrome).map(|output| output.id().to_owned()),
+            Some("ieee".into())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_choice_made_on_one_site_is_refused_once_the_browser_shows_another() -> io::Result<()> {
+        let choices = Choices::new()?;
+        let chrome = mac("com.google.Chrome");
+        let site = |address| ibis_core::destination::site(address).ok_or_else(|| io::Error::other("a site"));
+        let (overleaf, docs) = (site("https://overleaf.com/")?, site("https://docs.google.com/")?);
+        let front = |site: &AppId| {
+            choices
+                .app
+                .state::<site::FrontSite>()
+                .record(Some(ibis_native::site::Front::App {
+                    app: chrome.clone(),
+                    pid: 42,
+                    site: Some(site.clone()),
+                }));
+        };
+        front(&overleaf);
+        choices
+            .choose(&chrome, Some("natbib"), None)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        // The picker was reopened over Google Docs before an Overleaf choice ran.
+        front(&docs);
+        let late = tauri::async_runtime::block_on(remember_app_output(
+            choices.app.handle().clone(),
+            choices.app.state(),
+            choices.app.state(),
+            chrome.normalized(),
+            Some("ieee".into()),
+            None,
+            test_identity(&chrome),
+            Some("overleaf.com".into()),
+        ));
+        assert!(late.is_err());
+        assert_eq!(choices.format(&docs), None);
+        assert_eq!(
+            choices.format(&overleaf).map(|output| output.id().to_owned()),
+            Some("natbib".into())
+        );
         Ok(())
     }
 }

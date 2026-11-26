@@ -176,14 +176,18 @@ export const commands = {
 	/** The saved preferences once a submitted change has run. */
 	pickerPreferencesSaved: (receipt: number) => __TAURI_INVOKE<PickerSave>("picker_preferences_saved", { receipt }),
 	/**
-	 * Remember a format, a delivery choice or both for the captured app. Whichever
+	 * Remember a format, a delivery choice or both for the captured app; the
+	 * format goes to the website in front instead when one was read. Whichever
 	 * is absent keeps its saved value; only a delivery choice revokes outstanding
 	 * proofs. The format goes to the settings file first, then the delivery choice
 	 * to the per-app file; a delivery that fails after its format saved says so.
 	 */
-	rememberAppOutput: (appId: string, output: string | null, paste: AppPaste | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
-	/** Forget only the current app's format, after checking the captured target. */
-	forgetAppOutput: (appId: string, identity: string | null) => __TAURI_INVOKE<null>("forget_app_output", { appId, identity }),
+	rememberAppOutput: (appId: string, output: string | null, paste: AppPaste | null, identity: string | null, site: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity, site }),
+	/**
+	 * Forget only the format the current app or website uses, after checking the
+	 * captured target.
+	 */
+	forgetAppOutput: (appId: string, identity: string | null, site: string | null) => __TAURI_INVOKE<null>("forget_app_output", { appId, identity, site }),
 	formatSettings: () => __TAURI_INVOKE<FormatSettingsView>("format_settings"),
 	forgetAppFormat: (id: string) => __TAURI_INVOKE<null>("forget_app_format", { id }),
 	/**
@@ -894,6 +898,19 @@ export type PickerDestination = {
 	paste: AppPaste | null;
 	/** An unrecognised app has a proven target but no delivery choice yet. */
 	paste_question: boolean;
+	/** The app or site whose remembered format reset removes, named by the engine. */
+	remembered_for?: string | null;
+	/**
+	 * The website in front in that app, by name, when it is a browser and
+	 * the site could be read: formats are remembered for it, while paste
+	 * choices stay with the app.
+	 */
+	site?: string | null;
+	/**
+	 * That website's site name, such as `overleaf.com`, which a format
+	 * choice echoes so it is refused once another site is in front.
+	 */
+	site_id?: string | null;
 	/** This app needs a delivery choice after an unreadable per-app file; formats use defaults. */
 	unreadable: boolean;
 	/** Your format for this kind, used by the return-to-usual action. */
@@ -1351,8 +1368,11 @@ export type Sources = {
 	zotero: ZoteroPresence;
 };
 
-/** The operating system an app ID belongs to. */
-export type System = "macos" | "windows" | "linux";
+/**
+ * Where an app ID belongs: the operating system it runs on, or the web for
+ * a website inside a browser, whose ID is only its site name (see [`site`]).
+ */
+export type System = "macos" | "windows" | "linux" | "web";
 
 export type SystemIcon = {
 	bytes: number[];
