@@ -273,8 +273,8 @@ main[tabindex="-1"]:focus, [data-result]:focus { outline: none; }
   .index li { flex: none; }
   .index nav a { padding: 0; }
   .index nav .key { scroll-margin-block-start: calc(-1 * var(--website-nav-height)); }
-  /* Here the link is its chip, so the inside ring lies on the fill: on a filled chip it takes the page colour. */
-  .index nav a[aria-current]:focus-visible { outline-color: var(--website-bg); }
+  /* Here the link is its chip, so the inside ring lies on the fill: on a filled chip (current or hovered, as the chip rule fills it) it takes the page colour. */
+  .index nav a:is([aria-current], :hover):focus-visible { outline-color: var(--website-bg); }
   .index ul[data-at-end] { mask-image: none; }
   .index ul[data-at-end]:not([data-at-start]) { mask-image: linear-gradient(var(--nav-fade), transparent, CanvasText 15%); }
   .index ul:not([data-at-end]):not([data-at-start]) { mask-image: linear-gradient(var(--nav-fade), transparent, CanvasText 15%, CanvasText 85%, transparent); }
