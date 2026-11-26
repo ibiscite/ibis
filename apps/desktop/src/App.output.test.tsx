@@ -48,10 +48,10 @@ test("a format pick is remembered for the browser, and a later pick replaces it"
   await waitFor(() => expect(remembered).toEqual(["cite"]));
   destination = fixtureDestination({ ...BROWSER, format: formatAnswer("cite", "app") });
   await act(async () => { await showPicker(); });
-  await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite · Example Browser"));
+  await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite"));
   await pick("Typst");
   await waitFor(() => expect(remembered).toEqual(["cite", "typst"]));
-  await waitFor(() => expect(formatShown()).toBe("Typst · Example Browser"));
+  await waitFor(() => expect(formatShown()).toBe("Typst"));
   expect(calls).not.toContain("picker_preferences_saved");
 });
 

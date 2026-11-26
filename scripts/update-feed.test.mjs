@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { NIGHTLY_PUBKEY, PACKAGES, compareVersions, feedKeyId, feedPublicKey, keyId, manifest, nightlyConfig, nightlyVersion, previousNightlyIdentity } from "./update-feed.mjs";
+import { NIGHTLY_PUBKEY, PACKAGES, compareVersions, expectedVersion, feedKeyId, feedPublicKey, keyId, manifest, nightlyConfig, nightlyVersion, previousNightlyIdentity } from "./update-feed.mjs";
 
 const fixture = (name) => readFileSync(new URL(`../fixtures/updates/${name}`, import.meta.url), "utf8");
 const testKey = fixture("test-key.pub");
@@ -276,4 +276,12 @@ test("a feed names the one key that signed it, so the update test can see a key 
   const other = Buffer.from(`untrusted comment: synthetic\n${line}\n`).toString("base64");
   assert.notEqual(keyId(other), keyId(signature));
   assert.throws(() => feedKeyId({ platforms: { a: { signature }, b: { signature: other } } }));
+});
+
+test("a run expects its tag's version, which must be the workspace's, or the nightly's", () => {
+  const nightly = () => "0.4.1-nightly.20261125000000";
+  assert.equal(expectedVersion("refs/tags/v0.4.0", "0.4.0", nightly), "0.4.0");
+  assert.equal(expectedVersion("refs/heads/main", "0.4.0", nightly), "0.4.1-nightly.20261125000000");
+  assert.equal(expectedVersion("refs/heads/a-branch", "0.4.0", nightly), "0.4.1-nightly.20261125000000");
+  assert.throws(() => expectedVersion("refs/tags/v0.3.9", "0.4.0", nightly), /does not match the workspace version 0\.4\.0/);
 });

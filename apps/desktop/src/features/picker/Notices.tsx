@@ -4,7 +4,7 @@ import { FrameNotice, LineNotice } from "../../ui/Frame";
 import { QuietNotice } from "../../ui/NoticeSlot";
 import { Progress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
-import { isolate, type MessageId, say, warningText } from "../../i18n";
+import { type MessageId, say, warningText } from "../../i18n";
 
 /** An action whose failure the picker reports in its notices. */
 /** What failed, by operation: each says what didn't happen and what to do. */
@@ -77,7 +77,7 @@ export function notices({ library, failures, error, copyError, copied, confirmat
       <LineNotice role="alert" key={operation}>{say(OPERATION_FAILURES[operation])}</LineNotice>
     )),
     missing.length > 0 && <LineNotice key="missing">{say("picker-missing-citations", { keys: missing.join(", ") })}</LineNotice>,
-    editorNotice && <LineNotice key="editor" className="editor-notice">{say("picker-editor-waiting", { format: isolate(editorNotice) })}</LineNotice>,
+    editorNotice && <LineNotice key="editor" className="editor-notice">{say("picker-editor-asking")}</LineNotice>,
     projectNotice && <LineNotice key="project">{projectNotice}</LineNotice>,
     library?.settings_notice && <LineNotice key="settings" role="alert">{library.settings_notice}</LineNotice>,
   ].filter(Boolean);

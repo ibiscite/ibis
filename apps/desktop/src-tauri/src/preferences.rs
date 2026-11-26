@@ -941,7 +941,7 @@ mod tests {
         std::fs::set_permissions(&path, readonly).unwrap_or_else(|e| panic!("{e}"));
         let refused = file.save_preferences(
             PickerPreferencesPatch {
-                density: Some(Density::Compact),
+                density: Some(Density::Comfortable),
                 ..Default::default()
             },
             None,
@@ -957,7 +957,7 @@ mod tests {
                 .preferences()
                 .unwrap_or_else(|e| panic!("{e}"))
                 .density,
-            Density::Comfortable
+            Density::Compact
         );
         std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
         std::fs::create_dir(&path).unwrap_or_else(|e| panic!("{e}"));
@@ -1165,7 +1165,7 @@ mod tests {
             appearance: Some(Appearance::System),
             accent: Some(Accent::System),
             picker_placement: Some(PickerPlacement::Centre),
-            density: Density::Comfortable,
+            density: Density::Compact,
             larger_text: false,
             paste: true,
             menu_bar: true,
@@ -1206,7 +1206,7 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{e}"));
             let baseline = PickerPreferences::from_settings(&crate::settings_fixture::read(&file.path));
             let mut view = baseline;
-            view.density = Density::Compact;
+            view.density = Density::Comfortable;
             // Each client sends only the field its user changed from the same baseline.
             let patches = [
                 serde_json::json!({ "output": "chicago-author-date" }),
@@ -1234,7 +1234,7 @@ mod tests {
                 starts[1 - first].send(()).unwrap_or_else(|e| panic!("{e}"));
                 let (_, saved) = results.recv().unwrap_or_else(|e| panic!("{e}"));
                 assert_eq!(saved.portable.output.as_deref(), Some("chicago-author-date"));
-                assert_eq!(saved.portable.density, Some(Density::Compact));
+                assert_eq!(saved.portable.density, Some(Density::Comfortable));
             });
         }
     }

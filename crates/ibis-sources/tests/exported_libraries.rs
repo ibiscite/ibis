@@ -356,3 +356,29 @@ fn the_record_limit_counts_every_record_the_file_holds() {
     // A key past the limit is said to be possibly unread.
     assert!(loaded.cut_short);
 }
+
+/// One record bound for every reader (1 MiB of CSL data): a RIS record or CSV
+/// row just under it is kept, one just over is skipped with a work-limit warning.
+#[test]
+fn records_past_the_shared_size_bound_are_skipped_in_ris_and_csv() {
+    let directory = tempfile::tempdir().unwrap();
+    for (format, write) in [
+        (
+            "ris",
+            (|title: &str| format!("TY  - BOOK\r\nTI  - {title}\r\nPY  - 2026\r\nER  - \r\n")) as fn(&str) -> String,
+        ),
+        ("csv", |title: &str| {
+            format!("type,title,author,issued,container-title,volume,issue,page,DOI\r\nbook,{title},,2026,,,,,\r\n")
+        }),
+    ] {
+        let mut kept_and_skipped = vec![];
+        for title_bytes in [1024 * 1024 - 200, 1024 * 1024 + 1] {
+            let path = directory.path().join(format!("invented-{title_bytes}.{format}"));
+            std::fs::write(&path, write(&"x".repeat(title_bytes))).unwrap();
+            let library = ibis_sources::load_file(&path).unwrap();
+            let skipped = library.warnings.iter().any(|w| w.code == WarningCode::WorkLimit);
+            kept_and_skipped.push((records(&library).len(), skipped));
+        }
+        assert_eq!(kept_and_skipped, [(1, false), (0, true)], "{format}");
+    }
+}

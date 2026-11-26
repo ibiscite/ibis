@@ -43,6 +43,41 @@ pub fn parse_query(query: &str) -> Option<Identifier> {
 /// Longer pasted text is searched as words, never as an identifier.
 const MAX_QUERY_LEN: usize = 512;
 
+/// The most DOIs [`dois_in`] reports for one text. A caller that needs every
+/// DOI of a text treats a result this long as incomplete.
+pub const MAX_DOIS_FOUND: usize = 32;
+
+/// Each DOI written in running text, canonical, in order: bare (`10.…/…`),
+/// after `doi:` or inside a `doi.org` link. A DOI is one word, so it ends at
+/// white space, and sentence punctuation after it is not part of it. Each
+/// word is read once and gives at most one DOI, from its first `10.` that
+/// starts a part of it. Stops after [`MAX_DOIS_FOUND`].
+pub fn dois_in(text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    for word in text.split_whitespace() {
+        if !word.contains("10.") {
+            continue;
+        }
+        // The first `10.` that starts a word part, as in `doi:10.…` or `/10.…`.
+        let start = word.match_indices("10.").map(|(at, _)| at).find(|&at| {
+            word[..at]
+                .chars()
+                .next_back()
+                .is_none_or(|before| !before.is_alphanumeric() && before != '.')
+        });
+        let candidate = start
+            .map(|at| &word[at..])
+            .filter(|candidate| candidate.len() <= MAX_QUERY_LEN);
+        if let Some(value) = candidate.and_then(|candidate| doi(trim_wrapping(candidate))) {
+            found.push(value);
+            if found.len() == MAX_DOIS_FOUND {
+                break;
+            }
+        }
+    }
+    found
+}
+
 /// Read a complete identifier at the start of a pasted list, before citation
 /// punctuation is considered. The returned label omits surrounding punctuation.
 pub(crate) fn parse_token<'a>(text: &'a str, work: &mut Work<'_>) -> Option<(&'a str, Identifier, &'a str)> {
@@ -395,6 +430,21 @@ fn isbn13_sum(digits: &str) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dois_in_running_text_are_found_whole_and_in_order() {
+        let text = "Invented Tides, vol. 3. doi:10.5555/Tides.2031 Received 2030.\n\
+                    See https://doi.org/10.5555/Second (ref. 12), and 10.5555/third.\n\
+                    Not a DOI: v10.5555/x, 210.5555/y, 10.55/z, 10.5555/";
+        assert_eq!(dois_in(text), ["10.5555/tides.2031", "10.5555/second", "10.5555/third"]);
+        assert!(dois_in(&"10.5555/a ".repeat(100)).len() == MAX_DOIS_FOUND);
+        // A long prefix does not hide a DOI that is itself within bounds.
+        let long = format!("10.5555/a doi:10.5555/{}", "b".repeat(501));
+        assert_eq!(dois_in(&long).len(), 2);
+        // Long words of rejected prefixes are read once each.
+        assert!(dois_in(&"x10.".repeat(16_384)).is_empty());
+        assert!(dois_in("").is_empty());
+    }
 
     #[test]
     fn queries_in_common_written_forms_are_recognized() {

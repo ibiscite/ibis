@@ -3,6 +3,9 @@
     {
       "contract": 1,
       "method": "libraries",
+      "needs": "nothing",
+      "network": "offline",
+      "palette": [],
       "params": {
         "$defs": {
           "LibraryId": {
@@ -1003,6 +1006,11 @@
                 "const": "proposals",
                 "description": "Changes an AI app proposes and the person confirms in Ibis (decision 0055).",
                 "type": "string"
+              },
+              {
+                "const": "original-entries",
+                "description": "Each record's original entry as the file wrote it, which `entry` copies.",
+                "type": "string"
               }
             ]
           },
@@ -1413,6 +1421,9 @@
     {
       "contract": 1,
       "method": "search",
+      "needs": "records",
+      "network": "offline",
+      "palette": [],
       "params": {
         "$defs": {
           "LibraryId": {
@@ -3005,6 +3016,11 @@
     {
       "contract": 1,
       "method": "show",
+      "needs": "records",
+      "network": "offline",
+      "palette": [
+        "reference"
+      ],
       "params": {
         "$defs": {
           "ItemRef": {
@@ -4408,6 +4424,9 @@
     {
       "contract": 1,
       "method": "cite",
+      "needs": "records",
+      "network": "offline",
+      "palette": [],
       "params": {
         "$defs": {
           "CitationForm": {
@@ -6602,6 +6621,9 @@
     {
       "contract": 1,
       "method": "records",
+      "needs": "nothing",
+      "network": "offline",
+      "palette": [],
       "params": {
         "$defs": {
           "CitationForm": {
@@ -8719,6 +8741,9 @@
     {
       "contract": 1,
       "method": "project",
+      "needs": "nothing",
+      "network": "offline",
+      "palette": [],
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -9712,6 +9737,11 @@
     {
       "contract": 1,
       "method": "entry",
+      "needs": "original-entries",
+      "network": "offline",
+      "palette": [
+        "reference"
+      ],
       "params": {
         "$defs": {
           "ItemRef": {
@@ -10635,6 +10665,11 @@
     {
       "contract": 1,
       "method": "outline",
+      "needs": "records",
+      "network": "offline",
+      "palette": [
+        "reference"
+      ],
       "params": {
         "$defs": {
           "ItemRef": {
@@ -11612,6 +11647,11 @@
     {
       "contract": 1,
       "method": "read",
+      "needs": "attachment-text",
+      "network": "offline",
+      "palette": [
+        "attachment"
+      ],
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -12514,6 +12554,11 @@
     {
       "contract": 1,
       "method": "find-in",
+      "needs": "attachment-text",
+      "network": "offline",
+      "palette": [
+        "attachment"
+      ],
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -13360,6 +13405,12 @@
     {
       "contract": 1,
       "method": "share",
+      "needs": "records",
+      "network": "offline",
+      "palette": [
+        "reference",
+        "references"
+      ],
       "params": {
         "$defs": {
           "ItemRef": {
@@ -14321,6 +14372,9 @@
     {
       "contract": 1,
       "method": "styles",
+      "needs": "nothing",
+      "network": "offline",
+      "palette": [],
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -14488,6 +14542,9 @@
     {
       "contract": 1,
       "method": "outputs",
+      "needs": "nothing",
+      "network": "offline",
+      "palette": [],
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -14683,6 +14740,9 @@
     {
       "contract": 1,
       "method": "schema",
+      "needs": "nothing",
+      "network": "offline",
+      "palette": [],
       "params": {
         "$defs": {
           "Method": {
@@ -14759,6 +14819,21 @@
               "method": {
                 "$ref": "#/$defs/Method"
               },
+              "needs": {
+                "$ref": "#/$defs/Needs",
+                "description": "What an open library must offer for the method to have anything to work on."
+              },
+              "network": {
+                "$ref": "#/$defs/Network",
+                "description": "Whether answering may reach the network."
+              },
+              "palette": {
+                "description": "The selections the picker's ⌘K list offers the method for.",
+                "items": {
+                  "$ref": "#/$defs/Selection"
+                },
+                "type": "array"
+              },
               "params": {
                 "$ref": "#/$defs/Schema",
                 "description": "The JSON Schema of the method's parameters."
@@ -14770,16 +14845,84 @@
             },
             "required": [
               "method",
+              "needs",
+              "network",
+              "palette",
               "contract",
               "params",
               "result"
             ],
             "type": "object"
           },
+          "Needs": {
+            "description": "What an open library must offer for a method to have anything to work on.\nThis is what the library can do, never whether the person allowed it:\na front end adds that (decision 0055) before it offers the method.",
+            "oneOf": [
+              {
+                "const": "nothing",
+                "description": "Works with no library open.",
+                "type": "string"
+              },
+              {
+                "const": "records",
+                "description": "Bibliographic records.",
+                "type": "string"
+              },
+              {
+                "const": "attachment-text",
+                "description": "Attachments whose text can be read.",
+                "type": "string"
+              },
+              {
+                "const": "original-entries",
+                "description": "Each record's original entry as its file wrote it.",
+                "type": "string"
+              },
+              {
+                "const": "as-called",
+                "description": "Whatever the method it calls needs.",
+                "type": "string"
+              }
+            ]
+          },
+          "Network": {
+            "description": "Whether answering a method may reach the network, and where (decision 0008).",
+            "oneOf": [
+              {
+                "const": "offline",
+                "description": "Never.",
+                "type": "string"
+              },
+              {
+                "const": "as-called",
+                "description": "As the method it calls does.",
+                "type": "string"
+              }
+            ]
+          },
           "Schema": {
             "type": [
               "object",
               "boolean"
+            ]
+          },
+          "Selection": {
+            "description": "A selection ⌘K can offer a method for.",
+            "oneOf": [
+              {
+                "const": "reference",
+                "description": "One reference.",
+                "type": "string"
+              },
+              {
+                "const": "references",
+                "description": "Several references.",
+                "type": "string"
+              },
+              {
+                "const": "attachment",
+                "description": "One attachment of a reference.",
+                "type": "string"
+              }
             ]
           }
         },
@@ -14794,6 +14937,9 @@
     {
       "contract": 1,
       "method": "call",
+      "needs": "as-called",
+      "network": "as-called",
+      "palette": [],
       "params": {
         "$defs": {
           "Method": {
@@ -17100,6 +17246,21 @@
               "method": {
                 "$ref": "#/$defs/Method"
               },
+              "needs": {
+                "$ref": "#/$defs/Needs",
+                "description": "What an open library must offer for the method to have anything to work on."
+              },
+              "network": {
+                "$ref": "#/$defs/Network",
+                "description": "Whether answering may reach the network."
+              },
+              "palette": {
+                "description": "The selections the picker's ⌘K list offers the method for.",
+                "items": {
+                  "$ref": "#/$defs/Selection"
+                },
+                "type": "array"
+              },
               "params": {
                 "$ref": "#/$defs/Schema",
                 "description": "The JSON Schema of the method's parameters."
@@ -17111,11 +17272,59 @@
             },
             "required": [
               "method",
+              "needs",
+              "network",
+              "palette",
               "contract",
               "params",
               "result"
             ],
             "type": "object"
+          },
+          "Needs": {
+            "description": "What an open library must offer for a method to have anything to work on.\nThis is what the library can do, never whether the person allowed it:\na front end adds that (decision 0055) before it offers the method.",
+            "oneOf": [
+              {
+                "const": "nothing",
+                "description": "Works with no library open.",
+                "type": "string"
+              },
+              {
+                "const": "records",
+                "description": "Bibliographic records.",
+                "type": "string"
+              },
+              {
+                "const": "attachment-text",
+                "description": "Attachments whose text can be read.",
+                "type": "string"
+              },
+              {
+                "const": "original-entries",
+                "description": "Each record's original entry as its file wrote it.",
+                "type": "string"
+              },
+              {
+                "const": "as-called",
+                "description": "Whatever the method it calls needs.",
+                "type": "string"
+              }
+            ]
+          },
+          "Network": {
+            "description": "Whether answering a method may reach the network, and where (decision 0008).",
+            "oneOf": [
+              {
+                "const": "offline",
+                "description": "Never.",
+                "type": "string"
+              },
+              {
+                "const": "as-called",
+                "description": "As the method it calls does.",
+                "type": "string"
+              }
+            ]
           },
           "NoRecoveryReason": {
             "enum": [
@@ -18056,6 +18265,26 @@
             ],
             "type": "object"
           },
+          "Selection": {
+            "description": "A selection ⌘K can offer a method for.",
+            "oneOf": [
+              {
+                "const": "reference",
+                "description": "One reference.",
+                "type": "string"
+              },
+              {
+                "const": "references",
+                "description": "Several references.",
+                "type": "string"
+              },
+              {
+                "const": "attachment",
+                "description": "One attachment of a reference.",
+                "type": "string"
+              }
+            ]
+          },
           "Shorthand": {
             "additionalProperties": false,
             "description": "A search with its typed signal and locator split off.",
@@ -18123,6 +18352,11 @@
               {
                 "const": "proposals",
                 "description": "Changes an AI app proposes and the person confirms in Ibis (decision 0055).",
+                "type": "string"
+              },
+              {
+                "const": "original-entries",
+                "description": "Each record's original entry as the file wrote it, which `entry` copies.",
                 "type": "string"
               }
             ]

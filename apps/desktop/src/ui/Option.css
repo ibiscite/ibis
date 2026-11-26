@@ -38,10 +38,10 @@
 #results .ui-option:not([data-active], [data-citation-selected]) .result-tile { background: transparent; }
 @media (hover: hover) { #results .ui-option[data-hovered]:not([data-active], [data-citation-selected]) .result-tile { background: var(--fill-control); } }
 .ui-option[data-citation-selected] .result-tile { background: var(--scarlet); color: var(--on-scarlet); }
-/* The year shares the title's first line in every density, size and view. */
+/* Comfortable: the year shares the title's first line at every size and view. Compact puts it in the byline. */
 .result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
 .result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
-.result-year, .result-meta, .result-why, .result-project, .result-first-author { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.result-year, .result-meta, .result-why, .result-project { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .result-year { flex-shrink: 0; margin-inline-start: auto; font-variant-numeric: tabular-nums; }
 /* The meta line wraps only when the byline, type and library badge cannot
    all fit at their sizes; then they move under the byline. A body at least
@@ -69,7 +69,7 @@
   .result-byline > .result-authors { max-width: 100%; }
   .result-separator { display: none; }
   .result-container { flex: none; max-width: 100%; }
-  .result-container::before { content: " · "; white-space: pre; }
+  .result-container::before, .result-byline > .result-year:not(:first-child)::before { content: " · "; white-space: pre; }
 }
 .result-why { font-style: italic; }
 .result-library { flex: 0 1000 auto; min-width: min(5em, 100%); max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -77,29 +77,32 @@
    every platform (C4, D7): the system accent on macOS and Windows, the GTK
    selection colour on Linux. Fill only: no border, ring or side pill. */
 .ui-option[data-active] { background: var(--selected); color: var(--selected-text); }
-[data-active] :is(.result-meta, .result-year, .result-why, .result-project, .result-first-author) { color: var(--selected-text-secondary); }
+[data-active] :is(.result-meta, .result-year, .result-why, .result-project) { color: var(--selected-text-secondary); }
 /* An added row that is also selected keeps its tile apart from any accent,
    red and orange included (D9): the selected text colour with a scarlet check. */
 .ui-option[data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--scarlet); }
-/* Compact draws a 24 px tile without a fill, centred in the 32 px tile column
-   so titles still start where the search text does; its control covers 32 px. */
+/* [C4] Compact, the default: one line per row, a 24 px tile without a fill
+   centred in the 32 px tile column (so titles still start where the search text
+   does; its control covers 32 px), the title in body type, then the byline in
+   secondary type: author · year · container, as in Mail's lists. Only the
+   highlighted row opens to two lines, the byline under the title, so the
+   reference Enter acts on reads whole while every other row stays one line. */
 :root[data-density="compact"] { --row-height: var(--row-compact); }
 :root[data-density="compact"] .ui-option:not([data-citation-selected]) .result-tile { background: transparent; }
 :root[data-density="compact"] .result-tile { width: 1.5rem; height: 1.5rem; }
-:root[data-density="compact"] .result-meta { display: none; }
-/* Rows that tell similar references apart (#492). Comfortable rows show
-   shortened authors and the container on one line; Compact puts the first
-   author after the title. */
-.result-first-author { flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:root[data-density="compact"] .result-title { flex: 0 1 auto; }
-/* In a very narrow Compact row (large text in a small window) the title takes
-   its own line, with the first author below it, rather than being
-   squeezed beside them. */
-@container (max-width: 16em) {
-  :root[data-density="compact"] .result-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 0; }
-  :root[data-density="compact"] .result-first-author { grid-row: 2; }
-  :root[data-density="compact"] .result-year { grid-area: 1 / 2; }
-}
+:root[data-density="compact"] #results .ui-option { min-height: var(--row-dense); padding-block: var(--space-1); }
+@media (pointer: coarse) { :root[data-density="compact"] #results .ui-option { min-height: max(var(--row-dense), var(--touch-target)); } }
+:root[data-density="compact"] #results .result-title { font-size: var(--type-body-size); line-height: var(--type-body-line); }
+:root[data-density="compact"] .result-byline > .result-year { flex: none; margin: 0; }
+:root[data-density="compact"] #results .ui-option:not([data-active]) .result-body { flex-direction: row; align-items: baseline; justify-content: start; gap: var(--space-3); overflow: hidden; white-space: nowrap; }
+:root[data-density="compact"] #results .ui-option:not([data-active]) .result-line { flex: 0 1 auto; max-width: 70%; }
+:root[data-density="compact"] #results .ui-option:not([data-active]) .result-meta { flex: 1 1 0; min-width: 0; margin: 0; }
+:root[data-density="compact"] #results .ui-option:not([data-active]) :is(.result-why, .result-project) { flex: none; }
+/* One line cuts with an ellipsis, never mid-word: the title last of all, then the
+   container before the authors, who keep a name's worth of room. */
+:root[data-density="compact"] #results .ui-option:not([data-active]) .result-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root[data-density="compact"] #results .ui-option:not([data-active]) .result-authors { flex: 0 1 auto; }
+:root[data-density="compact"] #results .ui-option:not([data-active]) .result-container { flex: 0 1000 auto; }
 @media (prefers-contrast: more) {
   /* A 3 px edge drawn inside the row, so the text stays put. */
   .ui-option[data-active] { outline: 3px solid var(--text); outline-offset: -3px; }
@@ -129,7 +132,7 @@
 .ui-option .result-title {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
-/* Compact is one line (C4): a long title ends in an ellipsis, as in Mail's lists. */
+/* Compact titles are one line (C4): a long one ends in an ellipsis, as in Mail's lists; Peek shows it whole. */
 :root[data-density="compact"] .ui-option .result-title { -webkit-line-clamp: 1; }
 .ui-option .result-meta { flex-wrap: nowrap; }
 .ui-option .result-byline, .ui-option .result-library { min-width: 0; }

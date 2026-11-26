@@ -493,22 +493,47 @@ mod tests {
     #[test]
     fn a_document_is_read_within_its_bound_and_as_text() {
         let folder = tempfile::tempdir().unwrap();
-        let path = folder.path().join("draft.md");
+        // Resolve the test root, including macOS's /var -> /private/var alias.
+        let root = std::fs::canonicalize(folder.path()).unwrap();
+        let path = root.join("draft.md");
         std::fs::write(&path, "\u{feff}Lanterns [@vale2024].").unwrap();
         assert_eq!(read_text(&path, 64, never()).unwrap(), "Lanterns [@vale2024].");
+        // Windows canonicalization produces a verbatim drive path.
+        assert_eq!(
+            read_text(&path.canonicalize().unwrap(), 64, never()).unwrap(),
+            "Lanterns [@vale2024]."
+        );
         assert_eq!(read(&path, 4, never()), Err(Refusal::TooLarge));
         std::fs::write(&path, [0xff, 0xfe, 0x00]).unwrap();
         assert_eq!(read_text(&path, 64, never()), Err(Refusal::NotText));
-        assert_eq!(read(&folder.path().join("gone.md"), 64, never()), Err(Refusal::Missing));
+        assert_eq!(read(&root.join("gone.md"), 64, never()), Err(Refusal::Missing));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_document_with_a_symlinked_parent_is_refused() {
+        let folder = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(folder.path()).unwrap();
+        let real = root.join("real");
+        std::fs::create_dir(&real).unwrap();
+        std::fs::write(real.join("draft.md"), "Lanterns [@vale2024].").unwrap();
+        assert_eq!(
+            read_text(&real.join("draft.md"), 64, never()).unwrap(),
+            "Lanterns [@vale2024]."
+        );
+        let link = root.join("linked");
+        std::os::unix::fs::symlink("real", &link).unwrap();
+        assert_eq!(read_text(&link.join("draft.md"), 64, never()), Err(Refusal::NotLocal));
     }
 
     #[cfg(unix)]
     #[test]
     fn a_link_is_not_read() {
         let folder = tempfile::tempdir().unwrap();
-        let path = folder.path().join("draft.md");
+        let root = std::fs::canonicalize(folder.path()).unwrap();
+        let path = root.join("draft.md");
         std::fs::write(&path, "text").unwrap();
-        let link = folder.path().join("link.md");
+        let link = root.join("link.md");
         std::os::unix::fs::symlink(&path, &link).unwrap();
         assert_eq!(read(&link, 64, never()), Err(Refusal::NotLocal));
     }
@@ -541,7 +566,8 @@ mod tests {
     #[test]
     fn a_missing_child_is_unavailable() {
         let folder = tempfile::tempdir().unwrap();
-        let reader = DocumentReader::new(folder.path().join("no-such-ibis"));
+        let root = std::fs::canonicalize(folder.path()).unwrap();
+        let reader = DocumentReader::new(root.join("no-such-ibis"));
         assert_eq!(
             reader.scan_text(TextKind::Markdown, "[@vale2024]", &|| false),
             Err(Refusal::Unavailable)

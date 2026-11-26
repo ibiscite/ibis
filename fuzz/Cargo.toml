@@ -16,7 +16,7 @@ fuzzing = ["dep:libfuzzer-sys"]
 [dependencies]
 ibis = { path = "../crates/ibis-cli" }
 ibis-core = { path = "../crates/ibis-core" }
-ibis-sources = { path = "../crates/ibis-sources" }
+ibis-sources = { path = "../crates/ibis-sources", features = ["endnote"] }
 libfuzzer-sys = { version = "=0.4.13", optional = true }
 serde_json = "1.0.154"
 tempfile = "3.27.0"
@@ -30,8 +30,88 @@ doc = false
 bench = false
 
 [[bin]]
+name = "damaged_csl_json"
+path = "fuzz_targets/damaged_csl_json.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "damaged_ris"
+path = "fuzz_targets/damaged_ris.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "damaged_csv"
+path = "fuzz_targets/damaged_csv.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "damaged_pdf"
 path = "fuzz_targets/damaged_pdf.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "adapter_answer"
+path = "fuzz_targets/adapter_answer.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "endnote_export"
+path = "fuzz_targets/endnote_export.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "zotero_live"
+path = "fuzz_targets/zotero_live.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "bbt_keys"
+path = "fuzz_targets/bbt_keys.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "bibtex_edit"
+path = "fuzz_targets/bibtex_edit.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "project_bib"
+path = "fuzz_targets/project_bib.rs"
+required-features = ["fuzzing"]
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "zotero_profiles"
+path = "fuzz_targets/zotero_profiles.rs"
 required-features = ["fuzzing"]
 test = false
 doc = false

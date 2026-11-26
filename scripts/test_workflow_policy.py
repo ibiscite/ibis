@@ -117,7 +117,7 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(result["env"]["RESULTS"], " ".join(f"${{{{ needs.{name}.result }}}}" for name in ["plan", "interface", "web", "dependencies"]))
         # Every job the result needs is either always required, planned or qualification.
         planned = {"rust", "pictures", "conformance", "release-checks"}
-        qualification = {"webkit", "bibtex-fuzz", "installed"}
+        qualification = {"webkit", "fuzz", "installed"}
         self.assertEqual(set(jobs["result"]["needs"]), {"plan", "interface", "web", "dependencies"} | planned | qualification)
         for name, job in jobs.items():
             if "needs.plan.outputs" in str(job.get("if", "")):
@@ -171,7 +171,7 @@ class CiResultTest(unittest.TestCase):
     def test_daily_qualification_and_failure_reporting_remain_required(self):
         jobs = self.workflow["jobs"]
         self.assertIn("release-checks", jobs["result"]["needs"])
-        for name in ["webkit", "installed", "bibtex-fuzz"]:
+        for name in ["webkit", "installed", "fuzz"]:
             self.assertEqual(jobs[name]["if"], "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'")
             self.assertIn(name, jobs["result"]["needs"])
         self.assertEqual(jobs["nightly-report"]["needs"], "result")
@@ -196,15 +196,64 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(choose["env"]["SHA"], "${{ github.sha }}")
         self.assertLess(choose["run"].index("node scripts/ci-main.mjs"), choose["run"].index("node scripts/publication-guard.mjs nightly"))
         gate = "${{ !cancelled() && !inputs.update_test && (github.event_name != 'schedule' || needs.nightly-commit.outputs.build == 'true') }}"
-        for name in ["build", "windows-paste"]:
+        for name in ["notices", "windows-paste"]:
             self.assertEqual(jobs[name]["needs"], "nightly-commit")
             self.assertEqual(jobs[name]["if"], gate)
-        self.assertEqual(jobs["nightly"]["if"], "${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) && needs.build.result == 'success' && needs.install.result == 'success' }}")
+        # Every package carries the one notices folder (#1271): no build without it.
+        self.assertEqual(jobs["build"]["needs"], ["nightly-commit", "notices"])
+        self.assertEqual(jobs["build"]["if"], gate.replace(" }}", " && needs.notices.result == 'success' }}"))
+        self.assertEqual(jobs["nightly"]["if"], "${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) && needs.build.result == 'success' && needs.verify.result == 'success' && needs.sbom.result == 'success' && needs.install.result == 'success' }}")
         # build needs the nightly choice, which a tag skips; anything after build that
         # relied on the implicit success() check would be skipped with it.
-        for name in ["sign-macos", "install", "publish", "stable-feed", "nightly"]:
+        for name in ["sign-macos", "verify", "sbom", "install", "publish", "stable-feed", "nightly"]:
             self.assertTrue(jobs[name]["if"].startswith("${{ !cancelled() && "), name)
         self.assertEqual(jobs["update-e2e"]["if"], "github.ref == 'refs/heads/main' && (github.event.schedule == '37 4 * * *' || inputs.update_test)")
+
+    def test_nothing_installs_or_publishes_an_unverified_package(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/preview.yml").read_text(encoding="utf-8"))
+        jobs = workflow["jobs"]
+        verify = jobs["verify"]
+        self.assertEqual(verify["needs"], ["build", "sign-macos"])
+        targets = {entry["target"] for entry in verify["strategy"]["matrix"]["include"]}
+        self.assertEqual(targets, {entry["target"] for entry in jobs["build"]["strategy"]["matrix"]["include"]})
+        run = next(step for step in verify["steps"] if step.get("name") == "Verify every package")["run"]
+        self.assertIn("--self-test", run)
+        self.assertNotIn("continue-on-error", str(verify))
+        # Each consumer names the verification and requires its success explicitly.
+        for name in ["install", "publish", "nightly"]:
+            self.assertIn("verify", jobs[name]["needs"], name)
+            self.assertIn("needs.verify.result == 'success'", jobs[name]["if"], name)
+        # The verifier holds no secret and writes nothing.
+        self.assertNotIn("secrets.", str(verify))
+        self.assertNotIn("permissions", verify)
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
+
+    def test_every_published_package_has_an_attested_sbom(self):
+        workflow = yaml.safe_load((ROOT / ".github/workflows/preview.yml").read_text(encoding="utf-8"))
+        jobs = workflow["jobs"]
+        sbom = jobs["sbom"]
+        # Attested on the final bytes, after macOS signing, by a job without secrets.
+        self.assertEqual(sbom["needs"], ["build", "sign-macos"])
+        self.assertEqual(sbom["permissions"], {"contents": "read", "id-token": "write", "attestations": "write"})
+        self.assertNotIn("secrets.", str(sbom))
+        attests = [step for step in sbom["steps"] if str(step.get("uses", "")).startswith("actions/attest@")]
+        self.assertEqual(len(attests), 2)
+        self.assertTrue(all("sbom-path" in step["with"] for step in attests))
+        targets = {entry["target"] for entry in sbom["strategy"]["matrix"]["include"]}
+        self.assertEqual(targets, {entry["target"] for entry in jobs["build"]["strategy"]["matrix"]["include"]})
+        for name in ["publish", "nightly"]:
+            self.assertIn("sbom", jobs[name]["needs"], name)
+            self.assertIn("needs.sbom.result == 'success'", jobs[name]["if"], name)
+            runs = "\n".join(step.get("run", "") for step in jobs[name]["steps"])
+            self.assertIn("bash scripts/verify-sboms.sh", runs, name)
+            # Checked before anything is signed with the update key.
+            steps = [step.get("name", "") for step in jobs[name]["steps"]]
+            check = next(i for i, step in enumerate(jobs[name]["steps"]) if "verify-sboms" in step.get("run", ""))
+            self.assertLess(check, steps.index("Sign the update packages"), name)
+        # No new tool or action reaches a job that holds a signing key.
+        for name in ["sign-macos", "publish", "nightly"]:
+            uses = {str(step.get("uses", "")).split("@")[0] for step in jobs[name]["steps"] if step.get("uses")}
+            self.assertNotIn("actions/attest", uses, name)
 
     def test_each_ubuntu_installer_restores_its_package_cache_first(self):
         for name, profile in [("rust", "desktop"), ("web", "web")]:

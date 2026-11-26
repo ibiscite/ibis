@@ -151,8 +151,9 @@ repository requires approval for every outside contributor's workflow run; never
 approve one while the runner is registered. Windows and Linux stay hosted: the Notepad paste test needs an
 unlocked desktop and the Linux job installs packages with sudo.
 
-Daily/manual runs add WebKit, five minutes each of fuzzing the
-BibTeX loader and the PDF extractor (`ibis-fuzz`; seeds run with `cargo test -p ibis-fuzz`) and
+Daily/manual runs add WebKit, two minutes of fuzzing for every parser in the
+[threat model](threat-model.md) (`ibis-fuzz`, with the grown corpus cached between
+nights; seeds run with `cargo test -p ibis-fuzz`) and
 installed journeys against the published nightly; failures update one issue.
 **CI result** also protects publication: the one nightly a day is built from
 main's head only once its push CI passed, so a red or unfinished main keeps the

@@ -5,7 +5,11 @@
 # SHA256SUMS-$TARGET.txt. Names carry no version, so a link to the nightly file
 # never changes.
 # TARGET: the app's Rust target; CLI_TARGET: the command line's; RUNNER_OS.
+# NOTICES: the folder scripts/third-party-notices.py wrote, which the app
+# packages already carry as a resource.
 set -eo pipefail
+notices=${NOTICES:-apps/desktop/src-tauri/notices}
+files=(LICENSE NOTICE.md THIRD-PARTY-NOTICES.txt)
 bundle="target/$TARGET/release/bundle"
 mkdir -p dist
 find "$bundle" -maxdepth 2 -type f \( -name '*.dmg' -o -name '*-setup.exe' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -exec cp {} dist/ \;
@@ -34,16 +38,16 @@ for f in dist/*; do
   if [ -e "dist/$name" ]; then echo "two packages would both be called $name" >&2; exit 1; fi
   mv "$f" "dist/$name"
 done
-# The command line with its licence, in the archive each system unpacks
-# without extra tools.
+# The command line with its licence and notices, in the archive each system
+# unpacks without extra tools.
 mkdir cli
-cp LICENSE NOTICE.md cli/
+for file in "${files[@]}"; do cp "$notices/$file" cli/; done
 if [ "$RUNNER_OS" = Windows ]; then
   cp "target/$CLI_TARGET/release/ibis.exe" cli/
-  (cd cli && 7z a -tzip "../dist/ibis-$platform.zip" ibis.exe LICENSE NOTICE.md > /dev/null)
+  (cd cli && 7z a -tzip "../dist/ibis-$platform.zip" ibis.exe "${files[@]}" > /dev/null)
 else
   cp "target/$CLI_TARGET/release/ibis" cli/
-  COPYFILE_DISABLE=1 tar -czf "dist/ibis-$platform.tar.gz" -C cli ibis LICENSE NOTICE.md
+  COPYFILE_DISABLE=1 tar -czf "dist/ibis-$platform.tar.gz" -C cli ibis "${files[@]}"
 fi
 # Write the list outside dist first, so it never lists itself.
 sums="SHA256SUMS-$TARGET.txt"

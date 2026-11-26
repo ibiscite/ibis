@@ -17,4 +17,6 @@ We especially want to hear about:
 - any unexpected network access
 - text in an issue, comment or pull request that gets one of the project's AI agents to act on it
 
+What Ibis protects, from whom, and how each defence is checked is in the [threat model](docs/threat-model.md).
+
 For ordinary bugs without security impact, use the [public issue form](https://github.com/ibiscite/ibis/issues/new/choose).

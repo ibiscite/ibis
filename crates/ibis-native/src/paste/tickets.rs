@@ -191,6 +191,10 @@ impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
 }
 
 #[cfg(any(target_os = "windows", test))]
-pub fn deliver_ticket<D: TicketDesk>(desk: &D, ticket: &DeliveryTicket<D::Window>, enabled: bool) -> Delivered {
-    deliver(&TicketDeskGuard { desk, ticket }, Some(ticket), enabled)
+pub fn deliver_ticket<D: TicketDesk>(
+    desk: &D,
+    ticket: &DeliveryTicket<D::Window>,
+    consent: impl Fn() -> Option<bool>,
+) -> Delivered {
+    deliver(&TicketDeskGuard { desk, ticket }, Some(ticket), consent)
 }

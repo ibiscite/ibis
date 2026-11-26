@@ -225,9 +225,15 @@ impl<'a> Records<'a> {
                 *warning = warning.clone().for_entry(title);
             }
         }
+        // Serialising the sorted map gives the same bytes for the same fields.
+        let fields = serde_json::to_vec(&csl).unwrap_or_default();
+        // The record also carries its generated `id`, `"id":"<prefix>:<32 hex>",`.
+        let id_bytes = self.prefix.len() + 41;
+        if fields.len() + id_bytes > crate::MAX_RECORD_BYTES {
+            self.warn(WarningCode::WorkLimit, line);
+            return;
+        }
         self.candidates.push(csl, |csl| {
-            // Serialising the sorted map gives the same bytes for the same fields.
-            let fields = serde_json::to_vec(&csl).unwrap_or_default();
             let digest = Fingerprint::of_bytes(&[self.prefix.as_bytes(), b":v1\0", &fields].concat());
             let key = format!("{}:{}", self.prefix, &digest.as_str()[..32]);
             (vec![(key.clone(), Some(line))], (key, csl, uncertain))

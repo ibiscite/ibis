@@ -235,6 +235,8 @@ fn main() {
             }
         })
         .setup(move |app| {
+            // First: no copy can start toward a paste before Paste-off revokes it.
+            paste::revoke_when_paste_changes(app.handle());
             let startup = app.state::<Startup>();
             let (settings_path, loaded) = (&startup.settings_path, &startup.loaded);
             let interface = loaded.interface().unwrap_or_default();

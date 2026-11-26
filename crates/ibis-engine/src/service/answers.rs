@@ -154,6 +154,12 @@ pub(crate) fn outputs(_: &Engine, OutputsRequest {}: OutputsRequest, cancel: &Ca
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct MethodSchema {
     pub method: Method,
+    /// What an open library must offer for the method to have anything to work on.
+    pub needs: crate::method::Needs,
+    /// Whether answering may reach the network.
+    pub network: crate::method::Network,
+    /// The selections the picker's ⌘K list offers the method for.
+    pub palette: &'static [crate::method::Selection],
     /// The contract version these schemas describe.
     pub contract: u8,
     /// The JSON Schema of the method's parameters.
@@ -172,6 +178,9 @@ pub(crate) fn schema(_: &Engine, request: SchemaRequest, cancel: &Cancellation) 
         .into_iter()
         .map(|method| MethodSchema {
             method,
+            needs: method.needs(),
+            network: method.network(),
+            palette: method.palette(),
             contract: ibis_core::contract::CONTRACT_VERSION,
             params: (method.row().params)(),
             result: (method.row().result)(),

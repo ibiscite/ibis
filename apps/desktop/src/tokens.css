@@ -28,9 +28,12 @@
   --gutter: var(--space-4);
   /* A row: its own padding, the gap after its icon slot (--tile), its spacing in a
      list, and its two heights. Rows without an icon start their words at
-     --inset + --row-pad; rows with one start them on the label column after the slot. */
+     --inset + --row-pad; rows with one start them on the label column after the slot.
+     Compact lists (the default) take --row-compact; a Compact result row is
+     denser still, one line on a 32 px target (--row-dense), the highlighted
+     one opening to two. Comfortable is two lines for every row. */
   --row-pad: var(--space-3); --row-gap: var(--space-3); --row-spacing: 2px;
-  --row-compact: var(--space-10); --row-comfortable: 3.625rem;
+  --row-compact: var(--space-10); --row-dense: var(--space-8); --row-comfortable: 3.625rem;
   --row-height: var(--row-comfortable);
   /* The longest a sheet's text and cards run before the window has more room. */
   --content-max: 42rem;
@@ -303,15 +306,16 @@
      section's heading and words start: on the text of the rows in its card. */
   --header-h: calc(var(--field-h) + 2 * var(--inset) + var(--border-width));
   --footer-h: calc(var(--control-small-h) + 2 * var(--inset));
-  /* [C24] Layer roles: every surface is one of four, each with one fill, one edge
+  /* The delivery bar keeps this much for its citation before it folds its words to keys. */
+  --bar-citation-min: 10rem;
+  /* [C24] Layer roles: every surface is one of three, each with one fill, one edge
      and one material, which the colours above answer for light, dark, Increase
      Contrast and forced colours. A part names its role, never a colour.
-     base: the window itself. inset: a band set into it (the shelf, a chip).
-     overlay: anchored to what it is about (menus, popovers, Peek, held keys).
+     base: the window itself, its bands and the drawer that rises from the bar.
+     overlay: anchored to what it is about (menus, held keys).
      view: replaces the window's content (palettes, sheets); it is the window's
      own material, so a view never reads as a card over the list. */
   --layer-base: var(--surface);
-  --layer-inset: var(--fill-control);
   --layer-overlay: var(--surface-overlay); --layer-overlay-edge: var(--shadow-overlay); --layer-overlay-material: var(--blur);
   --layer-view: transparent;
   /* [C24] The list's heading line, where a notice stands in for the heading (ui/Frame). */

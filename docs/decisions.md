@@ -73,7 +73,7 @@ the anchor older links use.
 [0037](decisions/0037-one-source-per-fact.md): one place per fact; repeats are generated or checked; routine steps are commands.
 
 ## 0038 One window that unfolds
-[0038](decisions/0038-one-window-that-unfolds.md): details unfold beside the list in the same window; the PDF reader has its own window (0036).
+[0038](decisions/0038-one-window-that-unfolds.md): citation details rise from the delivery bar and warnings unfold beside the list; the PDF reader has its own window (0036).
 
 ## 0039 Extending Ibis from outside
 [0039](decisions/0039-extending-ibis-from-outside.md): licence boundary, package names, `ibis-foo` plugins, the running app answers `ibis`.
@@ -94,7 +94,7 @@ the anchor older links use.
 [0044](decisions/0044-lucide-icon-primitive.md): superseded by 0053; the one Lucide drawing left on the website keeps its notices in the file.
 
 ## 0045 The citation line is a token field
-[0045](decisions/0045-citation-line-token-field.md): each reference in the shelf's line is a token whose details open in a popover above it; the side panel keeps the Reader and warnings.
+[0045](decisions/0045-citation-line-token-field.md): each reference in the delivery bar's citation is a token whose details open in a drawer rising from the bar; the side panel keeps the Reader and warnings.
 
 ## 0046 Official names and listings
 [0046](decisions/0046-official-names-and-listings.md): useful MIT clients under `ibiscite`, official listings before 1.0, build provenance, and the name and logo owner and contact.
@@ -140,3 +140,9 @@ the anchor older links use.
 
 ## 0059 Works with nothing, better with more
 [0059](decisions/0059-works-with-nothing-better-with-more.md): every capability useful with only Ibis and files, better when Zotero or Better BibTeX is present, detected not asked; five nouns (Source, Selection, Anchor, Context, Output and Sink), five operations (find, locate, render, scan, propose); `needs`, `network` and `palette` on every method row; Ibis writes only a project's `.bib` (opt-in) and a folder's `.bib`.
+
+## 0060 One document pipeline
+[0060](decisions/0060-one-document-pipeline.md): check, export, format and share are one pipeline, scan → reference set → render → sink; every document file is parsed only in a child behind a CLI-only feature; the reference set is a CSL-JSON file of share-safe records; project-scoped keys and the opt-in `.bib` append are the project's own.
+
+## 0061 A folder of PDFs is a library, and one `resolve`
+[0061](decisions/0061-a-folder-of-pdfs-and-one-resolve.md): a folder of PDFs opens as a library whose records Ibis keeps in `ibis-references.bib` beside them, read from each PDF's own metadata and DOI in the child and appended only when the person keeps them; reads never write; a record with no title, author or editor is not cited, from any source; `resolve` finds an identifier, text or file in the library, then online only after asking.
