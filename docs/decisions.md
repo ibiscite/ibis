@@ -149,3 +149,6 @@ the anchor older links use.
 
 ## 0063 Form follows the job
 [0063](decisions/0063-form-follows-function.md): a citation can be typed whole in the search field (locators and `;`, parsed by the engine for every front end); a format is chosen and remembered only in the picker, so Settings › Citations goes; an empty search shows what was cited since Ibis opened, replacing the sheet; every status and problem has one home, the list's heading line, with at most one fix.
+
+## 0064 One citation, one status, generated surfaces
+[0064](decisions/0064-one-citation-one-status-generated-surfaces.md): no message crosses IPC as text, only `Problem`s worded from the catalogue; one status owner publishes every problem; the engine holds the citation being built as a Draft any front end continues; Tauri commands, CLI options, MCP tools, events, settings and native grants are generated from declared tables; contracts and settings may still change before 1.0.

@@ -164,6 +164,14 @@ all three systems; one ⌘K list.
   once; a "May propose changes" switch in Settings › AI Apps beside the
   `--allow-writes` flag, with its review sheet; a library on another computer
   through `ssh HOST ibis mcp`; then the MCP Registry listing.
+- **Order of foundations** ([0064](docs/decisions/0064-one-citation-one-status-generated-surfaces.md)):
+  words only from the catalogue; CLI and MCP from the method table; one
+  status owner (0063's status line); closed parts, regions and the gate
+  ([0062](docs/decisions/0062-closed-parts-owned-space-fitted-layers.md)); the
+  empty-search history and formats only in the picker
+  ([0063](docs/decisions/0063-form-follows-function.md)); generated events; the
+  settings row and schema; the citation-text grammar; the Draft, then typed
+  citations in the picker; the connection runtime; generated grants.
 - **Foundations,** each just before its feature: 0057 steps 3 to 12 with the
   three row fields, which finish moving the app onto the engine (0052); the
   Selection request replacing the separate item shapes of `cite`, `records` and
