@@ -122,6 +122,92 @@ fn a_document_ibis_cannot_read_refuses_without_checking() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn formatting_refuses_linked_parents_before_comparing_file_identity() {
+    use super::format::{FormatRefusal, FormatRequest, FormatResult};
+    let fixture = Fixture::new(LIBRARY);
+    let root = fixture.folder.path().canonicalize().unwrap();
+    let draft = fixture.file("draft.docx", "not parsed during preflight");
+    let linked = root.join("linked");
+    std::os::unix::fs::symlink(&root, &linked).unwrap();
+    for (document, output, expected) in [
+        (
+            linked.join("draft.docx"),
+            draft.clone(),
+            FormatRefusal::Document(Refusal::NotLocal),
+        ),
+        (
+            draft.clone(),
+            linked.join("draft.docx"),
+            FormatRefusal::OutputUnwritable,
+        ),
+        (draft.clone(), linked.join("new.docx"), FormatRefusal::OutputUnwritable),
+    ] {
+        assert_eq!(
+            fixture
+                .engine
+                .format_document(
+                    &FormatRequest {
+                        document,
+                        output,
+                        style: "apa".into(),
+                        output_locale: None
+                    },
+                    &Cancellation::default(),
+                )
+                .unwrap(),
+            FormatResult::Refused(expected)
+        );
+    }
+    assert_eq!(std::fs::read_to_string(&draft).unwrap(), "not parsed during preflight");
+    assert!(!root.join("new.docx").exists());
+}
+
+#[test]
+fn formatting_detects_the_same_file_by_checked_handle_identity() {
+    use super::format::{FormatRefusal, FormatRequest, FormatResult};
+    let fixture = Fixture::new(LIBRARY);
+    let draft = fixture.file("draft.docx", "not parsed during preflight");
+    let alias = draft.with_file_name("alias.docx");
+    std::fs::hard_link(&draft, &alias).unwrap();
+    assert_eq!(
+        fixture
+            .engine
+            .format_document(
+                &FormatRequest {
+                    document: draft.clone(),
+                    output: alias,
+                    style: "apa".into(),
+                    output_locale: None
+                },
+                &Cancellation::default(),
+            )
+            .unwrap(),
+        FormatResult::Refused(FormatRefusal::SameFile)
+    );
+    assert_eq!(std::fs::read_to_string(&draft).unwrap(), "not parsed during preflight");
+}
+
+#[test]
+fn a_cancelled_format_stops_before_file_identity_preflight() {
+    use super::format::FormatRequest;
+    let fixture = Fixture::new(LIBRARY);
+    let draft = fixture.file("draft.docx", "not parsed during preflight");
+    let cancel = Cancellation::default();
+    cancel.cancel();
+    let result = fixture.engine.format_document(
+        &FormatRequest {
+            document: draft.clone(),
+            output: draft,
+            style: "apa".into(),
+            output_locale: None,
+        },
+        &cancel,
+    );
+    assert_eq!(result.unwrap_err().code, ErrorCode::Cancelled);
+}
+
 #[test]
 fn an_exported_set_locks_the_cited_records() {
     let fixture = Fixture::new(LIBRARY);

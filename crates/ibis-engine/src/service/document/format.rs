@@ -18,7 +18,7 @@ use ibis_core::contract::{
 use ibis_sources::document::{Kind, OfficeIssue, OfficePlace, Refusal};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Make `output` from `document` with its markers cited in `style`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -104,6 +104,7 @@ impl Engine {
     /// `ibis format`: write `request.output`, a copy of `request.document`
     /// with its markers cited and its reference list, or refuse with every reason.
     pub fn format_document(&self, request: &FormatRequest, cancel: &Cancellation) -> Result<FormatResult, EngineError> {
+        cancel.check()?;
         let refused = |refusal| Ok(FormatResult::Refused(refusal));
         let Some(reader) = &self.documents else {
             return refused(FormatRefusal::Document(Refusal::Unavailable));
@@ -115,12 +116,6 @@ impl Engine {
         };
         if Kind::of(&output) != Some(kind) {
             return refused(FormatRefusal::OutputKind);
-        }
-        if same_file(&input, &output) {
-            return refused(FormatRefusal::SameFile);
-        }
-        if output.symlink_metadata().is_ok() {
-            return refused(FormatRefusal::OutputExists);
         }
         // The style is checked before the document is read.
         let resolved =
@@ -137,6 +132,23 @@ impl Engine {
                     return refused(FormatRefusal::Document(refusal));
                 }
             };
+        // Never resolve or probe a parent before the checked reader refuses
+        // links. Compare handle identities under those same local-file rules;
+        // hard links and case aliases must also name the original, not a copy.
+        match ibis_sources::zotero_local::closed::same_local_file(
+            &input,
+            &output,
+            cancelled.clone(),
+            ibis_sources::document::READ_BUDGET,
+        ) {
+            Ok(Some(true)) => return refused(FormatRefusal::SameFile),
+            Ok(Some(false)) => return refused(FormatRefusal::OutputExists),
+            Ok(None) => {}
+            Err(_) => {
+                cancel.check()?;
+                return refused(FormatRefusal::OutputUnwritable);
+            }
+        }
         let scanned = match reader.scan_office(&document, &*cancelled) {
             Ok(scanned) if scanned.kind == kind => scanned,
             Ok(_) => return refused(FormatRefusal::Document(Refusal::Unsupported)),
@@ -307,13 +319,4 @@ fn plain(text: &str) -> RichText {
         bold: false,
         script: Script::Normal,
     }]
-}
-
-/// Whether two paths name one file, as far as can be known.
-fn same_file(input: &Path, output: &Path) -> bool {
-    input == output
-        || matches!(
-            (std::fs::canonicalize(input), output.parent().map(std::fs::canonicalize), output.file_name()),
-            (Ok(input), Some(Ok(folder)), Some(name)) if input == folder.join(name)
-        )
 }

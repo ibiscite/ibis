@@ -14,6 +14,9 @@ use std::io::Write;
 const BODY: &str = "content.xml";
 /// The most spaces one `text:s` may stand for.
 const MAX_SPACES: usize = 1024;
+// Generated styles must not depend on bindings the original never needed,
+// or on a binding confined to one of its existing styles.
+const STYLE_NAMESPACES: &str = r#"xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0""#;
 
 pub fn scan(archive: &mut Archive<'_>, frames: &mut Frames) -> Result<(), Refusal> {
     let body = archive.text(BODY)?.ok_or(Refusal::Unsupported)?;
@@ -127,14 +130,14 @@ impl Out<'_, '_> {
                 _ => {}
             }
             xml.push_str(&format!(
-                "<style:style style:name=\"{}\" style:family=\"text\"><style:text-properties{properties}/></style:style>",
+                "<style:style {STYLE_NAMESPACES} style:name=\"{}\" style:family=\"text\"><style:text-properties{properties}/></style:style>",
                 look.name(&self.prefix)
             ));
         }
         let bibliography = &self.plan.edits.bibliography;
         let indent = bibliography.hanging_indent || bibliography.entries.iter().any(|entry| !entry.margin.is_empty());
         xml.push_str(&format!(
-            "<style:style style:name=\"{}Entry\" style:family=\"paragraph\"{}>{}</style:style>",
+            "<style:style {STYLE_NAMESPACES} style:name=\"{}Entry\" style:family=\"paragraph\"{}>{}</style:style>",
             self.prefix,
             self.parent.as_deref().map_or(String::new(), |parent| format!(
                 " style:parent-style-name=\"{}\"",

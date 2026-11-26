@@ -2,7 +2,8 @@
 //! document order, and the plan that maps replacements onto text pieces.
 use super::{Edit, Edits, MAX_PARAGRAPHS, MAX_TEXT_BYTES, Paragraph, Part, Refusal};
 use quick_xml::Reader;
-use quick_xml::events::{BytesRef, Event};
+use quick_xml::events::{BytesRef, BytesStart, Event};
+use std::collections::BTreeMap;
 
 /// The deepest element nesting read.
 const MAX_DEPTH: usize = 256;
@@ -11,31 +12,56 @@ const MAX_DEPTH: usize = 256;
 /// entity can be declared or fetched, and a bounded depth.
 pub struct Events<'a> {
     reader: Reader<&'a [u8]>,
-    depth: usize,
+    ancestors: Vec<BytesStart<'a>>,
 }
 
 impl<'a> Events<'a> {
     pub fn new(xml: &'a str) -> Self {
         let mut reader = Reader::from_str(xml);
         reader.config_mut().check_end_names = true;
-        Self { reader, depth: 0 }
+        Self {
+            reader,
+            ancestors: Vec::new(),
+        }
     }
 
     pub fn next(&mut self) -> Result<Event<'a>, Refusal> {
         let event = self.reader.read_event().map_err(|_| Refusal::Damaged)?;
         match &event {
             Event::DocType(_) => return Err(Refusal::Unsafe),
-            Event::Start(_) => {
-                self.depth += 1;
-                if self.depth > MAX_DEPTH {
+            Event::Start(element) => {
+                if self.ancestors.len() >= MAX_DEPTH {
                     return Err(Refusal::TooLarge);
                 }
+                self.ancestors.push(element.clone());
             }
-            Event::End(_) => self.depth = self.depth.saturating_sub(1),
-            Event::Eof if self.depth != 0 => return Err(Refusal::Damaged),
+            Event::End(_) => {
+                self.ancestors.pop();
+            }
+            Event::Eof if !self.ancestors.is_empty() => return Err(Refusal::Damaged),
             _ => {}
         }
         Ok(event)
+    }
+
+    /// Capture properties that will leave their current ancestors. Bindings
+    /// declared below `retained_depth` must travel with each moved child;
+    /// bindings above it still surround the replacement at its destination.
+    pub fn capture(&self, retained_depth: usize) -> Result<Capture, Refusal> {
+        let mut namespaces = BTreeMap::new();
+        for ancestor in self.ancestors.iter().skip(retained_depth) {
+            for attribute in ancestor.attributes() {
+                let attribute = attribute.map_err(|_| Refusal::Damaged)?;
+                let name = attribute.key.into_inner();
+                if name == "xmlns" || name.starts_with("xmlns:") {
+                    namespaces.insert(name.to_owned(), attribute.value.into_owned());
+                }
+            }
+        }
+        Ok(Capture {
+            namespaces,
+            ..Capture::default()
+        })
     }
 }
 
@@ -232,6 +258,7 @@ pub struct Child {
 #[derive(Default)]
 pub struct Capture {
     pub children: Vec<Child>,
+    namespaces: BTreeMap<String, String>,
     depth: usize,
     current: Option<(Vec<u8>, quick_xml::Writer<Vec<u8>>)>,
 }
@@ -239,7 +266,21 @@ pub struct Capture {
 impl Capture {
     /// Record `event`, inside the captured element. `false` once it has closed.
     pub fn take(&mut self, event: &Event<'_>) -> Result<bool, Refusal> {
-        match event {
+        let mut event = event.clone();
+        if self.depth == 0
+            && let Event::Start(element) | Event::Empty(element) = &mut event
+        {
+            for (name, value) in &self.namespaces {
+                // A declaration on the child itself overrides its ancestors.
+                if !element
+                    .attributes()
+                    .any(|attribute| attribute.is_ok_and(|attribute| attribute.key.into_inner() == name))
+                {
+                    element.push_attribute((name.as_str(), value.as_str()));
+                }
+            }
+        }
+        match &event {
             Event::End(_) if self.depth == 0 => return Ok(false),
             Event::Start(element) if self.depth == 0 => {
                 self.current = Some((
@@ -261,7 +302,7 @@ impl Capture {
         if let Some((_, writer)) = &mut self.current {
             writer.write_event(event.borrow()).map_err(|_| Refusal::Damaged)?;
         }
-        match event {
+        match &event {
             Event::Start(_) => self.depth += 1,
             Event::End(_) => {
                 self.depth -= 1;

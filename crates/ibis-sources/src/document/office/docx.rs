@@ -211,11 +211,14 @@ fn walk(
                     // Word shows the choice; the fallback repeats it for older readers.
                     b"mc:Fallback" => frames.opaque(true),
                     b"w:r" => run.clear(),
-                    b"w:rPr" if parent == Some(b"w:r") => capture = Some((Capture::default(), false)),
+                    b"w:rPr" if parent == Some(b"w:r") => {
+                        let retained = swallow.as_ref().map_or(stack.len() - 1, |s| s.depth);
+                        capture = Some((events.capture(retained)?, false));
+                    }
                     b"w:pPr"
                         if parent == Some(b"w:p") && swallow.as_ref().is_some_and(|s| stack.len() == s.depth + 1) =>
                     {
-                        capture = Some((Capture::default(), true));
+                        capture = Some((events.capture(swallow.as_ref().ok_or(Refusal::Damaged)?.depth)?, true));
                     }
                     b"w:t" if parent == Some(b"w:r") => {
                         let preserve = attribute(element, b"xml:space")?.as_deref() == Some("preserve");

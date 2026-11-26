@@ -103,6 +103,111 @@ fn part(bytes: &[u8], name: &str) -> String {
     text
 }
 
+/// Resolve attributes as well as element names: an ordinary XML reader does
+/// not reject unbound prefixes, including the `r:id` on a section's header.
+fn assert_namespaces(xml: &str) {
+    use quick_xml::events::Event;
+    use quick_xml::name::ResolveResult;
+    let mut reader = quick_xml::NsReader::from_str(xml);
+    loop {
+        let event = reader.read_event().unwrap();
+        match event {
+            Event::Start(element) | Event::Empty(element) => {
+                assert!(
+                    !matches!(
+                        reader.resolver().resolve_element(element.name()).0,
+                        ResolveResult::Unknown(_)
+                    ),
+                    "unbound element {:?}",
+                    element.name()
+                );
+                for attribute in element.attributes() {
+                    let attribute = attribute.unwrap();
+                    assert!(
+                        !matches!(
+                            reader.resolver().resolve_attribute(attribute.key).0,
+                            ResolveResult::Unknown(_)
+                        ),
+                        "unbound attribute {:?}",
+                        attribute.key
+                    );
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn opendocument_generated_styles_declare_their_namespaces() {
+    // Only the prefixes used by the original content are declared. Styles
+    // can be absent, empty, or already populated without style:/fo: bindings.
+    for automatic in [
+        "",
+        "<office:automatic-styles/>",
+        "<office:automatic-styles></office:automatic-styles>",
+    ] {
+        let xml = format!(
+            r#"<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.3">{automatic}<office:body><office:text><text:p>[@vale2024]</text:p><text:p>[bibliography]</text:p></office:text></office:body></office:document-content>"#
+        );
+        assert_namespaces(&xml);
+        let original = archive(&[
+            ("mimetype", b"application/vnd.oasis.opendocument.text"),
+            ("content.xml", xml.as_bytes()),
+        ]);
+        let written = write(&original, &[vec![italic("(Vale, 2024)")]], &[entry("Lanterns")], true).unwrap();
+        assert_namespaces(&part(&written, "content.xml"));
+        assert_eq!(body(&written), ["(Vale, 2024)", "Vale, A. (2024). Lanterns."]);
+    }
+}
+
+#[test]
+fn word_bibliography_properties_keep_inherited_namespace_bindings() {
+    const RELATIONSHIPS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    // Bindings on either discarded ancestor must reach the preserved section.
+    for (paragraph, properties) in [
+        (format!(r#" xmlns:r="{RELATIONSHIPS}""#), String::new()),
+        (String::new(), format!(r#" xmlns:r="{RELATIONSHIPS}""#)),
+    ] {
+        let original = docx(&format!(
+            r#"<w:p><w:r><w:t>[@vale2024]</w:t></w:r></w:p><w:p{paragraph}><w:pPr{properties}><w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/></w:sectPr></w:pPr><w:r><w:t>[bibliography]</w:t></w:r></w:p><w:p><w:r><w:t>Next section.</w:t></w:r></w:p>"#
+        ));
+        assert_namespaces(&part(&original, "word/document.xml"));
+        for entries in [vec![entry("Lanterns"), entry("Tides")], vec![]] {
+            let written = write(&original, &[vec![run("(Vale, 2024)")]], &entries, true).unwrap();
+            let xml = part(&written, "word/document.xml");
+            assert_namespaces(&xml);
+            let mut reader = quick_xml::NsReader::from_str(&xml);
+            let mut headers = 0;
+            loop {
+                match reader.read_event().unwrap() {
+                    quick_xml::events::Event::Empty(element) if element.name().into_inner() == "w:headerReference" => {
+                        headers += 1;
+                        let id = element
+                            .attributes()
+                            .map(Result::unwrap)
+                            .find(|attr| attr.key.into_inner() == "r:id")
+                            .unwrap();
+                        assert_eq!(
+                            id.normalized_value(quick_xml::XmlVersion::Implicit1_0).unwrap(),
+                            "rIdHeader"
+                        );
+                        assert_eq!(
+                            reader.resolver().resolve_attribute(id.key).0,
+                            quick_xml::name::ResolveResult::Bound(quick_xml::name::Namespace(RELATIONSHIPS))
+                        );
+                    }
+                    quick_xml::events::Event::Eof => break,
+                    _ => {}
+                }
+            }
+            assert_eq!(headers, 1);
+            assert_eq!(body(&written).last().unwrap(), "Next section.");
+        }
+    }
+}
+
 #[test]
 fn a_word_marker_split_across_runs_becomes_one_citation_in_its_run_formatting() {
     // Word splits "[@vale2024, p. 12]" where formatting or editing changed.
