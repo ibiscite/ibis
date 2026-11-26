@@ -249,6 +249,41 @@ test("search results are sidebar rows, and Enter opens the first", async () => {
   expect((await screen.findByText("No settings match ‘no such setting’")).classList.contains("ui-side-navigation-empty")).toBe(true);
 });
 
+// Decision 0062: a search jump keeps the focused control in what the person
+// sees of the page, under its sticky title, however late content above it lands
+// (the case found in review: 1.7 s later, a block twice the window's height).
+test("a search jump keeps the focused setting in view while slow content lands above it", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { container } = render(<SettingsApp api={fakeApi({ granted: true }).api} initialPage="general" />);
+  const page = container.querySelector<HTMLElement>("main.settings-page")!;
+  const TITLE = 48, HEIGHT = 560;
+  let late: HTMLElement | null = null;
+  // jsdom applies no stylesheet: the title is sticky, as SettingsLayout.css makes it.
+  page.querySelector<HTMLElement>(".ui-settings-page-title")!.style.position = "sticky";
+  // jsdom lays nothing out: each element sits 2 px below the one before it in
+  // the page, and everything after the late block 2 windows lower.
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this === page) return new DOMRect(0, 0, 700, HEIGHT);
+    if (this.matches(".ui-settings-page-title")) return new DOMRect(0, 0, 700, TITLE);
+    if (!page.contains(this)) return new DOMRect();
+    const order = [...page.querySelectorAll("*")].indexOf(this);
+    const pushed = late && late !== this && late.compareDocumentPosition(this) & Node.DOCUMENT_POSITION_FOLLOWING ? 2 * HEIGHT : 0;
+    return new DOMRect(0, TITLE + order * 2 + pushed - page.scrollTop, 700, 24);
+  });
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  fireEvent.change(search, { target: { value: "window size" } });
+  fireEvent.keyDown(search, { key: "Enter" });
+  const medium = await screen.findByRole("radio", { name: "Medium" });
+  await waitFor(() => expect(document.activeElement).toBe(medium));
+  const row = document.getElementById("window-size")!.closest<HTMLElement>(".ui-row")!;
+  expect(row.getBoundingClientRect().top).toBe(TITLE);
+  await act(() => vi.advanceTimersByTimeAsync(1700));
+  late = document.createElement("div");
+  await act(async () => { page.querySelector(".settings-page-content")!.prepend(late!); });
+  expect(row.getBoundingClientRect().top).toBe(TITLE);
+  expect(document.activeElement).toBe(medium);
+});
+
 test("Appearance, both accents and both text sizes persist separately", async () => {
   const { api, state } = fakeApi({ granted: true });
   const mounted = render(<SettingsApp api={api} initialPage="look" />);

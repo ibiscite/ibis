@@ -3,8 +3,10 @@ import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, SearchField, Text, useFilter } from "react-aria-components";
 import { PopupButton } from "./PopupButton";
-import { MenuCheck, useMenuBoundary, useMenuPlacement, MenuRow, useWholeRows } from "./Menu";
+import { MenuCheck, menuLeast, useMenuPlacement, MenuRow, useWholeRows } from "./Menu";
 import { Floating } from "./Layer";
+import { Palette } from "./Palette";
+import { say } from "../i18n";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
 
@@ -38,7 +40,14 @@ export function ToolbarMenu({ buttonRef, disabled, label, value, heading, note, 
   const open = isOpen ?? internalOpen;
   const internalButton = useRef<HTMLButtonElement>(null);
   const button = buttonRef ?? internalButton;
-  const boundary = useMenuBoundary(open, returnFocusRef, button);
+  // With room for its least on neither side, it opens as a view of the window,
+  // the way the palettes do (decision 0062), until it closes.
+  const [asView, setAsView] = useState(false);
+  // The popover leaving takes the keyboard from its filter; React Aria reads
+  // that as a dismissal, which the view, already open, is not.
+  const toView = useRef(false);
+  const cramped = () => { toView.current = true; setAsView(true); };
+  useLayoutEffect(() => { if (!open) { toView.current = false; setAsView(false); } }, [open]);
   const { list, listRef, opening } = useMenuLifecycle(open);
   const wholeRows = useWholeRows(list);
   const noteId = useId();
@@ -55,6 +64,7 @@ export function ToolbarMenu({ buttonRef, disabled, label, value, heading, note, 
       onOpenChange?.(true);
       return;
     }
+    toView.current = false;
     // Closing hands typing back now. An exiting modal refuses focus and traps
     // the next key, so nothing waits for its exit.
     const previous = document.activeElement;
@@ -88,15 +98,22 @@ export function ToolbarMenu({ buttonRef, disabled, label, value, heading, note, 
       if (isComposing(event, composing.current)) event.stopPropagation();
       else if (open && event.key === "Tab") { event.preventDefault(); event.stopPropagation(); changeOpen(false); }
     }}>
-    <MenuTrigger isOpen={open} onOpenChange={(next) => changeOpen(next)}>
+    <MenuTrigger isOpen={open} onOpenChange={(next) => { if (next || !toView.current) changeOpen(next); }}>
       <PopupButton ref={button} isDisabled={disabled} className={`toolbar-menu-button ${drawn?.className ?? ""}`} size={drawn ? "small" : undefined} variant={drawn?.quiet ? "quiet" : undefined} title={drawn?.title} aria-label={drawn?.label ?? `${label} ${value}`}>{drawn?.content ?? value}</PopupButton>
-      <Floating kind="menu" open={open} onClose={(event) => changeOpen(false, event ? "dismiss" : "command")} ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" data-anchor={placement === "bottom start" ? "field" : undefined} data-named={named || undefined}
+      {asView ? <Palette id={`${noteId}-view`} title={label} placeholder={filterLabel} empty={say("palette-no-matches")} actionLabel={() => say("palette-choose")}
+        subtitle={heading} description={note} initial={selectedKey} invoker={returnFocusRef ?? button}
+        sections={sections.map((section) => ({ id: section.id, label: section.label, items: section.items.map((item) => ({
+          id: item.id, label: item.label, detail: item.note ?? item.sample, keywords: item.keywords, disabled: disabled || item.disabled, checked: !item.command && item.id === selectedKey,
+        })) }))}
+        onAction={(key) => { changeOpen(false, "action"); onAction(key); }}
+        onClose={(reason) => { if (reason !== "action") changeOpen(false, reason === "command" ? "command" : "dismiss"); }} />
+      : <Floating kind="menu" open={open} onClose={(event) => changeOpen(false, event ? "dismiss" : "command")} ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" data-anchor={placement === "bottom start" ? "field" : undefined} data-named={named || undefined}
         // [C21] Never narrower than its button: React Aria measures the trigger.
-        style={placement === "bottom start" ? { minWidth: "min(var(--trigger-width), calc(100vw - 2 * var(--inset)))" } : undefined} placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
+        style={placement === "bottom start" ? { minWidth: "min(var(--trigger-width), calc(100vw - 2 * var(--inset)))" } : undefined} anchor={button} least={menuLeast} onCramped={cramped} placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit}>
         {heading && <p className="ui-list-heading menu-heading toolbar-menu-heading" aria-hidden="true">{heading}</p>}
         {note && <p id={noteId} className={heading ? "visually-hidden" : "toolbar-menu-note"}>{note}</p>}
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} aria-describedby={note ? noteId : undefined} /></SearchField>{menu}</Autocomplete> : menu}
-      </Floating>
+      </Floating>}
     </MenuTrigger>
   </span>;
 }

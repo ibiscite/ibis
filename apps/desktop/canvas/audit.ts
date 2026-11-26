@@ -5,17 +5,46 @@ import { LANGUAGES, say, setInterfaceLanguage, type InterfaceLanguage, type Mess
 import { libraryOperations, OPERATION_FAILURES, type Operation } from "../src/features/picker/Notices";
 import { HOLD_MS } from "../src/ui/HeldKeys";
 import { currentPlatform } from "../src/platform";
-import { anchorBoxes, anchorMoves, denseList, frameStates, rowsInView, geometry, heldKeys, layerRoles, occlusion, oneSurface, overflow, paintOnly, settle, slots } from "./geometry";
+import { anchorBoxes, anchorMoves, denseList, focusInView, frameStates, rowsInView, geometry, heldKeys, layerRoles, menuRows, occlusion, oneSurface, overflow, paintOnly, settle, slots } from "./geometry";
 
 type Mount = (host: HTMLElement, options: { scenario: string; theme: string }) => () => void;
 
 /** Picker screens held to the single-picture layout rules (geometry()). */
-export const geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "reader", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "comfortable", "long-titles", "stale", "more", "format-menu", "library-menu", "text-80", "text-120",
+export const geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "show-as-menu-larger", "locator-menu", "locator-menu-larger", "reader", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "comfortable", "long-titles", "stale", "more", "format-menu", "library-menu", "text-80", "text-120",
   // German runs longest and Arabic mirrors: the same rules hold in both.
   "results-de", "results-ar", "first-run-de", "first-run-ar"];
 
 /** Scenarios with something floating, for the layer check in every appearance. */
-export const layerScreens = ["more", "format-menu", "library-menu", "show-as-menu", "reference-details", "peek", "shortcuts", "writing-projects", "cited-since-opening"];
+export const layerScreens = ["more", "format-menu", "library-menu", "show-as-menu", "reference-details", "peek", "shortcuts", "writings", "cited-since-opening"];
+
+/** Scenarios that open a menu from the citation drawer: each shows its least
+ * of rows, at the default window and in the short one [C9 rows]. */
+export const drawerMenus = ["show-as-menu", "show-as-menu-larger", "locator-menu", "locator-menu-larger", "locator-menu-200"];
+
+/** A Settings search jump, as a person makes it, with content arriving above
+ * the row long after (the case found in review: 1.7 s, a block twice the
+ * window's height). Scroll anchoring is off, as in WebKit, the app's engine on
+ * macOS and Linux, so Chromium cannot hold the row in place on its own. */
+async function searchJump(query: string, late: boolean): Promise<string[]> {
+  const search = document.querySelector<HTMLInputElement>('input[type="search"]');
+  if (!search) return ["[C9 reveal] no Settings search field"];
+  search.focus();
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, query);
+  search.dispatchEvent(new Event("input", { bubbles: true }));
+  await settle();
+  search.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  await settle();
+  const page = document.querySelector<HTMLElement>(".settings-page");
+  if (late) {
+    if (page) page.style.overflowAnchor = "none";
+    await new Promise((done) => setTimeout(done, 1700));
+    const block = document.createElement("div");
+    block.style.cssText = "block-size:200vh;overflow-anchor:none";
+    page?.querySelector(".settings-page-content")?.prepend(block);
+    await settle();
+  }
+  return focusInView(page);
+}
 
 /** Screens checked again while ⌘ (Ctrl elsewhere) is held, as a person holds it:
  * every held key and the row numbers drawn over a list with a citation. */
@@ -66,9 +95,11 @@ export const slotMessages: Record<keyof typeof slots, { id: MessageId; args?: Re
 /** Every guard failure in the scenarios this pass covers, as "scenario: failure".
  * frame: every scenario at the default window, plus the anchors across states;
  * narrow: words in their slots and nothing covered, at the narrowest window;
- * short: More in a window so short its list scrolls [C9];
+ * narrow: also the drawer's menus, each showing its least of rows (at 200 % text, as a view);
+ * short: More, and the drawer's menus, in a window so short their lists scroll [C9];
+ * reveal: a Settings search jump at Settings' own window, scrolling, with late content;
  * layers: the floating surfaces only, in each system and Ibis appearance. */
-export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly string[], { pass = "frame", theme = "light" }: { pass?: "frame" | "narrow" | "short" | "layers" | "inventory"; theme?: string } = {}): Promise<string[]> {
+export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly string[], { pass = "frame", theme = "light" }: { pass?: "frame" | "narrow" | "short" | "reveal" | "layers" | "inventory"; theme?: string } = {}): Promise<string[]> {
   const failures: string[] = [];
   const show = async (scenario: string) => { mount(host, { scenario, theme }); await settle(); };
   const picker = scenarios.filter((scenario) => !["notice", "states", "tokens", "parts"].includes(scenario));
@@ -87,7 +118,27 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
 
   if (pass === "short") {
     await show("more");
-    return geometry().map((failure) => `more (short): ${failure}`);
+    failures.push(...geometry().map((failure) => `more (short): ${failure}`));
+    // 200 % text in a 240 px window leaves a view no room for one whole row: that
+    // case is held at the narrow window, as review found it (480 × 360).
+    for (const scenario of drawerMenus.filter((name) => scenarios.includes(name) && name !== "locator-menu-200")) {
+      await show(scenario);
+      const opened = document.querySelector('.menu-popover [role="menu"], .ui-view [role="listbox"]') ? [] : ["[C9 rows] no menu opened"];
+      failures.push(...[...opened, ...menuRows(), ...occlusion(), ...oneSurface(), ...layerRoles()].map((failure) => `${scenario} (short): ${failure}`));
+    }
+    return failures;
+  }
+
+  if (pass === "reveal") {
+    // Each setting by the words a person types; the row its search finds.
+    for (const [query, id] of [["window size", "window-size"], ["attachment text", "attachment-text"]] as const) for (const late of [false, true]) {
+      await show("settings-general");
+      const jump = await searchJump(query, late);
+      const row = document.getElementById(id)?.closest(".ui-row");
+      if (!row?.contains(document.activeElement)) jump.push(`[C9 reveal] the jump did not reach #${id}`);
+      failures.push(...jump.map((failure) => `settings search "${query}"${late ? " (content above it 1.7 s later)" : ""}: ${failure}`));
+    }
+    return failures;
   }
 
   if (pass === "layers") {
@@ -104,7 +155,8 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
   if (pass === "narrow") {
     for (const scenario of picker) {
       await show(scenario);
-      failures.push(...occlusion().map((failure) => `${scenario} (narrow): ${failure}`));
+      const menus = drawerMenus.includes(scenario) ? [...document.querySelector('.menu-popover [role="menu"], .ui-view [role="listbox"]') ? [] : ["[C9 rows] no menu opened"], ...menuRows(), ...oneSurface()] : [];
+      failures.push(...[...occlusion(), ...menus].map((failure) => `${scenario} (narrow): ${failure}`));
     }
     for (const [slot, messages] of Object.entries(slotMessages) as [keyof typeof slots, typeof slotMessages[keyof typeof slots]][]) {
       await show(slots[slot].scenario);
@@ -142,7 +194,9 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
       ...paintOnly(),
       ...layerRoles(),
       ...oneSurface(),
+      ...menuRows(),
     ];
+    if (drawerMenus.includes(scenario) && !document.querySelector('.menu-popover [role="menu"], .ui-view [role="listbox"]')) found.push("[C9 rows] no menu opened");
     const patterns = declared();
     if (scenario === denseList.scenario && pass === "frame" && rowsInView() < denseList.rows) found.push(`[C4 dense] ${rowsInView()} rows whole in view, fewer than ${denseList.rows}`);
     for (const [slot, { selector }] of Object.entries(slots).filter(([, { catalogue }]) => catalogue)) for (const words of document.querySelectorAll(selector))

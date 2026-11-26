@@ -90,11 +90,14 @@ func accentRGB(_ appearance: NSAppearance) -> [Double] {
   // every scenario at the default window, words and covers at the narrowest,
   // and the floating layers wherever the Mac's appearance and Ibis's differ.
   // More is also checked in a window so short that its list scrolls: a scroll
-  // bar must never take its width from the labels [C9].
+  // bar must never take its width from the labels [C9]; the drawer's menus there
+  // still show their least of rows, and a Settings search jump at Settings' own
+  // window keeps the focused setting in view while late content lands above it.
   let passes: [(size: NSSize, mac: NSAppearance.Name, pass: String, theme: String)] = [
     (NSSize(width: 720, height: 480), .aqua, "frame", "light"),
     (NSSize(width: 480, height: 360), .aqua, "narrow", "light"),
     (NSSize(width: 640, height: 240), .aqua, "short", "light"),
+    (NSSize(width: 920, height: 560), .aqua, "reveal", "light"),
   ] + modes.map { (NSSize(width: 720, height: 480), $0.mac, "layers", $0.chosen == "system" ? $0.name : $0.chosen) }
   for run in passes {
     let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -30000, y: -30000), size: run.size), styleMask: .borderless, backing: .buffered, defer: false)

@@ -1,8 +1,10 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import axe from "axe-core";
-import { useRef, useState } from "react";
-import { Menu, MenuDetail, MenuItem, MenuSection, MenuSeparator } from "./Menu";
+import { createRef, useRef, useState } from "react";
+import { Menu, MenuDetail, MenuItem, MenuSection, MenuSeparator, menuLeast } from "./Menu";
+import { fitSide, Region } from "./region";
+import { ToolbarMenu } from "./ToolbarMenu";
 
 afterEach(async () => {
   cleanup();
@@ -135,24 +137,104 @@ test.each(["Escape", "Tab", "Enter", " "])("composing %s does not dismiss or act
   expect(onAction).toHaveBeenCalledWith("open");
 });
 
-test.each([[56, "56px"], [430, "0px"]])("an anchored menu clears its return field only while a whole menu fits below it (field ends at %i)", async (fieldBottom, top) => {
-  const { renderHook } = await import("@testing-library/react");
-  const { useMenuBoundary } = await import("./Menu");
-  const floor = document.createElement("footer");
-  floor.dataset.menuFloor = "";
-  const field = document.createElement("input"), trigger = document.createElement("button");
-  document.body.append(field, trigger, floor);
+// Decision 0062: what floats fits its region. jsdom lays nothing out, so the
+// window, the region and the rows report invented boxes.
+const box = (top: number, height: number, left = 0, width = 720) => new DOMRect(left, top, width, height);
+
+test("the side decision opens where the least fits, keeps to the region first, and has no answer when neither side has room", () => {
+  const fit = (anchorTop: number, least: number, boundaries = [box(0, 440), box(0, 480)]) =>
+    fitSide({ anchor: box(anchorTop, 24), boundaries, least, preferred: "bottom", gap: 4, padding: 8 });
+  // Room below: the preferred side.
+  expect(fit(60, 132)).toEqual({ side: "bottom", boundary: box(0, 440) });
+  // A field low in the drawer, just above the bar: it opens above, inside the region.
+  expect(fit(380, 132)).toEqual({ side: "top", boundary: box(0, 440) });
+  // Only the window has room below (a short window): the window is the boundary.
+  expect(fit(20, 120, [box(0, 150), box(0, 240)])).toEqual({ side: "bottom", boundary: box(0, 240) });
+  // Neither side of any boundary: the owner opens it as a view, or takes the larger side.
+  expect(fit(100, 200, [box(0, 200), box(0, 240)])).toBeNull();
+  // Zero matches: the least is the filter and its empty state, which fits anywhere.
+  expect(fit(360, 44)).toEqual({ side: "bottom", boundary: box(0, 440) });
+});
+
+/** A ToolbarMenu of `count` rows, 28 px each, in a region the size of a
+ * `height`-tall window, its trigger at `top`; the return field sits elsewhere. */
+function fitted(top: () => number, height: () => number, count = 29) {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  Element.prototype.scrollIntoView = vi.fn();
+  vi.spyOn(document.documentElement, "clientHeight", "get").mockImplementation(() => height());
+  vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(720);
+  const region = document.createElement("div");
+  document.body.append(region);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    if (this === floor) return new DOMRect(0, 440, 720, 40);
-    if (this === field || this === trigger) return new DOMRect(0, fieldBottom - 30, 100, 30);
-    // The probe for --menu-min-block: a filter and three rows.
-    if (this.style.cssText.includes("menu-min-block")) return new DOMRect(0, 0, 0, 112);
+    if (this === region) return box(0, height());
+    if (this.matches(".toolbar-menu-button")) return box(top(), 24, 100, 80);
+    if (this.matches('[role="menu"]')) return box(0, 0);
+    const rows = [...this.closest('[role="menu"]')?.querySelectorAll('[role^="menuitem"]') ?? []];
+    if (rows.includes(this)) return box(rows.indexOf(this) * 28, 28);
     return new DOMRect();
   });
-  try {
-    const fieldRef = { current: field }, triggerRef = { current: trigger };
-    const { unmount } = renderHook(() => useMenuBoundary(true, fieldRef, triggerRef));
-    expect(document.querySelector<HTMLElement>("[data-menu-boundary]")?.style.top).toBe(top);
-    unmount();
-  } finally { field.remove(); trigger.remove(); floor.remove(); }
+  const field = createRef<HTMLInputElement>();
+  const onAction = vi.fn();
+  const items = Array.from({ length: count }, (_, index) => ({ id: `term-${index}`, label: `Term ${index}` }));
+  render(<Region element={region} views><input aria-label="Page" ref={field} defaultValue="417" />
+    <ToolbarMenu label="Locator type" value="Page" filterLabel="Filter types" sections={[{ id: "terms", items }]} selectedKey="term-0" placement="bottom start" returnFocusRef={field} onAction={onAction} /></Region>);
+  return { field, onAction, region, trigger: screen.getByRole("button", { name: "Locator type Page" }) };
+}
+
+test("a menu opens on the side with room for its filter and four rows, whatever field focus returns to", async () => {
+  let top = 60;
+  const { trigger } = fitted(() => top, () => 480);
+  fireEvent.click(trigger);
+  await screen.findByRole("menu");
+  // Its least: four whole rows of 28 px (the filter has no box in jsdom).
+  expect(menuLeast(document.querySelector<HTMLElement>(".menu-popover")!)).toBe(112);
+  await waitFor(() => expect(document.querySelector(".menu-popover")?.getAttribute("data-placement")).toBe("bottom"));
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  // Low in the window it opens above: the return field below never limits it.
+  top = 400;
+  fireEvent.click(trigger);
+  await screen.findByRole("menu");
+  await waitFor(() => expect(document.querySelector(".menu-popover")?.getAttribute("data-placement")).toBe("top"));
+});
+
+test("a menu open while the window shrinks moves to the side that still has room", async () => {
+  let height = 480;
+  const { trigger } = fitted(() => 200, () => height);
+  fireEvent.click(trigger);
+  await screen.findByRole("menu");
+  await waitFor(() => expect(document.querySelector(".menu-popover")?.getAttribute("data-placement")).toBe("bottom"));
+  height = 260;
+  await act(async () => { window.dispatchEvent(new Event("resize")); await new Promise(requestAnimationFrame); });
+  await waitFor(() => expect(document.querySelector(".menu-popover")?.getAttribute("data-placement")).toBe("top"));
+  expect(screen.getByRole("menu")).toBeTruthy();
+});
+
+test("with room for its least on neither side a menu opens as a view of the window, and Esc returns to the field with its draft", async () => {
+  const { trigger, field, onAction } = fitted(() => 60, () => 150);
+  act(() => field.current!.focus());
+  fireEvent.click(trigger);
+  const view = await screen.findByRole("dialog", { name: "Locator type" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  const list = screen.getByRole("listbox", { name: "Locator type" });
+  expect(list.querySelectorAll('[role="option"]')).toHaveLength(29);
+  // Its filter takes the keyboard, as the menu's would; zero matches says so.
+  expect(document.activeElement).toBe(view.querySelector("input"));
+  fireEvent.change(document.activeElement!, { target: { value: "zzz" } });
+  expect(screen.getByText("No matches")).toBeTruthy();
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(document.activeElement).toBe(field.current);
+  expect(field.current!.value).toBe("417");
+  expect(onAction).not.toHaveBeenCalled();
+});
+
+test("a menu with no matches keeps its filter and empty state as its least", () => {
+  const surface = document.createElement("div");
+  surface.innerHTML = '<input><div role="menu"></div>';
+  const list = surface.querySelector<HTMLElement>('[role="menu"]')!;
+  Object.defineProperty(surface, "scrollHeight", { value: 52 });
+  Object.defineProperty(list, "offsetHeight", { value: 8 });
+  Object.defineProperty(list, "scrollHeight", { value: 8 });
+  expect(menuLeast(surface)).toBe(52);
 });

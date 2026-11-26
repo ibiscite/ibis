@@ -2,7 +2,9 @@ import { composing } from "../composition";
 import { filterPalette } from "../ui/Palette";
 import { Details } from "../ui/Details";
 import { useSettingUndo } from "../ui/useSettingUndo";
-import { useRowReveal } from "../ui/useRowReveal";
+import { reveal as revealIn, useReveal } from "../ui/reveal";
+import { Region } from "../ui/region";
+import { settingTarget } from "../ui/settingFocus";
 import { AttachmentText } from "./AttachmentText";
 import { ProposedChanges } from "./ProposedChanges";
 import { CliCommandRow } from "./CliCommand";
@@ -59,11 +61,9 @@ export function pageOf(name: string | null): { page: Page; focus: "paste" | null
 
 /** The Settings window: a sidebar of pages, each a stack of titled groups of
  * rows (docs/design/settings.md). Every change applies at once. */
-/** How far below a page's top a scrolled-to group lands: under the title, which stays put. */
 class WindowSizeSaveError extends Error {
   constructor(readonly retryTicket: number | null) { super("Window size could not be saved"); }
 }
-const underTitle = (page: HTMLElement) => page.querySelector<HTMLElement>(".ui-settings-page-title")?.offsetHeight ?? 0;
 
 export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPage: string | null }) {
   const { text } = useInterfaceMessages();
@@ -73,6 +73,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [agentRefresh, setAgentRefresh] = useState(0);
   const [focus, setFocus] = useState<"top" | "paste" | null>(start.focus ?? "top");
   const pageRef = useRef<HTMLElement>(null);
+  // The page's scroll box is the region its menus fit and its reveals keep to.
+  const [pageBox, setPageBox] = useState<HTMLElement | null>(null);
+  const setPageRef = useCallback((node: HTMLElement | null) => { pageRef.current = node; setPageBox(node); }, []);
   useScrollEdges(pageRef);
   const [preference, dispatchPreference] = useReducer(preferenceState, initialPreferences);
   const preferences = preference.value;
@@ -116,7 +119,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     if (back?.isConnected && !back.closest("[hidden], [inert]")) back.focus({ preventScroll: true });
     else sidebar.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
   });
-  useRowReveal(revealTarget, pageRef);
+  useReveal(pageRef, useMemo(() => revealTarget && settingTarget(revealTarget.id), [revealTarget]));
   // A row found by search is marked for 2 s.
   const [highlighted, highlight, clearHighlight] = useFlash<string>(2000);
   const highlightOperation = useRef(0);
@@ -332,7 +335,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       // never the document containing the sidebar and native title bar.
       if (!preferences || !permission) return;
       const paste = document.getElementById("paste");
-      scroller.scrollTop = paste ? scroller.scrollTop + paste.getBoundingClientRect().top - scroller.getBoundingClientRect().top - underTitle(scroller) : 0;
+      if (paste) revealIn(scroller, { find: () => paste.isConnected ? paste : null });
+      else scroller.scrollTop = 0;
     } else scroller.scrollTop = 0;
     setFocus(null);
   }, [focus, preferences, permission]);
@@ -573,7 +577,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), tile: PAGE_TILES[value], gapBefore: value === "about" }))}
           onChange={selectPage} />}
       </nav>
-      <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
+      <main ref={setPageRef} className="settings-page" aria-labelledby="settings-page-title"><Region element={pageBox}>
         <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "ui-settings-page-title"}>{text(`settings-${page}`)}</h1>
         {/* The page's parts, --section-gap apart: one owner for the space between them. */}
         <div className="settings-page-content">
@@ -635,7 +639,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           </>
         )}
         </div>
-      </main>
+      </Region></main>
       {/* At the window's foot (ui/SettingsLayout.css), and after the page in Tab order too. */}
       <NoticeSlot>
         {settingUndo.notice}

@@ -1,8 +1,9 @@
-import { Children, createContext, useContext, useState, type HTMLAttributes, type ReactNode } from "react";
+import { Children, createContext, useCallback, useContext, useState, type HTMLAttributes, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Band } from "./Band";
 import { usePresence, usePresenceSlot } from "./presence";
 import "./Frame.css";
+import { Region } from "./region";
 import { Status } from "./Status";
 
 type FrameSlot = "heading" | "notice" | "host" | "inspector" | "reading";
@@ -25,7 +26,11 @@ export function useFrameSlot(slot: FrameSlot, present = true) {
  * notice passes, or, with no list, in the room above an empty state
  * (`FrameNotices`). The notices are drawn once, in the line, which moves to that
  * room, so a notice moving between the two keeps its state (an Undo keeps its
- * time). Callers never place a notice themselves. */
+ * time). Callers never place a notice themselves.
+ * It publishes the window's regions (ui/region): what floats from the content
+ * (the list, the Inspector, the drawer) ends above the delivery bar, so it never
+ * covers the bar's actions; what floats from the bar may use the whole window. A
+ * menu with room nowhere opens as a view of the window. */
 export function Frame({ search, notice, bar, children, ...main }: {
   search: ReactNode;
   /** The delivery bar, drawn last, after the drawer: what is read and tabbed to
@@ -38,15 +43,23 @@ export function Frame({ search, notice, bar, children, ...main }: {
   const [heading, setHeading] = useState<HTMLElement | null>(null);
   const [drawer, setDrawer] = useState<HTMLElement | null>(null);
   const [citation, setCitation] = useState<HTMLElement | null>(null);
+  const [frame, setFrame] = useState<HTMLElement | null>(null);
   const { counts, register } = usePresence({ heading: 0, notice: 0, host: 0, inspector: 0, reading: 0 });
+  // The content's region ends where the bar begins: at the drawer slot's foot.
+  const content = useCallback((own: HTMLElement) => {
+    const box = own.getBoundingClientRect(), end = drawer?.isConnected ? drawer.getBoundingClientRect().bottom : box.bottom;
+    return new DOMRect(box.left, box.top, box.width, Math.max(0, end - box.top));
+  }, [drawer]);
   return <Slots.Provider value={{ heading, drawer, citation, setCitation, register }}>
-    <main className="ui-frame" {...main} data-heading={counts.heading ? "" : undefined} data-notice={counts.notice ? "" : undefined}
+    <main ref={setFrame} className="ui-frame" {...main} data-heading={counts.heading ? "" : undefined} data-notice={counts.notice ? "" : undefined}
       data-notice-room={counts.host ? "" : undefined} data-inspector={counts.inspector ? "" : undefined} data-reading={counts.reading ? "" : undefined}>
-      {search}
-      <Band className="ui-notice-line">{notice}<div className="ui-heading-slot" ref={setHeading} /></Band>
-      {children}
-      <div className="ui-drawer-slot" ref={setDrawer} />
-      {bar}
+      <Region element={frame} floats={content} views>
+        {search}
+        <Band className="ui-notice-line">{notice}<div className="ui-heading-slot" ref={setHeading} /></Band>
+        {children}
+        <div className="ui-drawer-slot" ref={setDrawer} />
+      </Region>
+      <Region element={frame} views>{bar}</Region>
     </main>
   </Slots.Provider>;
 }

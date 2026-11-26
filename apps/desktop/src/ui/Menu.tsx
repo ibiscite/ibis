@@ -7,6 +7,7 @@ import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as Aria
 import { Button } from "./Button";
 import { markScrollEdges } from "./ScrollArea";
 import { Floating } from "./Layer";
+import { LEAST_ROWS } from "./region";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import { usePresence, usePresenceSlot } from "./presence";
 import "./Menu.css";
@@ -22,104 +23,19 @@ export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement |
   return `${placement.startsWith("top") ? "top" : "bottom"} ${end ? "right" : "left"}` as const;
 }
 
-/** The least an anchored menu shows (`--menu-min-block`: its filter and three
- * whole rows), in pixels at the current text size. */
-function menuMinimum(): number {
-  const probe = document.createElement("div");
-  probe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;block-size:var(--menu-min-block)";
-  document.body.append(probe);
-  const height = probe.getBoundingClientRect().height;
-  probe.remove();
-  return height;
-}
-
-/** Keep React Aria's placement boundary inside the viewport and below the
- * return field. A wrapped picker can put its footer trigger below the window.
- * A menu opened from above the `[data-menu-floor]` region (the footer) also
- * ends above it, so it never covers the footer's actions.
- * One fit rule for every anchored menu [C9]: the boundary keeps clear of the
- * return field only while a whole menu (`--menu-min-block`) still fits below
- * it. A field low in the window, such as the citation drawer's Page above the
- * bar, would otherwise leave a sliver that shows the filter and no rows, and
- * React Aria could not flip above; without the clearance it flips to the side
- * with room and caps the height there, and the list scrolls inside. */
-export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>, trigger?: RefObject<HTMLElement | null>) {
-  const [boundary, setBoundary] = useState<HTMLElement>();
-  const [clearBottom, setClearBottom] = useState(0);
-  useLayoutEffect(() => {
-    if (!open) return;
-    let current = true, frame = 0, signature = "";
-    let node: HTMLElement | null = null;
-    const floor = document.querySelector<HTMLElement>("[data-menu-floor]");
-    const above = floor && trigger?.current && !floor.contains(trigger.current) ? floor : null;
-    const layout = trigger?.current?.closest("main") ?? trigger?.current?.parentElement;
-    const update = () => {
-      if (!current) return;
-      const below = Math.max(0, returnRef?.current?.getBoundingClientRect().bottom ?? 0);
-      // Never above the top edge, even in a window too short for both.
-      const end = above && window.innerHeight > 400 ? Math.max(below, above.getBoundingClientRect().top) : window.innerHeight;
-      // Clear the field only while a whole menu fits under it; else the menu may open above.
-      const bottom = end - below >= menuMinimum() ? below : 0;
-      const rect = trigger?.current?.getBoundingClientRect();
-      const next = [innerWidth, innerHeight, bottom, end, rect?.x, rect?.y, rect?.width, rect?.height].join(",");
-      if (next === signature) return;
-      signature = next;
-      const previous = node;
-      node = document.createElement("div");
-      node.dataset.menuBoundary = "";
-      node.setAttribute("aria-hidden", "true");
-      Object.assign(node.style, { position: "fixed", inset: "0", top: `${bottom}px`, bottom: `${Math.max(0, innerHeight - end)}px`, pointerEvents: "none" });
-      document.body.append(node);
-      // React Aria observes target size, not position-only layout changes.
-      // A fresh boundary asks that same fitting owner to recompute placement
-      // and its height cap, without remounting the focused menu content.
-      setBoundary(node);
-      setClearBottom(bottom);
-      previous?.remove();
-    };
-    update();
-    const schedule = () => {
-      if (!current || frame) return;
-      frame = requestAnimationFrame(() => { frame = 0; update(); });
-    };
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
-    if (returnRef?.current) observer?.observe(returnRef.current);
-    if (above) observer?.observe(above);
-    if (trigger?.current) observer?.observe(trigger.current);
-    // A neighbour can move a fixed-size anchor: header wrapping, middle-area
-    // settling, shelf folding and a footer growing all belong to this owner.
-    if (layout) {
-      observer?.observe(layout);
-      for (const child of layout.children) observer?.observe(child);
-    }
-    const changed = new MutationObserver(schedule);
-    if (layout) changed.observe(layout, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "style", "hidden", "data-folded"] });
-    window.addEventListener("resize", schedule);
-    window.visualViewport?.addEventListener("resize", schedule);
-    document.addEventListener("scroll", schedule, true);
-    schedule();
-    return () => {
-      current = false;
-      cancelAnimationFrame(frame);
-      observer?.disconnect();
-      changed.disconnect();
-      window.removeEventListener("resize", schedule);
-      window.visualViewport?.removeEventListener("resize", schedule);
-      document.removeEventListener("scroll", schedule, true);
-      node?.remove();
-    };
-  }, [open, returnRef, trigger]);
-  const getTargetRect = useCallback((target: Element) => {
-    const rect = target.getBoundingClientRect();
-    if (!boundary?.isConnected) return rect;
-    const bounds = boundary.getBoundingClientRect();
-    // Preserve the real anchor when visible; shift an off-window trigger into
-    // the boundary so placement can still flip and cap against usable space.
-    if (rect.top >= 8 && rect.bottom <= bounds.bottom - 8) return rect;
-    const top = Math.max(clearBottom + 8 - 6 - rect.height, Math.min(rect.top, bounds.bottom - 8));
-    return new DOMRect(rect.x, top, rect.width, rect.height);
-  }, [boundary, clearBottom]);
-  return { boundaryElement: boundary, getTargetRect };
+/** What an anchored menu must show, measured on its drawn surface: its chrome
+ * (padding, heading, note, filter) and its first `LEAST_ROWS` whole rows,
+ * or all of them when it has fewer; with no rows, its empty state. Read from
+ * the content's own sizes, so a capped, scrolling menu measures the same. */
+export function menuLeast(surface: HTMLElement): number {
+  const list = surface.querySelector<HTMLElement>('[role="menu"]');
+  if (!list) return surface.scrollHeight;
+  const chrome = surface.scrollHeight - list.offsetHeight;
+  const rows = list.querySelectorAll('[role^="menuitem"]');
+  const last = rows[Math.min(LEAST_ROWS, rows.length) - 1];
+  // Rows' boxes already include the list's scroll offset.
+  const top = list.getBoundingClientRect().top - list.scrollTop;
+  return Math.ceil(chrome + (last ? last.getBoundingClientRect().bottom - top : list.scrollHeight));
 }
 
 /** A scrolling menu ends on a whole row, never a cut one (#1031). Pass the
@@ -294,7 +210,6 @@ type MenuProps = {
 export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerVariant = "secondary", triggerSize = "default", triggerTitle, triggerLabel, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
-  const boundary = useMenuBoundary(isOpen, tabFocusRef, button);
   // The footer's leading status row opens above its leading edge; trailing
   // footer actions keep their own placement. React Aria owns the gap and fit.
   const leadingStatus = triggerClassName?.split(/\s+/).includes("library-status-trigger");
@@ -340,7 +255,7 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
       render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-label={triggerLabel ?? label} />}>{trigger}</Button>
-    <Floating kind="menu" open={isOpen} onClose={close} ref={wholeRows} className="menu-popover ui-overlay" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
+    <Floating kind="menu" open={isOpen} onClose={close} ref={wholeRows} className="menu-popover ui-overlay" anchor={button} least={menuLeast} placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit}>
       <div className="menu-frame" onKeyDownCapture={(event) => {
         if (isComposing(event)) { event.stopPropagation(); return; }
         // Tab leaves the entire menu, from any depth.

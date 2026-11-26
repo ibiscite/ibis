@@ -1,3 +1,5 @@
+import { LEAST_ROWS, visibleBox } from "../src/ui/region";
+
 // The layout rules of docs/design.md as data, checked on whatever screen is
 // mounted. One table, read by the Mac's WebKit gallery (gallery/webkit.swift)
 // and the Chromium canvas renderer (gallery/canvas.mjs), so a rule written
@@ -595,4 +597,72 @@ export function overflow(node: HTMLElement, lines: number): string | null {
   if (node.scrollWidth > node.clientWidth + tolerance) return `cut by ${node.scrollWidth - node.clientWidth}px`;
   if (node.scrollHeight > lines * line + tolerance) return `${Math.round(node.scrollHeight / line)} lines`;
   return null;
+}
+
+/** The box of a node a person can see: the window and every clipping ancestor
+ * cut it. Null when nothing of it shows. */
+function clipped(node: Element): DOMRect | null {
+  let { left, top, right, bottom } = node.getBoundingClientRect();
+  left = Math.max(left, 0); top = Math.max(top, 0);
+  right = Math.min(right, document.documentElement.clientWidth || innerWidth); bottom = Math.min(bottom, document.documentElement.clientHeight || innerHeight);
+  for (let part = node.parentElement; part && part !== document.body; part = part.parentElement) {
+    const style = getComputedStyle(part);
+    if (style.overflowX === "visible" && style.overflowY === "visible") continue;
+    const clip = part.getBoundingClientRect();
+    left = Math.max(left, clip.left + part.clientLeft); top = Math.max(top, clip.top + part.clientTop);
+    right = Math.min(right, clip.left + part.clientLeft + (part.clientWidth || clip.width)); bottom = Math.min(bottom, clip.top + part.clientTop + (part.clientHeight || clip.height));
+  }
+  return right > left && bottom > top ? new DOMRect(left, top, right - left, bottom - top) : null;
+}
+
+/** Whether a person sees all of a node: no clipping ancestor or window edge cuts
+ * it, and what is drawn at its centre is the node itself, not a layer over it. */
+function wholeAndOnTop(node: Element): boolean {
+  const box = node.getBoundingClientRect(), shown = clipped(node);
+  if (!shown || box.height < 2) return false;
+  if (shown.top > box.top + tolerance || shown.bottom < box.bottom - tolerance) return false;
+  const hit = document.elementFromPoint(shown.left + Math.min(shown.width / 2, 24), shown.top + shown.height / 2);
+  return hit !== null && (hit === node || node.contains(hit));
+}
+
+/** [C9 rows] Every open anchored menu shows at least its least of whole rows
+ * (ui/region's `LEAST_ROWS`, or every row it has) that a person can see:
+ * inside the window, cut by no clipping ancestor and covered by no layer (the
+ * point at each row's centre hits the row). With a filter, the filter shows
+ * too; with no matches, its empty state is the least. A menu with room on
+ * neither side opens as a view of the window instead, as the palettes do: the
+ * window is then the limit, so its filter and every row its list's box holds
+ * whole show, and at least one. */
+export function menuRows(root: ParentNode = document): string[] {
+  const failures: string[] = [];
+  for (const list of root.querySelectorAll<HTMLElement>('.menu-popover [role="menu"], .ui-view [role="listbox"]')) {
+    const view = list.matches('[role="listbox"]');
+    const surface = list.closest<HTMLElement>(".menu-popover, .ui-view")!;
+    const name = list.getAttribute("aria-label") ?? label(list);
+    const filter = surface.querySelector<HTMLElement>("input");
+    if (filter && !wholeAndOnTop(filter)) failures.push(`[C9 rows] menu "${name}": its filter is not visible`);
+    const rows = [...list.querySelectorAll(view ? '[role="option"]' : '[role^="menuitem"]')];
+    const room = view ? clipped(list) : null;
+    const held = view ? rows.filter((row) => { const box = row.getBoundingClientRect(); return room !== null && box.top >= room.top - tolerance && box.bottom <= room.bottom + tolerance; }).length : rows.length;
+    const needed = view ? Math.max(Math.min(1, rows.length), held) : Math.min(LEAST_ROWS, rows.length);
+    const shown = rows.filter(wholeAndOnTop).length;
+    if (shown < needed) failures.push(`[C9 rows] ${view ? "view" : "menu"} "${name}": ${shown} of ${needed} rows visible and whole in a ${innerWidth} × ${innerHeight} window`);
+    if (!rows.length && !wholeAndOnTop(list)) failures.push(`[C9 rows] menu "${name}": its empty state is not visible`);
+  }
+  return failures;
+}
+
+/** [C9 reveal] After a jump (ui/reveal), the focused element intersects what a
+ * person sees of its scroll box: inside it, and not under its sticky title.
+ * The box is ui/region's `visibleBox`, the one definition the reveal keeps to. */
+export function focusInView(scroller: Element | null): string[] {
+  if (!scroller) return ["[C9 reveal] no scroll box to look in"];
+  const focused = document.activeElement;
+  if (!(focused instanceof HTMLElement) || !scroller.contains(focused)) return [`[C9 reveal] the keyboard is not in ${label(scroller)} but on ${focused ? label(focused) : "nothing"}`];
+  // A control drawn by its label (a hidden radio) is where its label is.
+  const own = focused.getBoundingClientRect();
+  const box = own.width * own.height >= 16 ? own : (focused.closest("label, .ui-row") ?? focused).getBoundingClientRect();
+  const seen = visibleBox(scroller);
+  const across = Math.min(box.right, seen.right) - Math.max(box.left, seen.left), down = Math.min(box.bottom, seen.bottom) - Math.max(box.top, seen.top);
+  return across > 1 && down > 1 ? [] : [`[C9 reveal] ${label(focused)} spans ${box.top.toFixed(0)}–${box.bottom.toFixed(0)}px, outside what shows of ${label(scroller)} (${seen.top.toFixed(0)}–${seen.bottom.toFixed(0)}px)`];
 }

@@ -119,7 +119,7 @@ test.each(rules)("$says", (rule) => {
 // [C3] Alignment is decided once, by bands and tokens, never copied as arithmetic:
 // the count of calc() in the app's stylesheets may only fall. Lower the ceiling
 // when it does; a part that needs a column takes a Band or a token instead.
-const CALC_CEILING = 113;
+const CALC_CEILING = 112;
 test(`calc() in the app's stylesheets stays at or under ${CALC_CEILING}`, () => {
   const count = (css: string) => css.replace(/\/\*[^]*?\*\//g, "").match(/\bcalc\(/g)?.length ?? 0;
   const found = sheets.filter(([file]) => !file.startsWith("website/")).reduce((sum, [, css]) => sum + count(css), 0);

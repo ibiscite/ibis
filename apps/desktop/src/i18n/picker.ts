@@ -18,6 +18,8 @@ export const PICKER_IDS = [
   "picker-format-title",
   "palette-search-formats",
   "palette-no-formats",
+  "palette-choose",
+  "palette-no-matches",
   "palette-use-again",
   "palette-use-for-app",
   "palette-use-default",
