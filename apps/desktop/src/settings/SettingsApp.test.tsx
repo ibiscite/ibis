@@ -31,6 +31,8 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     windowRevision: 0,
     pages: [] as ((page: string) => void)[],
     closes: [] as (() => Promise<void>)[],
+    /** macOS hid the kept window. */
+    hides: [] as (() => Promise<void>)[],
     shortcut: { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null } as ShortcutStatus,
     shortcuts: [] as ((status: ShortcutStatus) => void)[],
     shortcutChoices: [] as (string | null)[],
@@ -89,7 +91,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     onSettingsChanged: async (changed) => { state.preferenceEvents.push(changed); return () => { state.preferenceEvents = state.preferenceEvents.filter((each) => each !== changed); }; },
     onPage: async (handler) => { state.pages.push(handler); return () => undefined; },
     onUpdateChecks: async (handler) => { state.automatic.push(handler); return () => { state.automatic = state.automatic.filter((each) => each !== handler); }; },
-    onCloseRequested: async (handler) => { state.closes.push(handler); return () => undefined; },
+    onCloseRequested: async (handler) => { state.closes.push(() => handler(false)); state.hides.push(() => handler(true)); return () => undefined; },
   };
   return { api, state, commit };
 }
@@ -119,6 +121,29 @@ test("Settings opens at the top of General with every built page in a navigable,
   fireEvent.click(within(list).getByRole("option", { name: "General" }));
   expect(screen.getByRole("main", { name: "General" }).scrollTop).toBe(0);
   expect(selected().map((item) => item.textContent)).toEqual(["General"]);
+});
+
+test("a hidden Settings opens again as a new window would, on General, and each page names the window", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="about" />);
+  expect(document.title).toBe("About Ibis");
+  const sidebar = screen.getByRole("navigation", { name: "Settings pages" });
+  fireEvent.change(within(sidebar).getByRole("searchbox"), { target: { value: "appearance" } });
+  fireEvent.click(await within(sidebar).findByRole("option", { name: /^Appearance/ }));
+  await screen.findByRole("main", { name: "Appearance" });
+  expect(document.title).toBe("Appearance");
+  fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
+  await act(async () => state.hides.at(-1)!());
+  expect(state.preferences.appearance).toBe("dark");
+  expect(screen.getByRole("main", { name: "General" }).scrollTop).toBe(0);
+  expect(document.title).toBe("General");
+  expect(within(sidebar).getByRole<HTMLInputElement>("searchbox").value).toBe("");
+  // The next opening reads what is saved now, changed elsewhere meanwhile.
+  state.login = true;
+  act(() => state.pages.at(-1)!("shortcuts"));
+  expect(document.title).toBe("Shortcuts");
+  fireEvent.click(within(sidebar).getByRole("option", { name: "General" }));
+  await waitFor(() => expect(screen.getByRole("switch", { name: /^(Open at login|Start when you sign in|Start on login)/ })).toHaveProperty("checked", true));
 });
 
 test("the paste guide names the list, opens it, notices the grant on its own and says so", async () => {

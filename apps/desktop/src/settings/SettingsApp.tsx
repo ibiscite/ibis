@@ -7,7 +7,7 @@ import { AttachmentText } from "./AttachmentText";
 import { ProposedChanges } from "./ProposedChanges";
 import { CliCommandRow } from "./CliCommand";
 import { StatusMark } from "../ui/StatusMark";
-import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PageIcon } from "../icons";
 import { DEFAULT_PREFERENCES, type CheckResult, type LoginItem, type LoginItemProblem, type PickerPreferences, type ShortcutStatus, type WindowSize } from "../bindings";
 import { type MessageId, useInterfaceMessages, problemText } from "../i18n";
@@ -71,6 +71,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const start = pageOf(initialPage);
   const [page, setPage] = useState<Page>(start.page);
   const [agentRefresh, setAgentRefresh] = useState(0);
+  /** Each opening starts the page content again, as a new window would, so every row reads afresh. */
+  const [opening, setOpening] = useState(0);
   const [focus, setFocus] = useState<"top" | "paste" | null>(start.focus ?? "top");
   const pageRef = useRef<HTMLElement>(null);
   useScrollEdges(pageRef);
@@ -231,6 +233,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     }
   }), [queue, clearSettingUndo, text]);
   useAppearance(preferences);
+  // A Mac settings window is named after its page (settings_window.rs applies it there).
+  useEffect(() => { document.title = text(`settings-${page}`); }, [page, text]);
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.largerText = String(preferences?.larger_text ?? DEFAULT_PREFERENCES.larger_text);
@@ -300,7 +304,13 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       shortcutReads.current += 1;
       latestShortcut.current = next; setShortcut(next); clearShortcutUndo();
     }, { ready: readShortcut, failed: () => { setShortcutProblem({ id: "shortcuts-read-failed" }); readShortcut(); } });
-    const page = listening(api.onPage, (name) => { setRevealTarget(null); clearHighlight(); setQuery(""); const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
+    /** Every opening has a page and starts from what is saved now. */
+    const present = (name: string) => {
+      setRevealTarget(null); clearHighlight(); setQuery(""); const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top");
+      clearSettingUndo(); clearShortcutUndo(); setProblemRow(null); setCheckResult(null); setReturnFailed(false); setGuided(false);
+      setOpening((count) => count + 1);
+    };
+    const page = listening(api.onPage, (name) => { present(name); readAll(); readShortcut(); });
     const automatic = listening(api.onUpdateChecks, (next) => {
       updateReads.current += 1;
       if (!updateWrite.current) clearSettingUndo();
@@ -315,7 +325,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       }
       setUpdatesSaving(false);
     });
-    const close = listening(api.onCloseRequested, () => queue.finishSaving());
+    // Saves finish before a closing window is destroyed. A kept one goes on
+    // running while hidden; it opens next on General, so leave it there now.
+    const close = listening(api.onCloseRequested, async (kept) => {
+      if (kept) present("general");
+      await queue.finishSaving();
+    });
     return () => {
       active = false;
       updateWrite.current?.reject(); updateWrite.current = null;
@@ -575,6 +590,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       </nav>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "ui-settings-page-title"}>{text(`settings-${page}`)}</h1>
+        <Fragment key={opening}>
         {/* One cause, one sentence: a file that cannot be read says so in the engine's words, on every page. */}
         {formatSettings.problem !== null ? <SettingsFileProblem settings={formatSettings} />
           : preference.status === "unknown" && preference.message && <Note problem role="alert">{text(preference.message)}</Note>}
@@ -630,6 +646,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <p className="ui-about-free">{text("about-free")}</p>
           </>
         )}
+        </Fragment>
       </main>
       {/* At the window's foot (ui/SettingsLayout.css), and after the page in Tab order too. */}
       <NoticeSlot>

@@ -1,5 +1,7 @@
 //! The Settings window (#776): a window of its own that, while open, shows in
-//! the Dock and the app switcher like any Mac settings window.
+//! the Dock and the app switcher like any Mac settings window. On macOS it is
+//! made once and hidden on close (`close_decision`); `dismiss` is the only way
+//! it goes away.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -152,11 +154,7 @@ pub(crate) async fn finish_paste_guide(app: AppHandle) -> Result<bool, crate::er
             finish_guide_with(
                 crate::paste::permission::paste_permission().granted,
                 window.is_focused().unwrap_or(false),
-                || {
-                    window.hide()?;
-                    closed(&handle);
-                    Ok::<_, tauri::Error>(())
-                },
+                || dismiss(&handle),
             )
             .map_err(|_| crate::errors::NativeFailure)
         })();
@@ -239,12 +237,20 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
         None => builder.center(),
     };
     FIRST_SHOW.begin();
-    // The sidebar runs under the traffic lights, as in System Settings.
+    // The sidebar runs under the traffic lights, as in System Settings, whose
+    // window cannot be minimised and is named after its page (the page sets
+    // `document.title`; the static English one never reaches other systems).
     #[cfg(target_os = "macos")]
     {
         builder = builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .hidden_title(true);
+            .hidden_title(true)
+            .minimizable(false)
+            .on_document_title_changed(|window, title| {
+                if !title.is_empty() {
+                    report(window.set_title(&title), NativeIssue::Window);
+                }
+            });
     }
     // WebView2 refuses a second webview whose arguments differ from the
     // picker's, and they keep it offline (#201), so reuse them exactly.
@@ -308,6 +314,56 @@ pub(crate) fn picker_opened() {
     FIRST_SHOW.supersede();
 }
 
+/// How Settings goes away when it is closed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Close {
+    /// Hidden and kept for the next opening, as a Mac app keeps its Settings
+    /// window: AppKit holds on to the shell of every destroyed one.
+    Hide,
+    /// Destroyed once its page has saved; the next opening builds a new one.
+    Destroy,
+}
+
+/// The one rule for closing Settings. Windows and Linux free a destroyed
+/// window, while a hidden WebView2 or WebKitGTK view would keep its processes
+/// and memory for a window that is rarely open.
+pub(crate) const fn close_decision(macos: bool) -> Close {
+    if macos { Close::Hide } else { Close::Destroy }
+}
+
+/// The only way Settings goes away: a closed window, a finished paste guide.
+pub(crate) fn dismiss<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    dismiss_as(app, close_decision(cfg!(target_os = "macos")))
+}
+
+pub(crate) fn dismiss_as<R: Runtime>(app: &AppHandle<R>, close: Close) -> tauri::Result<()> {
+    let Some(window) = app.get_webview_window(LABEL) else {
+        return Ok(());
+    };
+    match close {
+        // The page keeps running while hidden, so its queued saves finish by
+        // themselves; it only resets for the next opening.
+        Close::Hide => hide_then(
+            &FIRST_SHOW,
+            || window.hide(),
+            || {
+                report(window.emit_to(LABEL, "settings:hidden", ()), NativeIssue::Window);
+                closed(app);
+            },
+        ),
+        // Through CloseRequested, so the page saves before it is destroyed.
+        Close::Destroy => window.close(),
+    }
+}
+
+/// A Settings window still loading must not show itself once it was closed.
+fn hide_then<E>(first: &FirstShow, hide: impl FnOnce() -> Result<(), E>, hidden: impl FnOnce()) -> Result<(), E> {
+    first.supersede();
+    hide()?;
+    hidden();
+    Ok(())
+}
+
 /// Settings is on screen, so hiding the whole app would hide it too.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn is_open(app: &AppHandle) -> bool {
@@ -355,6 +411,30 @@ mod tests {
             finish_guide_with(true, true, || Err("close failed")),
             Err("close failed")
         );
+    }
+
+    #[test]
+    fn only_macos_keeps_settings_when_it_closes() {
+        assert_eq!(close_decision(true), Close::Hide);
+        assert_eq!(close_decision(false), Close::Destroy);
+    }
+
+    #[test]
+    fn a_hidden_settings_never_shows_itself_and_a_failed_hide_changes_nothing_else() {
+        let first = FirstShow(AtomicBool::new(false));
+        let mut hidden = false;
+        first.begin(); // closed before its page loaded
+        assert_eq!(hide_then(&first, || Ok::<_, ()>(()), || hidden = true), Ok(()));
+        assert!(hidden, "the app leaves the Dock once Settings is hidden");
+        assert!(!first.claim(), "the page that loads later keeps it hidden");
+        let mut hidden = false;
+        first.begin();
+        assert_eq!(
+            hide_then(&first, || Err("hide failed"), || hidden = true),
+            Err("hide failed")
+        );
+        assert!(!hidden, "a window still on screen keeps the app in the Dock");
+        assert!(!first.claim());
     }
 
     #[test]

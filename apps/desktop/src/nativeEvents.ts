@@ -51,6 +51,8 @@ export const events = {
   onUpdateChecks: on<boolean>("update:automatic"),
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */
   onSettingsPage: on<string>("settings:page"),
+  /** macOS hid Settings, which it keeps for the next opening (settings_window::dismiss). */
+  onSettingsHidden: on("settings:hidden"),
   onNoticeShow: on<NoticeMessage>("notice:show"),
   onNoticeLeave: on("notice:leave"),
   onAccentChanged: on<unknown>("accent:changed"),

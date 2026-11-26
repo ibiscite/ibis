@@ -1057,6 +1057,48 @@ mod tests {
         Ok(())
     }
 
+    /// macOS keeps one Settings window: every close hides it, every opening
+    /// shows that window on the page asked for.
+    #[test]
+    fn closing_and_reopening_settings_keeps_one_window_and_names_each_page() -> tauri::Result<()> {
+        use crate::settings_window::{Close, LABEL, Page, dismiss_as, present};
+        use std::sync::{Arc, Mutex};
+        use tauri::Listener;
+        let app = picker_and_settings(false)?;
+        let handle = app.handle();
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        for name in ["settings:hidden", "settings:page"] {
+            let heard = heard.clone();
+            app.listen_any(name, move |event| {
+                heard.lock().unwrap().push(format!("{name} {}", event.payload()));
+            });
+        }
+        for page in [None, Some(Page::About), Some(Page::Paste), None, None] {
+            present(handle, page, app.state::<PickerGeneration>().advance());
+            dismiss_as(handle, Close::Hide)?;
+        }
+        present(handle, Some(Page::Shortcuts), app.state::<PickerGeneration>().advance());
+        let windows = app.webview_windows();
+        assert_eq!(windows.len(), 2, "the picker and one Settings: {:?}", windows.keys());
+        assert!(windows.contains_key(LABEL));
+        let heard = heard.lock().unwrap();
+        let hidden = heard.iter().filter(|said| said.starts_with("settings:hidden")).count();
+        assert_eq!(hidden, 5, "each close resets the page for the next opening");
+        let pages: Vec<_> = heard.iter().filter(|said| said.starts_with("settings:page")).collect();
+        assert_eq!(
+            pages,
+            [
+                "settings:page \"about\"",
+                "settings:page \"paste\"",
+                "settings:page \"general\"",
+                "settings:page \"general\"",
+                "settings:page \"shortcuts\"",
+            ],
+            "the first opening builds the window on its page; every later one names it"
+        );
+        Ok(())
+    }
+
     #[test]
     fn an_opened_source_hides_only_its_own_unpinned_presentation() -> tauri::Result<()> {
         let unpinned = picker_and_settings(false)?;

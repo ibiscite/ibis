@@ -170,8 +170,16 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if window.label() == settings_window::LABEL {
-                if let WindowEvent::Destroyed = event {
-                    settings_window::closed(window.app_handle());
+                match event {
+                    WindowEvent::CloseRequested { api, .. }
+                        if settings_window::close_decision(cfg!(target_os = "macos"))
+                            == settings_window::Close::Hide =>
+                    {
+                        api.prevent_close();
+                        report(settings_window::dismiss(window.app_handle()), NativeIssue::Window);
+                    }
+                    WindowEvent::Destroyed => settings_window::closed(window.app_handle()),
+                    _ => {}
                 }
                 return;
             }
