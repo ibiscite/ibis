@@ -41,6 +41,11 @@ a shared part.
 - **A component renders only its own class names.** Borrowing another part's
   classes to inherit its look is composition by accident. A part that needs
   that look composes the part.
+- **One paint owner per surface.** A control with inner buttons (the citation
+  token and its ×) paints one fill and one ring, on the whole surface.
+- **Both sides are checked.** The ownership test covers stylesheets and the
+  class names components render, in `ui/` as well as screens. A knob is a
+  custom property the part documents, set on the instance it is meant for.
 
 ### 2. Every space has one owner
 
@@ -48,6 +53,10 @@ a shared part.
   container: `Stack` for gaps, `Group` for the inset and the dividers between
   its items, `Section` for its heading and group. Dividers are drawn by the
   container between any two items, so no child can break them.
+- **A Group holds rows.** Its items are rows; a note, warning or status
+  travels as a prop of the row it is about; a disclosure's body is unpainted
+  rows in the same card, never a second card. Gaps are set by an item's role
+  (row, heading, card), never by which sibling precedes it.
 - **Parts read roles, never steps.** `--space-N` appears only in
   `tokens.css`, where roles such as `--inset`, `--row-pad` and
   `--section-gap` are defined from it.
@@ -74,7 +83,12 @@ a shared part.
   drawer's visible box and a view's scroll box. Every `Floating` takes its
   boundary from the nearest region, never from the viewport or a clipping
   ancestor.
-- **A menu has a minimum.** That minimum is its filter plus four whole rows.
+- **Placement is not focus.** Where focus returns when a menu closes never
+  limits where the menu may open; the boundary is the region alone.
+- **A menu has a minimum.** That minimum is its measured filter and chrome plus
+  four whole rows, or all its rows when it has fewer (a filter with two
+  matches needs two). It is checked against the region and the actual
+  clipping of the layer it portals into.
   - It opens on the side with room for the minimum.
   - Its height is what that side allows, and it scrolls inside.
   - When neither side has room, it opens as a view in the window, the way
@@ -82,6 +96,8 @@ a shared part.
 - **One `reveal(target)` per scroll owner.** It keeps the target inside the
   visible box until layout settles, or until the person scrolls, types or
   moves. Settings search, keyboard focus and search jumps all use it.
+  A reveal knows when its view is ready, and a newer jump or the person
+  scrolling cancels it.
 
 ### 4. The gate checks what people see
 
@@ -97,7 +113,11 @@ a shared part.
   - A floating surface shows at least its minimum of whole, unclipped rows
     inside its region.
   - A focused or revealed element intersects its scroll box once layout
-    settles.
+    settles, and is not hidden under a sticky title.
+  - Every check is proven by a planted failure: rows covered by an opaque
+    layer, focus under a sticky header, a required icon drawn invisible.
+  - Minimum-size cases in German and Arabic at 200% text, forced colours, and
+    keys pressed in the first frame with normal and reduced motion.
 - **Three reference journeys, as canvas scenarios with invented stress
   content.** These are stand-ins for user research, not a substitute for
   watching people use Ibis.
@@ -115,8 +135,10 @@ a shared part.
 
 ## How it lands
 
-Each step lands as its own pull request. Each starts with a check that is red
-on main for a known symptom, and then makes it green. Picture baselines come
+Each step lands as its own pull request, and every one of them is green when
+it lands: a new check arrives with the change that makes it pass, and is shown
+red on main in the pull request. The website's picker demo and its copy of the
+app tokens change in the same pull request as the picker. Picture baselines come
 from CI, as [testing](../testing.md) says.
 
 1. **Closed parts and owned space.** Containers own dividers and gaps;
