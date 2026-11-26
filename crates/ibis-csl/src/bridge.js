@@ -322,6 +322,46 @@
         }).join(" ");
         return writeAffixes(engine, "html", html, (request.affixes ?? []).filter((affix) => owned.has(affix.placeholder)));
       });
+      // A citation number, year, affix or another cite's page cannot prove
+      // that a locator printed. Preview each cite at this same document
+      // position with a different locator of the same shape, comparing only
+      // the processor text that cite owns, as on the selection path below.
+      const unprinted_locators = [];
+      engine.setOutputFormat("text");
+      for (const [groupIndex, { parts }] of groups.entries()) {
+        for (const part of parts) {
+          const list = citations[part].citationItems;
+          if (!list.some((cite) => cite.locator !== undefined)) continue;
+          const indices = new Map();
+          list.forEach((cite, index) => {
+            if (!indices.has(cite.id)) indices.set(cite.id, []);
+            indices.get(cite.id).push(index);
+          });
+          const before = citations.slice(0, part).map((cite) => [cite.citationID, 0]);
+          const after = citations.slice(part + 1).map((cite) => [cite.citationID, 0]);
+          const owned = (list) => {
+            const capture = { engine, format: "text", area: "citation", seen: new Map(), roots: new WeakMap(), parts: [], indices, occurrences: new Map() };
+            observation = capture;
+            try {
+              engine.previewCitationCluster({ citationItems: list.map((cite) => ({ ...cite })), properties: { noteIndex: 0 } }, before, after, "text");
+              if (engine.tmp.citation_errors.length) throw unverified;
+              return ownedText(engine, capture, list.length);
+            } finally {
+              observation = null;
+            }
+          };
+          const original = owned(list);
+          list.forEach((cite, index) => {
+            if (cite.locator === undefined) return;
+            const { locator, label, ...bare } = cite;
+            const other = shiftedLocator(locator);
+            const changed = other === locator ? bare : { ...cite, locator: other };
+            const altered = owned(list.map((cite, at) => at === index ? changed : cite));
+            if (original[index] === altered[index]) unprinted_locators.push(request.clusters[groupIndex][index]);
+          });
+        }
+      }
+      engine.setOutputFormat("html");
       engine.output.checkNestedBrace = undefined;
       const bibliography = engine.makeBibliography();
       if (bibliography && bibliography[0].bibliography_errors.length) throw unverified;
@@ -330,6 +370,7 @@
         citations: out,
         entries: bibliography ? bibliography[1] : [],
         hanging_indent: Boolean(bibliography && bibliography[0].hangingindent),
+        unprinted_locators,
       });
     } catch (error) {
       // A citation the style prints as nothing refuses the document, like any
@@ -339,6 +380,7 @@
       if (!refused) throw error;
       return JSON.stringify({ status: "refused" });
     } finally {
+      observation = null;
       items.close();
     }
   };

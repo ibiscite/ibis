@@ -89,6 +89,7 @@ const PARAGRAPH_ORDER: &[&str] = &[
     "w:divId",
     "w:cnfStyle",
     "w:rPr",
+    "w:sectPr",
 ];
 
 /// The body first, then notes, comments, headers and footers.
@@ -148,6 +149,7 @@ fn walk(
     let mut stack: Vec<Vec<u8>> = Vec::new();
     let mut boxes = 0_usize;
     let mut run: Vec<Child> = Vec::new();
+    let mut hidden_run = false;
     let mut capture: Option<(Capture, bool)> = None;
     let mut swallow: Option<Swallow> = None;
     let mut appended = false;
@@ -158,6 +160,17 @@ fn walk(
             break;
         }
         let parent = stack.last().map(Vec::as_slice);
+        if let Event::Start(element) | Event::Empty(element) = &event
+            && element.name().into_inner().as_bytes() == b"w:vanish"
+            && parent == Some(b"w:rPr")
+            && stack.get(stack.len().saturating_sub(2)).map(Vec::as_slice) == Some(b"w:r")
+        {
+            let hidden = !matches!(attribute(element, b"w:val")?.as_deref(), Some("false" | "0" | "off"));
+            if hidden != hidden_run {
+                frames.opaque(hidden);
+                hidden_run = hidden;
+            }
+        }
         // Properties of the current run, or of the paragraph being replaced.
         if let Some((open, paragraph)) = &mut capture
             && !open.take(&event)?
@@ -330,6 +343,10 @@ fn walk(
                         }
                     }
                     b"w:txbxContent" => boxes = boxes.saturating_sub(1),
+                    b"w:r" if hidden_run => {
+                        frames.opaque(false);
+                        hidden_run = false;
+                    }
                     b"mc:Fallback" => frames.opaque(false),
                     b"w:body" => {
                         if let (Some(plan), Some((_, writer))) = (plan, &mut out)
@@ -410,12 +427,13 @@ fn run_xml(base: &[Child], run: &DisplayRun) -> String {
 fn entries(writer: &mut Writer<Vec<u8>>, plan: &Plan<'_>, paragraph: &[Child], run: &[Child]) -> Result<(), Refusal> {
     let bibliography = &plan.edits.bibliography;
     let mut xml = String::new();
-    for entry in &bibliography.entries {
+    for (index, entry) in bibliography.entries.iter().enumerate() {
         // A copied paragraph never repeats a section break, list number or revision.
         let mut children: Vec<Child> = paragraph
             .iter()
             .filter(|child| {
-                !matches!(child.name.as_slice(), b"w:sectPr" | b"w:pPrChange" | b"w:numPr")
+                !matches!(child.name.as_slice(), b"w:pPrChange" | b"w:numPr")
+                    && (child.name != b"w:sectPr" || index + 1 == bibliography.entries.len())
                     && (child.name != b"w:ind" || !(bibliography.hanging_indent || !entry.margin.is_empty()))
             })
             .cloned()
@@ -443,6 +461,12 @@ fn entries(writer: &mut Writer<Vec<u8>>, plan: &Plan<'_>, paragraph: &[Child], r
             xml.push_str(&run_xml(run, piece));
         }
         xml.push_str("</w:p>");
+    }
+    // A style without entries still must not merge the surrounding sections.
+    if bibliography.entries.is_empty()
+        && let Some(section) = paragraph.iter().find(|child| child.name == b"w:sectPr")
+    {
+        xml.push_str(&format!("<w:p><w:pPr>{}</w:pPr></w:p>", section.xml));
     }
     writer.get_mut().write_all(xml.as_bytes()).map_err(|_| Refusal::Damaged)
 }

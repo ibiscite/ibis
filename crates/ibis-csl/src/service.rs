@@ -63,6 +63,12 @@ impl FormatTask {
             Formatted::Document(_) => Err(FormatError::Runtime),
         }
     }
+    pub fn wait_document(self) -> Result<crate::DocumentAnswer, FormatError> {
+        match self.formatted()? {
+            Formatted::Document(answer) => Ok(answer),
+            Formatted::Citation(_) => Err(FormatError::Runtime),
+        }
+    }
     pub(crate) fn formatted(mut self) -> Result<Formatted, FormatError> {
         self.receiver
             .take()
@@ -319,5 +325,41 @@ mod tests {
                 .copy_content(1)
                 .is_some()
         );
+    }
+
+    #[test]
+    fn queued_and_running_document_tasks_cancel_before_the_worker_is_released() {
+        let document = || {
+            let mut prepared = prepared(1, false);
+            let mut body: serde_json::Value = serde_json::from_str(&prepared.json).unwrap();
+            body["clusters"] = json!([[0]]);
+            prepared.json = body.to_string();
+            prepared.document = true;
+            prepared
+        };
+        let service = Service::new(Limits::default()).unwrap();
+        let (running, release) = hold_next_format(&service);
+        let active = service.submit(document()).unwrap();
+        running.recv_timeout(TEST_GATE_LIMIT).unwrap();
+        let queued = service.submit(document()).unwrap();
+        let active_cancel = active.cancellation();
+        let queued_cancel = queued.cancellation();
+        std::thread::scope(|scope| {
+            let (send, answers) = mpsc::channel();
+            let other = send.clone();
+            scope.spawn(move || send.send(active.wait_document()).unwrap());
+            scope.spawn(move || other.send(queued.wait_document()).unwrap());
+            active_cancel.cancel();
+            queued_cancel.cancel();
+            let first = answers.recv_timeout(std::time::Duration::from_secs(1));
+            let second = answers.recv_timeout(std::time::Duration::from_secs(1));
+            release.send(()).unwrap();
+            assert_eq!(first.unwrap(), Err(FormatError::Cancelled));
+            assert_eq!(second.unwrap(), Err(FormatError::Cancelled));
+        });
+        assert!(matches!(
+            service.submit(document()).unwrap().wait_document().unwrap(),
+            crate::DocumentAnswer::Formatted(_)
+        ));
     }
 }

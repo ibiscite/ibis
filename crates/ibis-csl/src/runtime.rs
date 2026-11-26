@@ -90,7 +90,7 @@ impl Session {
             return Err(FormatError::ResourceLimit);
         }
         let formatted = if prepared.document {
-            output::document(&json).map(Formatted::Document)
+            output::document(&json, prepared.outcomes.len()).map(Formatted::Document)
         } else {
             output::result(&json, prepared, &self.superscripts).map(|result| Formatted::Citation(Box::new(result)))
         };

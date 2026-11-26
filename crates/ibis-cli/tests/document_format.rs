@@ -269,3 +269,94 @@ fn a_hostile_document_is_refused_by_the_child() {
     );
     assert!(!folder.folder.path().parent().unwrap().join("escape.xml").exists());
 }
+
+#[test]
+fn citation_numbers_do_not_count_as_printed_locators() {
+    let folder = Folder::new();
+    std::fs::write(
+        folder.path("draft.docx"),
+        docx(r#"<w:p><w:r><w:t>[@vale2024, p. 1; @fen2023, p. 2]</w:t></w:r></w:p>"#),
+    )
+    .unwrap();
+    let result = folder.format("draft.docx", "nature.docx", "nature");
+    let FormatResult::Refused(FormatRefusal::Markers(issues)) = result else {
+        panic!("{result:?}")
+    };
+    let keys: Vec<_> = issues
+        .iter()
+        .map(|issue| match &issue.issue {
+            ibis_engine::FormatIssueKind::LocatorNotPrinted { key } => key.as_str(),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(keys, ["vale2024", "fen2023"]);
+    assert!(!folder.path("nature.docx").exists());
+
+    // A processor-rendered page with the same value as a citation number is valid.
+    assert!(matches!(
+        folder.format("draft.docx", "ieee.docx", "ieee"),
+        FormatResult::Written(_)
+    ));
+    assert_eq!(text_of(&folder.path("ieee.docx"))[0], "[1, p. 1], [2, p. 2]");
+
+    // Range shortening and Roman page presentation remain valid locators.
+    for (index, locator) in ["321-328", "xii"].into_iter().enumerate() {
+        std::fs::write(
+            folder.path("range.docx"),
+            docx(&format!(
+                r#"<w:p><w:r><w:t>[@vale2024, p. {locator}]</w:t></w:r></w:p>"#
+            )),
+        )
+        .unwrap();
+        let result = folder.format("range.docx", &format!("range-{index}.docx"), "apa");
+        assert!(matches!(result, FormatResult::Written(_)), "{locator}: {result:?}");
+    }
+}
+
+#[test]
+fn a_document_bibliography_keeps_authors_before_a_year_margin() {
+    let folder = Folder::new();
+    std::fs::write(
+        folder.path("draft.odt"),
+        odt("<text:p>[@vale2024]</text:p><text:p>[bibliography]</text:p>"),
+    )
+    .unwrap();
+    let result = folder.format("draft.odt", "final.odt", "administrative-science-quarterly");
+    assert!(matches!(result, FormatResult::Written(_)), "{result:?}");
+    let text = text_of(&folder.path("final.odt"));
+    assert_eq!(text.len(), 2);
+    let entry = &text[1];
+    assert!(entry.contains("Vale"), "{entry}");
+    assert!(entry.find("Vale") < entry.find("2024"), "{entry}");
+    assert!(entry.contains("Lanterns"), "{entry}");
+}
+
+#[test]
+fn incomplete_bibliography_editors_refuse_the_document_even_with_complete_authors() {
+    let folder = Folder::new();
+    std::fs::write(
+        folder.path("chapter.bib"),
+        "@incollection{chapter, author={Vale, Avery}, editor={Fen, Robin and others}, title={Invented Lanterns}, booktitle={Invented Volume}, year={2024}, pages={1--20}, publisher={Imaginary Press}}",
+    )
+    .unwrap();
+    folder
+        .engine
+        .open_file_observed(&folder.path("chapter.bib"), &Cancellation::default())
+        .unwrap();
+    std::fs::write(
+        folder.path("draft.docx"),
+        docx(r#"<w:p><w:r><w:t>[@chapter]</w:t></w:r></w:p>"#),
+    )
+    .unwrap();
+    let result = folder.format("draft.docx", "final.docx", "apa");
+    let FormatResult::Refused(FormatRefusal::Markers(issues)) = result else {
+        panic!("{result:?}")
+    };
+    assert_eq!(issues.len(), 1);
+    assert!(matches!(
+        &issues[0].issue,
+        ibis_engine::FormatIssueKind::Citation { key, problem: ibis_core::contract::CitationError::UnsupportedForm }
+            if key == "chapter"
+    ));
+    assert!(!folder.path("final.docx").exists());
+}

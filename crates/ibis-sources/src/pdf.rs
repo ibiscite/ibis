@@ -13,6 +13,7 @@
 //! so PDF parsing stays away from the app's library, clipboard and paste
 //! permissions.
 
+use crate::child::ceiling;
 use ibis_core::contract::Fingerprint;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek};
@@ -26,11 +27,6 @@ use std::time::{Duration, Instant};
 #[allow(unsafe_code)]
 #[path = "pdf/inheritance.rs"]
 pub(crate) mod inheritance;
-
-// SAFETY: only the memory ceiling's process queries and Windows Job Object.
-#[allow(unsafe_code)]
-#[path = "pdf/ceiling.rs"]
-mod ceiling;
 
 /// The argument that makes `ibis` the extractor's child process.
 pub const CHILD_ARGUMENT: &str = "__extract-pdf";
@@ -46,7 +42,7 @@ pub const MAX_TEXT_BYTES: usize = crate::zotero_local::fulltext::MAX_TEXT_BYTES;
 pub const DEADLINE: Duration = Duration::from_secs(10);
 /// The most memory one extraction may use: committed memory on Windows,
 /// the physical footprint on macOS, resident memory on Linux.
-pub const MAX_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+pub const MAX_MEMORY_BYTES: u64 = crate::child::MAX_MEMORY_BYTES;
 /// `%PDF-` must start within this many bytes.
 pub const MARK_WITHIN: usize = 1024;
 /// The most characters in a citable page label (decision 0036).
@@ -243,7 +239,7 @@ impl PdfReader {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|_| Refusal::Unavailable)?;
-        let ceiling = match ceiling::Ceiling::start(&child, self.memory) {
+        let ceiling = match ceiling::Ceiling::start(&child, Some(self.memory)) {
             Ok(ceiling) => ceiling,
             Err(_) => {
                 let _ = child.kill();

@@ -258,3 +258,98 @@ fn replacements_that_do_not_fit_the_text_are_refused() {
         Err(Refusal::Mismatch)
     );
 }
+
+#[test]
+fn the_office_child_refuses_marker_counts_before_returning_an_answer() {
+    let body = "<text:p>[@a]</text:p>".repeat(super::super::MAX_CITATIONS + 1);
+    let request = super::super::frame(&super::super::Command::ScanOffice, &odt(&body)).unwrap();
+    let mut answer = Vec::new();
+    assert_eq!(super::super::child::serve(&request[..], &mut answer), 0);
+    assert!(matches!(
+        super::super::split(answer).unwrap(),
+        (super::super::Answer::Refused(Refusal::TooLarge), bytes) if bytes.is_empty()
+    ));
+}
+
+#[test]
+fn the_office_child_bounds_one_paragraph_references_and_diagnostics() {
+    let limit = super::super::MAX_CITATIONS;
+    let at_limit = odt(&format!("<text:p>{}</text:p>", "[@a]".repeat(limit)));
+    assert_eq!(scan(&at_limit).unwrap().citations.len(), limit);
+    for body in [
+        format!("<text:p>{}</text:p>", "[@a]".repeat(limit + 1)),
+        format!("<text:p>{}</text:p>", "[@a; @b]".repeat(limit / 2 + 1)),
+        format!("<text:p>{}</text:p>", "[@a @b]".repeat(limit + 1)),
+        format!(
+            "<text:note-body><text:p>{}</text:p></text:note-body>",
+            "[@a]".repeat(limit + 1)
+        ),
+    ] {
+        assert!(matches!(scan(&odt(&body)), Err(Refusal::TooLarge)));
+    }
+}
+
+#[test]
+fn opendocument_cdata_counts_as_text_and_can_hold_part_of_a_marker() {
+    let original = odt(concat!(
+        "<text:p><![CDATA[KEEP<&]]>[bibliography]</text:p>",
+        "<text:p><![CDATA[É [@va]]><![CDATA[le2024]]]>&#x20;now.</text:p>",
+    ));
+    let scanned = scan(&original).unwrap();
+    assert!(!scanned.placed, "CDATA before the placeholder is ordinary text");
+    assert_eq!(scanned.citations.len(), 1);
+    assert_eq!(scanned.citations[0].place.column, 3);
+    let written = write(&original, &[vec![run("(Vale, 2024)")]], &[entry("Lanterns")], true).unwrap();
+    assert_eq!(
+        body(&written),
+        [
+            "KEEP<&[bibliography]",
+            "É (Vale, 2024) now.",
+            "Vale, A. (2024). Lanterns."
+        ]
+    );
+    assert!(part(&written, "content.xml").contains("<![CDATA[KEEP<&]]>"));
+}
+
+#[test]
+fn replacing_a_word_bibliography_keeps_its_section_break_once_after_the_entries() {
+    let section = r#"<w:sectPr xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:headerReference w:type="default" r:id="rId2"/><w:type w:val="nextPage"/><w:pgSz w:w="15840" w:h="12240"/></w:sectPr>"#;
+    let original = docx(&format!(
+        r#"<w:p><w:r><w:t>[@vale2024]</w:t></w:r></w:p><w:p><w:pPr><w:keepNext/>{section}</w:pPr><w:r><w:t>[bibliography]</w:t></w:r></w:p><w:p><w:r><w:t>Next section.</w:t></w:r></w:p>"#
+    ));
+    for entries in [vec![entry("Lanterns"), entry("Tides")], vec![]] {
+        let written = write(&original, &[vec![run("(Vale, 2024)")]], &entries, true).unwrap();
+        let xml = part(&written, "word/document.xml");
+        assert_eq!(xml.matches(section).count(), 1, "{xml}");
+        let paragraphs: Vec<_> = xml.split("</w:p>").collect();
+        let last = entries.len().max(1);
+        assert!(paragraphs[last].contains(section), "{xml}");
+        assert!(paragraphs[last + 1].contains("Next section."), "{xml}");
+    }
+}
+
+#[test]
+fn hidden_word_runs_neither_add_citations_nor_change_visible_marker_offsets() {
+    for vanish in [
+        "<w:vanish/>",
+        "<w:vanish w:val=\"true\"></w:vanish>",
+        "<w:vanish w:val=\"1\"/>",
+    ] {
+        let original = docx(&format!(
+            r#"<w:p><w:r><w:t xml:space="preserve">See </w:t></w:r><w:r><w:rPr>{vanish}</w:rPr><w:t>[@hidden]</w:t></w:r><w:r><w:t>[@vale2024]</w:t></w:r></w:p>"#
+        ));
+        let scanned = scan(&original).unwrap();
+        assert_eq!(scanned.citations.len(), 1, "{vanish}");
+        assert_eq!(scanned.citations[0].cites[0].key, "vale2024");
+        assert_eq!(scanned.citations[0].place.column, 5);
+        let written = write(&original, &[vec![run("(Vale, 2024)")]], &[entry("Lanterns")], true).unwrap();
+        assert_eq!(body(&written)[0], "See (Vale, 2024)");
+        assert!(part(&written, "word/document.xml").contains("<w:t>[@hidden]</w:t>"));
+    }
+    for value in ["false", "0", "off"] {
+        let original = docx(&format!(
+            r#"<w:p><w:r><w:rPr><w:vanish w:val="{value}"/></w:rPr><w:t>[@vale2024]</w:t></w:r></w:p>"#
+        ));
+        assert_eq!(scan(&original).unwrap().citations.len(), 1, "{value}");
+    }
+}

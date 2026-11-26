@@ -1,5 +1,11 @@
 //! One bounded request to a source adapter or its native helper.
 
+#[allow(
+    unsafe_code,
+    reason = "The shared parser memory ceiling queries the child's footprint on macOS"
+)]
+pub(crate) mod ceiling;
+
 #[cfg(unix)]
 #[allow(
     unsafe_code,
@@ -24,6 +30,8 @@ pub use unix::{Termination, exit_on_termination};
 
 const POLL_MS: u8 = 5;
 const POLL: Duration = Duration::from_millis(POLL_MS as u64);
+/// Parser children share the PDF reader's two-GiB ceiling.
+pub(crate) const MAX_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// Fixed reasons, never the child's text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +47,8 @@ pub(crate) struct Limits {
     pub stdout: u64,
     /// None discards diagnostics.
     pub stderr: Option<u64>,
+    /// None leaves memory unbounded for non-parser helpers.
+    pub memory: Option<u64>,
 }
 
 /// Run an adapter as the leader of a process tree.
@@ -83,8 +93,8 @@ fn exchange(
         if let Some(root) = std::env::var_os("SystemRoot") {
             command.env("SystemRoot", root);
         }
-        windows::suspended(&mut command);
     }
+    ceiling::Ceiling::prepare(&mut command);
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -103,7 +113,7 @@ fn exchange(
         })
         .spawn()
         .map_err(|_| ChildError::Unavailable)?;
-    let tree = Tree::new(child, own_group)?;
+    let tree = Tree::new(child, own_group, limits.memory)?;
     let stop = AtomicBool::new(false);
     let stopped = &stop;
     thread::scope(move |scope| {
@@ -137,6 +147,13 @@ fn exchange(
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if cancelled() || remaining.is_zero() {
                     return Err(ChildError::TimedOut);
+                }
+                if tree
+                    .ceiling
+                    .as_ref()
+                    .is_some_and(|ceiling| ceiling.exceeded(&tree.child))
+                {
+                    return Err(ChildError::TooLarge);
                 }
                 if status.is_none() && tree.exited()? {
                     status = Some(tree.finish(false)?);
@@ -222,28 +239,21 @@ struct Tree {
     reaped: bool,
     #[cfg(unix)]
     own_group: bool,
-    #[cfg(windows)]
-    job: Option<windows::Job>,
+    ceiling: Option<ceiling::Ceiling>,
 }
 
 impl Tree {
-    fn new(child: Child, own_group: bool) -> Result<Self, ChildError> {
+    fn new(child: Child, own_group: bool, memory: Option<u64>) -> Result<Self, ChildError> {
         #[cfg(windows)]
         let _ = own_group;
-        let tree = Self {
+        let mut tree = Self {
             child,
             reaped: false,
             #[cfg(unix)]
             own_group,
-            #[cfg(windows)]
-            job: None,
+            ceiling: None,
         };
-        #[cfg(windows)]
-        let tree = {
-            let mut tree = tree;
-            tree.job = Some(windows::Job::start(&tree.child, None).map_err(|_| ChildError::Unavailable)?);
-            tree
-        };
+        tree.ceiling = Some(ceiling::Ceiling::start(&tree.child, memory).map_err(|_| ChildError::Unavailable)?);
         Ok(tree)
     }
 
@@ -267,14 +277,18 @@ impl Tree {
                 let _ = killpg(Pid::from_raw(id), Signal::SIGKILL);
             }
         }
-        #[cfg(windows)]
-        drop(self.job.take());
         if abort {
             let _ = self.child.kill();
         }
         let status = self.child.wait().map_err(|_| ChildError::Failed)?;
         self.reaped = true;
-        Ok(status)
+        let exceeded = self.ceiling.as_ref().is_some_and(ceiling::Ceiling::was_exceeded);
+        drop(self.ceiling.take());
+        if exceeded {
+            Err(ChildError::TooLarge)
+        } else {
+            Ok(status)
+        }
     }
 }
 
@@ -283,5 +297,45 @@ impl Drop for Tree {
         if !self.reaped {
             let _ = self.finish(true);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "subprocess helper; allocates only when run by the bounded child runner"]
+    fn document_memory_child() {
+        let mut request = Vec::new();
+        std::io::stdin().take(16).read_to_end(&mut request).unwrap();
+        if request != b"grow" {
+            return;
+        }
+        let blocks: Vec<_> = (0..16).map(|_| vec![1_u8; 16 * 1024 * 1024]).collect();
+        std::thread::sleep(Duration::from_secs(30));
+        drop(blocks);
+    }
+
+    #[test]
+    fn a_document_child_past_the_shared_memory_ceiling_is_stopped() {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command.args(["--exact", "child::tests::document_memory_child", "--ignored", "--quiet"]);
+        let started = Instant::now();
+        assert!(matches!(
+            run(
+                command,
+                b"grow",
+                Limits {
+                    time: Duration::from_secs(5),
+                    stdout: 1024,
+                    stderr: None,
+                    memory: Some(64 * 1024 * 1024),
+                },
+                &|| false,
+            ),
+            Err(ChildError::TooLarge)
+        ));
+        assert!(started.elapsed() < Duration::from_secs(4));
     }
 }

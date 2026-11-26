@@ -89,6 +89,8 @@ fn read(bytes: &[u8]) -> Result<Read, Refusal> {
         spans: Vec::new(),
         bibliography: None,
     };
+    let mut markers_left = super::MAX_CITATIONS;
+    let mut references_left = super::MAX_CITATIONS;
     let mut counts = std::collections::BTreeMap::<Part, usize>::new();
     for (index, paragraph) in paragraphs.iter().enumerate() {
         let number = {
@@ -96,13 +98,16 @@ fn read(bytes: &[u8]) -> Result<Read, Refusal> {
             *count += 1;
             *count
         };
-        let place = |start: usize, end: usize| {
+        let (mut offset, mut column) = (0, 1);
+        let mut place = |start: usize, end: usize| {
             let text = &paragraph.text;
+            column += text[offset..start].chars().count();
+            offset = start;
             let shown: String = text[start..end].chars().take(SHOWN).collect();
             OfficePlace {
                 part: paragraph.part,
                 paragraph: number,
-                column: text[..start].chars().count() + 1,
+                column,
                 text: if shown.len() < end - start {
                     format!("{shown}…")
                 } else {
@@ -114,6 +119,7 @@ fn read(bytes: &[u8]) -> Result<Read, Refusal> {
             continue;
         }
         if paragraph.part == Part::Body && paragraph.text.trim() == "[bibliography]" {
+            markers_left = markers_left.checked_sub(1).ok_or(Refusal::TooLarge)?;
             if read.bibliography.is_some() {
                 read.scan.problems.push(OfficeProblem {
                     place: place(0, paragraph.text.len()),
@@ -124,6 +130,14 @@ fn read(bytes: &[u8]) -> Result<Read, Refusal> {
             continue;
         }
         for found in marker::markers(&paragraph.text) {
+            // Bound every collection in the child, including diagnostics and
+            // markers outside the body, before allocating the next result.
+            markers_left = markers_left.checked_sub(1).ok_or(Refusal::TooLarge)?;
+            if let Found::Marker(marker) = &found {
+                references_left = references_left
+                    .checked_sub(marker.cites.len())
+                    .ok_or(Refusal::TooLarge)?;
+            }
             match found {
                 Found::Marker(marker) if paragraph.part == Part::Body => {
                     read.spans.push((index, marker.start, marker.end));

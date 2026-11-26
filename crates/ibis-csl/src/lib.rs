@@ -166,18 +166,16 @@ impl Formatter {
     /// (`ibis format`). `clusters` hold the indices of `request.items` each
     /// citation cites, in document order; every item is in exactly one.
     /// Note styles are refused: their citations belong in footnotes.
-    pub fn format_document(
+    /// The returned task shares the citation scheduler's cancellation and limits.
+    pub fn submit_document(
         &self,
         snapshot: &Snapshot,
         request: &CitationRequest,
         output: &ResolvedOutput,
         clusters: &[Vec<usize>],
-    ) -> Result<DocumentAnswer, FormatError> {
+    ) -> Result<FormatTask, FormatError> {
         let prepared = input::prepare_document(snapshot, request, self.service.limits(), output, clusters)?;
-        match self.service.submit(prepared)?.formatted()? {
-            output::Formatted::Document(answer) => Ok(answer),
-            output::Formatted::Citation(_) => Err(FormatError::Runtime),
-        }
+        self.service.submit(prepared)
     }
     /// Whether the style `id` writes its citations as notes.
     pub fn style_writes_notes(id: &str) -> Result<bool, FormatError> {

@@ -291,12 +291,13 @@ fn walk(
     let mut swallow: Option<usize> = None;
     loop {
         let event = events.next()?;
-        if let Event::Text(_) | Event::GeneralRef(_) = &event
+        if let Event::Text(_) | Event::GeneralRef(_) | Event::CData(_) = &event
             && frames.current().is_some()
         {
             match &event {
                 Event::Text(chunk) => pending.text.push_str(&chunk.xml10_content()),
                 Event::GeneralRef(entity) => pending.text.push(reference(entity)?),
+                Event::CData(data) => pending.text.push_str(&data[..]),
                 _ => {}
             }
             pending.events.push(event.into_owned());

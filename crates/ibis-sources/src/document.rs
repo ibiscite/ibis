@@ -5,6 +5,8 @@
 //! shared runner, with no path or environment. Only the child parses: its
 //! readers exist only where the `documents` feature is on, which only the
 //! command line enables. Answers are untrusted and checked here again.
+//! The shared runner enforces the parser memory ceiling as well as the
+//! deadline; Office marker and reference counts are bounded inside the child.
 
 use crate::zotero_local::closed::{ClosedError, with_local_file};
 use ibis_core::contract::{Cite, DisplayRun, DocumentEntry, MAX_TEXT_BYTES, Manuscript, ScanProblem, TextKind};
@@ -381,6 +383,7 @@ impl DocumentReader {
                 time: DEADLINE,
                 stdout: MAX_ANSWER_BYTES,
                 stderr: None,
+                memory: Some(crate::child::MAX_MEMORY_BYTES),
             },
             cancelled,
         )

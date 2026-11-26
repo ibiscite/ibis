@@ -12,10 +12,10 @@ use super::super::{Cancellation, Engine, error, select};
 use super::{Problem as KeyProblem, key_problem, stop};
 use crate::request::ItemSelector;
 use ibis_core::contract::{
-    CitationError, CitationForm, CitationItem, CitationRequest, DocumentCitations, EngineError, ErrorCode, OutputSpec,
-    RichText, Script, TextRun,
+    CitationError, CitationForm, CitationItem, CitationRequest, EngineError, ErrorCode, OutputSpec, RichText, Script,
+    TextRun,
 };
-use ibis_sources::document::{Kind, OfficeCited, OfficeIssue, OfficePlace, Refusal};
+use ibis_sources::document::{Kind, OfficeIssue, OfficePlace, Refusal};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -212,15 +212,14 @@ impl Engine {
             output_locale: request.output_locale.clone(),
         };
         let formatter = self.formatting.formatter()?;
-        let answer = formatter
-            .format_document(snapshot, &citation_request, &resolved, &clusters)
-            .map_err(|failure| match failure {
-                // A problem the validator finds before any item is a whole-document one.
-                ibis_csl::FormatError::Citation(error) => EngineError::citation(error),
-                other => formatter_error(other),
-            })?;
         cancel.check()?;
-        let formatted = match answer {
+        let task = formatter
+            .submit_document(snapshot, &citation_request, &resolved, &clusters)
+            .map_err(formatter_error)?;
+        let _registration = cancel.track(task.cancellation())?;
+        let answer = task.wait_document();
+        cancel.check()?;
+        let formatted = match answer.map_err(formatter_error)? {
             ibis_csl::DocumentAnswer::Formatted(formatted) => formatted,
             ibis_csl::DocumentAnswer::Refused(refused_items) if refused_items.is_empty() => {
                 return refused(FormatRefusal::StyleCannotWrite);
@@ -242,13 +241,25 @@ impl Engine {
                     .collect();
                 return refused(FormatRefusal::Markers(issues));
             }
+            ibis_csl::DocumentAnswer::UnprintedLocators(indices) => {
+                let issues = indices
+                    .into_iter()
+                    .map(|index| {
+                        let &(citation, item) = places.get(index).ok_or_else(|| error(ErrorCode::Internal))?;
+                        let cited = &scanned.citations[citation];
+                        Ok(FormatIssue {
+                            place: cited.place.clone(),
+                            issue: Issue::LocatorNotPrinted {
+                                key: cited.cites[item].key.clone(),
+                            },
+                        })
+                    })
+                    .collect::<Result<_, EngineError>>()?;
+                return refused(FormatRefusal::Markers(issues));
+            }
         };
         if formatted.citations.len() != scanned.citations.len() {
             return Err(error(ErrorCode::Internal));
-        }
-        let issues = unprinted(&scanned.citations, &formatted);
-        if !issues.is_empty() {
-            return refused(FormatRefusal::Markers(issues));
         }
         let references = formatted.entries.len();
         let written = match reader.write_office(
@@ -286,38 +297,6 @@ impl Engine {
     }
 }
 
-/// A locator the style leaves out would change what the text claims.
-fn unprinted(citations: &[OfficeCited], formatted: &DocumentCitations) -> Vec<FormatIssue> {
-    citations
-        .iter()
-        .zip(&formatted.citations)
-        .flat_map(|(cited, runs)| {
-            let text: String = runs.iter().map(|run| run.text.as_str()).collect();
-            cited.cites.iter().filter_map(move |cite| {
-                cite.locator
-                    .as_ref()
-                    .filter(|locator| !printed(&locator.value, &text))
-                    .map(|_| FormatIssue {
-                        place: cited.place.clone(),
-                        issue: Issue::LocatorNotPrinted { key: cite.key.clone() },
-                    })
-            })
-        })
-        .collect()
-}
-
-/// Whether a citation's text shows the locator's first number or word: a
-/// check that catches a style dropping locators, not proof one printed.
-/// Only the first: styles shorten ranges (`321–28`) and change dashes.
-fn printed(locator: &str, text: &str) -> bool {
-    let first: String = locator
-        .chars()
-        .skip_while(|ch| !ch.is_alphanumeric())
-        .take_while(|ch| ch.is_alphanumeric())
-        .collect();
-    first.is_empty() || text.to_lowercase().contains(&first.to_lowercase())
-}
-
 fn plain(text: &str) -> RichText {
     if text.is_empty() {
         return Vec::new();
@@ -337,14 +316,4 @@ fn same_file(input: &Path, output: &Path) -> bool {
             (std::fs::canonicalize(input), output.parent().map(std::fs::canonicalize), output.file_name()),
             (Ok(input), Some(Ok(folder)), Some(name)) if input == folder.join(name)
         )
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn a_locator_counts_as_printed_by_its_first_part() {
-        assert!(super::printed("321-328", "(Vale, 2024, pp. 321–28)"));
-        assert!(super::printed("xii", "[1, p. XII]"));
-        assert!(!super::printed("12", "(Vale, 2024)"));
-    }
 }

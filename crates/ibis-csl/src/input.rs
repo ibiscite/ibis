@@ -423,16 +423,15 @@ fn prepare_with(
         // When an item has authors, the in-text layouts of the styles checked
         // against Zotero print only these name lists; every other one is a
         // substitute after `author` or appears only in entries. A note style's
-        // citation is a full note, so it is checked like an entry.
+        // citation is a full note, so it is checked like an entry. A document
+        // also generates a bibliography, even though its cites are in-text.
         let has_authors = named(record.get("author"));
+        let citation_names = |field: &str| {
+            traits.note || !has_authors || matches!(field, "author" | "composer" | "interviewer" | "recipient")
+        };
         if record
             .iter()
-            .filter(|(field, _)| {
-                bibliography
-                    || traits.note
-                    || !has_authors
-                    || matches!(field.as_str(), "author" | "composer" | "interviewer" | "recipient")
-            })
+            .filter(|(field, _)| document || bibliography || citation_names(field))
             .filter(|(field, _)| {
                 matches!(
                     field.as_str(),
@@ -466,12 +465,12 @@ fn prepare_with(
                         | "commenter"
                 )
             })
-            .filter_map(|(_, value)| value.as_array())
-            .any(|names| {
+            .filter_map(|(field, value)| value.as_array().map(|names| (field, names)))
+            .any(|(field, names)| {
                 names
                     .iter()
                     .any(|name| name.get("literal").and_then(Value::as_str) == Some(ibis_core::model::OTHERS))
-                    || symbol_narrative && names.len() > 1
+                    || symbol_narrative && citation_names(field) && names.len() > 1
             })
         {
             outcomes.push(ItemOutcome::Refused {

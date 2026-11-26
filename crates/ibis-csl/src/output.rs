@@ -40,6 +40,8 @@ pub enum DocumentAnswer {
     /// The items the style cannot cite, by their place in the request; none
     /// named when the style cannot write the document's citations as a whole.
     Refused(Vec<(usize, CitationError)>),
+    /// Request items whose locator made no contribution to the citation.
+    UnprintedLocators(Vec<usize>),
 }
 
 pub(crate) fn refused_formatted(input: &Prepared) -> Formatted {
@@ -67,21 +69,29 @@ enum DocumentOutputs {
         citations: Vec<String>,
         entries: Vec<String>,
         hanging_indent: bool,
+        unprinted_locators: Vec<usize>,
     },
 }
 
 /// The processor's HTML for a document, as runs: only its passive tags,
 /// whitespace folded as HTML shows it.
-pub(crate) fn document(json: &str) -> Result<DocumentAnswer, FormatError> {
+pub(crate) fn document(json: &str, items: usize) -> Result<DocumentAnswer, FormatError> {
     let output: DocumentOutputs = serde_json::from_str(json).map_err(|_| FormatError::Runtime)?;
     let DocumentOutputs::Rendered {
         citations,
         entries,
         hanging_indent,
+        unprinted_locators,
     } = output
     else {
         return Ok(DocumentAnswer::Refused(Vec::new()));
     };
+    if unprinted_locators.iter().any(|&index| index >= items) {
+        return Err(FormatError::Runtime);
+    }
+    if !unprinted_locators.is_empty() {
+        return Ok(DocumentAnswer::UnprintedLocators(unprinted_locators));
+    }
     let citations = citations
         .iter()
         .map(|html| {
@@ -104,7 +114,29 @@ pub(crate) fn document(json: &str) -> Result<DocumentAnswer, FormatError> {
                 .iter()
                 .find(|block| block.kind == DisplayBlockKind::Margin && entry.contains(&block.start))
                 .map(|block| block.start..block.end.min(entry.end));
+            let preceding = margin.as_ref().is_some_and(|margin| {
+                runs[entry.start..margin.start]
+                    .iter()
+                    .any(|run| !run.text.trim_matches(js_space).is_empty())
+            });
             let (margin, content) = match margin {
+                // The two-column entry cannot put text before its margin.
+                // Keep the full entry in reading order, separating its blocks.
+                Some(_) if preceding => {
+                    let mut content = Vec::new();
+                    for index in entry {
+                        if blocks.iter().any(|block| {
+                            block.kind != DisplayBlockKind::Entry && (block.start == index || block.end == index)
+                        }) {
+                            content.push(DisplayRun {
+                                text: " ".into(),
+                                ..DisplayRun::default()
+                            });
+                        }
+                        content.push(runs[index].clone());
+                    }
+                    (Vec::new(), content)
+                }
                 Some(margin) => (runs[margin.clone()].to_vec(), runs[margin.end..entry.end].to_vec()),
                 None => (Vec::new(), runs[entry].to_vec()),
             };
@@ -738,6 +770,29 @@ fn decode_entities(text: &str) -> Result<String, FormatError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn document_entries_keep_text_and_emphasis_before_a_margin() {
+        let html = concat!(
+            "<div class=\"csl-entry\"><div class=\"csl-block\">Vale, <i>A.</i></div>",
+            "<div class=\"csl-left-margin\">2024</div><div class=\"csl-right-inline\">Lanterns.</div></div>",
+        );
+        let json = serde_json::json!({
+            "status": "rendered", "citations": ["(Vale, 2024)"],
+            "entries": [html], "hanging_indent": false, "unprinted_locators": [],
+        });
+        let DocumentAnswer::Formatted(answer) = document(&json.to_string(), 1).unwrap() else {
+            panic!()
+        };
+        assert!(answer.entries[0].margin.is_empty());
+        let runs = &answer.entries[0].content;
+        assert_eq!(
+            runs.iter().map(|run| run.text.as_str()).collect::<String>(),
+            "Vale, A. 2024 Lanterns."
+        );
+        assert!(runs.iter().any(|run| run.italic && run.text == "A."));
+    }
+
     #[test]
     fn rejects_malformed_or_active_html() {
         for html in [
