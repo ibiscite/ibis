@@ -8,7 +8,7 @@ import { Button } from "./Button";
 import { markScrollEdges } from "./ScrollArea";
 import { Floating, useViewFallback } from "./Layer";
 import { useLayer, type LayerClose } from "./layers";
-import { keepKeyboardThroughPress, ViewFrame } from "./ViewFrame";
+import { ViewFrame } from "./ViewFrame";
 import { say } from "../i18n";
 import { LEAST_ROWS } from "./region";
 import { useMenuLifecycle } from "./useMenuLifecycle";
@@ -39,6 +39,25 @@ export function menuLeast(surface: HTMLElement): number {
   // Rows' boxes already include the list's scroll offset.
   const top = list.getBoundingClientRect().top - list.scrollTop;
   return Math.ceil(chrome + (last ? last.getBoundingClientRect().bottom - top : list.scrollHeight));
+}
+
+/** The collection's current row, including React Aria's virtual focus. */
+export function menuHighlight(list: HTMLElement | null): string | undefined {
+  return list?.querySelector<HTMLElement>("[data-focused][data-item]")?.dataset.item;
+}
+
+/** Reveal the row inside its own list, without moving the window. */
+function revealMenuRow(list: HTMLElement, row: HTMLElement) {
+  for (let scroller = row.parentElement; scroller; scroller = scroller.parentElement) {
+    if (scroller === list || /auto|scroll/.test(getComputedStyle(scroller).overflowY)) {
+      const top = scroller.getBoundingClientRect().top + scroller.clientTop;
+      const bottom = top + scroller.clientHeight;
+      const item = row.getBoundingClientRect();
+      if (item.top < top) scroller.scrollTop += Math.floor(item.top - top);
+      else if (item.bottom > bottom) scroller.scrollTop += Math.ceil(item.bottom - bottom);
+    }
+    if (scroller === list) break;
+  }
 }
 
 /** A scrolling menu ends on a whole row, never a cut one (#1031). Pass the
@@ -222,6 +241,11 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   const wholeRows = useWholeRows(list);
   // With room for its least on neither side, it opens as a view (decision 0062).
   const fallback = useViewFallback(isOpen);
+  const highlighted = useRef<string | undefined>(undefined);
+  const cramped = () => {
+    highlighted.current = menuHighlight(list.current);
+    fallback.cramped();
+  };
   const [skipExit, setSkipExit] = useState(false);
   useEffect(() => { if (!isOpen) fromTrigger.current = false; }, [isOpen]);
   useEffect(() => {
@@ -230,12 +254,8 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     const keepFocusedVisible = () => {
       const node = list.current;
       const active = document.activeElement;
-      if (!node || !(active instanceof HTMLElement) || !node.contains(active)) return;
-      const top = node.getBoundingClientRect().top + node.clientTop;
-      const bottom = top + node.clientHeight;
-      const item = active.getBoundingClientRect();
-      if (item.top < top) node.scrollTop += Math.floor(item.top - top);
-      else if (item.bottom > bottom) node.scrollTop += Math.ceil(item.bottom - bottom);
+      if (!node || !(active instanceof HTMLElement) || active === node || !node.contains(active)) return;
+      revealMenuRow(node, active);
     };
     window.addEventListener("resize", keepFocusedVisible);
     return () => window.removeEventListener("resize", keepFocusedVisible);
@@ -261,7 +281,8 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     event.stopPropagation();
     leave(tabFocusRef.current);
   }} onKeyUpCapture={(event) => { if (isComposing(event)) event.stopPropagation(); }}>
-    <MenuList key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}
+    <MenuList key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label}
+      autoFocus={fallback.asView && highlighted.current !== undefined ? false : fromTrigger.current ? undefined : "first"}
       render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
       {children}
     </MenuList>
@@ -274,8 +295,8 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
       render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-label={triggerLabel ?? label} />}>{trigger}</Button>
-    {fallback.asView ? <MenuView label={label} onClose={close} onBack={() => leave(button.current)}>{frame}</MenuView>
-      : <Floating kind="menu" open={isOpen} onClose={close} ref={wholeRows} className="menu-popover ui-overlay" anchor={button} least={menuLeast} onCramped={fallback.cramped} placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit}>
+    {fallback.asView ? <MenuView label={label} highlighted={highlighted.current} onClose={close} onBack={() => leave(button.current)}>{frame}</MenuView>
+      : <Floating kind="menu" open={isOpen} onClose={close} ref={wholeRows} className="menu-popover ui-overlay" anchor={button} least={menuLeast} onCramped={cramped} placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit}>
         {frame}
       </Floating>}
   </MenuTrigger></ActionFocusContext.Provider>;
@@ -284,16 +305,33 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
 /** A menu opened as a view of the window (decision 0062), the way the palettes
  * open: the same list and rows, as tall as the window allows, scrolling inside.
  * Esc, Back and a pick close it as they close the menu. */
-function MenuView({ label, onClose, onBack, children }: { label: string; onClose: LayerClose; onBack: () => void; children: ReactNode }) {
+function MenuView({ label, highlighted, onClose, onBack, children }: { label: string; highlighted?: string; onClose: LayerClose; onBack: () => void; children: ReactNode }) {
   const layer = useLayer("palette", true, (event) => { layer.leave(); return onClose(event); });
   const titleId = useId();
   const frame = useRef<HTMLDivElement>(null);
   // The view takes the keyboard as it opens, as the menu did: the list moved
   // here from the popover, and focus left with it.
   useLayoutEffect(() => {
-    if (!frame.current?.contains(document.activeElement)) frame.current?.querySelector<HTMLElement>('[role="menu"]')?.focus({ preventScroll: true });
-    keepKeyboardThroughPress();
-  }, []);
+    const surface = frame.current;
+    if (!surface) return;
+    const takeFocus = () => {
+      const list = surface.querySelector<HTMLElement>('[role="menu"]');
+      if (!list) return false;
+      const rows = list.querySelectorAll<HTMLElement>("[data-item]");
+      if (highlighted !== undefined && !rows.length) return false;
+      const row = [...rows].find((item) => item.dataset.item === highlighted);
+      if (row) {
+        row.focus({ preventScroll: true });
+        revealMenuRow(list, row);
+      } else if (!surface.contains(document.activeElement)) list.focus({ preventScroll: true });
+      return true;
+    };
+    if (takeFocus()) return;
+    // React Aria can mount the list before its collection has built the rows.
+    const collection = new MutationObserver(() => { if (takeFocus()) collection.disconnect(); });
+    collection.observe(surface, { childList: true, subtree: true });
+    return () => collection.disconnect();
+  }, [highlighted]);
   return <ViewFrame title={label} titleId={titleId} frameRef={frame} role="dialog" aria-modal="true" layer={layer} back={{ label: say("palette-back"), onBack: () => { layer.leave(); onBack(); } }}>
     <div className="menu-view">{children}</div>
   </ViewFrame>;

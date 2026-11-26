@@ -1,4 +1,4 @@
-import { useContext, type HTMLAttributes, type ReactNode, type RefObject } from "react";
+import { useContext, useLayoutEffect, type HTMLAttributes, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Band } from "./Band";
 import { Button } from "./Button";
@@ -8,30 +8,24 @@ import { composingKey, LayerParent, type LayerHandle } from "./layers";
 import { LayerScope } from "./Layer";
 import "./ViewFrame.css";
 
-// Whether a pointer is down: read when a view opens, which may be in the
-// press's own pointerdown or in a render that event caused.
-let pressing = false;
+// A view can take focus on pointerdown. Only that press's companion mousedown
+// would move focus back to the trigger. A new pointerdown replaces the press
+// even if the browser never delivered the old one's release.
+let openingPress: { pointer: PointerEvent; views: number } | undefined;
 if (typeof document !== "undefined") {
-  document.addEventListener("pointerdown", () => { pressing = true; }, true);
-  for (const type of ["pointerup", "pointercancel"]) document.addEventListener(type, () => { pressing = false; }, true);
-}
-
-/** A view that opens during a press keeps the keyboard it takes: a menu whose
- * trigger is pressed can open as a view on pointerdown (decision 0062), and that
- * press's own mousedown, still to come, would focus where it began, under the
- * view (or nothing, once the view hides it). The rest of that press moves no
- * focus. Call it where the view takes the keyboard, as it opens. */
-export function keepKeyboardThroughPress() {
-  if (!pressing) return;
-  const still = (event: MouseEvent) => { event.preventDefault(); };
-  const end = () => {
-    document.removeEventListener("mousedown", still, true);
-    document.removeEventListener("pointerup", end, true);
-    document.removeEventListener("pointercancel", end, true);
+  document.addEventListener("pointerdown", (pointer) => {
+    openingPress = { pointer, views: 0 };
+  }, true);
+  const end = (event: PointerEvent) => {
+    if (event.pointerId === openingPress?.pointer.pointerId) openingPress = undefined;
   };
-  document.addEventListener("mousedown", still, true);
-  document.addEventListener("pointerup", end, true);
-  document.addEventListener("pointercancel", end, true);
+  for (const type of ["pointerup", "pointercancel"] as const) document.addEventListener(type, end, true);
+  window.addEventListener("blur", () => { openingPress = undefined; });
+  document.addEventListener("mousedown", (event) => {
+    const press = openingPress;
+    openingPress = undefined;
+    if (press?.views && event.button === press.pointer.button && event.target === press.pointer.target) event.preventDefault();
+  }, true);
 }
 
 /** A view of the picker window: the picker's content swaps out for the view, edge to edge, in the picker's own
@@ -56,6 +50,12 @@ export function ViewFrame({ title, titleId, search, back, layer, status, actions
   frameRef?: RefObject<HTMLDivElement | null>;
 } & Omit<HTMLAttributes<HTMLDivElement>, "title">) {
   const within = useContext(LayerParent) !== null;
+  useLayoutEffect(() => {
+    const press = openingPress;
+    if (!press) return;
+    press.views++;
+    return () => { press.views--; };
+  }, []);
   return createPortal(<LayerScope layer={layer}><div ref={frameRef} className="ui-view" aria-labelledby={titleId} {...dialog} data-layer-surface data-layer-within={within || undefined}
     onKeyDown={(event) => { if (layer.nearest() && !composingKey(event.nativeEvent)) onKeyDown?.(event); }}>
     {/* The pointer's Back, in the icon column; the footer's Back is the one keys and screen readers reach. */}

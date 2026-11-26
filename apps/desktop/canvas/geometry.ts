@@ -666,15 +666,87 @@ function coverAt(node: Element, x: number, y: number): Element | null {
   return document.documentElement;
 }
 
-/** Whether a person sees all of a node: no clipping ancestor or window edge cuts
- * it on either axis, it is drawn, and what paints at its leading edge is the
- * node itself, not a layer over it. */
-function wholeAndOnTop(node: Element): boolean {
+type PaintPoint = { x: number; y: number };
+type ReadPaint = (points: readonly PaintPoint[]) => Promise<readonly number[]>;
+
+/** The runner captures the composited viewport as a PNG data URL. The browser
+ * reads it in CSS pixels so the same samples work at any device scale. */
+export function viewportPaint(capture: () => Promise<string>): ReadPaint {
+  return async (points) => {
+    const snapshot = new Image();
+    snapshot.src = await capture();
+    await snapshot.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = snapshot.naturalWidth;
+    canvas.height = snapshot.naturalHeight;
+    const context = canvas.getContext("2d", { willReadFrequently: true })!;
+    context.drawImage(snapshot, 0, 0);
+    return points.map(({ x, y }) => {
+      const [r, g, b, a] = context.getImageData(Math.floor(x * canvas.width / innerWidth), Math.floor(y * canvas.height / innerHeight), 1, 1).data;
+      return (r! << 24) | (g! << 16) | (b! << 8) | a!;
+    });
+  };
+}
+
+function wholeBox(node: HTMLElement): DOMRect | null {
   const box = node.getBoundingClientRect(), shown = clipped(node);
-  if (!shown || box.height < 2 || drawn(node) < .1) return false;
-  if (shown.top > box.top + tolerance || shown.bottom < box.bottom - tolerance) return false;
-  if (shown.left > box.left + tolerance || shown.right < box.right - tolerance) return false;
-  return coverAt(node, shown.left + Math.min(shown.width / 2, 24), shown.top + shown.height / 2) === null;
+  if (!shown || box.height < 2 || drawn(node) < .1) return null;
+  if (shown.top > box.top + tolerance || shown.bottom < box.bottom - tolerance) return null;
+  if (shown.left > box.left + tolerance || shown.right < box.right - tolerance) return null;
+  return shown;
+}
+
+/** Change a part's own paint in place and see whether it reaches the screen.
+ * An inset shadow changes neither geometry nor stacking order. An opaque
+ * cover leaves the sampled pixel unchanged, whatever draws it or takes input.
+ * Group disjoint boxes so another probe cannot change a part's sampled pixel. */
+async function sampleMenuPaint(parts: { node: HTMLElement; box: DOMRect | null }[], readPaint: ReadPaint): Promise<Set<HTMLElement>> {
+  const batches: { node: HTMLElement; box: DOMRect }[][] = [];
+  for (const { node, box } of parts) {
+    if (!box) continue;
+    const batch = batches.find((group) => group.every((other) => !overlaps(box, other.box)));
+    if (batch) batch.push({ node, box });
+    else batches.push([{ node, box }]);
+  }
+  const visible = new Set<HTMLElement>();
+  for (const batch of batches) {
+    const points = batch.map(({ box }) => ({ x: box.left + Math.min(box.width / 2, 24), y: box.top + box.height / 2 }));
+    const restore = batch.map(({ node }) => {
+      const before = node.style.getPropertyValue("box-shadow"), priority = node.style.getPropertyPriority("box-shadow");
+      const hadStyle = node.hasAttribute("style");
+      return () => {
+        node.style.setProperty("box-shadow", before, priority);
+        if (!hadStyle && !node.style.length) node.removeAttribute("style");
+      };
+    });
+    const sample = (colour: string) => {
+      for (const { node } of batch) node.style.setProperty("box-shadow", `inset 0 0 0 100vmax ${colour}`, "important");
+      return readPaint(points);
+    };
+    try {
+      const dark = await sample("black");
+      const light = await sample("white");
+      batch.forEach(({ node }, index) => { if (dark[index] !== light[index]) visible.add(node); });
+    } finally {
+      for (const undo of restore) undo();
+    }
+  }
+  return visible;
+}
+
+async function paintedMenuParts(parts: HTMLElement[], readPaint: ReadPaint): Promise<Set<HTMLElement>> {
+  // The first paint of an offscreen view can wake a pending layout update,
+  // such as positioning a popover after its drawer's entrance finishes.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const boxes = parts.map((node) => ({ node, box: wholeBox(node) }));
+    const visible = await sampleMenuPaint(boxes, readPaint);
+    const stable = boxes.every(({ node, box: before }) => {
+      const after = wholeBox(node);
+      return before?.left === after?.left && before?.top === after?.top && before?.right === after?.right && before?.bottom === after?.bottom;
+    });
+    if (stable) return visible;
+  }
+  return new Set();
 }
 
 /** Every open menu's list: anchored, or opened as a view of the window. */
@@ -682,28 +754,30 @@ export const menuLists = '.menu-popover [role="menu"], .ui-view [role="menu"], .
 
 /** [C9 rows] Every open anchored menu shows at least its least of whole rows
  * (ui/region's `LEAST_ROWS`, or every row it has) that a person can see:
- * inside the window, cut by no clipping ancestor and covered by no layer (the
- * point at each row's centre hits the row). With a filter, the filter shows
+ * inside the window, cut by no clipping ancestor and with paint reaching the
+ * screen at each sampled point. With a filter, the filter shows
  * too; with no matches, its empty state is the least. A menu with room on
  * neither side opens as a view of the window instead, as the palettes do: the
  * window is then the limit, so its filter and every row its list's box holds
  * whole show, and at least one. */
-export function menuRows(root: ParentNode = document): string[] {
+export async function menuRows(readPaint: ReadPaint, root: ParentNode = document): Promise<string[]> {
   const failures: string[] = [];
   for (const list of root.querySelectorAll<HTMLElement>(menuLists)) {
     const view = list.closest(".ui-view") !== null;
     const surface = list.closest<HTMLElement>(".menu-popover, .ui-view")!;
     const name = list.getAttribute("aria-label") ?? label(list);
     const filter = surface.querySelector<HTMLElement>("input");
-    if (filter && !wholeAndOnTop(filter)) failures.push(`[C9 rows] menu "${name}": its filter is not visible`);
-    const rows = [...list.querySelectorAll('[role="option"], [role^="menuitem"]')];
+    const rows = [...list.querySelectorAll<HTMLElement>('[role="option"], [role^="menuitem"]')];
+    const empty = rows.length ? null : (list.firstElementChild as HTMLElement | null) ?? list;
+    const visible = await paintedMenuParts([...rows, ...(filter ? [filter] : []), ...(empty ? [empty] : [])], readPaint);
+    if (filter && !visible.has(filter)) failures.push(`[C9 rows] menu "${name}": its filter is not visible`);
     const room = view ? clipped(list) : null;
     const held = view ? rows.filter((row) => { const box = row.getBoundingClientRect(); return room !== null && box.top >= room.top - tolerance && box.bottom <= room.bottom + tolerance; }).length : rows.length;
     const needed = view ? Math.max(Math.min(1, rows.length), held) : Math.min(LEAST_ROWS, rows.length);
-    const shown = rows.filter(wholeAndOnTop).length;
+    const shown = rows.filter((row) => visible.has(row)).length;
     if (shown < needed) failures.push(`[C9 rows] ${view ? "view" : "menu"} "${name}": ${shown} of ${needed} rows visible and whole in a ${innerWidth} × ${innerHeight} window`);
     // With no rows, what the list draws instead (a palette's "No matches"), or the list.
-    if (!rows.length && !wholeAndOnTop(list.firstElementChild ?? list)) failures.push(`[C9 rows] menu "${name}": its empty state is not visible`);
+    if (empty && !visible.has(empty)) failures.push(`[C9 rows] menu "${name}": its empty state is not visible`);
   }
   return failures;
 }

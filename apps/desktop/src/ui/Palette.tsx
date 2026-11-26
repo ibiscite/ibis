@@ -8,7 +8,7 @@ import { Button } from "./Button";
 import { Option } from "./Option";
 import { flushSync } from "react-dom";
 import { useLayer } from "./layers";
-import { keepKeyboardThroughPress, ViewFrame } from "./ViewFrame";
+import { ViewFrame } from "./ViewFrame";
 import { say } from "../i18n";
 import "./Palette.css";
 import { Status } from "./Status";
@@ -105,7 +105,7 @@ export function Palette({ id, title, subtitle, description, placeholder, section
     if (back instanceof HTMLElement && back.isConnected && !back.closest("[hidden], [inert]")) back.focus({ preventScroll: true });
     onClose("dismiss");
   }
-  useLayoutEffect(() => { opener.current = document.activeElement; field.current?.focus({ preventScroll: true }); keepKeyboardThroughPress(); }, []);
+  useLayoutEffect(() => { opener.current = document.activeElement; field.current?.focus({ preventScroll: true }); }, []);
   // Reveal after the new highlight and its preview have laid out. Each key
   // owns one reveal, including at a list boundary; hover and later preview
   // renders never scroll a different row beneath a resting pointer.

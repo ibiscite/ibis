@@ -488,7 +488,7 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
 }
 
 /** Every guard of canvas/geometry.ts over the scenarios, for the runners: see canvas/audit.ts. */
-export function audit(host: HTMLElement, options: Parameters<typeof runAudit>[3] = {}): Promise<string[]> {
+export function audit(host: HTMLElement, options: Parameters<typeof runAudit>[3]): Promise<string[]> {
   return runAudit(host, mount, scenarios, options);
 }
 

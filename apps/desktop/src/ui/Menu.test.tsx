@@ -270,32 +270,53 @@ test("a view opened by a press keeps the keyboard through that press and shows t
   expect(fireEvent.mouseDown(document.body, { button: 0 })).toBe(true);
 });
 
+test.each(["blur", "pointercancel", "unmount", "new press"])("the opening press releases focus suppression on %s", async (end) => {
+  const { trigger, field } = fitted(() => 60, () => 150);
+  fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse", pointerId: 1, isPrimary: true });
+  await screen.findByRole("dialog", { name: "Locator type" });
+  if (end === "blur") fireEvent.blur(window);
+  else if (end === "pointercancel") fireEvent.pointerCancel(document, { pointerId: 1 });
+  else if (end === "unmount") fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  else fireEvent.pointerDown(field.current!, { button: 0, pointerType: "mouse", pointerId: 1, isPrimary: true });
+  // No mouse event from the old press arrived before it ended.
+  try { expect(fireEvent.mouseDown(trigger, { button: 0 })).toBe(true); }
+  finally { fireEvent.pointerUp(document, { pointerId: 1 }); }
+});
+
 // Found in review: the footer's Library menu at 480 × 360 and 200 % text showed
 // one row of four; a Menu, like a ToolbarMenu, opens as a view when cramped.
-test("a Menu with room for its least on neither side opens as a view of the window, and Esc returns to its button", async () => {
+function fittedLibrary(height: () => number) {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   Element.prototype.scrollIntoView = vi.fn();
-  vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(150);
+  vi.spyOn(document.documentElement, "clientHeight", "get").mockImplementation(height);
   vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(480);
   const region = document.createElement("div");
   document.body.append(region);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    if (this === region) return box(0, 150, 0, 480);
+    if (this === region) return box(0, height(), 0, 480);
     if (this.matches('button[aria-label="Library"]')) return box(60, 24, 20, 100);
     const rows = [...this.closest('[role="menu"]')?.querySelectorAll('[role^="menuitem"]') ?? []];
     if (rows.includes(this)) return box(rows.indexOf(this) * 56, 56);
     return new DOMRect();
   });
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.matches(".menu-view [role=menu]") ? 112 : 0;
+  });
+  const action = vi.fn();
   function Library() {
     const [open, setOpen] = useState(false);
     return <Region element={region} views><Menu label="Library" trigger="Library" isOpen={open} onOpenChange={setOpen}>
       <MenuSection id="actions" label="Library">
-        {["Choose", "Reload", "Find", "Open"].map((name) => <MenuItem key={name} id={name} label={name} onAction={() => {}} />)}
+        {["Choose", "Find", "Open", "Reload"].map((name) => <MenuItem key={name} id={name} label={name} onAction={() => action(name)} />)}
       </MenuSection>
     </Menu></Region>;
   }
   render(<Library />);
-  const trigger = screen.getByRole("button", { name: "Library" });
+  return { trigger: screen.getByRole("button", { name: "Library" }), action };
+}
+
+test("a Menu with room for its least on neither side opens as a view of the window, and Esc returns to its button", async () => {
+  const { trigger } = fittedLibrary(() => 150);
   fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
   // The popover is a dialog too, for the moment before it finds no room.
   const view = await waitFor(() => { const found = document.querySelector<HTMLElement>(".ui-view"); expect(found).toBeTruthy(); return found!; });
@@ -310,6 +331,27 @@ test("a Menu with room for its least on neither side opens as a view of the wind
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(document.activeElement).toBe(trigger);
+});
+
+test("a Menu that becomes a view keeps the focused row, scrolls it into view and acts on it", async () => {
+  let height = 480;
+  const { trigger, action } = fittedLibrary(() => height);
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  const menu = await screen.findByRole("menu", { name: "Library" });
+  fireEvent.keyDown(document.activeElement!, { key: "End" });
+  expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Reload" }));
+  height = 150;
+  await act(async () => { fireEvent(window, new Event("resize")); await new Promise(requestAnimationFrame); });
+  const view = await screen.findByRole("dialog", { name: "Library" });
+  const list = screen.getByRole("menu", { name: "Library" });
+  const reload = screen.getByRole("menuitem", { name: "Reload" });
+  expect(list).not.toBe(menu);
+  expect(view.contains(list)).toBe(true);
+  expect(document.activeElement).toBe(reload);
+  expect(list.scrollTop).toBe(112);
+  fireEvent.keyDown(reload, { key: "Enter" });
+  fireEvent.keyUp(reload, { key: "Enter" });
+  expect(action).toHaveBeenCalledExactlyOnceWith("Reload");
 });
 
 test("a menu with no matches keeps its filter and empty state as its least", () => {

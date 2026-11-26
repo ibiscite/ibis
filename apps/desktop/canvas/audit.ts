@@ -5,7 +5,7 @@ import { LANGUAGES, say, setInterfaceLanguage, type InterfaceLanguage, type Mess
 import { libraryOperations, OPERATION_FAILURES, type Operation } from "../src/features/picker/Notices";
 import { HOLD_MS } from "../src/ui/HeldKeys";
 import { currentPlatform } from "../src/platform";
-import { anchorBoxes, anchorMoves, denseList, focusInView, frameStates, rowsInView, geometry, heldKeys, layerRoles, menuLists, menuRows, occlusion, oneSurface, overflow, paintOnly, settle, slots } from "./geometry";
+import { anchorBoxes, anchorMoves, denseList, focusInView, frameStates, rowsInView, geometry, heldKeys, layerRoles, menuLists, menuRows, occlusion, oneSurface, overflow, paintOnly, settle, slots, viewportPaint } from "./geometry";
 
 type Mount = (host: HTMLElement, options: { scenario: string; theme: string; textZoom?: number }) => () => void;
 
@@ -53,20 +53,26 @@ async function searchJump(query: string, late: boolean): Promise<string[]> {
 /** The guards fail what people cannot see, in the engine itself (jsdom cannot
  * paint): each fault is planted on a passing screen, the guard must report it,
  * and the fault is taken away again. Returns a failure for each one missed. */
-function planted(faults: readonly { name: string; plant: () => () => void }[], guard: () => string[]): string[] {
+async function planted(faults: readonly { name: string; plant: () => () => void }[], guard: () => string[] | Promise<string[]>): Promise<string[]> {
   const missed: string[] = [];
   for (const { name, plant } of faults) {
     const undo = plant();
-    try { if (!guard().length) missed.push(`[gate] the planted fault "${name}" passed the guard`); } finally { undo(); }
+    try { if (!(await guard()).length) missed.push(`[gate] the planted fault "${name}" passed the guard`); } finally { undo(); }
   }
   return missed;
 }
 /** A layer over the whole window that paints but takes no pointer. */
-const cover = () => {
+const cover = (pseudo = false) => {
   const layer = document.createElement("div");
-  layer.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:white;pointer-events:none";
+  layer.style.cssText = "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
+  const style = document.createElement("style");
+  if (pseudo) {
+    layer.dataset.auditCover = "";
+    style.textContent = '[data-audit-cover]::before { content: ""; position: absolute; inset: 0; background: white; }';
+    document.head.append(style);
+  } else layer.style.background = "white";
   document.body.append(layer);
-  return () => layer.remove();
+  return () => { layer.remove(); style.remove(); };
 };
 const restyle = (node: HTMLElement | null, property: string, value: string) => () => {
   const before = node?.style.getPropertyValue(property) ?? "";
@@ -127,8 +133,12 @@ export const slotMessages: Record<keyof typeof slots, { id: MessageId; args?: Re
  * short: More, and the drawer's menus, in a window so short their lists scroll [C9];
  * reveal: a Settings search jump at Settings' own window, scrolling, with late content;
  * layers: the floating surfaces only, in each system and Ibis appearance. */
-export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly string[], { pass = "frame", theme = "light" }: { pass?: "frame" | "narrow" | "short" | "reveal" | "layers" | "inventory"; theme?: string } = {}): Promise<string[]> {
+export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly string[], { pass = "frame", theme = "light", capture }: {
+  pass?: "frame" | "narrow" | "short" | "reveal" | "layers" | "inventory"; theme?: string; capture: () => Promise<string>;
+}): Promise<string[]> {
   const failures: string[] = [];
+  const readPaint = viewportPaint(capture);
+  const checkMenuRows = () => menuRows(readPaint);
   const show = async (scenario: string, textZoom?: number) => { mount(host, { scenario, theme, textZoom }); await settle(); };
   const picker = scenarios.filter((scenario) => !["notice", "states", "tokens", "parts"].includes(scenario));
 
@@ -152,7 +162,7 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
     for (const scenario of drawerMenus.filter((name) => scenarios.includes(name) && name !== "locator-menu-200")) {
       await show(scenario);
       const opened = document.querySelector(menuLists) ? [] : ["[C9 rows] no menu opened"];
-      failures.push(...[...opened, ...menuRows(), ...occlusion(), ...oneSurface(), ...layerRoles()].map((failure) => `${scenario} (short): ${failure}`));
+      failures.push(...[...opened, ...await checkMenuRows(), ...occlusion(), ...oneSurface(), ...layerRoles()].map((failure) => `${scenario} (short): ${failure}`));
     }
     return failures;
   }
@@ -167,10 +177,10 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
       failures.push(...jump.map((failure) => `settings search "${query}"${late ? " (content above it 1.7 s later)" : ""}: ${failure}`));
     }
     const page = document.querySelector<HTMLElement>(".settings-page");
-    failures.push(...planted([
+    failures.push(...(await planted([
       { name: "an opaque cover that takes no pointer", plant: cover },
       { name: "the focused row at opacity 0", plant: restyle(document.activeElement?.closest<HTMLElement>(".ui-row") ?? null, "opacity", "0") },
-    ], () => focusInView(page)).map((failure) => `settings search: ${failure}`));
+    ], () => focusInView(page))).map((failure) => `settings search: ${failure}`));
     return failures;
   }
 
@@ -188,13 +198,13 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
   if (pass === "narrow") {
     for (const scenario of picker) {
       await show(scenario);
-      const menus = drawerMenus.includes(scenario) ? [...document.querySelector(menuLists) ? [] : ["[C9 rows] no menu opened"], ...menuRows(), ...oneSurface()] : [];
+      const menus = drawerMenus.includes(scenario) ? [...document.querySelector(menuLists) ? [] : ["[C9 rows] no menu opened"], ...await checkMenuRows(), ...oneSurface()] : [];
       failures.push(...[...occlusion(), ...menus].map((failure) => `${scenario} (narrow): ${failure}`));
     }
     for (const scenario of zoomedMenus.filter((name) => scenarios.includes(name))) {
       await show(scenario, 2);
       const opened = document.querySelector(menuLists) ? [] : ["[C9 rows] no menu opened"];
-      failures.push(...[...opened, ...menuRows(), ...occlusion(), ...oneSurface()].map((failure) => `${scenario} (narrow, 200 % text): ${failure}`));
+      failures.push(...[...opened, ...await checkMenuRows(), ...occlusion(), ...oneSurface()].map((failure) => `${scenario} (narrow, 200 % text): ${failure}`));
     }
     if (scenarios.includes("locator-menu-200")) {
       await show("locator-menu-200");
@@ -204,9 +214,9 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
         field.dispatchEvent(new Event("input", { bubbles: true }));
         await settle();
       }
-      failures.push(...[...field ? [] : ["[gate] locator-menu-200 opened no view"], ...menuRows(), ...planted([
+      failures.push(...[...field ? [] : ["[gate] locator-menu-200 opened no view"], ...await checkMenuRows(), ...await planted([
         { name: "the view's empty state hidden", plant: restyle(document.querySelector(".ui-palette-empty"), "visibility", "hidden") },
-      ], menuRows)].map((failure) => `locator-menu-200 (narrow, no matches): ${failure}`));
+      ], checkMenuRows)].map((failure) => `locator-menu-200 (narrow, no matches): ${failure}`));
     }
     for (const [slot, messages] of Object.entries(slotMessages) as [keyof typeof slots, typeof slotMessages[keyof typeof slots]][]) {
       await show(slots[slot].scenario);
@@ -244,7 +254,7 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
       ...paintOnly(),
       ...layerRoles(),
       ...oneSurface(),
-      ...menuRows(),
+      ...await checkMenuRows(),
     ];
     if (drawerMenus.includes(scenario) && !document.querySelector(menuLists)) found.push("[C9 rows] no menu opened");
     const patterns = declared();
@@ -263,12 +273,13 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
   if (scenarios.includes("locator-menu")) {
     await show("locator-menu");
     const menu = document.querySelector<HTMLElement>(".menu-popover"), box = menu?.getBoundingClientRect();
-    failures.push(...planted([
+    failures.push(...(await planted([
       { name: "an opaque cover that takes no pointer", plant: cover },
+      { name: "an opaque pseudo-element that takes no pointer", plant: () => cover(true) },
       // Half of it past the window's side: each row's start still shows and takes the point.
       { name: "the menu cut by the window's side", plant: restyle(menu, "translate", `${Math.ceil(innerWidth - (box?.left ?? 0) - (box?.width ?? 0) / 2)}px 0`) },
       { name: "the menu at opacity 0", plant: restyle(menu, "opacity", "0") },
-    ], menuRows).map((failure) => `locator-menu: ${failure}`));
+    ], checkMenuRows)).map((failure) => `locator-menu: ${failure}`));
   }
   return failures;
 }

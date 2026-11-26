@@ -73,7 +73,11 @@ for (const scenario of scenarios) for (const mode of modes) for (const theme of 
 for (const [viewport, pass] of [[{ width: 720, height: 480 }, "frame"], [{ width: 480, height: 360 }, "narrow"], [{ width: 640, height: 240 }, "short"], [{ width: 920, height: 560 }, "reveal"]]) {
   const page = await load(viewport);
   await page.emulateMedia({ colorScheme: "light", forcedColors: "none", contrast: "no-preference" });
-  failures.push(...await page.evaluate((pass) => window.IbisCanvas.audit(document.getElementById("host"), { pass, theme: "light" }), pass));
+  await page.exposeFunction("captureCanvas", async () => {
+    const png = await page.screenshot({ animations: "disabled", scale: "css" });
+    return `data:image/png;base64,${png.toString("base64")}`;
+  });
+  failures.push(...await page.evaluate((pass) => window.IbisCanvas.audit(document.getElementById("host"), { pass, theme: "light", capture: window.captureCanvas }), pass));
   await page.close();
 }
 await browser.close();

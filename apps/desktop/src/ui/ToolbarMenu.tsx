@@ -3,7 +3,7 @@ import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, SearchField, Text } from "react-aria-components";
 import { PopupButton } from "./PopupButton";
-import { MenuCheck, menuLeast, useMenuPlacement, MenuRow, useWholeRows } from "./Menu";
+import { MenuCheck, menuHighlight, menuLeast, useMenuPlacement, MenuRow, useWholeRows } from "./Menu";
 import { Floating, useViewFallback } from "./Layer";
 import { Palette, matchesQuery } from "./Palette";
 import { say } from "../i18n";
@@ -49,7 +49,7 @@ export function ToolbarMenu({ buttonRef, disabled, label, value, heading, note, 
   useLayoutEffect(() => { if (!open) setQuery(""); }, [open]);
   const { list, listRef, opening } = useMenuLifecycle(open);
   const cramped = () => {
-    highlighted.current = list.current?.querySelector<HTMLElement>("[data-focused][data-item]")?.dataset.item;
+    highlighted.current = menuHighlight(list.current);
     fallback.cramped();
   };
   const wholeRows = useWholeRows(list);

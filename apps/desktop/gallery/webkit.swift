@@ -13,6 +13,27 @@ final class Loaded: NSObject, WKNavigationDelegate {
   func webView(_ view: WKWebView, didFinish navigation: WKNavigation!) { done?.resume(); done = nil }
 }
 
+@MainActor func capturePNG(_ view: WKWebView) async throws -> Data? {
+  let image = try await view.takeSnapshot(configuration: nil)
+  guard let tiff = image.tiffRepresentation else { return nil }
+  return NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
+}
+
+final class CanvasCapture: NSObject, WKScriptMessageHandlerWithReply {
+  func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage,
+                             replyHandler: @escaping (Any?, String?) -> Void) {
+    guard let view = message.webView else { replyHandler(nil, "No canvas to capture"); return }
+    Task { @MainActor in
+      do {
+        guard let png = try await capturePNG(view) else {
+          replyHandler(nil, "Canvas snapshot could not be encoded"); return
+        }
+        replyHandler("data:image/png;base64," + png.base64EncodedString(), nil)
+      } catch { replyHandler(nil, error.localizedDescription) }
+    }
+  }
+}
+
 let dist = URL(fileURLWithPath: CommandLine.arguments[1]).standardizedFileURL
 let out = URL(fileURLWithPath: CommandLine.arguments[2])
 let accents = ["system", "ibis"]
@@ -80,8 +101,7 @@ func accentRGB(_ appearance: NSAppearance) -> [Double] {
     if number("pressed") < 4.5 { wrong.append("pressed primary text \(number("pressed"))") }
     if number("ring") < 3 { wrong.append("focus ring \(number("ring"))") }
     if !wrong.isEmpty { failures.append("\(name): \(wrong.joined(separator: ", "))") }
-    if let image = try? await view.takeSnapshot(configuration: nil), let tiff = image.tiffRepresentation,
-       let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+    if let png = try? await capturePNG(view) {
       try? png.write(to: out.appendingPathComponent("\(name).png"))
     }
     window.orderOut(nil); window.contentView = nil
@@ -103,10 +123,11 @@ func accentRGB(_ appearance: NSAppearance) -> [Double] {
     let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -30000, y: -30000), size: run.size), styleMask: .borderless, backing: .buffered, defer: false)
     window.appearance = NSAppearance(named: run.mac)!
     let view = WKWebView(frame: NSRect(origin: .zero, size: run.size))
+    view.configuration.userContentController.addScriptMessageHandler(CanvasCapture(), contentWorld: .page, name: "captureCanvas")
     window.contentView = view; window.orderBack(nil)
     let loaded = Loaded(); view.navigationDelegate = loaded
     await withCheckedContinuation { loaded.done = $0; view.loadFileURL(page, allowingReadAccessTo: dist) }
-    let script = "return JSON.stringify(await IbisCanvas.audit(document.getElementById('host'), { pass, theme }))"
+    let script = "return JSON.stringify(await IbisCanvas.audit(document.getElementById('host'), { pass, theme, capture: () => webkit.messageHandlers.captureCanvas.postMessage(null) }))"
     let raw = (try? await view.callAsyncJavaScript(script, arguments: ["pass": run.pass, "theme": run.theme], contentWorld: .page)) as? String ?? "[\"the guards did not run\"]"
     let broken = (try? JSONSerialization.jsonObject(with: Data(raw.utf8))) as? [String] ?? [raw]
     let mode = run.pass == "layers" ? " (\(run.mac == .aqua ? "Mac light" : "Mac dark"), \(run.theme))" : ""
