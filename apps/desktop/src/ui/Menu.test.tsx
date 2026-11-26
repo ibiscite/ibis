@@ -134,3 +134,25 @@ test.each(["Escape", "Tab", "Enter", " "])("composing %s does not dismiss or act
   fireEvent.keyUp(document.activeElement!, { key: "Enter" });
   expect(onAction).toHaveBeenCalledWith("open");
 });
+
+test.each([[56, "56px"], [430, "0px"]])("an anchored menu clears its return field only while a whole menu fits below it (field ends at %i)", async (fieldBottom, top) => {
+  const { renderHook } = await import("@testing-library/react");
+  const { useMenuBoundary } = await import("./Menu");
+  const floor = document.createElement("footer");
+  floor.dataset.menuFloor = "";
+  const field = document.createElement("input"), trigger = document.createElement("button");
+  document.body.append(field, trigger, floor);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this === floor) return new DOMRect(0, 440, 720, 40);
+    if (this === field || this === trigger) return new DOMRect(0, fieldBottom - 30, 100, 30);
+    // The probe for --menu-min-block: a filter and three rows.
+    if (this.style.cssText.includes("menu-min-block")) return new DOMRect(0, 0, 0, 112);
+    return new DOMRect();
+  });
+  try {
+    const fieldRef = { current: field }, triggerRef = { current: trigger };
+    const { unmount } = renderHook(() => useMenuBoundary(true, fieldRef, triggerRef));
+    expect(document.querySelector<HTMLElement>("[data-menu-boundary]")?.style.top).toBe(top);
+    unmount();
+  } finally { field.remove(); trigger.remove(); floor.remove(); }
+});

@@ -18,6 +18,15 @@ const LOCATOR_TERMS: readonly LocatorTerm[] = ["page", "chapter", "section", "pa
   "title-locator", "version", "act"];
 const termName = (term: LocatorTerm) => say(`locator-${term}` as MessageId);
 const termShort = (term: LocatorTerm) => say(`locator-short-${term}` as MessageId);
+/** The locator field's words, from its chosen type alone: the visible label, the
+ * accessible name, the prompt and the hint all follow it, so a field set to
+ * Chapter never reads "Page". Only a page has its own prompt and hint. */
+export function locatorWords(term: LocatorTerm): { label: string; placeholder: string; hint?: string } {
+  const label = termName(term);
+  return term === "page"
+    ? { label, placeholder: say("citation-details-page-placeholder"), hint: say("citation-details-page-hint") }
+    : { label, placeholder: say("citation-details-locator-placeholder") };
+}
 
 /** One citation's details for one reference, the same wherever a citation is
  * built: how it shows, a pop-up of the forms by name, each with the real output
@@ -48,6 +57,7 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
   // A cleared field keeps its type, so a new value never changes what it means.
   const [term, setTerm] = useState<LocatorTerm>(locator?.term ?? "page");
   useEffect(() => { if (locator) setTerm(locator.term); }, [locator]);
+  const words = locatorWords(term);
   const [shown, setShown] = useState({ before: prefix !== "", after: suffix !== "" });
   const submit = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter" && !event.repeat && !composing(event)) { event.preventDefault(); onSubmit?.(); }
@@ -74,7 +84,7 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
         : <p className="citation-note">{[...reasons.keys()][0] ?? say("citation-details-none")}</p>}
     </div>
     <div className="citation-field">
-      <span className="citation-label" aria-hidden="true">{say("citation-details-page")}</span>
+      <span className="citation-label" aria-hidden="true">{words.label}</span>
       <div className="citation-locator">
         <ToolbarMenu buttonRef={typeButton} returnFocusRef={field} placement="bottom start" label={say("citation-details-locator-type")} value={termName(term)} selectedKey={term}
           filterLabel={say("citation-details-locator-filter")} button={{ className: "citation-locator-type", label: `${say("citation-details-locator-type")}: ${termName(term)}`, content: termShort(term), quiet: true }}
@@ -85,9 +95,9 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
             setTerm(chosen);
             if (locator) onLocatorChange({ ...locator, term: chosen });
           }} />
-        <TextField aria-label={termName(term)} value={locator?.value ?? ""} onChange={(value) => onLocatorChange(value.trim() ? { term, value } : null)}>
-          <Input ref={field} className="citation-locator-value" autoFocus={autoFocus} placeholder={term === "page" ? say("citation-details-page-placeholder") : say("citation-details-locator-placeholder")} onKeyDown={submit} />
-          <Text slot="description" className="visually-hidden">{say("citation-details-page-hint")}</Text>
+        <TextField aria-label={words.label} value={locator?.value ?? ""} onChange={(value) => onLocatorChange(value.trim() ? { term, value } : null)}>
+          <Input ref={field} className="citation-locator-value" autoFocus={autoFocus} placeholder={words.placeholder} onKeyDown={submit} />
+          {words.hint && <Text slot="description" className="visually-hidden">{words.hint}</Text>}
         </TextField>
       </div>
     </div>

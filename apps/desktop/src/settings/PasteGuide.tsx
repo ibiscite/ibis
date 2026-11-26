@@ -59,7 +59,8 @@ export function PasteGuide({ name, permission, onOpen, onDrag }: {
   const [dragFailed, setDragFailed] = useState(false);
   const open = () => { setOpened((count) => count + 1); setDragFailed(false); onOpen(); };
   return (
-    <div className="ui-paste-guide" data-granted={permission.granted || undefined}>
+    // A row of Pasting's card, under the switch it explains: the card draws its divider.
+    <div className="ui-row ui-paste-guide" data-granted={permission.granted || undefined}>
       <div className="ui-paste-guide-art" aria-hidden="true">
         <div className="ui-paste-guide-row">
           <span className="ui-paste-guide-icon" style={{ backgroundImage: `url(${appIcon})` }} />

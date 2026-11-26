@@ -5,7 +5,9 @@
 .ui-sheet-body { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--gutter) var(--inset); }
 .ui-sheet-body:focus-visible { outline-offset: var(--ring-inside); }
 .ui-sheet-content { display: flex; flex-direction: column; gap: var(--gutter); width: min(100%, var(--content-max)); margin-inline: auto; }
-.ui-sheet-content > p, .ui-section > p:not([class]) { margin: 0; padding-inline: var(--heading-offset); }
+/* Its parts (cards, sections, notes) are --section-gap apart, as a Settings page's are, owned here alone. */
+.ui-sheet-parts { display: flex; flex-direction: column; gap: var(--section-gap); min-width: 0; }
+.ui-sheet-content > p, .ui-sheet-parts > p, .ui-section > p:not([class]) { margin: 0; padding-inline: var(--heading-offset); }
 .ui-sheet-lead { color: var(--text-secondary); }
 /* What will be copied or saved: kept as written and selectable, on a card. */
 .ui-sheet-output { margin: 0; padding: var(--space-3) var(--row-pad); white-space: pre-wrap; user-select: text; }

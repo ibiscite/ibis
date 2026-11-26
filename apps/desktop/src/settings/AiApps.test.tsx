@@ -54,6 +54,6 @@ test("a failure says the shared sentence and keeps the old state", async () => {
   page([missing], { connectAgentApp: vi.fn(async () => { throw new Error("invented failure"); }) });
   fireEvent.click(await screen.findByRole("button", { name: "Connect Cursor" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Could not change the AI app connection. Check the app’s settings and folder permissions, then try again.");
-  expect(screen.getByText("Not connected.")).toBeTruthy();
+  expect(screen.getByText("Not connected")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Connect Cursor" })).toBeTruthy();
 });

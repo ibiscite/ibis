@@ -48,6 +48,22 @@ test("the locator's type is a pop-up inside the field: a new type keeps the valu
   expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Chapter" }).value).toBe("");
 });
 
+test("the locator's visible label, name and hint follow its type, so a chapter never reads as a page", async () => {
+  const { container } = render(<Editor />);
+  const label = () => container.querySelector(".citation-locator")?.parentElement?.querySelector(".citation-label")?.textContent;
+  expect(label()).toBe("Page");
+  const page = screen.getByRole("textbox", { name: "Page" });
+  expect(document.getElementById(page.getAttribute("aria-describedby") ?? "")?.textContent).toBe("A page, a range or several, as printed");
+  fireEvent.click(screen.getByRole("button", { name: "Locator type: Page" }));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: /^Chapter/ }));
+  expect(label()).toBe("Chapter");
+  const chapter = screen.getByRole<HTMLInputElement>("textbox", { name: "Chapter" });
+  expect(chapter.placeholder).toBe("Add a value");
+  // The page's hint ("A page, a range or several") is not said of a chapter.
+  const described = (chapter.getAttribute("aria-describedby") ?? "").split(" ").map((id) => document.getElementById(id)?.textContent ?? "").join(" ");
+  expect(described).not.toContain("page");
+});
+
 test("text before and after are asked for, and text already there shows from the start", () => {
   const { unmount } = render(<Editor />);
   expect(screen.queryByRole("textbox", { name: "Text before" })).toBeNull();

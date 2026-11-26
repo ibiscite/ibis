@@ -595,7 +595,7 @@ look-window-large = كبير
 look-window-custom = مخصص
 look-window-custom-note = اسحب أحد أطراف النافذة لتحديد الحجم الذي تريده. يتذكره Ibis على كل شاشة.
 look-text-size = حجم النص
-look-text-size-description = حجم الكلمات في النافذة، بمعزل عن حجم النص في Mac.
+look-text-size-description = حجم الكلمات في Ibis وفي الإعدادات، بمعزل عن حجم النص في Mac.
 look-default-text = افتراضي
 look-larger-text = أكبر
 look-sample-title = الحديقة الهادئة
@@ -668,7 +668,7 @@ canvas-pressed = مضغوط
 canvas-focused = تركيز لوحة المفاتيح
 
 general-small-surprises-label = معلومات عن الطائر وإنجازات
-general-small-surprises-description = معلومات عن الطائر وإنجازات وذكريات سنوية.
+general-small-surprises-description = معلومة عندما تنقر على الطائر في «حول Ibis»، وملاحظة قصيرة عندما تبلغ إنجازًا.
 settings-surprises-words = مفاجآت صغيرة مفاجأة متعة بيضة عيد الفصح
 delight-name = سُمّي على اسم الطائر الذي ربطه المصريون القدماء بتحوت، إله الكتابة وحافظ السجلات.
 delight-fact-touch = يجد أبو منجل الأبيض طعامه باللمس وهو ينقّب في الطين.
@@ -699,7 +699,6 @@ choice-use-file = استخدام { $name }
 choice-back = اختيار مصدر آخر
 
 backup-words = نسخة احتياطية نسخ احتياطي استعادة تصدير استيراد نقل ترحيل كمبيوتر جديد مزامنة iCloud OneDrive
-backup-title = كمبيوتر آخر
 backup-label = إنشاء نسخة احتياطية من الإعدادات
 backup-description =
     { $platform ->
@@ -756,7 +755,6 @@ peek-container = منشور في
 peek-year = السنة
 peek-type = النوع
 peek-key = مفتاح الاستشهاد
-citation-details-page = الصفحة
 locator-act = فصل مسرحي
 locator-appendix = ملحق
 locator-article-locator = مادة
@@ -1570,6 +1568,7 @@ mcp-cite-description = استشهد بالمراجع (refs) المعادة من 
 
 # The desktop's bundled command. Never execute another program to check its version.
 command-install = تثبيت الأمر ibis
+command-install-button = تثبيت
 command-install-description = ابحث واستشهد من الطرفية بالمكتبة والإعدادات نفسها.
 command-remove = إزالة الأمر
 command-checking = جارٍ التحقق من الأمر ibis…
@@ -2041,6 +2040,7 @@ cli-greeting = يجد Ibis { $version } المراجع ويستشهد بها ف�
 
 # Settings and ibis agents share these app connections.
 settings-ai-apps = تطبيقات الذكاء الاصطناعي
+ai-apps-group = التطبيقات على هذا الكمبيوتر
 ai-apps-command-line = سطر الأوامر
 ai-apps-description = اربط Ibis بتطبيقات الذكاء الاصطناعي على هذا الكمبيوتر.
 ai-apps-words = وكلاء ذكاء اصطناعي MCP Claude Codex Cursor VS Code Gemini Windsurf LM Studio ChatGPT تطبيقات مساعد
@@ -2063,7 +2063,7 @@ app-failure-reject-proposal = { proposals-failed }
 app-failure-reject-app-proposals = { proposals-failed }
 command-words = سطر الأوامر طرفية terminal shell صدفة PATH وكلاء MCP
 ai-apps-checking = جارٍ التحقق من تطبيقات الذكاء الاصطناعي…
-ai-apps-not-connected = غير متصل.
+ai-apps-not-connected = غير متصل
 ai-apps-connected = متصل. ابدأ جلسة جديدة في التطبيق لاستخدام Ibis.
 ai-apps-stale = نُقل أمر ibis أو أنه مفقود.
 ai-apps-different = لدى هذا التطبيق اتصال مختلف بـ Ibis. راجع التغيير أدناه.

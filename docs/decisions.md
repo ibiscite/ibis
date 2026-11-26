@@ -147,6 +147,9 @@ the anchor older links use.
 ## 0061 A folder of PDFs is a library, and one `resolve`
 [0061](decisions/0061-a-folder-of-pdfs-and-one-resolve.md): a folder of PDFs opens as a library whose records Ibis keeps in `ibis-references.bib` beside them, read from each PDF's own metadata and DOI in the child and appended only when the person keeps them; reads never write; a record with no title, author or editor is not cited, from any source; `resolve` finds an identifier, text or file in the library, then online only after asking.
 
+## 0062 Closed parts, owned space, fitted layers, and a gate that sees
+[0062](decisions/0062-closed-parts-owned-space-fitted-layers.md): a part's sheet styles only its own classes and is reached only through its knobs; containers own the space and dividers between items, parts read roles and never steps, and density is a recipe per task on one `Row`; floating surfaces fit the region the frame publishes, with a minimum of whole rows, and one `reveal` keeps a target in view; the gate renders real window sizes in WebKit and checks ink, visible rows and three reference journeys, with the census as ratchets.
+
 ## 0063 Form follows the job
 [0063](decisions/0063-form-follows-function.md): a citation can be typed whole in the search field (locators and `;`, parsed by the engine for every front end); a format is chosen and remembered only in the picker, so Settings › Citations goes; an empty search shows what was cited since Ibis opened, replacing the sheet; every status and problem has one home, the list's heading line, with at most one fix.
 

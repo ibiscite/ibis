@@ -34,7 +34,10 @@ export function Section({ id, title, label, level = 2, description, children }: 
 }
 
 /** The card: grouped rows on the grouped fill, edge to edge in its section. A
- * labelled group is a list, so its rows are list items. */
+ * labelled group is a list, so its rows are list items. Its children are rows
+ * (Row, ChoiceRow, a Details' rows): the card draws a divider above every row
+ * but its first, so words about a row travel inside it (`note`, `problem`),
+ * never between rows. */
 export function Group({ label, children }: { label?: string; children: ReactNode }) {
   return label ? <ul className="ui-group" aria-label={label}>{children}</ul> : <div className="ui-group">{children}</div>;
 }
@@ -43,9 +46,15 @@ export function Group({ label, children }: { label?: string; children: ReactNode
  * description, then its accessory (a control or buttons) at the end, which wraps
  * below when the row is narrow. `labelHidden` keeps the label for screen readers
  * only, for a row whose control names itself (a picture choice). */
-export function Row({ id, label, description, children, problem, highlighted, pending, reset, labelHidden = false, item = false }: {
+export function Row({ id, label, description, children, note, problem, highlighted, echo, pending, reset, labelHidden = false, item = false }: {
   id?: string; label: ReactNode; description?: ReactNode; children?: ReactNode;
-  problem?: string; highlighted?: boolean; pending?: boolean; labelHidden?: boolean;
+  /** Quiet words about the row on their own line under it (a path, a location). */
+  note?: ReactNode;
+  /** Why the row's last action failed, on its own line under it; read out at once. */
+  problem?: ReactNode;
+  highlighted?: boolean; pending?: boolean; labelHidden?: boolean;
+  /** Its shortcut was just pressed: the row briefly takes the quiet fill. */
+  echo?: boolean;
   /** Use Default. Left out, the row cannot reset and keeps no room for it; null,
    * the setting is at its default and the room stays empty; a value shows ↺. */
   reset?: Reset | null;
@@ -53,7 +62,7 @@ export function Row({ id, label, description, children, problem, highlighted, pe
   item?: boolean;
 }) {
   const Element = item ? "li" : "div";
-  return <Element className="ui-row" aria-busy={pending || undefined} data-bare={labelHidden || undefined} data-highlighted={highlighted || undefined}>
+  return <Element className="ui-row" aria-busy={pending || undefined} data-bare={labelHidden || undefined} data-highlighted={highlighted || undefined} data-echo={echo || undefined}>
     <span className={labelHidden ? "visually-hidden" : "ui-row-lead"}>
       <span className="ui-row-text">
         <span id={id} dir="auto">{label}</span>
@@ -61,6 +70,7 @@ export function Row({ id, label, description, children, problem, highlighted, pe
       </span>
     </span>
     {reset !== undefined && children !== undefined ? <span className="ui-row-control"><ResetSlot reset={reset} />{children}</span> : children}
+    {note && <Note>{note}</Note>}
     {problem && <Status className="ui-row-problem" role="alert">{problem}</Status>}
   </Element>;
 }

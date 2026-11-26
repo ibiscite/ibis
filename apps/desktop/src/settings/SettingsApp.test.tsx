@@ -417,3 +417,15 @@ function shortcutFailure(code: string) {
   return { code, message: { id: `shortcuts-refusal-${code}`, args: {} },
     recovery: { action: code === "unavailable" ? "open-ibis" : code === "not-saved" ? "retry" : "choose-shortcut" }, focus: "recovery-action" };
 }
+
+test.each(["general", "look", "citations", "ai-apps", "about"])("%s: every card holds rows only, so the card alone draws its dividers", async (page) => {
+  const { demoApi } = await import("./demo");
+  const { container } = render(<SettingsApp api={demoApi()} initialPage={page} />);
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  const groups = [...container.querySelectorAll(".ui-group")];
+  expect(groups.length).toBeGreaterThan(0);
+  // The live picture heads Appearance's first row; a Details' wrapper holds its rows.
+  const loose = groups.flatMap((group) => [...group.children]).filter((child) => !child.matches(".ui-row, .ui-picture-preview")
+    && !(child.matches("div[id]") && [...child.children].every((row) => row.matches(".ui-row"))));
+  expect(loose.map((child) => child.outerHTML.slice(0, 80))).toEqual([]);
+});

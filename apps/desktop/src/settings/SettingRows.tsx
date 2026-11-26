@@ -64,7 +64,9 @@ export function Setting({ row, state, preferences, feedback, reset, size = null 
 }
 
 const WINDOWS = { small: [640, 400], medium: [720, 480], large: [840, 600], custom: [720, 480] } as const;
-/** Render and keyboard order are the declaration's order, including groups. */
+/** Render and keyboard order are the declaration's order, including groups.
+ * `after` adds rows under a row in its card (never loose content: the card owns
+ * its dividers). */
 export function SettingRows({ rows, preferences, change, owners, feedback, reset, after = {}, size }: {
   rows: readonly SettingRow[]; preferences: PickerPreferences | null;
   change: (patch: Partial<PickerPreferences>, restoring?: boolean) => Promise<void>;

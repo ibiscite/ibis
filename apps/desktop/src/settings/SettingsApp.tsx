@@ -575,6 +575,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       </nav>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "ui-settings-page-title"}>{text(`settings-${page}`)}</h1>
+        {/* The page's parts, --section-gap apart: one owner for the space between them. */}
+        <div className="settings-page-content">
         {/* One cause, one sentence: a file that cannot be read says so in the engine's words, on every page. */}
         {formatSettings.problem !== null ? <SettingsFileProblem settings={formatSettings} />
           : preference.status === "unknown" && preference.message && <Note problem role="alert">{text(preference.message)}</Note>}
@@ -624,12 +626,15 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>
             </div>
             {renderRows("about")}
-            <div className="ui-about-links" role="group" aria-label={text("about-links")}>
-              {(["website", "source", "problem", "licences"] as const).map((link) => <Button key={link} variant="quiet" size="small" onPress={() => { void api.openAboutLink(link); }}>{text(`about-${link}`)}</Button>)}
+            <div className="ui-about-foot">
+              <div className="ui-about-links" role="group" aria-label={text("about-links")}>
+                {(["website", "source", "problem", "licences"] as const).map((link) => <Button key={link} variant="quiet" size="small" onPress={() => { void api.openAboutLink(link); }}>{text(`about-${link}`)}</Button>)}
+              </div>
+              <p className="ui-about-free">{text("about-free")}</p>
             </div>
-            <p className="ui-about-free">{text("about-free")}</p>
           </>
         )}
+        </div>
       </main>
       {/* At the window's foot (ui/SettingsLayout.css), and after the page in Tab order too. */}
       <NoticeSlot>

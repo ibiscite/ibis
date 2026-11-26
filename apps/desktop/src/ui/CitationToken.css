@@ -3,23 +3,29 @@
    its own room, so neither it nor its ring covers the brackets and separators
    beside it. Focus and the open state change at once; only arriving and moving
    use motion, from the shared tokens, which answer Reduce Motion themselves. */
-.citation-token { position: relative; display: flex; flex: none; align-items: center; min-width: 0; margin-inline: var(--row-spacing); padding-block: var(--space-2); }
+/* One painted surface: the token's ::before holds its one fill and its ring, under
+   the words and the × alike, so neither shows a second tone or half a ring. Its
+   buttons paint nothing themselves (Button.css reads these properties). */
+.citation-token { --button-fill: transparent; --button-fill-hover: transparent; --button-fill-pressed: transparent; --button-ring: none;
+  position: relative; display: flex; flex: none; align-items: center; min-width: 0; margin-inline: var(--row-spacing); padding-block: var(--space-2); }
 /* With several, none takes more than a third of the line, so every reference
    keeps its handle in view; the line is their container (CitationShelf.css). */
-[data-multiple] > .citation-token { max-width: max(calc(100cqi / 3), 12ch); }
+[data-multiple] > .citation-token { max-width: max(100cqi / 3, 12ch); }
 .citation-token::before { content: ""; position: absolute; inset-block: var(--space-2); inset-inline: 0; border-radius: var(--r-small); background: var(--fill-control); pointer-events: none; }
-.citation-token:has(> .citation-token-button[aria-expanded="true"])::before { background: var(--fill-control-pressed); }
-.citation-token-button.ui-button[data-variant] { position: relative; justify-content: start; gap: var(--space-1); flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); max-width: 100%; padding-inline: var(--space-1); border-width: 0; border-radius: var(--r-small); color: var(--text); background: transparent; white-space: nowrap; }
+@media (hover: hover) {
+  .citation-token:has(> .citation-token-button[data-hovered]):not(:has(> .citation-token-button:is([data-pressed], [aria-expanded="true"])))::before { background: var(--fill-control-hover); }
+}
+.citation-token:has(> .citation-token-button:is([data-pressed], [aria-expanded="true"]))::before { background: var(--fill-control-pressed); }
+/* The ring every button has, drawn on the whole token, inside it, so it never covers the brackets beside it. */
+.citation-token:has(> .citation-token-button[data-focus-visible])::before { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-inside); }
+.citation-token-button.ui-button[data-variant] { position: relative; justify-content: start; gap: var(--space-1); flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); max-width: 100%; padding-inline: var(--space-1); border-width: 0; border-radius: var(--r-small); color: var(--text); white-space: nowrap; }
 .citation-token-button.ui-button[data-size="small"]::after { inset-inline: 0; }
-.citation-token-button.ui-button { --ring-offset: var(--ring-inside); }
 .citation-token-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .citation-token-handle { flex: none; color: var(--text-secondary); }
 .citation-token-handle::before { content: "· "; }
-.citation-token-remove.ui-icon-button.ui-button[data-variant] { --icon-button-size: var(--space-4); position: relative; flex: none; margin-inline-end: var(--space-1); border: 0; border-radius: var(--r-small); color: var(--text-secondary); --ring-offset: var(--ring-inside); }
-@media (hover: hover) {
-  .citation-token:has(> .citation-token-button[data-hovered]):not(:has(> .citation-token-button[aria-expanded="true"]))::before { background: var(--fill-control-hover); }
-  .citation-token-remove.ui-icon-button.ui-button[data-variant]:is([data-hovered], [data-pressed]) { background: var(--fill-control-pressed); color: var(--text); }
-}
+/* The × is the one target with a plate of its own, only while pointed at or pressed. */
+.citation-token-remove { --button-fill-hover: var(--fill-control-pressed); --button-fill-pressed: var(--fill-control-pressed); --control-icon-color: var(--text-secondary); --control-icon-hover-color: var(--text); }
+.citation-token-remove.ui-icon-button.ui-button[data-variant] { --icon-button-size: var(--space-4); position: relative; flex: none; margin-inline-end: var(--space-1); border: 0; border-radius: var(--r-small); }
 .citation-token-button.ui-button[data-variant][data-pressed] { scale: var(--press-scale); transition: scale var(--dur-1) var(--ease-out); }
 /* A token settles in when it is added or put back by Undo. */
 .citation-token { transition: opacity var(--dur-2) var(--ease-out), scale var(--dur-2) var(--ease-spring); }

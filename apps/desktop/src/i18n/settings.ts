@@ -34,7 +34,7 @@ export function shortcutRefusalMessage(refusal: unknown): ShortcutProblem {
 }
 
 export const SETTINGS_IDS = [
-  "settings-ai-apps", "ai-apps-command-line", "ai-apps-description", "ai-apps-words", "command-words",
+  "settings-ai-apps", "ai-apps-group", "ai-apps-command-line", "ai-apps-description", "ai-apps-words", "command-words",
   "proposals-title", "proposals-description", "proposals-words", "proposals-checking", "proposals-empty", "proposals-from",
   "proposals-apply", "proposals-reject", "proposals-app", "proposals-reject-app", "proposals-applied",
   "proposals-failed", "proposals-read-failed",
@@ -49,8 +49,8 @@ export const SETTINGS_IDS = [
   "citations-unlisted",
   "citations-documents", "citations-keys", "citations-apps", "citations-forget", "citations-writings", "settings-open-file", "settings-open", "settings-file-description",
   "settings-shortcut-words", "settings-details", "settings-use-default", "settings-default-restored", "settings-undo-default",
-  "command-install", "command-remove", "command-checking", "command-missing", "command-matching", "command-different", "command-foreign", "command-profile", "command-copy", "command-copied", "command-failed",
-  "backup-words", "backup-title", "backup-label", "backup-description", "backup-button", "backup-saved",
+  "command-install", "command-install-button", "command-remove", "command-checking", "command-missing", "command-matching", "command-different", "command-foreign", "command-profile", "command-copy", "command-copied", "command-failed",
+  "backup-words", "backup-label", "backup-description", "backup-button", "backup-saved",
   "restore-label", "restore-description", "restore-button", "restore-from", "restore-same", "restore-confirm", "restore-cancel", "restore-restarting",
   "backup-change", "backup-note-library", "backup-note-shortcut", "backup-note-repairs",
   "backup-setting-library", "backup-setting-larger-text", "backup-setting-shortcut",

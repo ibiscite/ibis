@@ -22,10 +22,27 @@ export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement |
   return `${placement.startsWith("top") ? "top" : "bottom"} ${end ? "right" : "left"}` as const;
 }
 
+/** The least an anchored menu shows (`--menu-min-block`: its filter and three
+ * whole rows), in pixels at the current text size. */
+function menuMinimum(): number {
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;block-size:var(--menu-min-block)";
+  document.body.append(probe);
+  const height = probe.getBoundingClientRect().height;
+  probe.remove();
+  return height;
+}
+
 /** Keep React Aria's placement boundary inside the viewport and below the
  * return field. A wrapped picker can put its footer trigger below the window.
  * A menu opened from above the `[data-menu-floor]` region (the footer) also
- * ends above it, so it never covers the footer's actions. */
+ * ends above it, so it never covers the footer's actions.
+ * One fit rule for every anchored menu [C9]: the boundary keeps clear of the
+ * return field only while a whole menu (`--menu-min-block`) still fits below
+ * it. A field low in the window, such as the citation drawer's Page above the
+ * bar, would otherwise leave a sliver that shows the filter and no rows, and
+ * React Aria could not flip above; without the clearance it flips to the side
+ * with room and caps the height there, and the list scrolls inside. */
 export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>, trigger?: RefObject<HTMLElement | null>) {
   const [boundary, setBoundary] = useState<HTMLElement>();
   const [clearBottom, setClearBottom] = useState(0);
@@ -38,9 +55,11 @@ export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement
     const layout = trigger?.current?.closest("main") ?? trigger?.current?.parentElement;
     const update = () => {
       if (!current) return;
-      const bottom = Math.max(0, returnRef?.current?.getBoundingClientRect().bottom ?? 0);
+      const below = Math.max(0, returnRef?.current?.getBoundingClientRect().bottom ?? 0);
       // Never above the top edge, even in a window too short for both.
-      const end = above && window.innerHeight > 400 ? Math.max(bottom, above.getBoundingClientRect().top) : window.innerHeight;
+      const end = above && window.innerHeight > 400 ? Math.max(below, above.getBoundingClientRect().top) : window.innerHeight;
+      // Clear the field only while a whole menu fits under it; else the menu may open above.
+      const bottom = end - below >= menuMinimum() ? below : 0;
       const rect = trigger?.current?.getBoundingClientRect();
       const next = [innerWidth, innerHeight, bottom, end, rect?.x, rect?.y, rect?.width, rect?.height].join(",");
       if (next === signature) return;

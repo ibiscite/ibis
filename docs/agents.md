@@ -7,7 +7,7 @@ repository, https://github.com/ibiscite/ibis.
 
 Use **Settings › AI Apps** or `ibis agents setup|status|remove`. They share
 app settings, replacement previews, private backups and change checks. Settings’
-**Command Line** group installs `ibis`. Press an app’s button to confirm a
+**Command line** group installs `ibis`. Press an app’s button to confirm a
 change, then restart it or start a new session. Apps configured in their own
 window show steps. Older versions can use the per-app commands in step 4.
 Check the command and chosen libraries first, then verify one result below.

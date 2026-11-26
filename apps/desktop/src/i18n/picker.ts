@@ -66,7 +66,6 @@ export const PICKER_IDS = [
   "peek-year",
   "peek-type",
   "peek-key",
-  "citation-details-page",
   "citation-details-prefix",
   "locator-act",
   "locator-appendix",

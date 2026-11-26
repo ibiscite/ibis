@@ -52,7 +52,7 @@ export const panes = { pane: ".inspector:not([data-reading])", top: ".search-bar
 export const stacks = [".inspector-titles", ".inspector-column", ".citation-details", ".ui-drawer-lead"] as const;
 
 /** [C12] A grid of choice cards: one height, and each glyph level with its title's first line. */
-export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".result-title" } as const;
+export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".choice-name" } as const;
 
 /** Every interface glyph has one of two fixed pixel sizes; its filled artwork stays as vendored. */
 export const glyphs = { selector: "svg.ui-icon", sizes: [16, 20] } as const;

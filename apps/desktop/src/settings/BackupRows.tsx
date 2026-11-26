@@ -4,7 +4,7 @@ import { type MessageId, problemText, useInterfaceMessages } from "../i18n";
 import { currentPlatform } from "../platform";
 import { ROWS, rowDetails } from "./rows";
 import { Button } from "../ui/Button";
-import { Buttons, Group, Note, Row, Section } from "../ui/Layout";
+import { Buttons, Note, Row, Section } from "../ui/Layout";
 import { listedOutput, outputName } from "../format/outputs";
 
 export type BackupApi = {
@@ -107,8 +107,9 @@ export function BackupRows({ api }: { api: BackupApi }) {
       });
   };
 
+  // Rows for General's Details… card.
   return (
-    <Section id="another-computer" title={text("backup-title")}><Group>
+    <>
       <Row id="backup-settings" {...rowDetails("backup-settings", text)}
         problem={problem?.row === "backup" ? problem.message : undefined}>
         <Button aria-describedby="backup-settings-description" isDisabled={busy !== null || restarting} onPress={backUp}>{text("backup-button")}</Button>
@@ -134,6 +135,6 @@ export function BackupRows({ api }: { api: BackupApi }) {
           </Section>
         </Row>
       )}
-    </Group></Section>
+    </>
   );
 }

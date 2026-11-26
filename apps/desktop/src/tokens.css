@@ -322,9 +322,15 @@
   --notice-line-h: calc(var(--control-small-h) + var(--space-2));
   /* What floats stays --inset inside the window on every side ([D15]). */
   --overlay-max-inline: calc(100vw - 2 * var(--inset)); --overlay-max-block: calc(100vh - 2 * var(--inset));
+  /* [C9] The least an anchored menu shows: its filter and three whole rows inside its
+     padding. A side with less room is never chosen while the other has it (ui/Menu). */
+  --menu-min-block: calc(var(--action-h) + 3 * var(--control-small-h) + 2 * var(--space-1));
   /* Where a row's icon column starts: the window inset, then the row's own padding. */
   --row-start: calc(var(--inset) + var(--row-pad));
   --heading-offset: calc(var(--row-pad) + var(--border-width));
+  /* Between the parts of a Settings page or a sheet (sections, cards, notes):
+     the page's own gap, so nothing between two sections can halve it. */
+  --section-gap: var(--space-8);
   --inspector-width: 18rem; --inspector-column: 15rem;
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
   --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
