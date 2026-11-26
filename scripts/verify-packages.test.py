@@ -204,7 +204,8 @@ class Packages(unittest.TestCase):
         self.assertFalse(verify.embeds(b"User-Agent: Ibis/0.4.10\r\n and 0.4.1 elsewhere", "0.4.1"))
         self.assertTrue(verify.embeds(b"chosen_in0.4.1-nightly.1+abc12342026-11-25", "0.4.1-nightly.1+abc1234"))
         self.assertFalse(verify.embeds(b"0.4.1-nightly.1+abc9999", "0.4.1-nightly.1+abc1234"))
-        self.assertFalse(verify.embeds(b"10.4.1-nightly.1+abc1234", "0.4.1-nightly.1+abc1234"))
+        # Packed straight after the full commit hash, as in a nightly's Intel app (#2049).
+        self.assertTrue(verify.embeds(b"fe200f1b23940.4.1-nightly.1+abc1234", "0.4.1-nightly.1+abc1234"))
 
     def test_debian_and_rpm_packages_state_the_version(self):
         self.check(self.write("Ibis-Linux.deb", deb_bytes(linux_app())))
