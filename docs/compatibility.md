@@ -174,18 +174,28 @@ text means; it is not certification of every writing app.
 
 | Destination | Output | Requirement |
 | --- | --- | --- |
-| Markdown, Quarto, R Markdown | Pandoc keys | Matching bibliography when building the document. |
-| LaTeX, Overleaf | BibLaTeX, Natbib or LaTeX keys | Matching project `.bib`. |
+| Markdown, Quarto, R Markdown (RStudio, Positron) | Pandoc keys | Matching bibliography when building the document. |
+| LaTeX (TeXShop, TeXstudio, Texifier), Overleaf | BibLaTeX, Natbib or LaTeX keys | Matching project `.bib`. |
 | Typst | Typst keys | Matching bibliography. |
 | Word, LibreOffice, Google Docs, Pages, email | Formatted text | Static citations; they do not join a managed bibliography or update with a document's style. |
-| Zotero RTF/ODF Scan | `scannable-cite` markers | References read from Zotero, then processed by Zotero's scan tools. |
+| Zotero RTF/ODF Scan add-on | `scannable-cite` markers | References read from Zotero; the separate RTF/ODF Scan add-on, not Zotero's built-in RTF Scan, reads these five-field markers. Not yet qualified end to end. |
 
 Ibis also writes org-cite, MyST, ConTeXt and other key syntaxes. Supported
 forms and field losses depend on the output. Numeric styles give an
 unnumbered reference entry; note styles give a full first note. Ibis cannot
 determine a document's numbering, ibid. or year-letter disambiguation.
-A scan marker being generated does not prove a round trip through a particular
-Zotero or word-processor version.
+Tests prove that Ibis writes the markers the add-on documents
+(`{ prefix | Author, Year | locator | suffix | zu:0:KEY }`, `zg:GROUP:KEY` for a group); they do not
+prove that a scan turns them into live Zotero citations in a particular
+Zotero, add-on or word-processor version. Zotero's built-in RTF Scan reads
+author-date placeholders such as `{Smith, 2009}` instead.
+
+In a browser on macOS or Windows, the website in front chooses the format
+when Ibis can read its site name: Overleaf and the Typst web app take keys,
+Google Docs, Gmail and Outlook on the web take formatted text, and a format you
+choose on any site is remembered for that site. Without the macOS
+Accessibility permission, on Linux, or when the site cannot be read, the
+browser is one app.
 
 ## Editors (Cite as You Write)
 

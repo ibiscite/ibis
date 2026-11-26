@@ -93,7 +93,7 @@ fn backup_folder(
             .into_iter()
             .filter_map(var)
             .collect(),
-        System::Linux => Vec::new(),
+        System::Linux | System::Web => Vec::new(),
     };
     synced
         .into_iter()

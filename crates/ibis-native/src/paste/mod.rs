@@ -208,6 +208,24 @@ impl LastTarget {
         Some(read(captured))
     }
 
+    /// The exact window retained for paste after capture publication. A
+    /// rejected older capture must compare against the window we kept.
+    pub fn captured_window(&self) -> Option<crate::site::CapturedWindow> {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        let last = self.0.lock().ok()?;
+        #[cfg(target_os = "macos")]
+        {
+            last.captured.as_ref()?.window.map(crate::site::CapturedWindow::Macos)
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let window = last.target.as_ref()?.window.as_ref()?.0.lock().ok()?;
+            Some(crate::site::CapturedWindow::Windows(window.ptr() as usize))
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        None
+    }
+
     /// Freeze the destination, policy and time at request entry, before
     /// clipboard I/O. `presentation` is the host's count of picker
     /// presentations; only Windows keeps it there, macOS and Linux count

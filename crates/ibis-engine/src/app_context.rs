@@ -145,6 +145,7 @@ pub fn app_key(id: &AppId) -> String {
         System::Macos => "macos",
         System::Windows => "windows",
         System::Linux => "linux",
+        System::Web => "web",
     };
     format!("{system}:{}", id.normalized())
 }
@@ -225,7 +226,7 @@ fn activate(
     settings: &Settings,
     target: &Target,
     session: Option<&str>,
-    app: Option<&AppId>,
+    capture: &Capture,
 ) -> Result<Option<ActiveWriting>, Error> {
     if target.editor {
         return Ok(None);
@@ -238,7 +239,7 @@ fn activate(
             Some(project.output),
         ),
         Ok(None) => {
-            let choice = crate::format::choose(settings, app);
+            let choice = crate::format::choose_at(settings, capture.app.as_ref(), capture.site.as_ref());
             // An outside format change retires an earlier preview even before
             // its event has reached the web view. Held choices remain explicit.
             let format = serde_json::to_string(&choice.output).unwrap_or_default();
@@ -337,6 +338,9 @@ fn owner_for(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Capture {
     pub app: Option<AppId>,
+    /// The website in front in `app` when it is a browser and Ibis could read
+    /// its site name. It chooses only the format; projects stay with `app`.
+    pub site: Option<AppId>,
     pub generation: u64,
     pub editor: Option<EditorContext>,
 }
@@ -371,6 +375,10 @@ pub enum ContextRequest {
 #[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ContextView {
     pub format: crate::format::FormatChoice,
+    /// The app or site whose saved format reset removes; projects own their
+    /// own output. The desktop supplies the display name.
+    #[serde(skip)]
+    pub remembered_for: Option<AppId>,
     pub usual_format: String,
     pub writing: Option<WritingView>,
     pub context_version: (u32, u32),
@@ -443,6 +451,7 @@ impl Owner {
                     ),
                     None => crate::format::choose_with(&Settings::default(), None, Some(&editor.output)),
                 },
+                remembered_for: None,
                 usual_format: crate::format::usual(&Settings::default(), None).id.unwrap_or_default(),
                 writing: None,
                 context_version: version,
@@ -460,13 +469,7 @@ impl Owner {
                             return Err(Error::Destination);
                         }
                         // Observe outside edits before accepting the menu's token.
-                        let _ = activate(
-                            &self.project,
-                            settings,
-                            &target,
-                            session.as_deref(),
-                            capture.app.as_ref(),
-                        );
+                        let _ = activate(&self.project, settings, &target, session.as_deref(), capture);
                         if !current() || self.token(&target) != *context {
                             return Err(Error::Destination);
                         }
@@ -489,13 +492,7 @@ impl Owner {
                 _ => self.settings(&target)?,
             }
         };
-        let active = activate(
-            &self.project,
-            &settings,
-            &target,
-            session.as_deref(),
-            capture.app.as_ref(),
-        );
+        let active = activate(&self.project, &settings, &target, session.as_deref(), capture);
         // Unsupported definitions remain editable in the writing manager.
         let active = if matches!(
             request,
@@ -520,20 +517,23 @@ impl Owner {
                 },
                 capture.app.as_ref(),
             ),
-            None => crate::format::choose(&settings, capture.app.as_ref()),
+            None => crate::format::choose_at(&settings, capture.app.as_ref(), capture.site.as_ref()),
         };
         let mut writings = view_for(&settings, &target, session.as_deref());
         writings.context = self.token(&target);
         let (context_version, project) = self.project.observation();
         Ok(ContextView {
+            remembered_for: (format.from == crate::format::FormatFrom::App)
+                .then(|| crate::format::remembered_for(&settings, capture.app.as_ref(), capture.site.as_ref()).cloned())
+                .flatten(),
             format,
-            usual_format: crate::format::usual(&settings, capture.app.as_ref())
+            usual_format: crate::format::usual_at(&settings, capture.app.as_ref(), capture.site.as_ref())
                 .id
                 .unwrap_or_default(),
             writing: active.map(|writing| writing.view()),
             context_version,
             writing_context: Some(writings.context.clone()),
-            offers_projects: crate::format::offers_projects(&settings, capture.app.as_ref()),
+            offers_projects: crate::format::offers_projects_at(&settings, capture.app.as_ref(), capture.site.as_ref()),
             writings,
             project,
             paste_enabled: settings.portable.paste(),
@@ -589,13 +589,7 @@ impl Owner {
         let target = capture.target();
         let session = self.session.lock().map_err(|_| Error::Stale)?;
         let settings = self.save_bibliography(&target, session.as_deref(), owner, path, &current)?;
-        activate(
-            &self.project,
-            &settings,
-            &target,
-            session.as_deref(),
-            capture.app.as_ref(),
-        )?;
+        activate(&self.project, &settings, &target, session.as_deref(), capture)?;
         if !current() {
             return Err(Error::Destination);
         }

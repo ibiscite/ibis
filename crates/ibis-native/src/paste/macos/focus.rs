@@ -481,11 +481,12 @@ fn query<P: Provider>(
     Ok(Identity { window, surface })
 }
 
-// No AX object leaves this main-thread module; delivery workers carry only a
-// nonwrapping token. Retaining the captured object prevents pointer/number reuse
+// Only the native site reader on this main thread can borrow the AX window;
+// delivery workers carry only a nonwrapping token. Retaining the captured object prevents pointer/number reuse
 // from masquerading as equality, and CFEqual supplies public AX identity.
 #[allow(unsafe_code)]
 mod native;
+pub(crate) use native::captured_window;
 
 pub(super) fn capture(
     pid: i32,

@@ -14,7 +14,8 @@ export type BackupApi = {
   cancelSettingsRestore: (ticket: number) => Promise<null>;
 };
 
-const SYSTEMS: Record<BackupSystem, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
+// A backup is made on a computer; "web" names websites for formats and never appears here.
+const SYSTEMS: Record<BackupSystem, string> = { macos: "macOS", windows: "Windows", linux: "Linux", web: "Web" };
 const NOTES: Record<RestoreNote, MessageId> = { "library-not-found": "backup-note-library", "shortcut-kept": "backup-note-shortcut", "repairs-settings": "backup-note-repairs" };
 /** Something to write: a changed setting, or a damaged settings file to replace. */
 const restorable = (preview: RestorePreview) => preview.changes.length > 0 || preview.notes.includes("repairs-settings");

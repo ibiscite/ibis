@@ -461,9 +461,9 @@ pub(crate) fn commit_shown(
     let format = {
         let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
         let target = captured.as_ref().map(|(id, _, _)| id);
+        let site = target.and_then(|id| crate::destination::site::current(&app, id));
         settings.cites().ok().and_then(|saved| {
-            let chosen = ibis_engine::format::choose(saved, target);
-            (chosen.output == *recited.citation().request_output()).then(|| (target.cloned(), chosen))
+            crate::notice::FormatReceipt::for_copy(saved, target, site.as_ref(), recited.citation().request_output())
         })
     };
     let copied = commit_copy(
@@ -486,9 +486,9 @@ pub(crate) fn commit_shown(
         },
     )?;
     record(&copied);
-    if let Some((id, chosen)) = format {
+    if let Some(format) = format {
         app.state::<crate::notice::Notice>()
-            .remember_format(copied.delivery, id, chosen);
+            .remember_format(copied.delivery, format);
     }
     Ok((copied, false))
 }

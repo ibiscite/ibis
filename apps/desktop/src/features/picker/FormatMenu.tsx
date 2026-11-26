@@ -21,11 +21,11 @@ export const forgetRecentFormats = () => { recent.length = 0; };
 const remember = (output: OutputId) => { recent.splice(0, recent.length, output, ...recent.filter((id) => id !== output).slice(0, 5)); };
 
 /** The format chooser (decision 0042): the chip names the format in
- * use and, when it isn't your own, why ("APA · Word", "APA · Thesis"). It opens
+ * use. Its status and palette name whose setting it is. It opens
  * the palette: the way back to your format first, your recent formats, the
  * app's own choices, then every format by typing, with a key citation or a
  * labelled style example beside the list. Focus returns to Search. */
-export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writing, onWritings, preview, example, usualFormat, onUseUsual, formatLabel }: {
+export function FormatMenu({ format, yours, buttonRef, app, formatScope = app, rememberedFor = app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writing, onWritings, preview, example, usualFormat, onUseUsual, formatLabel }: {
   format: OutputId;
   formatLabel?: string;
   usualFormat?: OutputId | null;
@@ -33,8 +33,12 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   /** Your own format, the one a "back" row returns to. */
   yours?: OutputId;
   buttonRef?: RefObject<HTMLButtonElement | null>;
-  /** The app the picker was opened from, named beside the format. */
+  /** The app the picker was opened from; owns delivery and project selection. */
   app: string | null;
+  /** The site or app where the next format pick is saved. */
+  formatScope?: string | null;
+  /** The site or app whose saved format reset removes. */
+  rememberedFor?: string | null;
   /** Why the next paste uses `format`. */
   source: FormatSource;
   /** Where a pick goes. */
@@ -58,12 +62,13 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   // The pop-up names the format alone: where it goes is the bar's action, and
   // whose format it is, the palette's heading and the spoken status beside it.
   const name = formatLabel ?? outputName(format);
-  const why = writing ? say("writing-remembered", { name: isolate(writing.name) }) : source === "held" ? say("picker-format-held", { format: name }) : source === "default" ? app ? say("picker-format-app-default", { app }) : say("picker-format-no-app")
-    : app ? source === "remembered" ? say("picker-format-remembered", { app }) : say("picker-format-suggested", { app }) : source === "suggested" ? say("picker-format-suggestion") : say("picker-format-no-app");
+  const owner = source === "remembered" ? rememberedFor : formatScope;
+  const why = writing ? say("writing-remembered", { name: isolate(writing.name) }) : source === "held" ? say("picker-format-held", { format: name }) : source === "default" ? formatScope ? say("picker-format-app-default", { app: formatScope }) : say("picker-format-no-app")
+    : owner ? source === "remembered" ? say("picker-format-remembered", { app: owner }) : say("picker-format-suggested", { app: owner }) : source === "suggested" ? say("picker-format-suggestion") : say("picker-format-no-app");
   const next = writing ? say("writing-pick") : source === "held" ? pick === "app" ? say("picker-pick-to-remember") : pick === "default" ? say("picker-pick-to-set-default") : ""
     : pick === "paste" ? say("picker-pick-this-paste") : pick === "default" ? say("picker-pick-default") : source === "remembered" ? say("picker-pick-replaces") : say("picker-pick-remembered");
   // Whose a pick is, in the frame's footer status.
-  const whose = writing ? writing.name : pick === "paste" ? say("picker-pick-heading-this-paste") : pick === "default" || !app ? say("picker-pick-heading-default") : say("picker-for-app", { app });
+  const whose = writing ? writing.name : pick === "paste" ? say("picker-pick-heading-this-paste") : pick === "default" || !formatScope ? say("picker-pick-heading-default") : say("picker-for-app", { app: formatScope });
   const usual = usualFormat ?? yours;
   const back = app && onUseUsual && (writing || source === "remembered") ? usual ?? format : null;
   const row = (output: OutputChoice): PaletteItem => ({
@@ -74,7 +79,7 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   const shortList = shortIds.map((id) => row(outputOf(id)));
   const notRecent = (output: OutputChoice) => !shortIds.includes(output.id);
   const sections: PaletteSection[] = [
-    ...back ? [{ id: "back", items: [{ id: "back", back: true, label: writing ? say("picker-stop-writing", { name: writing.name, app: app! }) : say("picker-use-usual", { format: outputName(back), app: app! }) }] }] : [],
+    ...back ? [{ id: "back", items: [{ id: "back", back: true, label: writing ? say("picker-stop-writing", { name: writing.name, app: app! }) : say("picker-use-usual", { format: outputName(back), app: rememberedFor! }) }] }] : [],
     { id: "recent", label: say("palette-recent"), items: shortList, only: "browsing" },
     // The app's own choices, together (decision 0042): paste into it or only copy.
     ...app && pasteChoices ? [{ id: "app", label: say("picker-for-app", { app }), items: [
@@ -115,9 +120,9 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
       onPress={() => { if (open) close("dismiss"); else { setOpen(true); onOpenChange?.(true); } }}
       // ↓ opens it too, as on every pop-up button.
       onKeyDown={(event) => { if (event.key === "ArrowDown" && !open && !disabled) { setOpen(true); onOpenChange?.(true); } else event.continuePropagation(); }}>{name}</PopupButton>
-    {open && <Palette id="format-palette" title={say("picker-format-title")} subtitle={(item) => once(item) ? say("picker-pick-heading-this-paste") : whose} placeholder={say("palette-search-formats")}
+    {open && <Palette id="format-palette" title={say("picker-format-title")} subtitle={(item) => once(item) ? say("picker-pick-heading-this-paste") : item?.back && !writing ? say("picker-for-app", { app: rememberedFor ?? "" }) : whose} placeholder={say("palette-search-formats")}
       sections={sections} initial={back ? "back" : format} onAction={choose} onClose={close} empty={say("palette-no-formats")}
-      actionLabel={(item) => item.back || listedOutput(item.id) ? say(pick === "paste" || once(item) ? "palette-use-this-paste" : pick === "default" || !app ? "palette-use-default" : "palette-use-for-app", { app: writing?.name ?? app ?? "" }) : say("palette-run")}
+      actionLabel={(item) => item.back || listedOutput(item.id) ? say(pick === "paste" || once(item) ? "palette-use-this-paste" : pick === "default" || !formatScope ? "palette-use-default" : "palette-use-for-app", { app: writing?.name ?? (item.back ? rememberedFor : formatScope) ?? "" }) : say("palette-run")}
       description={(item) => `${why} ${once(item) ? say("picker-pick-this-paste") : next}`.trim()} preview={(item) => <FormatPreviewPane output={listedOutput(item.back ? back : item.id)} preview={preview ?? null} example={example ?? null} />} />}
   </>;
 }

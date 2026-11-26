@@ -269,7 +269,7 @@
       ]
     },
     "AppId": {
-      "description": "An app as the platform names it: a bundle ID on macOS, an executable name\non Windows. Never a window title or document name.",
+      "description": "An app as the platform names it: a bundle ID on macOS, an executable name\non Windows, a site name on the web. Never a window title, document name or\nweb address.",
       "type": "object",
       "properties": {
         "id": {
@@ -1441,7 +1441,7 @@
           "const": "writing"
         },
         {
-          "description": "The format this app was given when the person changed it there.",
+          "description": "The format this app, or this website in a browser, was given when\nthe person changed it there.",
           "type": "string",
           "const": "app"
         },
@@ -2662,12 +2662,21 @@
       "const": true
     },
     "System": {
-      "description": "The operating system an app ID belongs to.",
-      "type": "string",
-      "enum": [
-        "macos",
-        "windows",
-        "linux"
+      "description": "Where an app ID belongs: the operating system it runs on, or the web for\na website inside a browser, whose ID is only its site name (see [`site`]).",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "macos",
+            "windows",
+            "linux"
+          ]
+        },
+        {
+          "description": "A website, such as `overleaf.com`: never a path, query or full address.\nIt only chooses a format; pasting is always decided for the browser.",
+          "type": "string",
+          "const": "web"
+        }
       ]
     },
     "Tag": {

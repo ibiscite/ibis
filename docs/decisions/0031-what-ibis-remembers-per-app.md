@@ -6,6 +6,16 @@ entries: operating system, normalized app ID, delivery choice, identity binding
 and whether the plugin note was shown. Least recently chosen entries leave
 first. No document title, URL, text or citation is saved there.
 
+A format chosen while a browser shows a website in the destination table is
+kept in `settings.json` for that table entry's site name alone (`overleaf.com`,
+`docs.google.com`; a listed site holds its subdomains). Unlisted hosts have no
+site identity and use the browser's per-app format; none of their host labels
+are kept (maintainer, 2026-11-25). The native layer reads the front tab's address
+only for browsers the destination table lists, with permissions Ibis already
+has, and reduces it to that name before anything else sees it: no path, query,
+title or full address is kept, logged or sent. Paste choices, identity bindings
+and projects stay keyed to the browser.
+
 Unlisted-app Paste approval binds the OS app ID, platform and exact OS-reported
 app location with SHA-256. Only that fingerprint persists or crosses IPC; the
 raw path stays transient. No canonicalization, signing or executable-content
