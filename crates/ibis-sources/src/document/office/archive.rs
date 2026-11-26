@@ -85,8 +85,12 @@ impl<'a> Archive<'a> {
     }
 
     /// The same archive with `replaced` parts written anew and every other
-    /// entry copied unchanged, in the original order.
+    /// entry copied unchanged, in the original order. Each replacement must
+    /// parse as XML with its element and attribute prefixes bound.
     pub fn rewrite(&mut self, replaced: &[(&str, String)]) -> Result<Vec<u8>, Refusal> {
+        for (_, text) in replaced {
+            super::xml::validate(text)?;
+        }
         let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
         for index in 0..self.zip.len() {
             let entry = self.zip.by_index_raw(index).map_err(|_| Refusal::Damaged)?;

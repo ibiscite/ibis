@@ -165,14 +165,44 @@ fn opendocument_generated_styles_declare_their_namespaces() {
 #[test]
 fn word_bibliography_properties_keep_inherited_namespace_bindings() {
     const RELATIONSHIPS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    let seed = docx("");
+    let types = part(&seed, "[Content_Types].xml").replace(
+        "</Types>",
+        r#"<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>"#,
+    );
+    let rels = part(&seed, "_rels/.rels");
+    let document_rels = format!(
+        r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdHeader" Type="{RELATIONSHIPS}/header" Target="header1.xml"/></Relationships>"#
+    );
+    let header = format!(r#"<w:hdr {W}><w:p><w:r><w:t>Invented header.</w:t></w:r></w:p></w:hdr>"#);
     // Bindings on either discarded ancestor must reach the preserved section.
-    for (paragraph, properties) in [
-        (format!(r#" xmlns:r="{RELATIONSHIPS}""#), String::new()),
-        (String::new(), format!(r#" xmlns:r="{RELATIONSHIPS}""#)),
+    // Equivalent escaped bindings must not rebind r:id to a different URI,
+    // even when a usable binding already surrounds the replacement.
+    for (root, paragraph, properties) in [
+        (String::new(), format!(r#" xmlns:r="{RELATIONSHIPS}""#), String::new()),
+        (String::new(), String::new(), format!(r#" xmlns:r="{RELATIONSHIPS}""#)),
+        (
+            format!(r#" xmlns:r="{RELATIONSHIPS}""#),
+            String::new(),
+            r#" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationship&#115;""#.into(),
+        ),
+        (
+            String::new(),
+            r#" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationship&#x73;""#.into(),
+            String::new(),
+        ),
     ] {
-        let original = docx(&format!(
+        let draft = docx(&format!(
             r#"<w:p><w:r><w:t>[@vale2024]</w:t></w:r></w:p><w:p{paragraph}><w:pPr{properties}><w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/></w:sectPr></w:pPr><w:r><w:t>[bibliography]</w:t></w:r></w:p><w:p><w:r><w:t>Next section.</w:t></w:r></w:p>"#
         ));
+        let document = part(&draft, "word/document.xml").replacen("<w:document ", &format!("<w:document{root} "), 1);
+        let original = archive(&[
+            ("[Content_Types].xml", types.as_bytes()),
+            ("_rels/.rels", rels.as_bytes()),
+            ("word/document.xml", document.as_bytes()),
+            ("word/_rels/document.xml.rels", document_rels.as_bytes()),
+            ("word/header1.xml", header.as_bytes()),
+        ]);
         assert_namespaces(&part(&original, "word/document.xml"));
         for entries in [vec![entry("Lanterns"), entry("Tides")], vec![]] {
             let written = write(&original, &[vec![run("(Vale, 2024)")]], &entries, true).unwrap();
@@ -180,6 +210,7 @@ fn word_bibliography_properties_keep_inherited_namespace_bindings() {
             assert_namespaces(&xml);
             let mut reader = quick_xml::NsReader::from_str(&xml);
             let mut headers = 0;
+            let mut header_id = String::new();
             loop {
                 match reader.read_event().unwrap() {
                     quick_xml::events::Event::Empty(element) if element.name().into_inner() == "w:headerReference" => {
@@ -189,10 +220,11 @@ fn word_bibliography_properties_keep_inherited_namespace_bindings() {
                             .map(Result::unwrap)
                             .find(|attr| attr.key.into_inner() == "r:id")
                             .unwrap();
-                        assert_eq!(
-                            id.normalized_value(quick_xml::XmlVersion::Implicit1_0).unwrap(),
-                            "rIdHeader"
-                        );
+                        header_id = id
+                            .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                            .unwrap()
+                            .into_owned();
+                        assert_eq!(header_id, "rIdHeader");
                         assert_eq!(
                             reader.resolver().resolve_attribute(id.key).0,
                             quick_xml::name::ResolveResult::Bound(quick_xml::name::Namespace(RELATIONSHIPS))
@@ -203,8 +235,71 @@ fn word_bibliography_properties_keep_inherited_namespace_bindings() {
                 }
             }
             assert_eq!(headers, 1);
+            // Follow the preserved relationship to the header part, rather
+            // than merely checking that an r:id string survived.
+            let relationships = part(&written, "word/_rels/document.xml.rels");
+            assert_namespaces(&relationships);
+            let mut reader = quick_xml::Reader::from_str(&relationships);
+            let mut target = None;
+            loop {
+                match reader.read_event().unwrap() {
+                    quick_xml::events::Event::Empty(element) if element.name().into_inner() == "Relationship" => {
+                        let value = |name| {
+                            element
+                                .try_get_attribute(name)
+                                .unwrap()
+                                .unwrap()
+                                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                                .unwrap()
+                                .into_owned()
+                        };
+                        if value("Id") == header_id {
+                            assert_eq!(value("Type"), format!("{RELATIONSHIPS}/header"));
+                            target = Some(value("Target"));
+                        }
+                    }
+                    quick_xml::events::Event::Eof => break,
+                    _ => {}
+                }
+            }
+            assert_eq!(part(&written, &format!("word/{}", target.unwrap())), header);
             assert_eq!(body(&written).last().unwrap(), "Next section.");
         }
+    }
+}
+
+#[test]
+fn the_office_child_refuses_invalid_xml_output_without_returning_a_copy() {
+    let command = super::super::Command::WriteOffice {
+        citations: vec![vec![run("(Vale, 2024)")]],
+        entries: vec![entry("Lanterns")],
+        hanging_indent: false,
+    };
+    for original in [
+        docx(r#"<w:p r:id="unbound"><w:r><w:t>[@vale2024]</w:t></w:r></w:p>"#),
+        odt(r#"<text:p xlink:href="unbound">[@vale2024]</text:p>"#),
+        docx(r#"<w:p><w:r><w:t>[@vale2024]</w:t></w:r><unbound:element/></w:p>"#),
+        docx(r#"<w:p w:rsidR="a" w:rsidR="b"><w:r><w:t>[@vale2024]</w:t></w:r></w:p>"#),
+        docx(r#"<w:p extra="&undeclared;"><w:r><w:t>[@vale2024]</w:t></w:r></w:p>"#),
+        // This source is valid: text: is scoped to its original paragraph.
+        // A generated bibliography paragraph outside that scope is invalid.
+        archive(&[
+            ("mimetype", b"application/vnd.oasis.opendocument.text"),
+            (
+                "content.xml",
+                br#"<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"><office:body><office:text><text:p xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">[@vale2024]</text:p></office:text></office:body></office:document-content>"#,
+            ),
+        ]),
+    ] {
+        // Reading markers succeeds; validating the rewritten XML must fail.
+        assert_eq!(scan(&original).unwrap().citations.len(), 1);
+        let request = super::super::frame(&command, &original).unwrap();
+        let mut answer = Vec::new();
+        assert_eq!(super::super::child::serve(&request[..], &mut answer), 0);
+        assert!(matches!(
+            super::super::split(answer).unwrap(),
+            (super::super::Answer::Refused(Refusal::Damaged), bytes) if bytes.is_empty()
+        ));
     }
 }
 

@@ -3,6 +3,7 @@
 use super::{Edit, Edits, MAX_PARAGRAPHS, MAX_TEXT_BYTES, Paragraph, Part, Refusal};
 use quick_xml::Reader;
 use quick_xml::events::{BytesRef, BytesStart, Event};
+use quick_xml::name::{Namespace, NamespaceResolver, ResolveResult};
 use std::collections::BTreeMap;
 
 /// The deepest element nesting read.
@@ -54,7 +55,12 @@ impl<'a> Events<'a> {
                 let attribute = attribute.map_err(|_| Refusal::Damaged)?;
                 let name = attribute.key.into_inner();
                 if name == "xmlns" || name.starts_with("xmlns:") {
-                    namespaces.insert(name.to_owned(), attribute.value.into_owned());
+                    // push_attribute escapes values when the binding is copied.
+                    // Store the URI, not its original XML spelling.
+                    let value = attribute
+                        .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                        .map_err(|_| Refusal::Damaged)?;
+                    namespaces.insert(name.to_owned(), value.into_owned());
                 }
             }
         }
@@ -62,6 +68,65 @@ impl<'a> Events<'a> {
             namespaces,
             ..Capture::default()
         })
+    }
+}
+
+/// Parse a rewritten part before it can leave the writer. Resolve attribute
+/// names too: a plain event reader accepts an unbound relationship prefix.
+pub fn validate(xml: &str) -> Result<(), Refusal> {
+    let mut events = Events::new(xml);
+    events.reader.config_mut().check_comments = true;
+    let mut namespaces = NamespaceResolver::default();
+    let mut root = false;
+    loop {
+        let depth = events.ancestors.len();
+        let event = events.next()?;
+        match &event {
+            Event::Start(element) | Event::Empty(element) => {
+                if depth == 0 {
+                    if root {
+                        return Err(Refusal::Damaged);
+                    }
+                    root = true;
+                }
+                // The resolver's push reads raw attribute spellings. Feed it
+                // normalized URIs so escaped reserved bindings stay valid too.
+                namespaces.set_level(u16::try_from(depth + 1).map_err(|_| Refusal::TooLarge)?);
+                for attribute in element.attributes() {
+                    let attribute = attribute.map_err(|_| Refusal::Damaged)?;
+                    let value = attribute
+                        .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                        .map_err(|_| Refusal::Damaged)?;
+                    if let Some(prefix) = attribute.key.as_namespace_binding() {
+                        namespaces
+                            .add(prefix, Namespace(&value))
+                            .map_err(|_| Refusal::Damaged)?;
+                    }
+                }
+                if matches!(namespaces.resolve_element(element.name()).0, ResolveResult::Unknown(_)) {
+                    return Err(Refusal::Damaged);
+                }
+                for attribute in element.attributes() {
+                    let attribute = attribute.map_err(|_| Refusal::Damaged)?;
+                    if matches!(namespaces.resolve_attribute(attribute.key).0, ResolveResult::Unknown(_)) {
+                        return Err(Refusal::Damaged);
+                    }
+                }
+                if matches!(event, Event::Empty(_)) {
+                    namespaces.pop();
+                }
+            }
+            Event::End(_) => namespaces.pop(),
+            Event::Text(text) if depth == 0 && !text.bytes().all(|c| matches!(c, b' ' | b'\t' | b'\r' | b'\n')) => {
+                return Err(Refusal::Damaged);
+            }
+            Event::CData(_) | Event::GeneralRef(_) if depth == 0 => return Err(Refusal::Damaged),
+            Event::GeneralRef(entity) => {
+                reference(entity)?;
+            }
+            Event::Eof => return if root { Ok(()) } else { Err(Refusal::Damaged) },
+            _ => {}
+        }
     }
 }
 
@@ -342,6 +407,20 @@ pub fn ordered(mut children: Vec<Child>, order: &[&str], last: &str) -> String {
 mod tests {
     use super::*;
     use ibis_core::contract::DisplayRun;
+
+    #[test]
+    fn validation_checks_normalized_namespace_uris() {
+        assert_eq!(
+            validate(
+                r#"<root xmlns:xml="http://www.w3.org/XML/1998/namespac&#101;"><child xml:space="preserve"/></root>"#
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            validate(r#"<root xmlns:other="http://www.w3.org/XML/1998/namespac&#101;"/>"#),
+            Err(Refusal::Damaged)
+        );
+    }
 
     fn edit(paragraph: usize, start: usize, end: usize) -> Edit {
         Edit {
