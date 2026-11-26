@@ -68,7 +68,7 @@ and the connection runtime planned for 0.7.
    - **macOS: a native SwiftUI/AppKit shell is the flagship.** It has a
      key-capable `NSPanel` picker, a `Settings` scene with grouped forms and
      a sidebar with search
-     ([0062](0062-closed-parts-owned-space-fitted-layers.md)), and the menu
+     (0062), and the menu
      bar item, Services and App Intents. It updates through Sparkle (EdDSA),
      the Mac's standard. It targets macOS 13 and later. Delivery
      (`ibis-native`: paste, focus and site reads, placement and drag) stays
