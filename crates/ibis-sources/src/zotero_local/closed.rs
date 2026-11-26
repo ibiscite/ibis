@@ -310,6 +310,35 @@ pub fn with_local_file<T: Send + 'static>(
     })
 }
 
+/// Compare two regular local files through no-follow handles, within one I/O
+/// slot and deadline. The first must exist; `None` means the second is missing.
+/// Links, remote files and unavailable identities are errors, never a match.
+pub fn same_local_file(
+    first: &Path,
+    second: &Path,
+    cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
+    budget: Duration,
+) -> Result<Option<bool>, ClosedError> {
+    let control = Control::within(cancelled, budget.min(LOCAL_FILE_BUDGET));
+    let first = first.to_owned();
+    let second = second.to_owned();
+    control.io(move |control| {
+        let first = platform::local_file(&first, control)?.ok_or(ClosedError::NotFound)?;
+        let Some(second) = platform::local_file(&second, control)? else {
+            return Ok(None);
+        };
+        let identity = |file: &std::fs::File| {
+            let metadata = file.metadata().map_err(|_| ClosedError::Unreadable)?;
+            platform::file_identity(file, &metadata)
+                .map(|(identity, _)| identity)
+                .ok_or(ClosedError::Unreadable)
+        };
+        let same = identity(&first)? == identity(&second)?;
+        control.check()?;
+        Ok(Some(same))
+    })
+}
+
 /// Identify a local file by its open handle, refusing multiply linked files.
 pub(crate) fn unlinked_file_identity(file: &std::fs::File, metadata: &std::fs::Metadata) -> Option<[u64; 2]> {
     let (identity, links) = platform::file_identity(file, metadata)?;

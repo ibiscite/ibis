@@ -155,6 +155,7 @@ impl SourceAdapter {
                 time: self.deadline,
                 stdout: MAX_ANSWER_BYTES,
                 stderr: None,
+                memory: None,
             },
             cancelled,
         )

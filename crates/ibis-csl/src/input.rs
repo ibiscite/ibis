@@ -162,6 +162,8 @@ pub(crate) struct Prepared {
     /// Candidates lack details: prove output support before refusing their metadata.
     pub missing_details: bool,
     pub empty: bool,
+    /// Formatted as one document's citations, in order (see `document`).
+    pub document: bool,
 }
 
 /// Whether the requested style and locale exist, before any item is looked at.
@@ -217,6 +219,10 @@ pub(crate) fn style_writes_entries(id: &str) -> Result<bool, FormatError> {
     Ok(catalog::resolve(id)?.traits.numeric)
 }
 
+pub(crate) fn style_writes_notes(id: &str) -> Result<bool, FormatError> {
+    Ok(catalog::resolve(id)?.traits.note)
+}
+
 pub(crate) fn prepare(
     snapshot: &Snapshot,
     request: &CitationRequest,
@@ -245,6 +251,7 @@ pub(crate) fn warm(style: &str, locale: Option<&str>) -> Result<Prepared, Format
         warnings: vec![],
         missing_details: false,
         empty: false,
+        document: false,
     })
 }
 
@@ -254,6 +261,42 @@ pub(crate) fn prepare_resolved(
     limits: &Limits,
     resolved: &ResolvedOutput,
     project_fields: FieldProjection,
+) -> Result<Prepared, FormatError> {
+    prepare_with(snapshot, request, limits, resolved, project_fields, None)
+}
+
+/// A document's citations as one sequence: `clusters` are the indices of
+/// `request.items` each citation holds, in document order. In-text
+/// citations, never entries; numbers, year letters and positions follow the
+/// whole document.
+pub(crate) fn prepare_document(
+    snapshot: &Snapshot,
+    request: &CitationRequest,
+    limits: &Limits,
+    resolved: &ResolvedOutput,
+    clusters: &[Vec<usize>],
+) -> Result<Prepared, FormatError> {
+    let mut seen = vec![false; request.items.len()];
+    for index in clusters.iter().flatten() {
+        // Every item in exactly one citation, in order.
+        if seen.get(*index).copied() != Some(false) {
+            return Err(FormatError::InvalidRequest);
+        }
+        seen[*index] = true;
+    }
+    if clusters.iter().any(Vec::is_empty) || seen.contains(&false) || resolved.style.traits.note {
+        return Err(FormatError::InvalidRequest);
+    }
+    prepare_with(snapshot, request, limits, resolved, CitableFields::new, Some(clusters))
+}
+
+fn prepare_with(
+    snapshot: &Snapshot,
+    request: &CitationRequest,
+    limits: &Limits,
+    resolved: &ResolvedOutput,
+    project_fields: FieldProjection,
+    clusters: Option<&[Vec<usize>]>,
 ) -> Result<Prepared, FormatError> {
     let style = &*resolved.style;
     let traits = style.traits;
@@ -282,15 +325,31 @@ pub(crate) fn prepare_resolved(
     // Reference entries when the style numbers them, or when every reference
     // asks for its entry, through the request's form or its own.
     let entry = |form: CitationForm| matches!(form, CitationForm::BibliographyOnly | CitationForm::Full);
-    let bibliography = traits.numeric
-        || if request.items.is_empty() {
-            entry(request.form)
-        } else {
-            request
-                .items
-                .iter()
-                .all(|pick| entry(pick.form.unwrap_or(request.form)))
-        };
+    let document = clusters.is_some();
+    let mut cluster_size = vec![request.items.len(); request.items.len()];
+    for cluster in clusters.into_iter().flatten() {
+        for index in cluster {
+            cluster_size[*index] = cluster.len();
+        }
+    }
+    let bibliography = !document
+        && (traits.numeric
+            || if request.items.is_empty() {
+                entry(request.form)
+            } else {
+                request
+                    .items
+                    .iter()
+                    .all(|pick| entry(pick.form.unwrap_or(request.form)))
+            });
+    // The validator may skip items it refuses, so each pick finds its own place.
+    let size = |pick: &CitationItem| {
+        request
+            .items
+            .iter()
+            .position(|item| std::ptr::eq(item, pick))
+            .map_or(request.items.len(), |index| cluster_size[index])
+    };
     let checked = citation::check(snapshot, None, request, |pick| ItemSupport {
         details: false,
         locator: true,
@@ -298,7 +357,7 @@ pub(crate) fn prepare_resolved(
             style,
             pick.form.unwrap_or(request.form),
             bibliography,
-            request.items.len(),
+            size(pick),
             pick.suppress_author,
         ),
     })
@@ -315,7 +374,9 @@ pub(crate) fn prepare_resolved(
     let mut notices = Vec::new();
     let mut warnings = Vec::new();
     let mut affixes = Vec::new();
-    if traits.numeric {
+    if document {
+        // The whole document is the context these notices ask for.
+    } else if traits.numeric {
         notices.extend([Notice::NeedsDocumentContext, Notice::ReferenceEntry]);
     } else if traits.note && !bibliography {
         notices.extend([Notice::NeedsDocumentContext, Notice::FullFirstNote]);
@@ -370,16 +431,15 @@ pub(crate) fn prepare_resolved(
         // When an item has authors, the in-text layouts of the styles checked
         // against Zotero print only these name lists; every other one is a
         // substitute after `author` or appears only in entries. A note style's
-        // citation is a full note, so it is checked like an entry.
+        // citation is a full note, so it is checked like an entry. A document
+        // also generates a bibliography, even though its cites are in-text.
         let has_authors = named(record.get("author"));
+        let citation_names = |field: &str| {
+            traits.note || !has_authors || matches!(field, "author" | "composer" | "interviewer" | "recipient")
+        };
         if record
             .iter()
-            .filter(|(field, _)| {
-                bibliography
-                    || traits.note
-                    || !has_authors
-                    || matches!(field.as_str(), "author" | "composer" | "interviewer" | "recipient")
-            })
+            .filter(|(field, _)| document || bibliography || citation_names(field))
             .filter(|(field, _)| {
                 matches!(
                     field.as_str(),
@@ -413,12 +473,12 @@ pub(crate) fn prepare_resolved(
                         | "commenter"
                 )
             })
-            .filter_map(|(_, value)| value.as_array())
-            .any(|names| {
+            .filter_map(|(field, value)| value.as_array().map(|names| (field, names)))
+            .any(|(field, names)| {
                 names
                     .iter()
                     .any(|name| name.get("literal").and_then(Value::as_str) == Some(ibis_core::model::OTHERS))
-                    || symbol_narrative && names.len() > 1
+                    || symbol_narrative && citation_names(field) && names.len() > 1
             })
         {
             outcomes.push(ItemOutcome::Refused {
@@ -427,14 +487,18 @@ pub(crate) fn prepare_resolved(
             });
             continue;
         }
-        if matches!(form, CitationForm::AuthorOnly | CitationForm::Narrative) && !has_authors {
+        // A numbered style's citation has no author form to name in a sentence.
+        if matches!(form, CitationForm::AuthorOnly | CitationForm::Narrative)
+            && (!has_authors || document && traits.numeric)
+        {
             outcomes.push(ItemOutcome::Refused {
                 item: index,
                 error: CitationError::UnsupportedForm,
             });
             continue;
         }
-        if !has_details && !missing_details {
+        // A document never carries a citation with nothing to cite it by.
+        if !has_details && (document || !missing_details) {
             outcomes.push(ItemOutcome::Refused {
                 item: index,
                 error: CitationError::MissingDetails,
@@ -511,7 +575,7 @@ pub(crate) fn prepare_resolved(
         cites.push(cite);
         outcomes.push(ItemOutcome::Rendered { item: index });
     }
-    if traits.year_suffix && shares_author_and_year(&items) {
+    if !document && traits.year_suffix && shares_author_and_year(&items) {
         notices.push(Notice::YearSuffixWithheld);
     }
     if bibliography && request.keep_order {
@@ -522,7 +586,11 @@ pub(crate) fn prepare_resolved(
         });
     }
     let language = locale.clone().unwrap_or_else(|| style.language.clone());
-    let json=String::from_utf8(bounded_json(&json!({"style":style.rules,"numeric":traits.numeric,"sentence_titles":style.sentence_titles,"items":items,"cites":cites,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
+    let mut body = json!({"style":style.rules,"numeric":traits.numeric,"sentence_titles":style.sentence_titles,"items":items,"cites":cites,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":locale});
+    if let Some(clusters) = clusters {
+        body["clusters"] = json!(clusters);
+    }
+    let json = String::from_utf8(bounded_json(&body, limits.input_bytes)?).map_err(|_| FormatError::InvalidRequest)?;
     // Each placeholder (in its cite and in the affix list) must be the only
     // place its sentinel occurs, or the bridge could write an affix into a
     // record's own text.
@@ -540,7 +608,9 @@ pub(crate) fn prepare_resolved(
         notices,
         warnings,
         missing_details,
-        empty: cites.is_empty(),
+        // A document is formatted whole or not at all.
+        empty: cites.is_empty() || document && cites.len() != request.items.len(),
+        document,
     })
 }
 

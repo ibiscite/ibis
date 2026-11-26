@@ -26,7 +26,7 @@ struct Handlers {
     next: u64,
     tasks: BTreeMap<u64, CancellationToken>,
 }
-struct Registration {
+pub(super) struct Registration {
     parents: Vec<Registration>,
     cancel: Cancellation,
     id: u64,
@@ -37,7 +37,7 @@ struct Registration {
 #[derive(Clone, Default)]
 pub struct Formatting(Arc<Mutex<Option<ibis_csl::Formatter>>>);
 impl Formatting {
-    fn formatter(&self) -> Result<ibis_csl::Formatter, EngineError> {
+    pub(super) fn formatter(&self) -> Result<ibis_csl::Formatter, EngineError> {
         let mut current = self.0.recover_lock();
         if let Some(formatter) = current.as_ref() {
             return Ok(formatter.clone());
@@ -88,7 +88,7 @@ impl Cancellation {
             Ok(())
         }
     }
-    fn track(&self, token: CancellationToken) -> Result<Registration, EngineError> {
+    pub(super) fn track(&self, token: CancellationToken) -> Result<Registration, EngineError> {
         let mut handlers = self.0.handlers.recover_lock();
         if handlers.tasks.len() >= 64 {
             return Err(error(ErrorCode::ResourceLimit));
@@ -180,5 +180,73 @@ mod tests {
             assert!(!preview.text.is_empty());
             assert!(preview.copy_content(request.items.len()).is_some());
         });
+    }
+
+    #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "Synchronizes cancellation with the formatter task registration."
+    )]
+    fn document_cancellation_releases_the_formatter_without_writing_a_copy() {
+        use std::io::{Cursor, Write};
+        use std::time::Instant;
+
+        let folder = tempfile::tempdir().unwrap();
+        let root = folder.path().canonicalize().unwrap();
+        let document = root.join("draft.docx");
+        let output = root.join("final.docx");
+        let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        archive
+            .start_file("[Content_Types].xml", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        archive
+            .write_all(
+                b"<Types>application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml</Types>",
+            )
+            .unwrap();
+        archive
+            .start_file("word/document.xml", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        let citations = "<w:p><w:r><w:t>[@vale2024]</w:t></w:r></w:p>".repeat(1000);
+        archive
+            .write_all(format!("<w:document><w:body>{citations}</w:body></w:document>").as_bytes())
+            .unwrap();
+        std::fs::write(&document, archive.finish().unwrap().into_inner()).unwrap();
+        let library = root.join("refs.bib");
+        std::fs::write(
+            &library,
+            "@book{vale2024, author={Vale, Avery}, title={Invented Lanterns}, year={2024}}",
+        )
+        .unwrap();
+        let engine = Engine::new()
+            .unwrap()
+            .without_file_watches()
+            .with_documents_in_process();
+        engine.open_file(&library, &Cancellation::default()).unwrap();
+        let cancel = Cancellation::default();
+        let request = super::super::FormatRequest {
+            document,
+            output: output.clone(),
+            style: "apa".into(),
+            output_locale: None,
+        };
+        std::thread::scope(|scope| {
+            let (send, answer) = std::sync::mpsc::channel();
+            let (engine, request, task_cancel) = (&engine, &request, &cancel);
+            scope.spawn(move || send.send(engine.format_document(request, task_cancel)).unwrap());
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while cancel.0.handlers.recover_lock().tasks.is_empty() && Instant::now() < deadline {
+                if let Ok(finished) = answer.try_recv() {
+                    panic!("document formatting completed without cancellable CSL work: {finished:?}");
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            cancel.cancel();
+            assert_eq!(
+                answer.recv_timeout(Duration::from_secs(1)).unwrap(),
+                Err(error(ErrorCode::Cancelled))
+            );
+        });
+        assert!(!output.exists());
     }
 }

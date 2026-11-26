@@ -1,4 +1,4 @@
-use crate::{FormatError, Limits, input::Prepared, output, service::Control};
+use crate::{FormatError, Limits, input::Prepared, output, output::Formatted, service::Control};
 use rquickjs::{Context, Function, Module, Runtime};
 use std::collections::BTreeMap;
 
@@ -14,7 +14,7 @@ impl Session {
         prepared: &Prepared,
         limits: &Limits,
         control: &Control,
-    ) -> Result<ibis_core::contract::CitationResult, FormatError> {
+    ) -> Result<Formatted, FormatError> {
         let reused = session.is_some();
         if session.is_none() {
             *session = Some(Self::new(limits, control)?);
@@ -75,9 +75,9 @@ impl Session {
         prepared: &Prepared,
         limits: &Limits,
         control: &Control,
-    ) -> Result<ibis_core::contract::CitationResult, FormatError> {
+    ) -> Result<Formatted, FormatError> {
         if prepared.empty {
-            return Ok(output::refused(
+            return Ok(output::refused_formatted(
                 prepared,
                 ibis_core::contract::CitationError::UnsupportedForm,
             ));
@@ -92,7 +92,12 @@ impl Session {
         if json.len() > limits.output_bytes {
             return Err(FormatError::ResourceLimit);
         }
-        output::result(&json, prepared, &self.superscripts).inspect_err(|_| {
+        let formatted = if prepared.document {
+            output::document(&json, prepared.outcomes.len()).map(Formatted::Document)
+        } else {
+            output::result(&json, prepared, &self.superscripts).map(|result| Formatted::Citation(Box::new(result)))
+        };
+        formatted.inspect_err(|_| {
             #[cfg(test)]
             eprintln!("CSL failure phase=output class=validation");
         })
@@ -258,6 +263,7 @@ mod tests {
                     warnings: vec![],
                     missing_details: false,
                     empty: false,
+                    document: false,
                 };
                 assert!(matches!(
                     session.run(&prepared, &limits, &control),

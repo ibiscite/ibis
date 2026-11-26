@@ -32,6 +32,8 @@ nix = { version = "0.31.3", default-features = false, features = ["resource"] }
 [dev-dependencies]
 insta = "1.49.0"
 tempfile = "3.27.0"
+# Builds and reads invented office documents in the format tests.
+zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2"] }
 
 [lints]
 workspace = true

@@ -28,6 +28,172 @@ struct Span {
     text: String,
 }
 
+/// What the formatter's worker answers.
+pub(crate) enum Formatted {
+    Citation(Box<CitationResult>),
+    Document(DocumentAnswer),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DocumentAnswer {
+    Formatted(DocumentCitations),
+    /// The items the style cannot cite, by their place in the request; none
+    /// named when the style cannot write the document's citations as a whole.
+    Refused(Vec<(usize, CitationError)>),
+    /// Request items whose locator made no contribution to the citation.
+    UnprintedLocators(Vec<usize>),
+}
+
+pub(crate) fn refused_formatted(input: &Prepared, error: CitationError) -> Formatted {
+    if input.document {
+        Formatted::Document(DocumentAnswer::Refused(
+            input
+                .outcomes
+                .iter()
+                .filter_map(|outcome| match outcome {
+                    ItemOutcome::Refused { item, error } => Some((*item, *error)),
+                    _ => None,
+                })
+                .collect(),
+        ))
+    } else {
+        Formatted::Citation(Box::new(refused(input, error)))
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "status", rename_all = "kebab-case", deny_unknown_fields)]
+enum DocumentOutputs {
+    Refused,
+    Rendered {
+        citations: Vec<String>,
+        entries: Vec<String>,
+        hanging_indent: bool,
+        unprinted_locators: Vec<usize>,
+    },
+}
+
+/// The processor's HTML for a document, as runs: only its passive tags,
+/// whitespace folded as HTML shows it.
+pub(crate) fn document(json: &str, items: usize) -> Result<DocumentAnswer, FormatError> {
+    let output: DocumentOutputs = serde_json::from_str(json).map_err(|_| FormatError::Runtime)?;
+    let DocumentOutputs::Rendered {
+        citations,
+        entries,
+        hanging_indent,
+        unprinted_locators,
+    } = output
+    else {
+        return Ok(DocumentAnswer::Refused(Vec::new()));
+    };
+    if unprinted_locators.iter().any(|&index| index >= items) {
+        return Err(FormatError::Runtime);
+    }
+    if !unprinted_locators.is_empty() {
+        return Ok(DocumentAnswer::UnprintedLocators(unprinted_locators));
+    }
+    let citations = citations
+        .iter()
+        .map(|html| {
+            let runs = folded(parse_html(html)?.runs);
+            if runs.is_empty() {
+                return Err(FormatError::Runtime);
+            }
+            Ok(runs)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let entries = entries
+        .iter()
+        .map(|html| {
+            let Parsed { runs, blocks } = parse_html(html)?;
+            let entry = blocks
+                .iter()
+                .find(|block| block.kind == DisplayBlockKind::Entry)
+                .map_or(0..runs.len(), |block| block.start..block.end);
+            let margin = blocks
+                .iter()
+                .find(|block| block.kind == DisplayBlockKind::Margin && entry.contains(&block.start))
+                .map(|block| block.start..block.end.min(entry.end));
+            let preceding = margin.as_ref().is_some_and(|margin| {
+                runs[entry.start..margin.start]
+                    .iter()
+                    .any(|run| !run.text.trim_matches(js_space).is_empty())
+            });
+            let (margin, content) = match margin {
+                // The two-column entry cannot put text before its margin.
+                // Keep the full entry in reading order, separating its blocks.
+                Some(_) if preceding => {
+                    let mut content = Vec::new();
+                    for index in entry {
+                        if blocks.iter().any(|block| {
+                            block.kind != DisplayBlockKind::Entry && (block.start == index || block.end == index)
+                        }) {
+                            content.push(DisplayRun {
+                                text: " ".into(),
+                                ..DisplayRun::default()
+                            });
+                        }
+                        content.push(runs[index].clone());
+                    }
+                    (Vec::new(), content)
+                }
+                Some(margin) => (runs[margin.clone()].to_vec(), runs[margin.end..entry.end].to_vec()),
+                None => (Vec::new(), runs[entry].to_vec()),
+            };
+            Ok(DocumentEntry {
+                margin: folded(margin),
+                content: folded(content),
+            })
+        })
+        .collect::<Result<Vec<_>, FormatError>>()?;
+    if citations
+        .iter()
+        .chain(entries.iter().flat_map(|entry| [&entry.margin, &entry.content]))
+        .flatten()
+        .any(|run| unsupported_controls(&run.text))
+    {
+        return Err(FormatError::Runtime);
+    }
+    Ok(DocumentAnswer::Formatted(DocumentCitations {
+        citations,
+        entries,
+        hanging_indent,
+    }))
+}
+
+/// Runs with each stretch of whitespace one space, trimmed at both ends.
+fn folded(runs: Vec<DisplayRun>) -> Vec<DisplayRun> {
+    let mut out: Vec<DisplayRun> = Vec::new();
+    let mut space = true;
+    for mut run in runs {
+        let mut text = String::with_capacity(run.text.len());
+        for ch in run.text.chars() {
+            if js_space(ch) {
+                if !space {
+                    text.push(' ');
+                }
+                space = true;
+            } else {
+                text.push(ch);
+                space = false;
+            }
+        }
+        run.text = text;
+        if !run.text.is_empty() {
+            out.push(run);
+        }
+    }
+    while let Some(last) = out.last_mut() {
+        let trimmed = last.text.trim_end_matches(' ').len();
+        last.text.truncate(trimmed);
+        if !last.text.is_empty() {
+            break;
+        }
+        out.pop();
+    }
+    out
+}
+
 pub(crate) fn refused(input: &Prepared, error: CitationError) -> CitationResult {
     CitationResult::new(
         String::new(),
@@ -604,6 +770,29 @@ fn decode_entities(text: &str) -> Result<String, FormatError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn document_entries_keep_text_and_emphasis_before_a_margin() {
+        let html = concat!(
+            "<div class=\"csl-entry\"><div class=\"csl-block\">Vale, <i>A.</i></div>",
+            "<div class=\"csl-left-margin\">2024</div><div class=\"csl-right-inline\">Lanterns.</div></div>",
+        );
+        let json = serde_json::json!({
+            "status": "rendered", "citations": ["(Vale, 2024)"],
+            "entries": [html], "hanging_indent": false, "unprinted_locators": [],
+        });
+        let DocumentAnswer::Formatted(answer) = document(&json.to_string(), 1).unwrap() else {
+            panic!()
+        };
+        assert!(answer.entries[0].margin.is_empty());
+        let runs = &answer.entries[0].content;
+        assert_eq!(
+            runs.iter().map(|run| run.text.as_str()).collect::<String>(),
+            "Vale, A. 2024 Lanterns."
+        );
+        assert!(runs.iter().any(|run| run.italic && run.text == "A."));
+    }
+
     #[test]
     fn rejects_malformed_or_active_html() {
         for html in [
