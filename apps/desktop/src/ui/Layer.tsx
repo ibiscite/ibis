@@ -44,6 +44,21 @@ export function Floating({ kind, open = false, onClose = () => false, anchor, pl
   </Popover>;
 }
 
+/** The one fallback of decision 0062: a menu with room for its least on
+ * neither side opens as a view of the window, the way the palettes do, until it
+ * closes. Pass `cramped` as a `Floating`'s `onCramped` and draw the view while
+ * `asView`. The popover leaving takes the keyboard from inside it, which React
+ * Aria's trigger reports as a dismissal: `heeds(next)` says whether a change
+ * its trigger reports is the person's (a close never is while the view stands in). */
+export function useViewFallback(open: boolean) {
+  const [asView, setAsView] = useState(false);
+  const standing = useRef(false);
+  useLayoutEffect(() => { if (!open) { standing.current = false; setAsView(false); } }, [open]);
+  const cramped = useCallback(() => { standing.current = true; setAsView(true); }, []);
+  const heeds = useCallback((next: boolean) => next || !standing.current, []);
+  return { asView: open && asView, cramped, heeds };
+}
+
 const windowBox = () => new DOMRect(0, 0, document.documentElement.clientWidth || innerWidth, document.documentElement.clientHeight || innerHeight);
 const boxOf = (rect: DOMRect) => [rect.left, rect.top, rect.width, rect.height].map(Math.round);
 

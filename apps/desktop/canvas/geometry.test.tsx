@@ -204,12 +204,12 @@ test("the dense list counts only rows wholly inside the list's scroller", () => 
 
 /** An open menu of `count` 28 px rows from y = 100, with a filter above them,
  * inside `clip` (a clipping ancestor) when given. */
-function openMenu(count: number, clip?: { top: number; bottom: number }) {
+function openMenu(count: number, clip?: { top: number; bottom: number; right?: number }) {
   const rows = Array.from({ length: count }, (_, row) => <div key={row} role="menuitemradio" aria-checked={false} data-row={row}>Term {row}</div>);
   const view = render(<div className="clip" style={clip ? { overflowX: "hidden", overflowY: "hidden" } : undefined}><div className="menu-popover"><input aria-label="Filter types" />
     <div role="menu" aria-label="Locator type">{rows}</div></div></div>);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    if (this.matches(".clip")) return clip ? new DOMRect(0, clip.top, 300, clip.bottom - clip.top) : new DOMRect(0, 0, 1024, 768);
+    if (this.matches(".clip")) return clip ? new DOMRect(0, clip.top, clip.right ?? 300, clip.bottom - clip.top) : new DOMRect(0, 0, 1024, 768);
     if (this.matches("input")) return new DOMRect(10, 64, 280, 32);
     if (this.dataset.row) return new DOMRect(10, 100 + Number(this.dataset.row) * 28, 280, 28);
     return new DOMRect(0, 60, 300, 100 + count * 28);
@@ -218,7 +218,8 @@ function openMenu(count: number, clip?: { top: number; bottom: number }) {
     const box = node.getBoundingClientRect();
     return x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
   }) ?? null);
-  document.elementFromPoint = hit;
+  // Hit testing, as the guard reads it: what is at a point, from the top.
+  document.elementsFromPoint = (x, y) => { const found = hit(x, y); return found ? [found] : []; };
   return { view, hit };
 }
 
@@ -244,6 +245,18 @@ test("the rows guard fails a menu its clipping ancestor cuts, and one that shows
   try { expect(menuRows(view.container)).toEqual(['[C9 rows] menu "Locator type": 0 of 4 rows visible and whole in a 1024 × 768 window']); } finally { vi.restoreAllMocks(); view.unmount(); }
 });
 
+test("the rows guard fails a menu its clipping ancestor or the window cuts across, and one that is not drawn", () => {
+  // Planted: the menu's box is narrower than its filter and rows, which it clips.
+  const { view } = openMenu(29, { top: 0, bottom: 768, right: 200 });
+  try { expect(menuRows(view.container)).toEqual(['[C9 rows] menu "Locator type": its filter is not visible', '[C9 rows] menu "Locator type": 0 of 4 rows visible and whole in a 1024 × 768 window']); } finally { vi.restoreAllMocks(); view.unmount(); }
+  const opened = openMenu(29);
+  try {
+    // Planted: the whole menu at opacity 0 still takes the point.
+    opened.view.container.querySelector<HTMLElement>(".menu-popover")!.style.opacity = "0";
+    expect(menuRows(opened.view.container)).toEqual(['[C9 rows] menu "Locator type": its filter is not visible', '[C9 rows] menu "Locator type": 0 of 4 rows visible and whole in a 1024 × 768 window']);
+  } finally { vi.restoreAllMocks(); opened.view.unmount(); }
+});
+
 test("the rows guard asks only for the rows a filtered menu has, and for the filter when nothing matches", () => {
   let { view, hit } = openMenu(2);
   try { expect(menuRows(view.container)).toEqual([]); } finally { vi.restoreAllMocks(); view.unmount(); }
@@ -267,6 +280,7 @@ test("the reveal guard fails focus under the sticky title or out of the scroll b
     if (this === radio) return new DOMRect(220, top, 24, 24);
     return new DOMRect();
   });
+  document.elementsFromPoint = () => [radio];
   try {
     radio.focus();
     // Planted: the focused control behind the sticky title.
@@ -276,6 +290,14 @@ test("the reveal guard fails focus under the sticky title or out of the scroll b
     expect(focusInView(page)).toEqual(["[C9 reveal] input[Medium] spans 1400–1424px, outside what shows of main.settings-page (48–560px)"]);
     top = 60;
     expect(focusInView(page)).toEqual([]);
+    // Planted: in the box, but a layer is drawn over it.
+    document.elementsFromPoint = () => [page.querySelector("h1")!, radio];
+    expect(focusInView(page)).toEqual(["[C9 reveal] input[Medium] is in view but covered by h1"]);
+    // Planted: in the box and on top, but not drawn.
+    document.elementsFromPoint = () => [radio];
+    radio.style.opacity = "0";
+    expect(focusInView(page)).toEqual(["[C9 reveal] input[Medium] is in view but not drawn (opacity 0.00)"]);
+    radio.style.opacity = "";
     radio.blur();
     expect(focusInView(page)[0]).toContain("the keyboard is not in main.settings-page");
   } finally { vi.restoreAllMocks(); view.unmount(); }
@@ -293,7 +315,7 @@ test("the rows guard holds a menu opened as a view to every row its list holds w
   });
   const rows = [...view.container.querySelectorAll("input, [data-row]")];
   let covered = -1;
-  document.elementFromPoint = (_, y) => rows.find((node, index) => (covered < 0 || index !== covered + 1) && y >= node.getBoundingClientRect().top && y <= node.getBoundingClientRect().bottom) ?? document.body;
+  document.elementsFromPoint = (_, y) => [rows.find((node, index) => (covered < 0 || index !== covered + 1) && y >= node.getBoundingClientRect().top && y <= node.getBoundingClientRect().bottom) ?? document.body];
   try {
     // A short window: three rows fit its list whole, and that is all a view can show.
     expect(menuRows(view.container)).toEqual([]);

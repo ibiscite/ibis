@@ -25,7 +25,9 @@ const running = new WeakMap<HTMLElement, () => void>();
 export function reveal(scroller: HTMLElement, { find, focus }: RevealTarget): () => void {
   running.get(scroller)?.();
   let phase: "waiting" | "holding" | "done" = "waiting";
-  let landed = 0, focused: HTMLElement | null = null;
+  // `left`: where the reveal last left the scroll position. Anyone else moving
+  // it (the person, a screen reader, a script) moves it off that.
+  let landed = 0, left = scroller.scrollTop, focused: HTMLElement | null = null;
   // The key or click that asked for this reveal is still on its way to the
   // document's listeners below: it is not the person moving on.
   const asking = typeof window.event === "object" ? window.event : undefined;
@@ -33,7 +35,13 @@ export function reveal(scroller: HTMLElement, { find, focus }: RevealTarget): ()
   const place = (target: HTMLElement) => {
     const delta = offset(target) - landed;
     if (Math.abs(delta) >= 1) scroller.scrollTop += delta;
+    left = scroller.scrollTop;
   };
+  // Someone else scrolled: the position is not where the reveal left it and the
+  // target is off where it landed. Scroll anchoring moves the position but keeps
+  // the target, which is no one moving on. Read before every placing, not only
+  // on the scroll event, which arrives a frame after a change it could undo.
+  const scrolledAway = (target: HTMLElement) => Math.abs(scroller.scrollTop - left) >= 1 && Math.abs(offset(target) - landed) >= 1;
   const take = (target: HTMLElement) => {
     if (!focus) return;
     const control = focus(target);
@@ -46,6 +54,7 @@ export function reveal(scroller: HTMLElement, { find, focus }: RevealTarget): ()
     const target = find(scroller);
     if (!target || !scroller.contains(target)) return;
     if (phase === "holding") {
+      if (scrolledAway(target)) { stop(); return; }
       place(target);
       // The target was drawn again (its list finished reading): the keyboard follows it.
       if (focused && !focused.isConnected) take(target);
@@ -75,7 +84,8 @@ export function reveal(scroller: HTMLElement, { find, focus }: RevealTarget): ()
   const scrolled = () => {
     if (phase !== "holding") return;
     const target = find(scroller);
-    if (target && Math.abs(offset(target) - landed) >= 1) stop();
+    if (target && scrolledAway(target)) stop();
+    else left = scroller.scrollTop;
   };
   const leave = ["pointerdown", "wheel", "touchmove"] as const;
   document.addEventListener("focusin", moved);

@@ -1,12 +1,15 @@
 import { Icon } from "../icons";
-import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type PointerEvent, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
+import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type PointerEvent, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { mergeProps, setInteractionModality } from "react-aria";
 import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Separator, Text } from "react-aria-components";
 import { Button } from "./Button";
 import { markScrollEdges } from "./ScrollArea";
-import { Floating } from "./Layer";
+import { Floating, useViewFallback } from "./Layer";
+import { useLayer, type LayerClose } from "./layers";
+import { keepKeyboardThroughPress, ViewFrame } from "./ViewFrame";
+import { say } from "../i18n";
 import { LEAST_ROWS } from "./region";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import { usePresence, usePresenceSlot } from "./presence";
@@ -106,7 +109,8 @@ export function MenuRow({ itemId, ...props }: ComponentPropsWithRef<"div"> & { i
     manager.setFocused(true);
     manager.setFocusedKey(itemId);
   };
-  return <div {...mergeProps(props, { onPointerMove })} />;
+  // Named, so a menu that turns into a view opens on the row it had highlighted.
+  return <div {...mergeProps(props, { onPointerMove })} data-item={itemId} />;
 }
 
 const ActionFocusContext = createContext<(() => void) | null>(null);
@@ -216,6 +220,8 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   const renderedPlacement = useMenuPlacement(isOpen, button, leadingStatus ? "top start" : placement);
   const { list, listRef, opening } = useMenuLifecycle(isOpen);
   const wholeRows = useWholeRows(list);
+  // With room for its least on neither side, it opens as a view (decision 0062).
+  const fallback = useViewFallback(isOpen);
   const [skipExit, setSkipExit] = useState(false);
   useEffect(() => { if (!isOpen) fromTrigger.current = false; }, [isOpen]);
   useEffect(() => {
@@ -247,28 +253,48 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     if (inner && inner !== list.current) return false;
     leave(event ? button.current : tabFocusRef?.current);
   };
+  const frame = <div className="menu-frame" onKeyDownCapture={(event) => {
+    if (isComposing(event)) { event.stopPropagation(); return; }
+    // Tab leaves the entire menu, from any depth.
+    if (event.key !== "Tab" || tabFocusRef === undefined) return;
+    event.preventDefault();
+    event.stopPropagation();
+    leave(tabFocusRef.current);
+  }} onKeyUpCapture={(event) => { if (isComposing(event)) event.stopPropagation(); }}>
+    <MenuList key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}
+      render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
+      {children}
+    </MenuList>
+  </div>;
   // Outside the collection builder so submenu portals inherit the action owner.
-  return <ActionFocusContext.Provider value={() => leave(tabFocusRef?.current)}><MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
+  return <ActionFocusContext.Provider value={() => leave(tabFocusRef?.current)}><MenuTrigger isOpen={isOpen} onOpenChange={(open) => { if (!fallback.heeds(open)) return; fromTrigger.current = open; onOpenChange(open); }}>
     <Button variant={triggerVariant} size={triggerSize} aria-label={label} ref={(node) => {
       button.current = node;
       if (typeof triggerRef === "function") triggerRef(node);
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
       render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-label={triggerLabel ?? label} />}>{trigger}</Button>
-    <Floating kind="menu" open={isOpen} onClose={close} ref={wholeRows} className="menu-popover ui-overlay" anchor={button} least={menuLeast} placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit}>
-      <div className="menu-frame" onKeyDownCapture={(event) => {
-        if (isComposing(event)) { event.stopPropagation(); return; }
-        // Tab leaves the entire menu, from any depth.
-        if (event.key !== "Tab" || tabFocusRef === undefined) return;
-        event.preventDefault();
-        event.stopPropagation();
-        leave(tabFocusRef.current);
-      }} onKeyUpCapture={(event) => { if (isComposing(event)) event.stopPropagation(); }}>
-        <MenuList key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}
-          render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
-          {children}
-        </MenuList>
-      </div>
-    </Floating>
+    {fallback.asView ? <MenuView label={label} onClose={close} onBack={() => leave(button.current)}>{frame}</MenuView>
+      : <Floating kind="menu" open={isOpen} onClose={close} ref={wholeRows} className="menu-popover ui-overlay" anchor={button} least={menuLeast} onCramped={fallback.cramped} placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit}>
+        {frame}
+      </Floating>}
   </MenuTrigger></ActionFocusContext.Provider>;
+}
+
+/** A menu opened as a view of the window (decision 0062), the way the palettes
+ * open: the same list and rows, as tall as the window allows, scrolling inside.
+ * Esc, Back and a pick close it as they close the menu. */
+function MenuView({ label, onClose, onBack, children }: { label: string; onClose: LayerClose; onBack: () => void; children: ReactNode }) {
+  const layer = useLayer("palette", true, (event) => { layer.leave(); return onClose(event); });
+  const titleId = useId();
+  const frame = useRef<HTMLDivElement>(null);
+  // The view takes the keyboard as it opens, as the menu did: the list moved
+  // here from the popover, and focus left with it.
+  useLayoutEffect(() => {
+    if (!frame.current?.contains(document.activeElement)) frame.current?.querySelector<HTMLElement>('[role="menu"]')?.focus({ preventScroll: true });
+    keepKeyboardThroughPress();
+  }, []);
+  return <ViewFrame title={label} titleId={titleId} frameRef={frame} role="dialog" aria-modal="true" layer={layer} back={{ label: say("palette-back"), onBack: () => { layer.leave(); onBack(); } }}>
+    <div className="menu-view">{children}</div>
+  </ViewFrame>;
 }

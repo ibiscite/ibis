@@ -127,3 +127,22 @@ test("scrolling by any other means ends the hold; the reveal's own scrolling doe
   await act(async () => { addAbove(12); });
   expect(offset()).toBe(TITLE + 160 + ROW);
 });
+
+// Found in review of the second version: a script set the page's scroll
+// position and content changed before the scroll event arrived, so the hold
+// put the row back (1204 → 0 → 1204) and the person's scroll was undone.
+test("a scroll by other means ends the hold even when content changes before its scroll event", async () => {
+  const { container, rerender } = render(<Page target={null} before={10} />);
+  const page = container.querySelector("main")!;
+  layout(page);
+  rerender(<Page target={{ id: "target", ticket: 1 }} before={10} />);
+  expect(page.scrollTop).toBe(10 * ROW);
+  page.scrollTop = 0;
+  // No scroll event yet: the next change is seen first.
+  await act(async () => { addAbove(11); });
+  expect(page.scrollTop).toBe(0);
+  expect(offset()).toBe(TITLE + 11 * ROW);
+  fireEvent.scroll(page);
+  await act(async () => { addAbove(12); });
+  expect(page.scrollTop).toBe(0);
+});

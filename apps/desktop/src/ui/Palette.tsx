@@ -8,7 +8,7 @@ import { Button } from "./Button";
 import { Option } from "./Option";
 import { flushSync } from "react-dom";
 import { useLayer } from "./layers";
-import { ViewFrame } from "./ViewFrame";
+import { keepKeyboardThroughPress, ViewFrame } from "./ViewFrame";
 import { say } from "../i18n";
 import "./Palette.css";
 import { Status } from "./Status";
@@ -27,14 +27,20 @@ export type PaletteClose = "action" | "dismiss" | "command" | "tab";
 
 const fold = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase();
 
+/** Whether a row's words match a query: every word of it appears, in any case
+ * and with or without accents. A filtered menu finds rows by this rule too, so
+ * one that becomes a view keeps its matches. */
+export function matchesQuery(text: string, query: string): boolean {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  const folded = fold(text);
+  return words.every((word) => folded.includes(word));
+}
+
 /** What a query leaves: every word must appear in a row's name, detail or synonyms. */
 export function filterPalette(sections: readonly PaletteSection[], query: string): PaletteSection[] {
-  const words = fold(query).split(/\s+/).filter(Boolean);
-  return sections.filter((section) => (words.length ? section.only !== "browsing" : section.only !== "searching"))
-    .map((section) => ({ ...section, items: section.items.filter((item) => {
-      const text = fold([item.label, item.detail, item.keywords].filter(Boolean).join(" "));
-      return words.every((word) => text.includes(word));
-    }) }))
+  const searching = fold(query).trim() !== "";
+  return sections.filter((section) => (searching ? section.only !== "browsing" : section.only !== "searching"))
+    .map((section) => ({ ...section, items: section.items.filter((item) => matchesQuery([item.label, item.detail, item.keywords].filter(Boolean).join(" "), query)) }))
     .filter((section) => section.items.length > 0);
 }
 
@@ -43,7 +49,7 @@ export function filterPalette(sections: readonly PaletteSection[], query: string
  * takes the picker's place (ui/ViewFrame), takes keys from its first frame, and Esc, its own
  * key or a pick closes it. ↑ ↓ move, Enter runs the highlighted row. An
  * optional preview shows what the highlighted row would do. */
-export function Palette({ id, title, subtitle, description, placeholder, sections, onAction, onClose, preview, actionLabel, empty, initial, invoker }: {
+export function Palette({ id, title, subtitle, description, placeholder, sections, onAction, onClose, preview, actionLabel, empty, initial, invoker, query: shared, onQueryChange }: {
   id: string;
   /** The palette's accessible name ("Format", "Actions"). */
   title: string;
@@ -68,11 +74,15 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   /** The button that opens it. Esc and Back return the keyboard there, as a menu
    * returns to its button, however the palette was opened (its key or a click). */
   invoker?: RefObject<HTMLElement | null>;
+  /** What is typed, when the palette shares it (a menu that became this view). */
+  query?: string; onQueryChange?: (query: string) => void;
 }) {
-  const [query, setQuery] = useState("");
+  const [own, setOwn] = useState("");
+  const query = shared ?? own, setQuery = onQueryChange ?? setOwn;
   const shown = useMemo(() => filterPalette(sections, query), [sections, query]);
   const items = useMemo(() => shown.flatMap((section) => section.items), [shown]);
-  const [highlight, setHighlight] = useState({ id: initial, keyboard: false });
+  // The row it opens on is revealed, as a key's would be: a choice low in the list shows.
+  const [highlight, setHighlight] = useState({ id: initial, keyboard: initial !== undefined });
   const current = items.find((item) => item.id === highlight.id) ?? items[0];
   const listId = useId(), titleId = useId(), descriptionId = useId();
   const optionId = (item: PaletteItem) => `${id}-${item.id}`;
@@ -95,7 +105,7 @@ export function Palette({ id, title, subtitle, description, placeholder, section
     if (back instanceof HTMLElement && back.isConnected && !back.closest("[hidden], [inert]")) back.focus({ preventScroll: true });
     onClose("dismiss");
   }
-  useLayoutEffect(() => { opener.current = document.activeElement; field.current?.focus({ preventScroll: true }); }, []);
+  useLayoutEffect(() => { opener.current = document.activeElement; field.current?.focus({ preventScroll: true }); keepKeyboardThroughPress(); }, []);
   // Reveal after the new highlight and its preview have laid out. Each key
   // owns one reveal, including at a list boundary; hover and later preview
   // renders never scroll a different row beneath a resting pointer.

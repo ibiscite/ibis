@@ -31,6 +31,16 @@ const values = new Set(["src/tokens.css"]);
 /** Comments blanked to spaces, so offsets and line numbers still point into the file. */
 const uncomment = (css: string) => css.replace(/\/\*[^]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));
 const lineAt = (text: string, offset: number) => text.slice(0, offset).split("\n").length;
+/** Where the string that opens at `at` ends: its closing quote, past escapes,
+ * or the text's end when it never closes. Every scanner here skips strings with
+ * it, so a quoted brace, comma or bracket (`--brace: "}"`) never counts. */
+const stringEnd = (text: string, at: number) => {
+  for (let index = at + 1; index < text.length; index++) {
+    if (text[index] === "\\") index++;
+    else if (text[index] === text[at]) return index;
+  }
+  return text.length;
+};
 
 /** Every style rule (selector list, line, declarations), inside @media, @supports, @container and @layer, never @keyframes. */
 function styleRules(css: string): { selector: string; line: number; body: string }[] {
@@ -41,12 +51,13 @@ function styleRules(css: string): { selector: string; line: number; body: string
     for (let index = from; index < to; index++) {
       const char = text[index];
       if (char === ";" || char === "}") start = index + 1;
-      else if (char === "\"" || char === "'") index = text.indexOf(char, index + 1);
+      else if (char === "\"" || char === "'") index = stringEnd(text, index);
       else if (char === "{") {
         const prelude = text.slice(start, index).trim();
         let depth = 1, end = index + 1;
         for (; end < to && depth; end++) {
-          if (text[end] === "{") depth++;
+          if (text[end] === "\"" || text[end] === "'") end = stringEnd(text, end);
+          else if (text[end] === "{") depth++;
           else if (text[end] === "}") depth--;
         }
         if (/^@(media|supports|container|layer|scope|document|starting-style)\b/.test(prelude)) walk(index + 1, end - 1);
@@ -74,7 +85,7 @@ function splitList(text: string): string[] {
   for (let index = 0; index < text.length; index++) {
     const char = text[index];
     if (char === "\\") index++;
-    else if (char === "\"" || char === "'") index = text.indexOf(char, index + 1);
+    else if (char === "\"" || char === "'") index = stringEnd(text, index);
     else if (char === "(" || char === "[") depth++;
     else if (char === ")" || char === "]") depth--;
     else if (char === "," && depth === 0) { parts.push(text.slice(start, index)); start = index + 1; }
@@ -110,7 +121,7 @@ function parseSelector(text: string): Complex {
     for (; end < text.length && depth; end++) {
       const char = text[end];
       if (char === "\\") end++;
-      else if (char === "\"" || char === "'") end = text.indexOf(char, end + 1);
+      else if (char === "\"" || char === "'") end = stringEnd(text, end);
       else if (char === open) depth++;
       else if (char === shut) depth--;
     }
@@ -295,6 +306,13 @@ test("the guard reads the element a selector styles", () => {
   expect(partClasses.has("picker-content")).toBe(false);
   expect(selectorLists("/* .x { } */ @keyframes k { from { opacity: 0 } } @media (a) { @container (b) { .y, .z { color: red } } } .w { }"))
     .toEqual([".y, .z", ".w"]);
+  // Found in review: a quoted brace ended the rule early and the scan never ended.
+  expect(selectorLists('.part { --brace: "}"; @starting-style { & .ui-button { opacity: 0 } } }')).toEqual([".part", "& .ui-button"]);
+  expect(selectorLists('.part { --brace: "{"; } .ui-button { content: "\\"}" }')).toEqual([".part", ".ui-button"]);
+  expect(selectorLists('@starting-style { .ui-button { opacity: 0 } } .part { & .ui-button { color: red } }')).toEqual([".ui-button", ".part", "& .ui-button"]);
+  // A string that never closes ends the scan instead of restarting it.
+  expect(selectorLists('.a { content: "} .b { }')).toEqual([".a"]);
+  expect(splitList('.a[title="x,y"], .b')).toEqual(['.a[title="x,y"]', ".b"]);
 });
 
 // Ratchets of decision 0062 (docs/decisions/0062-closed-parts-owned-space-fitted-layers.md,

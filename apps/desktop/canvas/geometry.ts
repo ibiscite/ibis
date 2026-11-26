@@ -302,8 +302,14 @@ export async function settle(quiet = 250, longest = 4000): Promise<void> {
   try {
     while (performance.now() - last < quiet && performance.now() - start < longest) await new Promise((done) => setTimeout(done, 50));
   } finally { observer.disconnect(); }
-  for (const animation of document.getAnimations()) {
-    // A looping animation (a spinner) has no end; it keeps running.
+  finishAnimations();
+}
+
+/** Every animation with an end ends now, as the page settles to it. A looping
+ * animation (a spinner) has no end; it keeps running. */
+function finishAnimations() {
+  // A DOM without animations (jsdom) has none to end.
+  for (const animation of document.getAnimations?.() ?? []) {
     try { if (animation.effect?.getComputedTiming().endTime !== Infinity) animation.finish(); } catch { /* already gone */ }
   }
 }
@@ -506,7 +512,12 @@ export function paintOnly(root: ParentNode = document): string[] {
       });
       if (worst) failures.push(`[C24 states] ${label(part)} [${state}] ${worst.node === part ? "changes its own" : `moves ${label(worst.node)}`} ${worst.edge} by ${worst.delta.toFixed(1)}px`);
     }
-  } finally { still.remove(); }
+  } finally {
+    still.remove();
+    // Taking `animation: none` away starts every entrance again (a view fading
+    // in from opacity 0): the page is left as settled as it was found.
+    finishAnimations();
+  }
   return failures;
 }
 
@@ -615,15 +626,59 @@ function clipped(node: Element): DOMRect | null {
   return right > left && bottom > top ? new DOMRect(left, top, right - left, bottom - top) : null;
 }
 
+/** How much of a node is drawn: its own and its ancestors' opacity, none when
+ * it is hidden. A row at opacity 0 takes the point but shows nothing. */
+function drawn(node: Element): number {
+  if (getComputedStyle(node).visibility === "hidden") return 0;
+  let alpha = 1;
+  for (let part: Element | null = node; part; part = part.parentElement) {
+    const style = getComputedStyle(part);
+    if (style.display === "none") return 0;
+    const own = parseFloat(style.opacity);
+    if (!Number.isNaN(own)) alpha *= own;
+  }
+  return alpha;
+}
+
+/** Whether a node paints over what is under it: a fill, a picture or its own words. */
+function paints(node: Element): boolean {
+  if (drawn(node) < .1) return false;
+  const style = getComputedStyle(node);
+  if (paint(style.backgroundColor)[3] > .05 || (style.backgroundImage && style.backgroundImage !== "none")) return true;
+  if (node instanceof SVGElement || /^(IMG|CANVAS|VIDEO|IFRAME)$/.test(node.tagName)) return true;
+  return [...node.childNodes].some((child) => child.nodeType === Node.TEXT_NODE && child.textContent?.trim());
+}
+
+/** What hides `node` at a point from a person: walking down from the top, the
+ * first thing that paints before the node (or something inside it); null when
+ * the node shows. Hit testing skips what takes no pointer, so every layer takes
+ * one while it looks: a cover with pointer-events: none still hides. */
+function coverAt(node: Element, x: number, y: number): Element | null {
+  const every = document.createElement("style");
+  every.textContent = "*, *::before, *::after { pointer-events: auto !important; }";
+  document.head.append(every);
+  let stack: Element[];
+  try { stack = document.elementsFromPoint(x, y); } finally { every.remove(); }
+  for (const hit of stack) {
+    if (hit === node || node.contains(hit)) return null;
+    if (paints(hit)) return hit;
+  }
+  return document.documentElement;
+}
+
 /** Whether a person sees all of a node: no clipping ancestor or window edge cuts
- * it, and what is drawn at its centre is the node itself, not a layer over it. */
+ * it on either axis, it is drawn, and what paints at its leading edge is the
+ * node itself, not a layer over it. */
 function wholeAndOnTop(node: Element): boolean {
   const box = node.getBoundingClientRect(), shown = clipped(node);
-  if (!shown || box.height < 2) return false;
+  if (!shown || box.height < 2 || drawn(node) < .1) return false;
   if (shown.top > box.top + tolerance || shown.bottom < box.bottom - tolerance) return false;
-  const hit = document.elementFromPoint(shown.left + Math.min(shown.width / 2, 24), shown.top + shown.height / 2);
-  return hit !== null && (hit === node || node.contains(hit));
+  if (shown.left > box.left + tolerance || shown.right < box.right - tolerance) return false;
+  return coverAt(node, shown.left + Math.min(shown.width / 2, 24), shown.top + shown.height / 2) === null;
 }
+
+/** Every open menu's list: anchored, or opened as a view of the window. */
+export const menuLists = '.menu-popover [role="menu"], .ui-view [role="menu"], .ui-view [role="listbox"]';
 
 /** [C9 rows] Every open anchored menu shows at least its least of whole rows
  * (ui/region's `LEAST_ROWS`, or every row it has) that a person can see:
@@ -635,19 +690,20 @@ function wholeAndOnTop(node: Element): boolean {
  * whole show, and at least one. */
 export function menuRows(root: ParentNode = document): string[] {
   const failures: string[] = [];
-  for (const list of root.querySelectorAll<HTMLElement>('.menu-popover [role="menu"], .ui-view [role="listbox"]')) {
-    const view = list.matches('[role="listbox"]');
+  for (const list of root.querySelectorAll<HTMLElement>(menuLists)) {
+    const view = list.closest(".ui-view") !== null;
     const surface = list.closest<HTMLElement>(".menu-popover, .ui-view")!;
     const name = list.getAttribute("aria-label") ?? label(list);
     const filter = surface.querySelector<HTMLElement>("input");
     if (filter && !wholeAndOnTop(filter)) failures.push(`[C9 rows] menu "${name}": its filter is not visible`);
-    const rows = [...list.querySelectorAll(view ? '[role="option"]' : '[role^="menuitem"]')];
+    const rows = [...list.querySelectorAll('[role="option"], [role^="menuitem"]')];
     const room = view ? clipped(list) : null;
     const held = view ? rows.filter((row) => { const box = row.getBoundingClientRect(); return room !== null && box.top >= room.top - tolerance && box.bottom <= room.bottom + tolerance; }).length : rows.length;
     const needed = view ? Math.max(Math.min(1, rows.length), held) : Math.min(LEAST_ROWS, rows.length);
     const shown = rows.filter(wholeAndOnTop).length;
     if (shown < needed) failures.push(`[C9 rows] ${view ? "view" : "menu"} "${name}": ${shown} of ${needed} rows visible and whole in a ${innerWidth} × ${innerHeight} window`);
-    if (!rows.length && !wholeAndOnTop(list)) failures.push(`[C9 rows] menu "${name}": its empty state is not visible`);
+    // With no rows, what the list draws instead (a palette's "No matches"), or the list.
+    if (!rows.length && !wholeAndOnTop(list.firstElementChild ?? list)) failures.push(`[C9 rows] menu "${name}": its empty state is not visible`);
   }
   return failures;
 }
@@ -664,5 +720,12 @@ export function focusInView(scroller: Element | null): string[] {
   const box = own.width * own.height >= 16 ? own : (focused.closest("label, .ui-row") ?? focused).getBoundingClientRect();
   const seen = visibleBox(scroller);
   const across = Math.min(box.right, seen.right) - Math.max(box.left, seen.left), down = Math.min(box.bottom, seen.bottom) - Math.max(box.top, seen.top);
-  return across > 1 && down > 1 ? [] : [`[C9 reveal] ${label(focused)} spans ${box.top.toFixed(0)}–${box.bottom.toFixed(0)}px, outside what shows of ${label(scroller)} (${seen.top.toFixed(0)}–${seen.bottom.toFixed(0)}px)`];
+  if (across <= 1 || down <= 1) return [`[C9 reveal] ${label(focused)} spans ${box.top.toFixed(0)}–${box.bottom.toFixed(0)}px, outside what shows of ${label(scroller)} (${seen.top.toFixed(0)}–${seen.bottom.toFixed(0)}px)`];
+  // In the box, it must also be drawn and not under a layer, whatever that layer's pointer-events.
+  // A labelled control is drawn with its label (a segment over its native radio, a switch's thumb over its box).
+  const drawnAs = focused.closest("label") ?? (box === own ? focused : focused.closest(".ui-row") ?? focused);
+  const x = (Math.max(box.left, seen.left) + Math.min(box.right, seen.right)) / 2, y = (Math.max(box.top, seen.top) + Math.min(box.bottom, seen.bottom)) / 2;
+  if (drawn(drawnAs) < .1) return [`[C9 reveal] ${label(focused)} is in view but not drawn (opacity ${drawn(drawnAs).toFixed(2)})`];
+  const cover = coverAt(drawnAs, x, y);
+  return cover ? [`[C9 reveal] ${label(focused)} is in view but covered by ${label(cover)}`] : [];
 }

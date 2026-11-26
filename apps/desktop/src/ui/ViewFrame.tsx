@@ -8,6 +8,32 @@ import { composingKey, LayerParent, type LayerHandle } from "./layers";
 import { LayerScope } from "./Layer";
 import "./ViewFrame.css";
 
+// Whether a pointer is down: read when a view opens, which may be in the
+// press's own pointerdown or in a render that event caused.
+let pressing = false;
+if (typeof document !== "undefined") {
+  document.addEventListener("pointerdown", () => { pressing = true; }, true);
+  for (const type of ["pointerup", "pointercancel"]) document.addEventListener(type, () => { pressing = false; }, true);
+}
+
+/** A view that opens during a press keeps the keyboard it takes: a menu whose
+ * trigger is pressed can open as a view on pointerdown (decision 0062), and that
+ * press's own mousedown, still to come, would focus where it began, under the
+ * view (or nothing, once the view hides it). The rest of that press moves no
+ * focus. Call it where the view takes the keyboard, as it opens. */
+export function keepKeyboardThroughPress() {
+  if (!pressing) return;
+  const still = (event: MouseEvent) => { event.preventDefault(); };
+  const end = () => {
+    document.removeEventListener("mousedown", still, true);
+    document.removeEventListener("pointerup", end, true);
+    document.removeEventListener("pointercancel", end, true);
+  };
+  document.addEventListener("mousedown", still, true);
+  document.addEventListener("pointerup", end, true);
+  document.addEventListener("pointercancel", end, true);
+}
+
 /** A view of the picker window: the picker's content swaps out for the view, edge to edge, in the picker's own
  * header and footer geometry. The back chevron sits where the bird does, then the
  * search field or the view's name; the body; and a footer whose status

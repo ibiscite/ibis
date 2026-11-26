@@ -158,7 +158,7 @@ test("the side decision opens where the least fits, keeps to the region first, a
 
 /** A ToolbarMenu of `count` rows, 28 px each, in a region the size of a
  * `height`-tall window, its trigger at `top`; the return field sits elsewhere. */
-function fitted(top: () => number, height: () => number, count = 29) {
+function fitted(top: () => number, height: () => number, count = 29, selected = "term-0") {
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   Element.prototype.scrollIntoView = vi.fn();
   vi.spyOn(document.documentElement, "clientHeight", "get").mockImplementation(() => height());
@@ -177,7 +177,7 @@ function fitted(top: () => number, height: () => number, count = 29) {
   const onAction = vi.fn();
   const items = Array.from({ length: count }, (_, index) => ({ id: `term-${index}`, label: `Term ${index}` }));
   render(<Region element={region} views><input aria-label="Page" ref={field} defaultValue="417" />
-    <ToolbarMenu label="Locator type" value="Page" filterLabel="Filter types" sections={[{ id: "terms", items }]} selectedKey="term-0" placement="bottom start" returnFocusRef={field} onAction={onAction} /></Region>);
+    <ToolbarMenu label="Locator type" value="Page" filterLabel="Filter types" sections={[{ id: "terms", items }]} selectedKey={selected} placement="bottom start" returnFocusRef={field} onAction={onAction} /></Region>);
   return { field, onAction, region, trigger: screen.getByRole("button", { name: "Locator type Page" }) };
 }
 
@@ -227,6 +227,89 @@ test("with room for its least on neither side a menu opens as a view of the wind
   expect(document.activeElement).toBe(field.current);
   expect(field.current!.value).toBe("417");
   expect(onAction).not.toHaveBeenCalled();
+});
+
+// Found in review: a window shrinking under an open, filtered menu turned it
+// into a view that had forgotten the filter (20 matches became 29).
+test("a menu that becomes a view keeps what was typed, its matches and its highlighted row", async () => {
+  let height = 480;
+  const { trigger } = fitted(() => 60, () => height);
+  fireEvent.click(trigger);
+  await screen.findByRole("menu");
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "2" } });
+  await waitFor(() => expect(screen.getAllByRole("menuitemradio")).toHaveLength(11));
+  fireEvent.keyDown(screen.getByRole("searchbox"), { key: "ArrowDown" });
+  fireEvent.keyDown(screen.getByRole("searchbox"), { key: "ArrowDown" });
+  const highlighted = await waitFor(() => { const row = document.querySelector<HTMLElement>("[data-focused][data-item]"); expect(row).toBeTruthy(); return row!.dataset.item; });
+  height = 150;
+  await act(async () => { window.dispatchEvent(new Event("resize")); await new Promise(requestAnimationFrame); });
+  const view = await screen.findByRole("dialog", { name: "Locator type" });
+  const field = view.querySelector("input")!;
+  expect(field.value).toBe("2");
+  expect(screen.getAllByRole("option")).toHaveLength(11);
+  expect(document.getElementById(field.getAttribute("aria-activedescendant")!)?.id).toContain(highlighted);
+});
+
+// Found in review: a pointer that opens a cramped menu opens a view on
+// pointerdown; that press's own mousedown then took the keyboard to the hidden
+// trigger, leaving nothing focused, and the current row lay below the list.
+test("a view opened by a press keeps the keyboard through that press and shows the current row", async () => {
+  const { trigger } = fitted(() => 60, () => 150, 29, "term-20");
+  const revealed = vi.mocked(Element.prototype.scrollIntoView);
+  fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+  const view = await screen.findByRole("dialog", { name: "Locator type" });
+  const field = view.querySelector("input")!;
+  // The press goes on: its mousedown moves no focus.
+  expect(fireEvent.mouseDown(trigger, { button: 0 })).toBe(false);
+  fireEvent.pointerUp(trigger, { button: 0, pointerType: "mouse" });
+  expect(document.activeElement).toBe(field);
+  const current = document.getElementById(field.getAttribute("aria-activedescendant")!)!;
+  expect(current.textContent).toContain("Term 20");
+  expect(revealed.mock.contexts).toContain(current);
+  // A later press is the person's own.
+  expect(fireEvent.mouseDown(document.body, { button: 0 })).toBe(true);
+});
+
+// Found in review: the footer's Library menu at 480 × 360 and 200 % text showed
+// one row of four; a Menu, like a ToolbarMenu, opens as a view when cramped.
+test("a Menu with room for its least on neither side opens as a view of the window, and Esc returns to its button", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  Element.prototype.scrollIntoView = vi.fn();
+  vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(150);
+  vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(480);
+  const region = document.createElement("div");
+  document.body.append(region);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    if (this === region) return box(0, 150, 0, 480);
+    if (this.matches('button[aria-label="Library"]')) return box(60, 24, 20, 100);
+    const rows = [...this.closest('[role="menu"]')?.querySelectorAll('[role^="menuitem"]') ?? []];
+    if (rows.includes(this)) return box(rows.indexOf(this) * 56, 56);
+    return new DOMRect();
+  });
+  function Library() {
+    const [open, setOpen] = useState(false);
+    return <Region element={region} views><Menu label="Library" trigger="Library" isOpen={open} onOpenChange={setOpen}>
+      <MenuSection id="actions" label="Library">
+        {["Choose", "Reload", "Find", "Open"].map((name) => <MenuItem key={name} id={name} label={name} onAction={() => {}} />)}
+      </MenuSection>
+    </Menu></Region>;
+  }
+  render(<Library />);
+  const trigger = screen.getByRole("button", { name: "Library" });
+  fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+  // The popover is a dialog too, for the moment before it finds no room.
+  const view = await waitFor(() => { const found = document.querySelector<HTMLElement>(".ui-view"); expect(found).toBeTruthy(); return found!; });
+  expect(view.getAttribute("role")).toBe("dialog");
+  expect(fireEvent.mouseDown(trigger, { button: 0 })).toBe(false);
+  fireEvent.pointerUp(trigger, { button: 0, pointerType: "mouse" });
+  const menu = screen.getByRole("menu", { name: "Library" });
+  expect(view.contains(menu)).toBe(true);
+  expect(document.querySelector(".menu-popover")).toBeNull();
+  expect(screen.getAllByRole("menuitem")).toHaveLength(4);
+  expect(view.contains(document.activeElement)).toBe(true);
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(document.activeElement).toBe(trigger);
 });
 
 test("a menu with no matches keeps its filter and empty state as its least", () => {

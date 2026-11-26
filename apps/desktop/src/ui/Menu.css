@@ -2,7 +2,7 @@
    the native menu's metrics on the token scales: a --r-large frame, a
    --space-1 pad and --r-control rows, so the corners are concentric (12 - 4 = 8).
    The surface is the shared overlay (Overlay.css). */
-.menu-popover {
+.menu-popover, .menu-view {
   /* Labels start after the item padding, one icon/check column and the gap. */
   --menu-gutter: calc(var(--icon) + var(--space-2)); --menu-label-start: calc(var(--space-2) + var(--menu-gutter));
 }
@@ -15,13 +15,17 @@
   font: var(--type-body-size) / var(--type-body-line) var(--font);
 }
 .menu-frame { display: contents; }
+/* A menu opened as a view of the window (decision 0062): the same list, as tall
+   as the view's body, scrolling inside. */
+.menu-view { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: var(--inset); overflow-wrap: anywhere; }
+.menu-view [role="menu"] { flex: 1; }
 /* The menu and its rows never show a focus ring: the highlight is a fill. */
 /* The side padding is on the scrolling list, so a classic scroll bar sits
    outside it and rows keep equal insets on both sides (#1031). */
-.menu-popover [role="menu"] { position: static; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: var(--space-1); outline: none; }
+.menu-popover [role="menu"], .menu-view [role="menu"] { position: static; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: var(--space-1); outline: none; }
 .menu-popover > :not([role="menu"]) { margin-inline: var(--space-1); }
 /* Outranks the global ring, which the list would clip into lines at its top and bottom. */
-.menu-popover [role="menu"]:focus-visible { outline: none; box-shadow: none; }
+.menu-popover [role="menu"]:focus-visible, .menu-view [role="menu"]:focus-visible { outline: none; box-shadow: none; }
 .menu-section { display: flex; flex: none; flex-direction: column; }
 /* A long list scrolls inside the menu after eight rows. */
 .menu-section-list { max-height: calc(8 * var(--control-small-h)); overflow-y: auto; }

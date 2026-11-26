@@ -1,11 +1,11 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject, type ComponentPropsWithRef } from "react";
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
-import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, SearchField, Text, useFilter } from "react-aria-components";
+import { Autocomplete, Header, Input, Menu, MenuItem, MenuSection, MenuTrigger, SearchField, Text } from "react-aria-components";
 import { PopupButton } from "./PopupButton";
 import { MenuCheck, menuLeast, useMenuPlacement, MenuRow, useWholeRows } from "./Menu";
-import { Floating } from "./Layer";
-import { Palette } from "./Palette";
+import { Floating, useViewFallback } from "./Layer";
+import { Palette, matchesQuery } from "./Palette";
 import { say } from "../i18n";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
@@ -40,21 +40,23 @@ export function ToolbarMenu({ buttonRef, disabled, label, value, heading, note, 
   const open = isOpen ?? internalOpen;
   const internalButton = useRef<HTMLButtonElement>(null);
   const button = buttonRef ?? internalButton;
-  // With room for its least on neither side, it opens as a view of the window,
-  // the way the palettes do (decision 0062), until it closes.
-  const [asView, setAsView] = useState(false);
-  // The popover leaving takes the keyboard from its filter; React Aria reads
-  // that as a dismissal, which the view, already open, is not.
-  const toView = useRef(false);
-  const cramped = () => { toView.current = true; setAsView(true); };
-  useLayoutEffect(() => { if (!open) { toView.current = false; setAsView(false); } }, [open]);
+  // With room for its least on neither side, it opens as a view of the window
+  // (decision 0062). The two are one menu: what is typed and the row
+  // highlighted carry over, and both find rows by the same words.
+  const fallback = useViewFallback(open);
+  const [query, setQuery] = useState("");
+  const highlighted = useRef<string | undefined>(undefined);
+  useLayoutEffect(() => { if (!open) setQuery(""); }, [open]);
   const { list, listRef, opening } = useMenuLifecycle(open);
+  const cramped = () => {
+    highlighted.current = list.current?.querySelector<HTMLElement>("[data-focused][data-item]")?.dataset.item;
+    fallback.cramped();
+  };
   const wholeRows = useWholeRows(list);
   const noteId = useId();
   const composing = useRef(false);
   const renderedPlacement = useMenuPlacement(open, button, placement);
   useLayoutEffect(() => { if (open) setSkipExit(false); }, [open]);
-  const { contains } = useFilter({ sensitivity: "base" });
   const filtered = sections.reduce((sum, section) => sum + section.items.length, 0) > 7;
   // A menu of names alone is narrower than one that also shows samples or notes.
   const named = sections.every((section) => section.items.every((item) => !item.sample && !item.note));
@@ -64,7 +66,6 @@ export function ToolbarMenu({ buttonRef, disabled, label, value, heading, note, 
       onOpenChange?.(true);
       return;
     }
-    toView.current = false;
     // Closing hands typing back now. An exiting modal refuses focus and traps
     // the next key, so nothing waits for its exit.
     const previous = document.activeElement;
@@ -85,7 +86,7 @@ export function ToolbarMenu({ buttonRef, disabled, label, value, heading, note, 
     {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
       {section.label && <Header className="ui-list-heading menu-heading">{section.label}</Header>}
       {section.note && <Header className="toolbar-menu-note">{section.note}</Header>}
-      {section.items.map((item) => <MenuItem className="menu-item" data-note={item.note ? "" : undefined} id={item.id} key={item.id} textValue={item.keywords ? `${item.label} ${item.keywords}` : item.label} shouldCloseOnSelect={false}
+      {section.items.map((item) => <MenuItem className="menu-item" data-note={item.note ? "" : undefined} id={item.id} key={item.id} textValue={[item.label, item.note ?? item.sample, item.keywords].filter(Boolean).join(" ")} shouldCloseOnSelect={false}
         render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={disabled || item.disabled || undefined}
           {...item.command ? { role: "menuitem", "aria-checked": undefined } : {}} />}>
         {({ isSelected }) => <><MenuCheck checked={!item.command && isSelected} />
@@ -98,10 +99,10 @@ export function ToolbarMenu({ buttonRef, disabled, label, value, heading, note, 
       if (isComposing(event, composing.current)) event.stopPropagation();
       else if (open && event.key === "Tab") { event.preventDefault(); event.stopPropagation(); changeOpen(false); }
     }}>
-    <MenuTrigger isOpen={open} onOpenChange={(next) => { if (next || !toView.current) changeOpen(next); }}>
+    <MenuTrigger isOpen={open} onOpenChange={(next) => { if (fallback.heeds(next)) changeOpen(next); }}>
       <PopupButton ref={button} isDisabled={disabled} className={`toolbar-menu-button ${drawn?.className ?? ""}`} size={drawn ? "small" : undefined} variant={drawn?.quiet ? "quiet" : undefined} title={drawn?.title} aria-label={drawn?.label ?? `${label} ${value}`}>{drawn?.content ?? value}</PopupButton>
-      {asView ? <Palette id={`${noteId}-view`} title={label} placeholder={filterLabel} empty={say("palette-no-matches")} actionLabel={() => say("palette-choose")}
-        subtitle={heading} description={note} initial={selectedKey} invoker={returnFocusRef ?? button}
+      {fallback.asView ? <Palette id={`${noteId}-view`} title={label} placeholder={filterLabel} empty={say("palette-no-matches")} actionLabel={() => say("palette-choose")}
+        subtitle={heading} description={note} initial={highlighted.current ?? selectedKey} invoker={returnFocusRef ?? button} query={query} onQueryChange={setQuery}
         sections={sections.map((section) => ({ id: section.id, label: section.label, items: section.items.map((item) => ({
           id: item.id, label: item.label, detail: item.note ?? item.sample, keywords: item.keywords, disabled: disabled || item.disabled, checked: !item.command && item.id === selectedKey,
         })) }))}
@@ -112,7 +113,7 @@ export function ToolbarMenu({ buttonRef, disabled, label, value, heading, note, 
         style={placement === "bottom start" ? { minWidth: "min(var(--trigger-width), calc(100vw - 2 * var(--inset)))" } : undefined} anchor={button} least={menuLeast} onCramped={cramped} placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit}>
         {heading && <p className="ui-list-heading menu-heading toolbar-menu-heading" aria-hidden="true">{heading}</p>}
         {note && <p id={noteId} className={heading ? "visually-hidden" : "toolbar-menu-note"}>{note}</p>}
-        {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} aria-describedby={note ? noteId : undefined} /></SearchField>{menu}</Autocomplete> : menu}
+        {filtered ? <Autocomplete key={opening} filter={matchesQuery} inputValue={query} onInputChange={setQuery}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} aria-describedby={note ? noteId : undefined} /></SearchField>{menu}</Autocomplete> : menu}
       </Floating>}
     </MenuTrigger>
   </span>;

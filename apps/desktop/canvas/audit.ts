@@ -5,9 +5,9 @@ import { LANGUAGES, say, setInterfaceLanguage, type InterfaceLanguage, type Mess
 import { libraryOperations, OPERATION_FAILURES, type Operation } from "../src/features/picker/Notices";
 import { HOLD_MS } from "../src/ui/HeldKeys";
 import { currentPlatform } from "../src/platform";
-import { anchorBoxes, anchorMoves, denseList, focusInView, frameStates, rowsInView, geometry, heldKeys, layerRoles, menuRows, occlusion, oneSurface, overflow, paintOnly, settle, slots } from "./geometry";
+import { anchorBoxes, anchorMoves, denseList, focusInView, frameStates, rowsInView, geometry, heldKeys, layerRoles, menuLists, menuRows, occlusion, oneSurface, overflow, paintOnly, settle, slots } from "./geometry";
 
-type Mount = (host: HTMLElement, options: { scenario: string; theme: string }) => () => void;
+type Mount = (host: HTMLElement, options: { scenario: string; theme: string; textZoom?: number }) => () => void;
 
 /** Picker screens held to the single-picture layout rules (geometry()). */
 export const geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "show-as-menu-larger", "locator-menu", "locator-menu-larger", "reader", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "comfortable", "long-titles", "stale", "more", "format-menu", "library-menu", "text-80", "text-120",
@@ -20,6 +20,10 @@ export const layerScreens = ["more", "format-menu", "library-menu", "show-as-men
 /** Scenarios that open a menu from the citation drawer: each shows its least
  * of rows, at the default window and in the short one [C9 rows]. */
 export const drawerMenus = ["show-as-menu", "show-as-menu-larger", "locator-menu", "locator-menu-larger", "locator-menu-200"];
+
+/** Menus checked again at the narrowest window with 200 % text, where neither
+ * side has room and they open as views [C9 rows]: found in review (480 × 360). */
+export const zoomedMenus = ["library-menu"];
 
 /** A Settings search jump, as a person makes it, with content arriving above
  * the row long after (the case found in review: 1.7 s, a block twice the
@@ -45,6 +49,30 @@ async function searchJump(query: string, late: boolean): Promise<string[]> {
   }
   return focusInView(page);
 }
+
+/** The guards fail what people cannot see, in the engine itself (jsdom cannot
+ * paint): each fault is planted on a passing screen, the guard must report it,
+ * and the fault is taken away again. Returns a failure for each one missed. */
+function planted(faults: readonly { name: string; plant: () => () => void }[], guard: () => string[]): string[] {
+  const missed: string[] = [];
+  for (const { name, plant } of faults) {
+    const undo = plant();
+    try { if (!guard().length) missed.push(`[gate] the planted fault "${name}" passed the guard`); } finally { undo(); }
+  }
+  return missed;
+}
+/** A layer over the whole window that paints but takes no pointer. */
+const cover = () => {
+  const layer = document.createElement("div");
+  layer.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:white;pointer-events:none";
+  document.body.append(layer);
+  return () => layer.remove();
+};
+const restyle = (node: HTMLElement | null, property: string, value: string) => () => {
+  const before = node?.style.getPropertyValue(property) ?? "";
+  node?.style.setProperty(property, value);
+  return () => { node?.style.setProperty(property, before); };
+};
 
 /** Screens checked again while ⌘ (Ctrl elsewhere) is held, as a person holds it:
  * every held key and the row numbers drawn over a list with a citation. */
@@ -95,13 +123,13 @@ export const slotMessages: Record<keyof typeof slots, { id: MessageId; args?: Re
 /** Every guard failure in the scenarios this pass covers, as "scenario: failure".
  * frame: every scenario at the default window, plus the anchors across states;
  * narrow: words in their slots and nothing covered, at the narrowest window;
- * narrow: also the drawer's menus, each showing its least of rows (at 200 % text, as a view);
+ * narrow: also the drawer's menus, each showing its least of rows, and the zoomed menus at 200 % text, as views;
  * short: More, and the drawer's menus, in a window so short their lists scroll [C9];
  * reveal: a Settings search jump at Settings' own window, scrolling, with late content;
  * layers: the floating surfaces only, in each system and Ibis appearance. */
 export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly string[], { pass = "frame", theme = "light" }: { pass?: "frame" | "narrow" | "short" | "reveal" | "layers" | "inventory"; theme?: string } = {}): Promise<string[]> {
   const failures: string[] = [];
-  const show = async (scenario: string) => { mount(host, { scenario, theme }); await settle(); };
+  const show = async (scenario: string, textZoom?: number) => { mount(host, { scenario, theme, textZoom }); await settle(); };
   const picker = scenarios.filter((scenario) => !["notice", "states", "tokens", "parts"].includes(scenario));
 
   // Which notice each picker scenario shows, if any: for reviewing the canvas.
@@ -123,7 +151,7 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
     // case is held at the narrow window, as review found it (480 × 360).
     for (const scenario of drawerMenus.filter((name) => scenarios.includes(name) && name !== "locator-menu-200")) {
       await show(scenario);
-      const opened = document.querySelector('.menu-popover [role="menu"], .ui-view [role="listbox"]') ? [] : ["[C9 rows] no menu opened"];
+      const opened = document.querySelector(menuLists) ? [] : ["[C9 rows] no menu opened"];
       failures.push(...[...opened, ...menuRows(), ...occlusion(), ...oneSurface(), ...layerRoles()].map((failure) => `${scenario} (short): ${failure}`));
     }
     return failures;
@@ -138,6 +166,11 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
       if (!row?.contains(document.activeElement)) jump.push(`[C9 reveal] the jump did not reach #${id}`);
       failures.push(...jump.map((failure) => `settings search "${query}"${late ? " (content above it 1.7 s later)" : ""}: ${failure}`));
     }
+    const page = document.querySelector<HTMLElement>(".settings-page");
+    failures.push(...planted([
+      { name: "an opaque cover that takes no pointer", plant: cover },
+      { name: "the focused row at opacity 0", plant: restyle(document.activeElement?.closest<HTMLElement>(".ui-row") ?? null, "opacity", "0") },
+    ], () => focusInView(page)).map((failure) => `settings search: ${failure}`));
     return failures;
   }
 
@@ -155,8 +188,25 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
   if (pass === "narrow") {
     for (const scenario of picker) {
       await show(scenario);
-      const menus = drawerMenus.includes(scenario) ? [...document.querySelector('.menu-popover [role="menu"], .ui-view [role="listbox"]') ? [] : ["[C9 rows] no menu opened"], ...menuRows(), ...oneSurface()] : [];
+      const menus = drawerMenus.includes(scenario) ? [...document.querySelector(menuLists) ? [] : ["[C9 rows] no menu opened"], ...menuRows(), ...oneSurface()] : [];
       failures.push(...[...occlusion(), ...menus].map((failure) => `${scenario} (narrow): ${failure}`));
+    }
+    for (const scenario of zoomedMenus.filter((name) => scenarios.includes(name))) {
+      await show(scenario, 2);
+      const opened = document.querySelector(menuLists) ? [] : ["[C9 rows] no menu opened"];
+      failures.push(...[...opened, ...menuRows(), ...occlusion(), ...oneSurface()].map((failure) => `${scenario} (narrow, 200 % text): ${failure}`));
+    }
+    if (scenarios.includes("locator-menu-200")) {
+      await show("locator-menu-200");
+      const field = document.querySelector<HTMLInputElement>(".ui-view-field");
+      if (field) {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, "zzzzzzz");
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+        await settle();
+      }
+      failures.push(...[...field ? [] : ["[gate] locator-menu-200 opened no view"], ...menuRows(), ...planted([
+        { name: "the view's empty state hidden", plant: restyle(document.querySelector(".ui-palette-empty"), "visibility", "hidden") },
+      ], menuRows)].map((failure) => `locator-menu-200 (narrow, no matches): ${failure}`));
     }
     for (const [slot, messages] of Object.entries(slotMessages) as [keyof typeof slots, typeof slotMessages[keyof typeof slots]][]) {
       await show(slots[slot].scenario);
@@ -196,7 +246,7 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
       ...oneSurface(),
       ...menuRows(),
     ];
-    if (drawerMenus.includes(scenario) && !document.querySelector('.menu-popover [role="menu"], .ui-view [role="listbox"]')) found.push("[C9 rows] no menu opened");
+    if (drawerMenus.includes(scenario) && !document.querySelector(menuLists)) found.push("[C9 rows] no menu opened");
     const patterns = declared();
     if (scenario === denseList.scenario && pass === "frame" && rowsInView() < denseList.rows) found.push(`[C4 dense] ${rowsInView()} rows whole in view, fewer than ${denseList.rows}`);
     for (const [slot, { selector }] of Object.entries(slots).filter(([, { catalogue }]) => catalogue)) for (const words of document.querySelectorAll(selector))
@@ -210,5 +260,15 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
     if ((frameStates as readonly string[]).includes(scenario)) states.set(scenario, anchorBoxes());
   }
   if (idle.boxes) for (const [scenario, boxes] of states) failures.push(...anchorMoves(idle.boxes, boxes, scenario));
+  if (scenarios.includes("locator-menu")) {
+    await show("locator-menu");
+    const menu = document.querySelector<HTMLElement>(".menu-popover"), box = menu?.getBoundingClientRect();
+    failures.push(...planted([
+      { name: "an opaque cover that takes no pointer", plant: cover },
+      // Half of it past the window's side: each row's start still shows and takes the point.
+      { name: "the menu cut by the window's side", plant: restyle(menu, "translate", `${Math.ceil(innerWidth - (box?.left ?? 0) - (box?.width ?? 0) / 2)}px 0`) },
+      { name: "the menu at opacity 0", plant: restyle(menu, "opacity", "0") },
+    ], menuRows).map((failure) => `locator-menu: ${failure}`));
+  }
   return failures;
 }
