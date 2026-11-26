@@ -49,6 +49,7 @@ pub fn cite(
     origin: impl Fn(&LibraryId) -> Option<Library>,
 ) -> Result<CitationResult, CitationError> {
     let checked = citation::check(snapshot, None, request, |item| ItemSupport {
+        details: false,
         locator: item
             .locator
             .as_ref()
@@ -269,6 +270,8 @@ mod tests {
                 json!({"type":"legal_case","title":"Invented v. Example"}),
             ),
             record(PERSONAL, "lowercase", json!({"type":"book","title":"Invented"})),
+            record(PERSONAL, "EMPTY234", json!({"type":"book"})),
+            record(b"bibtex-file", "FILE2345", json!({"type":"book"})),
             record(
                 PERSONAL,
                 "DASHED23",
@@ -323,6 +326,18 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn metadata_free_markers_require_zotero_origin_instead_of_details() {
+        assert_eq!(
+            refusal(vec![item(b"bibtex-file", "FILE2345", json!({}))], "normal"),
+            [CitationError::NotFromZotero]
+        );
+        assert_eq!(
+            text(vec![item(PERSONAL, "EMPTY234", json!({}))]),
+            "{ | | | | zu:0:EMPTY234 }"
+        );
     }
 
     #[test]

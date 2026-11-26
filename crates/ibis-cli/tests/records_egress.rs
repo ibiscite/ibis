@@ -33,7 +33,9 @@ fn paths_split_across_markup_are_checked_as_one_decoded_value() {
         for format in ["csl-json", "bibtex", "apa"] {
             let result = cite(
                 json!([{"id":"r1", "citation-key":"good", "type":"book",
-                "title":title, "publisher":"Invented Press"}]),
+                "title":title, "publisher":"Invented Press",
+                // Something to cite it by once the private title is gone.
+                "editor":[{"family":"Invented Editor"}]}]),
                 format,
             );
             assert!(!result.to_string().contains("secret"), "{format}: {result}");

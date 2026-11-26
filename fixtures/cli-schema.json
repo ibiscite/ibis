@@ -553,6 +553,11 @@
                 "const": "adapter",
                 "description": "A library a source adapter reads from a reference manager.",
                 "type": "string"
+              },
+              {
+                "const": "folder",
+                "description": "A folder of PDFs, whose records Ibis keeps in the folder's\n`ibis-references.bib` (decision 0061).",
+                "type": "string"
               }
             ]
           },
@@ -1315,6 +1320,11 @@
               {
                 "const": "citation-keys-unavailable",
                 "description": "Better BibTeX keeps keys this read could not get, so items without a\nkey of their own have none rather than a guessed one.",
+                "type": "string"
+              },
+              {
+                "const": "pdfs-not-kept",
+                "description": "A folder library's folder holds PDFs no entry names yet (decision 0061).",
                 "type": "string"
               }
             ]
@@ -4817,6 +4827,7 @@
                   "missing-item",
                   "changed-item",
                   "missing-key",
+                  "missing-details",
                   "missing-doi",
                   "ambiguous-key",
                   "conflicting-key",
@@ -6946,6 +6957,7 @@
                   "missing-item",
                   "changed-item",
                   "missing-key",
+                  "missing-details",
                   "missing-doi",
                   "ambiguous-key",
                   "conflicting-key",
@@ -15592,6 +15604,7 @@
                   "missing-item",
                   "changed-item",
                   "missing-key",
+                  "missing-details",
                   "missing-doi",
                   "ambiguous-key",
                   "conflicting-key",
@@ -16939,6 +16952,11 @@
               {
                 "const": "adapter",
                 "description": "A library a source adapter reads from a reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "folder",
+                "description": "A folder of PDFs, whose records Ibis keeps in the folder's\n`ibis-references.bib` (decision 0061).",
                 "type": "string"
               }
             ]
@@ -18932,6 +18950,11 @@
               {
                 "const": "citation-keys-unavailable",
                 "description": "Better BibTeX keeps keys this read could not get, so items without a\nkey of their own have none rather than a guessed one.",
+                "type": "string"
+              },
+              {
+                "const": "pdfs-not-kept",
+                "description": "A folder library's folder holds PDFs no entry names yet (decision 0061).",
                 "type": "string"
               }
             ]

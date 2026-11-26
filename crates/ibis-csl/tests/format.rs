@@ -86,6 +86,23 @@ fn document_bibliographies_validate_editor_lists_as_well_as_authors() {
 }
 
 #[test]
+fn a_document_citing_only_a_sparse_record_is_refused_for_missing_details() {
+    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let snapshot = library(&[json!({"type": "book", "publisher": "Invented Press"})]);
+    let request = selection(&snapshot, "apa", false);
+    let formatter = Formatter::new().unwrap();
+    let output = ibis_csl::ResolvedOutput::new("apa", None).unwrap();
+    assert_eq!(
+        formatter
+            .submit_document(&snapshot, &request, &output, &[vec![0]])
+            .unwrap()
+            .wait_document()
+            .unwrap(),
+        ibis_csl::DocumentAnswer::Refused(vec![(0, CitationError::MissingDetails)])
+    );
+}
+
+#[test]
 fn document_narrative_authors_allow_complete_bibliography_editor_lists() {
     let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let snapshot = library(&[json!({
@@ -1114,20 +1131,31 @@ fn sparse_members_never_become_copyable_cluster_placeholders_or_omissions() {
     let printable = library(std::slice::from_ref(&complete));
     let mut printable_request = selection(&printable, "modern-language-association", false);
     printable_request.keep_order = true;
-    for items in [[sparse.clone(), complete.clone()], [complete, sparse]] {
+    for (sparse_index, items) in [[sparse.clone(), complete.clone()], [complete, sparse]]
+        .into_iter()
+        .enumerate()
+    {
         let snapshot = library(&items);
         let mut request = selection(&snapshot, "modern-language-association", false);
         request.keep_order = true;
         let result = formatter.format(&snapshot, &request).unwrap();
         assert!(result.copy_content(2).is_none());
-        assert!(result.text.is_empty());
-        assert!(result.outcomes.iter().all(|outcome| matches!(
-            outcome,
+        assert_eq!(result.text, "(Taylor)");
+        // The sparse record is refused before CSL formatting (decision 0061).
+        // The complete record can be previewed, but the selection cannot be copied.
+        assert_eq!(result.outcomes.len(), 2);
+        assert_eq!(
+            result.outcomes[sparse_index],
             ItemOutcome::Refused {
-                error: CitationError::UnsupportedForm,
-                ..
+                item: sparse_index,
+                error: CitationError::MissingDetails,
             }
-        )));
+        );
+        assert_eq!(
+            result.outcomes[1 - sparse_index],
+            ItemOutcome::Rendered { item: 1 - sparse_index }
+        );
+        assert!(result.display.nodes.iter().all(|node| node.item != Some(sparse_index)));
         let recovered = formatter.format(&printable, &printable_request).unwrap();
         assert_eq!(recovered.text, "(Taylor)");
         assert!(recovered.copy_content(1).is_some());

@@ -389,6 +389,10 @@ impl Engine {
         self.pdf = Some(ibis_sources::pdf::PdfReader::new(program));
         self
     }
+    /// The PDF reader this engine was given, if any.
+    pub(crate) fn pdf_reader(&self) -> Option<&ibis_sources::pdf::PdfReader> {
+        self.pdf.as_ref()
+    }
     /// Read documents (manuscripts for `check` and `export`) with `program`,
     /// an `ibis` executable started as `ibis __document` for each file
     /// (decision 0060). The engine never parses a document itself.

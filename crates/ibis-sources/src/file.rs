@@ -375,8 +375,18 @@ fn parse_with_budget(
     let parsed_cut_short = parsed.cut_short;
     let mut objects: Vec<_> = parsed.records.into_iter().map(LibraryObject::Record).collect();
     let mut warnings = parsed.warnings;
+    let folder = crate::folder::is_folder_library(&source);
     if let Some(scope) = scope {
         let references = attachments::append(parsed.attachments, &mut objects, &mut warnings);
+        // A folder library says when its folder holds PDFs it has not kept.
+        if folder && let Some(dir) = source.parent() {
+            let kept = crate::folder::named(references.iter().map(|(_, location)| location.clone()));
+            let dir = dir.to_path_buf();
+            let listing = io::bounded(move || crate::folder::list(&dir, &|| false)).ok();
+            if listing.is_some_and(|listing| !crate::folder::unkept(&listing, &kept).is_empty()) {
+                warnings.push(crate::SourceWarning::at(crate::WarningCode::PdfsNotKept, None));
+            }
+        }
         scope.attachments(
             &mut objects,
             source.parent().ok_or(SourceError::Unavailable)?,
@@ -391,10 +401,15 @@ fn parse_with_budget(
     if let Some(previous) = previous {
         snapshot.reuse_unchanged(previous);
     }
+    let (kind, capabilities) = if folder {
+        (crate::LibraryKind::Folder, crate::SourceCapability::FOLDER)
+    } else {
+        (crate::LibraryKind::File, format.capabilities(asked))
+    };
     Ok(LoadedLibrary {
         library,
-        kind: crate::LibraryKind::File,
-        capabilities: format.capabilities(asked),
+        kind,
+        capabilities,
         snapshot,
         warnings,
         duplicate_keys: parsed.duplicate_keys,
@@ -411,7 +426,11 @@ fn parse_format(
     previous: Option<&Snapshot>,
 ) -> Result<(PathBuf, ibis_core::contract::LibraryId, Format, crate::ParsedLibrary), SourceError> {
     let source = std::path::absolute(path).map_err(|_| SourceError::Unavailable)?;
-    let library = crate::identity::library_id(crate::LibraryKind::File, &[source.as_os_str().as_encoded_bytes()]);
+    let library = if crate::folder::is_folder_library(&source) {
+        crate::folder::library_id(&source)
+    } else {
+        crate::identity::library_id(crate::LibraryKind::File, &[source.as_os_str().as_encoded_bytes()])
+    };
     let text = text.trim_start_matches('\u{feff}');
     let format = Format::of(&source, text)?;
     let parsed = match format {
@@ -512,6 +531,11 @@ pub(crate) fn attachment_path(
     } else {
         let mut path = plain_disk(base);
         for part in location.components() {
+            // A folder's entries read `./name.pdf`; `.` names nothing, and the
+            // Windows local-file checks refuse it as a component.
+            if part == std::path::Component::CurDir {
+                continue;
+            }
             // Windows resolves `..` by name before the file system sees it;
             // the local-file checks refuse ambiguous parent components.
             #[cfg(windows)]
@@ -543,7 +567,7 @@ pub(crate) fn attachment_path(
 }
 
 #[cfg(windows)]
-fn plain_disk(path: &Path) -> PathBuf {
+pub(crate) fn plain_disk(path: &Path) -> PathBuf {
     use std::path::{Component, Prefix};
     let mut parts = path.components();
     if let Some(Component::Prefix(prefix)) = parts.next()
@@ -559,7 +583,7 @@ fn plain_disk(path: &Path) -> PathBuf {
 }
 
 #[cfg(not(windows))]
-fn plain_disk(path: &Path) -> PathBuf {
+pub(crate) fn plain_disk(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
@@ -850,6 +874,22 @@ mod subprocess_watchdog;
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_folder_entry_resolves_without_a_dot_component() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir(directory.path().join("older")).unwrap();
+        std::fs::write(directory.path().join("older/tides.pdf"), b"%PDF").unwrap();
+        let path = attachment_path(directory.path(), Path::new("./older/tides.pdf"), false)
+            .unwrap()
+            .unwrap();
+        assert!(
+            !path.components().any(|part| part == std::path::Component::CurDir),
+            "{path:?}"
+        );
+        assert!(!path.to_string_lossy().contains("/./") && !path.to_string_lossy().contains("\\.\\"));
+        assert!(path.ends_with("older/tides.pdf"));
+    }
 
     #[test]
     fn attachment_files_stay_inside_the_library_folder_unless_allowed() {

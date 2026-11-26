@@ -107,6 +107,24 @@ and at most 64 MiB. Skipped records produce warnings with line numbers.
 | CSL-JSON (`.json`, `.csljson`) | Only `citation-key` | `id` identifies a record, not its citation key. |
 | RIS (`.ris`, `.txt`) | None | Formatted citations only. |
 | [CSV template](#csv-template) (`.csv`) | None | Formatted citations only. |
+| [A folder of PDFs](#a-folder-of-pdfs) | Keys Ibis gives each PDF | Its `ibis-references.bib`, once kept. |
+
+### A folder of PDFs
+
+With no reference manager, a folder of PDFs is a library
+([0061](decisions/0061-a-folder-of-pdfs-and-one-resolve.md)). Keep it once with
+`ibis sources keep --file FOLDER`: Ibis reads each PDF's own details (its
+title, authors, journal, date and DOI as the file states them, in a separate
+process) and appends one entry per PDF to `ibis-references.bib` in the folder,
+with a key and the PDF as its file. Then `--file FOLDER` opens that file like
+any `.bib`; Zotero, JabRef and Overleaf import it with its PDFs. Keeping again
+adds only new PDFs, never changes an entry and never touches a PDF, so your own
+edits to the file stay. Subfolders are read four levels deep; links and hidden
+files are left out. A PDF whose details say nothing is still listed and its
+text searchable, but it is not cited until its entry has a title, author or
+editor: any library's reference without one refuses with `missing-details`.
+A DOI printed on a first page is never taken as the PDF's own. The desktop app
+does not open folders yet.
 
 ### EndNote
 

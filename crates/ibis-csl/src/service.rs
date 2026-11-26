@@ -263,7 +263,10 @@ fn worker(shared: &Shared, limits: &Limits) {
         };
         let result = match control.error() {
             Some(error) => Err(error),
-            None if job.prepared.empty => Ok(crate::output::refused_formatted(&job.prepared)),
+            None if job.prepared.empty => Ok(crate::output::refused_formatted(
+                &job.prepared,
+                ibis_core::contract::CitationError::UnsupportedForm,
+            )),
             None => {
                 #[cfg(test)]
                 if let Some((entered, release)) = shared.format_gate.lock().ok().and_then(|mut gate| gate.take()) {
@@ -291,7 +294,7 @@ mod tests {
     fn prepared(count: usize, bibliography: bool) -> Prepared {
         let items:Vec<_>=(0..count).map(|index|json!({"id":format!("ibis-{index}"),"type":"book","title":format!("Synthetic {index}"),"author":[{"family":format!("Invented{index}"),"given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"})).collect();
         let cites: Vec<_> = (0..count).map(|index| json!({"id":format!("ibis-{index}")})).collect();
-        Prepared {json:json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(),xml:crate::catalog::resolve("apa").unwrap().xml.clone(),language:"en-US".into(),outcomes:(0..count).map(|item|ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![Notice::YearSuffixWithheld],warnings:vec![],empty:false,document:false}
+        Prepared {json:json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(),xml:crate::catalog::resolve("apa").unwrap().xml.clone(),language:"en-US".into(),outcomes:(0..count).map(|item|ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![Notice::YearSuffixWithheld],warnings:vec![],missing_details:false,empty:false,document:false}
     }
     fn hold_next_format(service: &Service) -> (mpsc::Receiver<()>, mpsc::Sender<()>) {
         let (entered, running) = mpsc::channel();

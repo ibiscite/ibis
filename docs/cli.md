@@ -83,7 +83,10 @@ A tool that mirrors a library compares `revision` and rereads only when it
 differs. RIS and CSV files declare records only: they have no citation keys,
 and neither do EndNote libraries. `ibis sources check` rereads the libraries
 named with it and checks what every source promises; see
-[source adapters](source-adapters.md#the-conformance-check).
+[source adapters](source-adapters.md#the-conformance-check). `ibis sources keep
+--file FOLDER` keeps a folder of PDFs as a library in its `ibis-references.bib`
+([compatibility](compatibility.md#a-folder-of-pdfs)); it is the only command
+that writes a library file without a proposal, and only that one file.
 
 Without explicit libraries, `search`, `show`, `cite`, `libraries` and `call`
 of the first three use the app's choice. Stable settings take precedence;
@@ -429,11 +432,11 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | --- | --- |
 | `ID` | The proposal id printed by ibis proposals list |
 
-**`ibis sources`**: Check that a library's source keeps Ibis's promises, built-in readers and source adapters alike
+**`ibis sources`**: Check that a library's source keeps Ibis's promises, or keep a folder's PDFs as references
 
 | Option | Does |
 | --- | --- |
-| `ACTION` | check: read the libraries named here again and check what every source promises |
+| `ACTION` | check: read the libraries named here again and check what every source promises; keep: read each new PDF in the folders named with --file and keep what it says in the folder's ibis-references.bib |
 | `--expect FILE` | CSL-JSON records the library should hold exactly, without their ids, in any order |
 | `--changed-from REVISION` | A revision an earlier check printed: check that the library changed since |
 

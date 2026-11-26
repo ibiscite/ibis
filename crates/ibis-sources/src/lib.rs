@@ -13,6 +13,7 @@ pub mod document;
 pub mod endnote;
 mod exported;
 mod file;
+pub mod folder;
 pub mod identity;
 pub mod pdf;
 pub mod project;
@@ -70,6 +71,8 @@ pub enum WarningCode {
     Field,
     WorkLimit,
     InvalidAttachment,
+    /// A folder library's folder holds PDFs no entry names yet (decision 0061).
+    PdfsNotKept,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -204,6 +207,9 @@ pub enum LibraryKind {
     Snapshot,
     /// A library a source adapter reads from a reference manager.
     Adapter,
+    /// A folder of PDFs, whose records Ibis keeps in the folder's
+    /// `ibis-references.bib` (decision 0061).
+    Folder,
 }
 
 /// What a library offers, declared by the reader that loaded it. Zotero's two
@@ -228,6 +234,14 @@ pub enum SourceCapability {
 impl SourceCapability {
     /// Records handed to the engine whole, with no source behind them.
     pub const SNAPSHOT: &'static [Self] = &[Self::BibliographicRecords];
+    /// A folder's kept `.bib`: BibTeX's, except proposals, since Ibis is that
+    /// file's only automatic writer.
+    pub const FOLDER: &'static [Self] = &[
+        Self::BibliographicRecords,
+        Self::NativeCitationKeys,
+        Self::AttachmentText,
+        Self::OriginalEntries,
+    ];
     const ZOTERO: &'static [Self] = &[
         Self::BibliographicRecords,
         Self::NativeCitationKeys,

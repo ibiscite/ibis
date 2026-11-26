@@ -7,12 +7,18 @@ use crate::syntax::{MAX_CITATION_BYTES, MAX_CITATION_ITEMS};
 pub struct ItemSupport {
     pub locator: bool,
     pub form: bool,
+    /// The output prints bibliographic data, so a record needs a public title,
+    /// author or editor (decision 0061). Key citations and record exports can name a
+    /// record without descriptive metadata and do not ask.
+    pub details: bool,
 }
 
 impl ItemSupport {
+    /// Everything allowed: a recheck of what a renderer already accepted.
     pub const ALL: Self = Self {
         locator: true,
         form: true,
+        details: false,
     };
 }
 
@@ -71,9 +77,33 @@ pub fn check<'a>(
             if !support.form {
                 return Err(CitationError::UnsupportedForm);
             }
+            // Nothing to cite it by: never filled in from elsewhere (decision 0061).
+            if support.details && !has_details(record) {
+                return Err(CitationError::MissingDetails);
+            }
             Ok(record)
         })
         .collect())
+}
+
+/// Whether a record has a public title, author or editor after applying note
+/// overrides and privacy filtering (decision 0061).
+pub fn has_details(record: &Record) -> bool {
+    let fields = crate::citable::CitableFields::new(record.csl.to_map());
+    ["title", "author", "editor"]
+        .into_iter()
+        .any(|name| fields.plain().get(name).is_some_and(has_value))
+}
+
+fn has_value(value: &serde_json::Value) -> bool {
+    use serde_json::Value;
+    match value {
+        Value::String(text) => !text.trim().is_empty(),
+        Value::Number(_) => true,
+        Value::Array(values) => values.iter().any(has_value),
+        Value::Object(values) => values.values().any(has_value),
+        Value::Null | Value::Bool(_) => false,
+    }
 }
 
 fn validate_annotation(now: &Snapshot, shown: Option<&Snapshot>, pick: &CitationItem) -> Result<(), CitationError> {

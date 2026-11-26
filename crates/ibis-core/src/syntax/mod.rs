@@ -594,6 +594,7 @@ pub fn cite_with_fields(
     let checked = citation::check(snapshot, None, request, |item| {
         let form = item.form.unwrap_or(request.form);
         ItemSupport {
+            details: false,
             locator: item.locator.as_ref().is_none_or(|locator| {
                 escape::locator_fits(caps.escaping, locator)
                     && !(caps.escaping == Escaping::Pandoc

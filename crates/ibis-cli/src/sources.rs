@@ -19,16 +19,20 @@ use crate::Failure;
 
 pub(crate) fn command() -> Command {
     Command::new("sources")
-        .about("Check that a library's source keeps Ibis's promises, built-in readers and source adapters alike")
+        .about("Check that a library's source keeps Ibis's promises, or keep a folder's PDFs as references")
         .after_help(
-            "Examples:\n  ibis sources check --source endnote=Invented.enl --expect fixtures/endnote/expected.json\n  ibis sources check --file refs.bib --changed-from REVISION",
+            "Examples:\n  ibis sources check --source endnote=Invented.enl --expect fixtures/endnote/expected.json\n  ibis sources check --file refs.bib --changed-from REVISION\n  ibis sources keep --file ~/Papers",
         )
         .arg(
             Arg::new("action")
                 .value_name("ACTION")
                 .required(true)
-                .value_parser(["check"])
-                .help("check: read the libraries named here again and check what every source promises"),
+                .value_parser(["check", "keep"])
+                .help(
+                    "check: read the libraries named here again and check what every source promises; \
+                     keep: read each new PDF in the folders named with --file and keep what it says in \
+                     the folder's ibis-references.bib",
+                ),
         )
         .arg(
             Arg::new("expect")
@@ -95,6 +99,58 @@ pub(crate) fn configuration_report() -> Value {
         }
         Err(code) => json!({"status": "failed", "code": code, "adapters": []}),
     }
+}
+
+/// `ibis sources keep`: each folder named with `--file` keeps its new PDFs,
+/// a batch at a time until none waits (decision 0061). Run before any
+/// library opens, since a folder no one has kept has no library yet.
+pub(crate) fn keep(engine: &Engine, matches: &ArgMatches) -> Result<DispatchResult, Failure> {
+    let folders = crate::source_values::<PathBuf>(matches, "file");
+    if folders.is_empty() {
+        return Err(Failure::new(
+            ErrorCode::Usage,
+            "name the folder to keep with --file, such as --file ~/Papers",
+        ));
+    }
+    let (_, settings) = crate::settings_backup::settings_file(false)?;
+    let store = ibis_engine::write::Proposals::beside(&settings);
+    let cancel = Cancellation::default();
+    let mut reports = Vec::new();
+    let mut text = String::new();
+    for folder in folders {
+        let mut total = ibis_engine::write::Kept::default();
+        let mut skip = std::collections::BTreeSet::new();
+        loop {
+            let kept = engine
+                .keep_folder(&store, &folder, &skip, &cancel)
+                .map_err(|error| Failure::new(ErrorCode::SourceUnavailable, error.sentence()))?;
+            total.kept += kept.kept;
+            total.unread += kept.unread;
+            total.cut_short = kept.cut_short;
+            skip.extend(kept.retried.iter().cloned());
+            total.retried.extend(kept.retried);
+            if kept.waiting == 0 {
+                break;
+            }
+        }
+        text.push_str(&crate::human::cli(
+            "cli-folder-kept",
+            &[
+                ("folder", &folder.display().to_string()),
+                ("kept", &total.kept.to_string()),
+                ("unread", &total.unread.to_string()),
+                ("retry", &total.retried.len().to_string()),
+            ],
+        ));
+        text.push('\n');
+        reports.push(json!({"folder": folder, "kept": total}));
+    }
+    Ok(DispatchResult {
+        text: Some(text),
+        data: json!({"folders": reports}),
+        source_findings: false,
+        exit_code: ExitCode::Ok,
+    })
 }
 
 struct Check {

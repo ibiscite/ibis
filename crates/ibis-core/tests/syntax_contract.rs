@@ -37,6 +37,54 @@ fn changed(case: &GoldenCase, change: impl FnOnce(&mut Record)) -> Snapshot {
 }
 
 #[test]
+fn citation_eligibility_requires_a_public_title_author_or_editor() {
+    let case = seed();
+    for (fields, eligible) in [
+        (json!({}), false),
+        (json!({"title":"  ","author":[{"family":" "}],"editor":[{}]}), false),
+        (
+            json!({"title":"%2FUsers%2Finvented%2Fsecret.pdf",
+                "author":[{"family":"/Users/invented/secret.pdf"}],
+                "editor":[{"literal":"file:///invented/secret.pdf"}]}),
+            false,
+        ),
+        (json!({"title":"Synthetic signals"}), true),
+        (json!({"author":[{"family":"Taylor"}]}), true),
+        (json!({"editor":[{"literal":"Invented Editors"}]}), true),
+        (json!({"note":"title: Synthetic signals"}), true),
+    ] {
+        let snapshot = changed(&case, |record| {
+            record.csl = serde_json::from_value(json!({
+                "type":"book",
+                "abstract":"An invented abstract",
+                "publisher":"Invented Press",
+                "issued":{"date-parts":[[2026]]}
+            }))
+            .unwrap();
+            for (name, value) in fields.as_object().unwrap() {
+                record.csl.insert(name.clone(), value.clone());
+            }
+        });
+        let mut formatted = case.request.clone();
+        formatted.output = OutputSpec::Csl { style: "apa".into() };
+        let checked = ibis_core::citation::check(&snapshot, None, &formatted, |_| ibis_core::citation::ItemSupport {
+            details: true,
+            ..ibis_core::citation::ItemSupport::ALL
+        })
+        .unwrap();
+        if eligible {
+            assert!(checked[0].is_ok(), "{fields}");
+        } else {
+            assert_eq!(checked[0], Err(CitationError::MissingDetails), "{fields}");
+        }
+        // Key outputs still cite these records by their validated citation key.
+        let keyed = syntax::cite(&snapshot, &case.request).unwrap();
+        assert_eq!(keyed.text, "[@Example2026]", "{fields}");
+        assert!(keyed.copy_content(1).is_some(), "{fields}");
+    }
+}
+
+#[test]
 fn reference_segments_and_source_warnings_survive_together() {
     let mut case = seed();
     let LibraryObject::Record(first) = &case.library.objects()[0].object else {

@@ -199,7 +199,8 @@ fn bibliographic_fields_survive_rendering_and_notes_stay_private() {
 #[test]
 fn strict_records_refuse_losses_refusals_and_item_source_warnings() {
     let engine = Engine::new().unwrap();
-    let mut clean = pandoc(json!([{"id":"r1","type":"book","citation-key":"one"}]));
+    // A record needs a title, author or editor to be cited at all (decision 0061).
+    let mut clean = pandoc(json!([{"id":"r1","type":"book","title":"Invented","citation-key":"one"}]));
     clean["strict"] = json!(true);
     let result = records(&engine, clean).unwrap();
     assert_eq!(result.text.as_deref(), Some("[@one]"));
@@ -207,9 +208,9 @@ fn strict_records_refuse_losses_refusals_and_item_source_warnings() {
     assert_eq!(result.data["receipt"]["sources"], json!([]));
     assert!(result.data["receipt"]["request"]["items"][0]["expected_cite"].is_string());
     for mut params in [
-        pandoc(json!([{"id":"r1","type":"book"}])),
+        pandoc(json!([{"id":"r1","type":"book","title":"Invented"}])),
         apa(json!([{"id":"r1","type":"book","title":"Invented","issued":"2020"}])),
-        json!({"records":[{"id":"r1","type":"book","citation-key":"one"}],
+        json!({"records":[{"id":"r1","type":"book","title":"Invented","citation-key":"one"}],
             "output":{"kind":"preset","name":"keys"},"items":[{"id":"r1","locator":{"term":"page","value":"12"}}]}),
     ] {
         params["strict"] = json!(true);

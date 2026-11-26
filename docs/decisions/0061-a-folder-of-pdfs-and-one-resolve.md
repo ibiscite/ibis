@@ -75,11 +75,12 @@ Everything below is the engineering design that carries it out.
 
 ## Known details
 
-A record with no title, no author and no editor is not cited, from any
-source: the shared eligibility check (`ibis_core::citation::check`) refuses
-styled and key outputs with `missing-details`, recovery Review Library;
-record exports (BibTeX, CSL-JSON, DOI links) carry what a record has and do
-not ask. Every
+A record with no title, no author and no editor is refused for formatted
+citations, from any source: the shared eligibility check
+(`ibis_core::citation::check`) refuses styled outputs with `missing-details`,
+recovery Review Library. Key outputs
+keep their existing citation-key validation; record exports (BibTeX, CSL-JSON,
+DOI links) carry what a record has and do not ask. Every
 style renders such a record as a bare date or nothing at all, so this changes
 what was never a usable citation; it is one rule rather than a branch on the
 source. A folder's PDF that said nothing is therefore listed and its passages

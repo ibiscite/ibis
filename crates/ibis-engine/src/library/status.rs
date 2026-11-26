@@ -281,7 +281,7 @@ pub(super) fn status(library: &State) -> LibraryStatus {
 /// with the references kept.
 fn refresh_failure(kind: LibraryKind, code: Option<ErrorCode>, reason: Option<ErrorReason>) -> String {
     match (kind, code, reason) {
-        (LibraryKind::File, Some(code), Some(reason)) => {
+        (LibraryKind::File | LibraryKind::Folder, Some(code), Some(reason)) => {
             LoadError::file_refresh(EngineError::because(code, reason)).with_snapshot_context(true, false)
         }
         _ => words("app-library-not-refreshed", &[]),
@@ -297,7 +297,7 @@ fn refresh_error(kind: LibraryKind, code: Option<ErrorCode>, reason: Option<Erro
         citation_error: None,
     };
     Some(match kind {
-        LibraryKind::File => LoadError::file_refresh(error),
+        LibraryKind::File | LibraryKind::Folder => LoadError::file_refresh(error),
         LibraryKind::Zotero => LoadError::Zotero(error),
         // The app opens no source adapter yet.
         LibraryKind::Snapshot | LibraryKind::Adapter => return None,

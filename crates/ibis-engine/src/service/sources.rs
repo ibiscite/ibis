@@ -346,6 +346,10 @@ impl Engine {
         cancel.check()?;
         let operation = self.resources.operation.recover_lock();
         let path = std::path::absolute(path).map_err(|_| error(ErrorCode::BadInput))?;
+        // A folder of PDFs is read as the `.bib` Ibis keeps in it (decision 0061).
+        let asked = path.clone();
+        let path = ibis_sources::inspect_io(move || ibis_sources::folder::library_file(&asked))
+            .ok_or_else(|| error(ErrorCode::SourceUnavailable))?;
         let (loaded, observation) =
             ibis_sources::load_file_snapshot(&path, &|| cancel.is_cancelled()).map_err(source_error)?;
         let source = observation.source_path().to_path_buf();

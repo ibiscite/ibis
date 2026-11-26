@@ -21,8 +21,8 @@ exit 5
 stderr| ibis: cannot open /invented/missing.bib: The library file was moved, renamed or removed. Choose its current location with --file.
 
 $ ibis --file <tmp> search x
-exit 3
-stderr| ibis: cannot open <tmp>: it is a folder; give the library file inside it.
+exit 5
+stderr| ibis: cannot open <tmp>: Ibis has not kept this folder’s PDFs yet; run ibis sources keep --file FOLDER first.
 
 $ ibis show anything (no library)
 exit 4

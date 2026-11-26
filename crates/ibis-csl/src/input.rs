@@ -159,6 +159,8 @@ pub(crate) struct Prepared {
     pub losses: Vec<Loss>,
     pub notices: Vec<Notice>,
     pub warnings: Vec<CitationWarning>,
+    /// Candidates lack details: prove output support before refusing their metadata.
+    pub missing_details: bool,
     pub empty: bool,
     /// Formatted as one document's citations, in order (see `document`).
     pub document: bool,
@@ -247,6 +249,7 @@ pub(crate) fn warm(style: &str, locale: Option<&str>) -> Result<Prepared, Format
         losses: vec![],
         notices: vec![],
         warnings: vec![],
+        missing_details: false,
         empty: false,
         document: false,
     })
@@ -348,6 +351,7 @@ fn prepare_with(
             .map_or(request.items.len(), |index| cluster_size[index])
     };
     let checked = citation::check(snapshot, None, request, |pick| ItemSupport {
+        details: false,
         locator: true,
         form: !refuses_form(
             style,
@@ -358,6 +362,9 @@ fn prepare_with(
         ),
     })
     .map_err(FormatError::Citation)?;
+    // Keep sparse records out of a useful preview. With no detailed candidate,
+    // the processor must decide output support before missing-details can win.
+    let missing_details = !checked.iter().any(|checked| checked.is_ok_and(citation::has_details));
     let mut items = Vec::new();
     let mut cites = Vec::new();
     let mut ids = BTreeMap::<ItemRef, String>::new();
@@ -384,6 +391,7 @@ fn prepare_with(
                 continue;
             }
         };
+        let has_details = citation::has_details(record);
         warnings.extend(record.warnings.iter().map(|code| CitationWarning {
             item: index,
             code: *code,
@@ -489,6 +497,14 @@ fn prepare_with(
             });
             continue;
         }
+        // A document never carries a citation with nothing to cite it by.
+        if !has_details && (document || !missing_details) {
+            outcomes.push(ItemOutcome::Refused {
+                item: index,
+                error: CitationError::MissingDetails,
+            });
+            continue;
+        }
         let id = if let Some(id) = ids.get(&pick.item) {
             id.clone()
         } else {
@@ -591,6 +607,7 @@ fn prepare_with(
         losses,
         notices,
         warnings,
+        missing_details,
         // A document is formatted whole or not at all.
         empty: cites.is_empty() || document && cites.len() != request.items.len(),
         document,
