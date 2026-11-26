@@ -16,7 +16,7 @@ them and from [0057](0057-one-method-table.md),
   - the typed-citation syntax is one engine grammar shared by every front
     end, documented as unstable until 1.0;
   - settings may still reset on an update before 1.0, as
-    [0016](0016-no-compatibility-before-1-0.md) says;
+    [0016](0016-settings.md) says;
   - a better architecture is preferred over adding to a weaker one.
 
 ## Why
