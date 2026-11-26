@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.3.13](https://github.com/ibiscite/ibis/compare/v0.3.12...v0.3.13) (2026-11-26)
+
+
+### Features
+
+* **core:** one staleness primitive for Rust and the interface ([#2019](https://github.com/ibiscite/ibis/issues/2019)) ([4ff82d1](https://github.com/ibiscite/ibis/commit/4ff82d19d46658ac2f4c4b0617e16c2b8369ef1e))
+* **destination:** remember the format per website in a browser ([#2028](https://github.com/ibiscite/ibis/issues/2028)) ([d6e1034](https://github.com/ibiscite/ibis/commit/d6e1034c6da0ac89ab9be0a56bcf404debc9648c))
+* **engine:** check and export what a manuscript cites, read in a child ([#2041](https://github.com/ibiscite/ibis/issues/2041)) ([2b42173](https://github.com/ibiscite/ibis/commit/2b4217301014d9eea184214cac5f99ade3229e9b))
+* **engine:** format a Word or ODT copy through the document child ([#2044](https://github.com/ibiscite/ibis/issues/2044)) ([544568e](https://github.com/ibiscite/ibis/commit/544568e75efde07d89de7bd5973741a4da012bea))
+* **engine:** methods declare their needs, network use and ⌘K selections ([#2043](https://github.com/ibiscite/ibis/issues/2043)) ([a1cb8a5](https://github.com/ibiscite/ibis/commit/a1cb8a5c018d9e9a1226785e911c927ba7ae448d))
+* **engine:** type the results of schema and call ([#2032](https://github.com/ibiscite/ibis/issues/2032)) ([48f91d4](https://github.com/ibiscite/ibis/commit/48f91d49a68e183d7cb73b4bff12dce2a596d1b7))
+* **i18n:** the interface in German and Arabic ([#2017](https://github.com/ibiscite/ibis/issues/2017)) ([346937b](https://github.com/ibiscite/ibis/commit/346937bb02de8faa91b89e4db3732d084f7e64fb))
+* **picker:** key formats first, Projects, practice paste, one ⌘K list ([#1982](https://github.com/ibiscite/ibis/issues/1982)) ([799a500](https://github.com/ibiscite/ibis/commit/799a500e586ee784486170fdba30e0ba3a691ac8))
+* **picker:** one delivery bar and dense rows ([#2018](https://github.com/ibiscite/ibis/issues/2018)) ([5aaf502](https://github.com/ibiscite/ibis/commit/5aaf502da88eeb46fa1515dba0dcd2479a18ac5a))
+* **release:** every package ships its dependencies' licence notices ([#2027](https://github.com/ibiscite/ibis/issues/2027)) ([4d245d4](https://github.com/ibiscite/ibis/commit/4d245d4ad4bcaf967272a823cf07890894c75c20))
+* **release:** SBOMs and SBOM attestations for every package ([#2037](https://github.com/ibiscite/ibis/issues/2037)) ([af74833](https://github.com/ibiscite/ibis/commit/af74833420d5a211703be8e3481300d8b99582d0))
+* **release:** verify every package on its platform before publishing ([#2034](https://github.com/ibiscite/ibis/issues/2034)) ([845fdca](https://github.com/ibiscite/ibis/commit/845fdca14928b38187f606246bb655636afc10d0))
+* **sources:** cite a folder of PDFs, kept in its own .bib ([#2047](https://github.com/ibiscite/ibis/issues/2047)) ([777102c](https://github.com/ibiscite/ibis/commit/777102c3699a8216dbe0053db186fe200f1b2394))
+* **sources:** read EndNote 21 through an external source adapter ([#1985](https://github.com/ibiscite/ibis/issues/1985)) ([0ce483b](https://github.com/ibiscite/ibis/commit/0ce483b59bf5c65ffa906da0de506deef4512572))
+* **sources:** read what a PDF says about itself in the child ([#2042](https://github.com/ibiscite/ibis/issues/2042)) ([e02785e](https://github.com/ibiscite/ibis/commit/e02785e719ef45decd2da069a7e7e41918c5ed7b))
+
+
+### Bug Fixes
+
+* **deps:** update cookie and url for RustSec advisories ([#2013](https://github.com/ibiscite/ibis/issues/2013)) ([668ad7f](https://github.com/ibiscite/ibis/commit/668ad7fc2e536d3dc6d54894db7c0846b2faa609))
+* **desktop:** no handler can read app state before setup creates it ([#2029](https://github.com/ibiscite/ibis/issues/2029)) ([5ca2623](https://github.com/ibiscite/ibis/commit/5ca26234621b0977e53f877227899c2cf6165daf))
+* **engine:** entry needs original entries; outline needs only records ([#2046](https://github.com/ibiscite/ibis/issues/2046)) ([be3a13d](https://github.com/ibiscite/ibis/commit/be3a13df909ce6661f6fd199d2ca210db8cb0184))
+* **paste:** turning Paste off revokes a copy already on its way ([#2038](https://github.com/ibiscite/ibis/issues/2038)) ([f98cfab](https://github.com/ibiscite/ibis/commit/f98cfab1c31d6ef908ffff445875d253664038a3))
+* **sources:** a linked file offers its original entries only when it can serve them ([#2048](https://github.com/ibiscite/ibis/issues/2048)) ([67ea0d4](https://github.com/ibiscite/ibis/commit/67ea0d4177df11cff2bcc471ab34768fb83184f5))
+* update to CSL styles v1.0.30, locales v0.0.107 ([#2011](https://github.com/ibiscite/ibis/issues/2011)) ([7224bb6](https://github.com/ibiscite/ibis/commit/7224bb6e5af4a770ec1e17e2bb054c34239a834f))
+* **update-test:** one warm PowerShell helper; no UIA for hidden pickers ([#2015](https://github.com/ibiscite/ibis/issues/2015)) ([386ac47](https://github.com/ibiscite/ibis/commit/386ac4790535473ad528b969df78aaabb52640e5))
+
+
+### Documentation
+
+* **decisions:** a folder of PDFs is a library, and one resolve ([#2039](https://github.com/ibiscite/ibis/issues/2039)) ([9ef601f](https://github.com/ibiscite/ibis/commit/9ef601f5cb89419883b1db7fd7c223b6f7d9eb1f))
+* **decisions:** one document pipeline for check, export, format, share ([#2045](https://github.com/ibiscite/ibis/issues/2045)) ([49afae8](https://github.com/ibiscite/ibis/commit/49afae80752a19eb59228cb13e8820fed7b900b1))
+* **roadmap:** build Ibis as an engine for every reference workflow ([#2036](https://github.com/ibiscite/ibis/issues/2036)) ([64d30a0](https://github.com/ibiscite/ibis/commit/64d30a0c0699a1726544c741e2c093c56dc4a212))
+
 ## [0.3.12](https://github.com/ibiscite/ibis/compare/v0.3.11...v0.3.12) (2026-11-18)
 
 
