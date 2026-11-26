@@ -4,6 +4,9 @@ use ibis_engine::write::{Proposals, WriteError, WriteProblem};
 use serde::Serialize;
 use tauri::Manager;
 
+use crate::errors::{NativeFailure, NativeOperation};
+use crate::library::CommandError;
+
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct WaitingProposal {
     id: String,
@@ -35,16 +38,16 @@ fn store(app: &tauri::AppHandle) -> Proposals {
 /// Waiting proposals and their engine previews, with library names only.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn waiting_proposals(
-    app: tauri::AppHandle,
-) -> Result<Vec<WaitingProposal>, crate::errors::NativeFailure> {
-    crate::cli_install::with_owner(&OWNER, move || waiting(&store(&app))).await
+pub(crate) async fn waiting_proposals(app: tauri::AppHandle) -> Result<Vec<WaitingProposal>, CommandError> {
+    crate::cli_install::with_owner(&OWNER, move || Ok::<_, NativeFailure>(waiting(&store(&app))))
+        .await
+        .map_err(|_| NativeOperation::WaitingProposals.failure())?
+        .map_err(|error| CommandError::Presented(error.into()))
 }
 
-fn waiting(store: &Proposals) -> Result<Vec<WaitingProposal>, crate::errors::NativeFailure> {
+fn waiting(store: &Proposals) -> Result<Vec<WaitingProposal>, WriteError> {
     Ok(store
-        .waiting()
-        .map_err(|_| crate::errors::NativeFailure)?
+        .waiting()?
         .into_iter()
         .map(|preview| WaitingProposal {
             id: preview.proposal.id,
@@ -55,7 +58,7 @@ fn waiting(store: &Proposals) -> Result<Vec<WaitingProposal>, crate::errors::Nat
             lines: preview.lines,
             before: preview.before,
             after: preview.after,
-            refusal: preview.refusal.map(WriteProblem::problem),
+            refusal: preview.refusal,
         })
         .collect())
 }
@@ -63,10 +66,7 @@ fn waiting(store: &Proposals) -> Result<Vec<WaitingProposal>, crate::errors::Nat
 /// Apply only after the person presses Apply on the displayed proposal.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn apply_proposal(
-    app: tauri::AppHandle,
-    id: String,
-) -> Result<ProposalResult, crate::errors::NativeFailure> {
+pub(crate) async fn apply_proposal(app: tauri::AppHandle, id: String) -> Result<ProposalResult, NativeFailure> {
     crate::cli_install::with_owner(&OWNER, move || {
         let file = app.state::<ibis_engine::library::Owner>().current();
         Ok(apply(&store(&app), file.as_ref().map(|file| &file.engine), &id))
@@ -89,37 +89,27 @@ fn apply(store: &Proposals, engine: Option<&ibis_engine::Engine>, id: &str) -> P
                 .to_string_lossy()
                 .into_owned(),
         },
-        Err(error) => ProposalResult::Refused {
-            problem: error.problem(),
-        },
+        Err(error) => ProposalResult::Refused { problem: error.into() },
     }
 }
 
 /// Reject a waiting proposal; no library changes.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn reject_proposal(
-    app: tauri::AppHandle,
-    id: String,
-) -> Result<ProposalResult, crate::errors::NativeFailure> {
+pub(crate) async fn reject_proposal(app: tauri::AppHandle, id: String) -> Result<ProposalResult, NativeFailure> {
     crate::cli_install::with_owner(&OWNER, move || Ok(reject(&store(&app), &id))).await
 }
 
 /// Reject all pending proposals with the same claimed app as this displayed id.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn reject_app_proposals(
-    app: tauri::AppHandle,
-    id: String,
-) -> Result<ProposalResult, crate::errors::NativeFailure> {
+pub(crate) async fn reject_app_proposals(app: tauri::AppHandle, id: String) -> Result<ProposalResult, NativeFailure> {
     crate::cli_install::with_owner(&OWNER, move || {
         let store = store(&app);
         Ok(
             match store.get(&id).and_then(|proposal| store.reject_from(&proposal.source)) {
                 Ok(_) => ProposalResult::Rejected,
-                Err(error) => ProposalResult::Refused {
-                    problem: error.problem(),
-                },
+                Err(error) => ProposalResult::Refused { problem: error.into() },
             },
         )
     })
@@ -129,9 +119,7 @@ pub(crate) async fn reject_app_proposals(
 fn reject(store: &Proposals, id: &str) -> ProposalResult {
     match store.reject(id) {
         Ok(_) => ProposalResult::Rejected,
-        Err(error) => ProposalResult::Refused {
-            problem: error.problem(),
-        },
+        Err(error) => ProposalResult::Refused { problem: error.into() },
     }
 }
 
@@ -173,6 +161,16 @@ mod tests {
         let wire = serde_json::to_string(&shown).unwrap();
         assert!(!wire.contains(&dir.path().to_string_lossy().to_string()));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+        std::fs::remove_file(&path).unwrap();
+        let preview = store.show(&proposal.id).unwrap();
+        assert_eq!(preview.refusal, Some(WriteProblem::Unreadable.problem()));
+        let shown = waiting(&store).unwrap();
+        assert_eq!(shown[0].refusal, preview.refusal);
+        assert_eq!(
+            serde_json::to_value(&shown[0]).unwrap()["refusal"],
+            serde_json::to_value(preview.refusal).unwrap()
+        );
+        std::fs::write(&path, before).unwrap();
         let result = apply(&store, Some(&engine), &proposal.id);
         assert_eq!(
             result,

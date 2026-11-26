@@ -215,13 +215,7 @@ pub(crate) fn every_problem() -> Vec<Problem> {
     // Proposal refusals reach Settings as problems too, with and without a field.
     for refusal in every::<ibis_engine::write::WriteProblem>() {
         problems.push(refusal.problem());
-        problems.push(
-            ibis_engine::write::WriteError {
-                problem: refusal,
-                field: Some(String::new()),
-            }
-            .problem(),
-        );
+        problems.push(ibis_engine::write::WriteError::about(refusal, "").into());
     }
 
     let session = [

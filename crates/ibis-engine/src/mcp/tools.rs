@@ -190,12 +190,13 @@ impl Refusal {
 
     pub(super) fn bad(kind: ToolProblem, args: &[(&str, &str)]) -> Self {
         let (code, problem) = kind.problem(args);
-        Self {
-            code,
-            advice: crate::catalogue::problem(&problem, Audience::Agent).into(),
-            problem: Box::new(problem),
-            strict_cause: None,
-        }
+        Self::from_problem(code, problem)
+    }
+}
+
+impl From<crate::write::WriteError> for Refusal {
+    fn from(error: crate::write::WriteError) -> Self {
+        Self::from_problem(error.category(), error.into())
     }
 }
 

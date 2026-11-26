@@ -124,7 +124,7 @@ pub(crate) fn keep(engine: &Engine, matches: &ArgMatches) -> Result<DispatchResu
             let kept = engine.keep_folder(&store, &folder, &skip, &cancel).map_err(|error| {
                 Failure::new(
                     ErrorCode::SourceUnavailable,
-                    ibis_engine::catalogue::problem(&error.problem(), ibis_engine::catalogue::Audience::Cli),
+                    ibis_engine::catalogue::problem(error.problem(), ibis_engine::catalogue::Audience::Cli),
                 )
             })?;
             total.kept += kept.kept;

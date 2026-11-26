@@ -604,9 +604,30 @@ mod tests {
             "why",
             "words",
         ];
-        fn is_text(schema: &Value) -> bool {
+        fn through_ref<'a, T>(
+            schema: &'a Value,
+            root: &'a Value,
+            active: &mut BTreeSet<&'a str>,
+            inspect: impl FnOnce(&'a Value, &mut BTreeSet<&'a str>) -> T,
+        ) -> Option<T> {
+            let reference = schema["$ref"].as_str()?;
+            if !active.insert(reference) {
+                return None;
+            }
+            let target = reference
+                .strip_prefix('#')
+                .and_then(|pointer| root.pointer(pointer))
+                .unwrap_or_else(|| panic!("unresolved schema reference {reference}"));
+            let found = inspect(target, active);
+            active.remove(reference);
+            Some(found)
+        }
+        fn is_text<'a>(schema: &'a Value, root: &'a Value, active: &mut BTreeSet<&'a str>) -> bool {
             if schema.get("enum").is_some() || schema.get("const").is_some() {
                 return false;
+            }
+            if through_ref(schema, root, active, |target, active| is_text(target, root, active)) == Some(true) {
+                return true;
             }
             let kinds: Vec<&str> = match &schema["type"] {
                 Value::String(kind) => vec![kind],
@@ -616,38 +637,89 @@ mod tests {
             if kinds.contains(&"string") {
                 return true;
             }
-            if kinds.contains(&"array") {
-                return is_text(&schema["items"]);
+            if kinds.contains(&"array") && is_text(&schema["items"], root, active) {
+                return true;
             }
-            ["anyOf", "oneOf"].iter().any(|keyword| {
+            ["anyOf", "oneOf", "allOf"].iter().any(|keyword| {
                 schema[keyword]
                     .as_array()
-                    .is_some_and(|variants| variants.iter().any(is_text))
+                    .is_some_and(|variants| variants.iter().any(|variant| is_text(variant, root, active)))
             })
         }
-        fn walk(name: &str, schema: &Value, found: &mut BTreeSet<String>) {
+        fn walk_schema<'a>(
+            name: &str,
+            schema: &'a Value,
+            root: &'a Value,
+            active: &mut BTreeSet<&'a str>,
+            found: &mut BTreeSet<String>,
+        ) {
             if let Some(properties) = schema["properties"].as_object() {
                 for (field, value) in properties {
-                    if field.split('_').any(|word| WORDS.contains(&word)) && is_text(value) {
+                    if field.split('_').any(|word| WORDS.contains(&word)) && is_text(value, root, &mut BTreeSet::new())
+                    {
                         found.insert(format!("{name}.{field}"));
                     }
                 }
             }
             for keyword in ["oneOf", "anyOf", "allOf"] {
                 for variant in schema[keyword].as_array().into_iter().flatten() {
-                    walk(name, variant, found);
+                    walk_schema(name, variant, root, active, found);
                 }
+            }
+            through_ref(schema, root, active, |target, active| {
+                walk_schema(name, target, root, active, found)
+            });
+        }
+        fn walk(name: &str, schema: &Value, found: &mut BTreeSet<String>) {
+            walk_schema(name, schema, schema, &mut BTreeSet::new(), found);
+        }
+        fn walk_definitions(root: &Value, found: &mut BTreeSet<String>) {
+            for (name, schema) in root["$defs"].as_object().into_iter().flatten() {
+                walk_schema(name, schema, root, &mut BTreeSet::new(), found);
             }
         }
         let contract = super::contract();
         let engine: Value = serde_json::from_str(include_str!("../../../../fixtures/engine-contract.schema.json"))
             .unwrap_or_else(|e| panic!("engine contract: {e}"));
-        let mut found = BTreeSet::new();
-        for definitions in [&contract["output"], &contract["input"], &engine["$defs"]] {
-            for (name, schema) in definitions.as_object().into_iter().flatten() {
-                walk(name, schema, &mut found);
-            }
+        #[derive(schemars::JsonSchema)]
+        #[allow(dead_code)]
+        struct UserWords(String);
+        #[derive(schemars::JsonSchema)]
+        #[allow(dead_code)]
+        struct WrappedWords {
+            reason: Option<UserWords>,
         }
+        let mut probe = BTreeSet::new();
+        walk(
+            "WrappedWords",
+            &schemars::schema_for!(WrappedWords).to_value(),
+            &mut probe,
+        );
+        assert_eq!(probe, BTreeSet::from(["WrappedWords.reason".to_owned()]));
+        let recursive = super::json!({
+            "properties": {
+                "reason": {"$ref": "#/$defs/A"},
+                "summary": {"type": "array", "items": {"$ref": "#/$defs/A"}},
+                "text": {"$ref": "#/$defs/Code"},
+                "note": {"$ref": "#/$defs/Loop"}
+            },
+            "$defs": {
+                "A": {"$ref": "#/$defs/B"},
+                "B": {"anyOf": [{"$ref": "#/$defs/A"}, {"type": "string"}]},
+                "Code": {"type": "string", "enum": ["fixed-code"]},
+                "Loop": {"$ref": "#/$defs/Loop"}
+            }
+        });
+        let mut probe = BTreeSet::new();
+        walk("Recursive", &recursive, &mut probe);
+        assert_eq!(
+            probe,
+            BTreeSet::from(["Recursive.reason".to_owned(), "Recursive.summary".to_owned()])
+        );
+        let mut found = BTreeSet::new();
+        walk_definitions(&super::json!({"$defs": contract["output"]}), &mut found);
+        walk_definitions(&super::json!({"$defs": contract["input"]}), &mut found);
+        walk_definitions(&engine, &mut found);
         // Engine types only the command line serialises, by their own labels.
         for (name, schema) in [
             (

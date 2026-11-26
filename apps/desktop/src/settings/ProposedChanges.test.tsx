@@ -48,9 +48,19 @@ test("Apply sends only the displayed id and retains its backup receipt on focus"
 });
 
 test("an engine refusal appears in the catalogue's words and keeps Reject available", async () => {
-  const problem = { code: "changed", message: { id: "refusal-changed", args: {} }, recovery: { action: "edit-input" }, focus: "request" } as const;
+  const problem = { code: "changed", message: { id: "refusal-changed", args: {} }, recovery: { action: "propose-again" }, focus: "recovery-action" } as const;
   page([bib], { applyProposal: vi.fn(async (): Promise<ProposalResult> => ({ status: "refused", problem })) });
   fireEvent.click(await screen.findByRole("button", { name: /^Apply/ }));
-  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The reference changed since this was proposed; nothing was written.");
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The reference changed since this was proposed; nothing was written. Ask the app that made it to propose the change again.");
   expect(screen.getByRole("button", { name: /^Reject (?!all)/ })).toBeTruthy();
+});
+
+test("shows the engine's proposal folder error and clears it on a successful retry", async () => {
+  const problem = { code: "store-unreadable", message: { id: "refusal-store-unreadable", args: {} }, recovery: { action: "retry" }, focus: "recovery-action" } as const;
+  const waitingProposals = vi.fn(async () => [bib]).mockRejectedValueOnce(problem);
+  page([bib], { waitingProposals });
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Ibis could not read the proposals folder. Check that Ibis can read it, then try again.");
+  fireEvent(window, new Event("focus"));
+  expect(await screen.findByRole("button", { name: /^Apply/ })).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
 });

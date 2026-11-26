@@ -81,10 +81,10 @@ pub struct Success<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct Failure {
+pub struct Failure<E = EngineError> {
     ibis: Version,
     ok: Status<false>,
-    pub error: EngineError,
+    pub error: E,
     #[serde(
         rename = "data",
         default,
@@ -101,9 +101,9 @@ fn reject_contradiction<'de, D: Deserializer<'de>>(_: D) -> Result<(), D::Error>
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
-pub enum Envelope<T> {
+pub enum Envelope<T, E = EngineError> {
     Success(Success<T>),
-    Failure(Failure),
+    Failure(Failure<E>),
 }
 
 impl<T> Envelope<T> {
@@ -116,10 +116,16 @@ impl<T> Envelope<T> {
         })
     }
     pub fn failure(error: impl Into<EngineError>) -> Self {
+        Self::failure_with(error.into())
+    }
+}
+
+impl<T, E> Envelope<T, E> {
+    pub fn failure_with(error: E) -> Self {
         Self::Failure(Failure {
             ibis: Version,
             ok: Status,
-            error: error.into(),
+            error,
             data: (),
         })
     }
@@ -129,7 +135,7 @@ impl<T> Envelope<T> {
             Self::Failure(_) => None,
         }
     }
-    pub fn error(&self) -> Option<&EngineError> {
+    pub fn error(&self) -> Option<&E> {
         match self {
             Self::Failure(value) => Some(&value.error),
             Self::Success(_) => None,

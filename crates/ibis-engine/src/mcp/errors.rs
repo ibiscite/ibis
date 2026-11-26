@@ -38,7 +38,6 @@ pub(super) enum ToolProblem {
     NoLibrary,
     AttachmentText,
     Writes,
-    Proposal,
     Busy,
 }
 impl ToolProblem {
@@ -47,7 +46,6 @@ impl ToolProblem {
             Self::Busy => (ErrorCode::SourceUnavailable, R::Retry),
             Self::NoLibrary => (ErrorCode::SourceUnavailable, R::ChooseLibrary),
             Self::AttachmentText | Self::Writes => (ErrorCode::SourceUnavailable, R::ReviewSettings),
-            Self::Proposal => (ErrorCode::BadInput, R::EditInput),
             Self::StaleReference => (ErrorCode::NotFound, R::SearchReferences),
             Self::Query | Self::StyleQuery => (ErrorCode::BadInput, R::EditInput),
             Self::CitationFormat

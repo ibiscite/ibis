@@ -13,15 +13,15 @@ export function ProposedChanges({ api, highlighted }: { api: Api; highlighted: s
   const { text, locale } = useInterfaceMessages();
   const [proposals, setProposals] = useState<Shown[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const { read: reload, begin, isPending } = useSettingsRequests(api.waitingProposals, (next) => {
     setProposals((previous) => {
       const receipts = previous?.filter((row) => row.result?.status === "applied") ?? [];
       const ids = new Set(receipts.map((row) => row.id));
       return [...next.filter((row) => !ids.has(row.id)).map((row) => ({ ...previous?.find((old) => old.id === row.id), ...row })), ...receipts];
     });
-    setFailed(false);
-  }, () => setFailed(true));
+    setFailed(null);
+  }, (error) => setFailed(problemText(error, text("proposals-read-failed"), text)));
   const pendingRead = useRef(false);
   const read = useCallback(() => {
     if (document.visibilityState === "hidden") return;
@@ -46,7 +46,7 @@ export function ProposedChanges({ api, highlighted }: { api: Api; highlighted: s
       if (result.status === "rejected") setProposals((rows) => rows?.filter((row) => (action === "reject-app" ? row.source_app !== proposal.source_app || row.result?.status === "applied" : row.id !== proposal.id)) ?? null);
       else update({ result });
     }, (error: unknown) => {
-      if (request.current()) update({ error: typeof error === "string" ? error : text("proposals-failed") });
+      if (request.current()) update({ error: problemText(error, text("proposals-failed"), text) });
     }).finally(() => {
       if (!request.current()) return;
       setBusy(false);
@@ -69,7 +69,7 @@ export function ProposedChanges({ api, highlighted }: { api: Api; highlighted: s
         const id = `proposal-${proposal.id}`;
         const applied = proposal.result?.status === "applied";
         const problem = proposal.result?.status === "refused" ? proposal.result.problem : proposal.refusal;
-        const refusal = proposal.error ?? (problem && problemText(problem, text("proposals-failed"), text, "settings"));
+        const refusal = proposal.error ?? (problem && problemText(problem, text("proposals-failed"), text));
         const preview = proposal.before || proposal.after
           ? [...(proposal.before?.split("\n").map((line) => `- ${line}`) ?? []), ...(proposal.after?.split("\n").map((line) => `+ ${line}`) ?? [])].join("\n")
           : proposal.lines.join("\n");
@@ -94,6 +94,6 @@ export function ProposedChanges({ api, highlighted }: { api: Api; highlighted: s
         </Row>;
       })}
     </Group>
-    {failed && <Note problem role="alert">{text("proposals-read-failed")}</Note>}
+    {failed && <Note problem role="alert">{failed}</Note>}
   </Section>;
 }

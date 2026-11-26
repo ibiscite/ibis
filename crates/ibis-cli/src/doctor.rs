@@ -79,10 +79,10 @@ pub(super) fn run(
     }
     let library_check = match app_problem {
         // Why the app's libraries could not be read, in the words other commands use.
-        Some(failure) if asked || failure.error.code != ErrorCode::Usage => {
+        Some(failure) if asked || failure.code() != ErrorCode::Usage => {
             let mut result = check("failed", "no-library");
-            if failure.error.code != ErrorCode::Usage {
-                result["code"] = serde_json::to_value(failure.error.code).unwrap_or(Value::Null);
+            if failure.code() != ErrorCode::Usage {
+                result["code"] = serde_json::to_value(failure.code()).unwrap_or(Value::Null);
             }
             result["message"] = json!(failure.sentence());
             result

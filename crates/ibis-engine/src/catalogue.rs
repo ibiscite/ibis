@@ -288,13 +288,7 @@ mod tests {
             let refusal: crate::write::WriteProblem =
                 serde_json::from_value(serde_json::json!(name)).unwrap_or_else(|error| panic!("{error}"));
             problems.push(refusal.problem());
-            problems.push(
-                crate::write::WriteError {
-                    problem: refusal,
-                    field: Some("title".into()),
-                }
-                .problem(),
-            );
+            problems.push(crate::write::WriteError::about(refusal, "title").into());
         }
         for problem in problems {
             let said = super::problem(&problem, Audience::App);

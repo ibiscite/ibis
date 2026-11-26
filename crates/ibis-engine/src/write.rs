@@ -33,7 +33,7 @@ pub use store::{MAX_BACKUPS, MAX_KEPT, MAX_PENDING, MAX_PROPOSAL_BYTES, Proposal
 use crate::request::{ItemSelector, ShowRequest};
 use crate::{Cancellation, Engine};
 use ibis_core::citable::CitableFields;
-use ibis_core::contract::{Fingerprint, ItemRef, LibraryId, LibraryObject, Message, Problem, RecoveryInfo};
+use ibis_core::contract::{ErrorCode, Fingerprint, ItemRef, LibraryId, LibraryObject, Message, Problem, RecoveryInfo};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -154,7 +154,7 @@ pub struct Preview {
     pub after: Option<String>,
     /// Why applying would refuse now; absent when it can apply.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub refusal: Option<WriteProblem>,
+    pub refusal: Option<Problem>,
 }
 
 /// A change made: the proposal as now saved and the backup of the file.
@@ -172,6 +172,8 @@ pub enum WriteProblem {
     UnknownProposal,
     /// A proposal file is damaged, from a newer Ibis or not a file.
     ProposalUnreadable,
+    /// The directory holding proposals could not be read.
+    StoreUnreadable,
     /// The proposal could not be saved.
     NotSaved,
     /// [`MAX_PENDING`] proposals wait already.
@@ -182,8 +184,10 @@ pub enum WriteProblem {
     Decided,
     /// A field, tag or reference in the proposal cannot be used.
     Invalid,
-    /// Several libraries are open; the proposal must name one.
+    /// A proposal must name a library when there is no single default.
     NoTarget,
+    /// The named library is not open.
+    UnknownLibrary,
     /// The reference is not in an open library.
     UnknownReference,
     /// Ibis has no safe way to write this kind of library.
@@ -194,8 +198,12 @@ pub enum WriteProblem {
     NotOpen,
     /// The reference changed since the proposal.
     Changed,
+    /// A PDF folder or its bibliography changed while Ibis was keeping PDFs.
+    FolderChanged,
     /// Another entry took the new entry's citation key.
     KeyTaken,
+    /// Every candidate citation key is in use.
+    NoFreeKey,
     /// Some entry in the file cannot be read, so nothing is edited.
     Damaged,
     /// Two entries in the file have the reference's key.
@@ -212,14 +220,16 @@ pub enum WriteProblem {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteError {
-    pub problem: WriteProblem,
-    /// The field or tag the problem is about, as the proposal named it.
-    pub field: Option<String>,
+    kind: WriteProblem,
+    problem: Box<Problem>,
 }
 
 impl From<WriteProblem> for WriteError {
     fn from(problem: WriteProblem) -> Self {
-        Self { problem, field: None }
+        Self {
+            kind: problem,
+            problem: Box::new(problem.problem()),
+        }
     }
 }
 
@@ -236,59 +246,79 @@ impl WriteProblem {
 
     /// What happened and what to do, as data each front end words.
     pub fn problem(self) -> Problem {
-        WriteError::from(self).problem()
-    }
-}
-
-impl WriteError {
-    fn about(problem: WriteProblem, field: &str) -> Self {
-        Self {
-            problem,
-            field: Some(field.chars().filter(|c| !c.is_control()).take(64).collect()),
-        }
+        self.diagnostic(None)
     }
 
-    /// What happened and what to do, as data each front end words.
-    pub fn problem(&self) -> Problem {
+    fn diagnostic(self, field: Option<&str>) -> Problem {
         use ibis_core::contract::Recovery as R;
         // No catch-all: a new problem cannot compile without its recovery.
-        let recovery = match self.problem {
-            WriteProblem::UnknownProposal
-            | WriteProblem::ProposalUnreadable
-            | WriteProblem::NotSaved
-            | WriteProblem::BackupFailed
-            | WriteProblem::NotWritten => R::Retry,
-            WriteProblem::TooMany => R::ReviewSettings,
-            WriteProblem::Decided => R::Close,
-            WriteProblem::TooLarge | WriteProblem::Invalid | WriteProblem::Changed | WriteProblem::KeyTaken => {
-                R::EditInput
+        let recovery = match self {
+            Self::UnknownProposal | Self::TooMany => R::ListProposals,
+            Self::ProposalUnreadable | Self::Changed | Self::KeyTaken => R::ProposeAgain,
+            Self::StoreUnreadable | Self::NotSaved | Self::FolderChanged | Self::BackupFailed | Self::NotWritten => {
+                R::Retry
             }
-            WriteProblem::NoTarget | WriteProblem::LibraryKind | WriteProblem::NotOpen => R::ChooseLibrary,
-            WriteProblem::UnknownReference | WriteProblem::AlreadyInLibrary => R::SearchReferences,
-            WriteProblem::Damaged | WriteProblem::Repeated | WriteProblem::NotLiteral | WriteProblem::Unreadable => {
-                R::ReviewLibrary
+            Self::Decided => R::Close,
+            Self::TooLarge | Self::Invalid => R::EditInput,
+            Self::NoTarget | Self::UnknownLibrary | Self::LibraryKind | Self::NotOpen | Self::NoFreeKey => {
+                R::ChooseLibrary
             }
+            Self::UnknownReference | Self::AlreadyInLibrary => R::SearchReferences,
+            Self::Damaged | Self::Repeated | Self::NotLiteral | Self::Unreadable => R::ReviewLibrary,
         };
-        let field = self
-            .field
-            .as_deref()
-            .filter(|_| matches!(self.problem, WriteProblem::Invalid | WriteProblem::NotLiteral));
-        let mut info = RecoveryInfo::new(&self.problem.message_id(field.is_some()), recovery);
+        let field = field.filter(|_| matches!(self, Self::Invalid | Self::NotLiteral));
+        let mut info = RecoveryInfo::new(&self.message_id(field.is_some()), recovery);
         if let Some(field) = field {
-            info = info.argument("field", field);
+            info = info.argument(
+                "field",
+                field.chars().filter(|c| !c.is_control()).take(64).collect::<String>(),
+            );
         }
-        match self.problem {
-            WriteProblem::TooMany => info = info.argument("count", MAX_PENDING.to_string()),
-            WriteProblem::TooLarge => info = info.argument("kib", (MAX_PROPOSAL_BYTES / 1024).to_string()),
+        match self {
+            Self::TooMany => info = info.argument("count", MAX_PENDING.to_string()),
+            Self::TooLarge => info = info.argument("kib", (MAX_PROPOSAL_BYTES / 1024).to_string()),
             _ => {}
         }
         Problem {
-            code: serde_json::to_value(self.problem)
+            code: serde_json::to_value(self)
                 .ok()
                 .and_then(|code| code.as_str().map(str::to_owned))
                 .unwrap_or_default(),
             info,
         }
+    }
+}
+
+impl WriteError {
+    /// A refusal that names a field or tag from the proposal.
+    pub fn about(kind: WriteProblem, field: &str) -> Self {
+        Self {
+            kind,
+            problem: Box::new(kind.diagnostic(Some(field))),
+        }
+    }
+
+    pub fn problem(&self) -> &Problem {
+        &self.problem
+    }
+
+    /// The operation's outcome category, independent of the proposal diagnosis.
+    pub fn category(&self) -> ErrorCode {
+        match self.kind {
+            WriteProblem::UnknownProposal | WriteProblem::UnknownLibrary | WriteProblem::UnknownReference => {
+                ErrorCode::NotFound
+            }
+            WriteProblem::Decided | WriteProblem::Invalid | WriteProblem::NoTarget | WriteProblem::LibraryKind => {
+                ErrorCode::BadInput
+            }
+            _ => ErrorCode::SourceUnavailable,
+        }
+    }
+}
+
+impl From<WriteError> for Problem {
+    fn from(error: WriteError) -> Self {
+        *error.problem
     }
 }
 
@@ -376,8 +406,8 @@ impl Engine {
                             && matches!(&other.change, Change::Add { key: other, .. } if other.eq_ignore_ascii_case(key))
                     })
                 };
-                let key =
-                    citation_key(&citable, |key| file.key_taken(key) || proposed(key)).ok_or(WriteProblem::KeyTaken)?;
+                let key = citation_key(&citable, |key| file.key_taken(key) || proposed(key))
+                    .ok_or(WriteProblem::NoFreeKey)?;
                 (Change::Add { key, fields }, None)
             }
             (ProposeRequest::Fields { fields, .. }, Some(record)) => {
@@ -464,11 +494,11 @@ impl Engine {
     pub(crate) fn proposal_target(&self, library: &LibraryId) -> Result<Target, WriteError> {
         let info = self
             .libraries()
-            .map_err(|_| WriteProblem::UnknownReference)?
+            .map_err(|_| WriteProblem::UnknownLibrary)?
             .libraries
             .into_iter()
             .find(|info| &info.id == library)
-            .ok_or(WriteProblem::UnknownReference)?;
+            .ok_or(WriteProblem::UnknownLibrary)?;
         let path = self.proposal_path(library).ok_or(WriteProblem::LibraryKind)?;
         let resolved = std::fs::canonicalize(&path).map_err(|_| WriteProblem::Unreadable)?;
         Ok(Target {
@@ -558,10 +588,10 @@ fn preview(proposal: Proposal, text: Result<&str, &WriteError>) -> Preview {
             preview.before = plan.before;
             preview.after = Some(plan.after);
         }
-        Err(error) => preview.refusal = Some(error.problem),
+        Err(error) => preview.refusal = Some(error.into()),
     }
     if preview.proposal.status != Status::Pending {
-        preview.refusal = Some(WriteProblem::Decided);
+        preview.refusal = Some(WriteProblem::Decided.problem());
     }
     preview
 }

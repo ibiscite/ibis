@@ -4,7 +4,7 @@
 //! own approval of a tool call is never enough. Without the flag they are not
 //! listed and a call is an unknown tool.
 use super::*;
-use crate::write::{Proposals, ProposeRequest, Source, Via, WriteError};
+use crate::write::{Proposals, ProposeRequest, Source, Via, WriteError, WriteProblem};
 use ibis_core::contract::{ItemRef, LibraryId};
 
 /// What a server started with `--allow-writes` knows to record a proposal.
@@ -70,9 +70,12 @@ pub(super) fn full_list() -> Value {
     )
 }
 
-fn refused(error: &WriteError) -> Refusal {
-    let reason = crate::catalogue::problem(&error.problem(), crate::catalogue::Audience::Agent);
-    Refusal::bad(ToolProblem::Proposal, &[("reason", &reason)])
+fn refused(error: WriteError) -> Refusal {
+    let mut refusal = Refusal::from(error);
+    if let Some(advice) = crate::catalogue::text("mcp-error-proposal", None, &[("reason", &refusal.advice)]) {
+        refusal.advice = advice.into();
+    }
+    refusal
 }
 
 fn fields_input() -> Value {
@@ -171,7 +174,7 @@ fn item(engine: &Engine, arguments: &Map<String, Value>, cancel: &Cancellation) 
 fn proposed(engine: &Engine, writing: &Writing<'_>, request: ProposeRequest) -> Result<Value, Refusal> {
     let proposal = engine
         .propose(writing.proposals, source(writing), request)
-        .map_err(|error| refused(&error))?;
+        .map_err(refused)?;
     let mut answer = json!({
         "proposal": proposal.id,
         "status": proposal.status,
@@ -195,12 +198,9 @@ fn add(
 ) -> Result<Value, Refusal> {
     let library = match arguments.get("library") {
         None => None,
-        Some(Value::String(library)) => Some(LibraryId::new(library).map_err(|_| {
-            refused(&WriteError {
-                problem: crate::write::WriteProblem::UnknownReference,
-                field: None,
-            })
-        })?),
+        Some(Value::String(library)) => {
+            Some(LibraryId::new(library).map_err(|_| refused(WriteProblem::UnknownLibrary.into()))?)
+        }
         Some(_) => return Err(Refusal::bad(ToolProblem::Arguments, &[])),
     };
     let fields = fields(arguments)?;
@@ -249,7 +249,7 @@ fn proposals(
     let mine: Vec<Value> = writing
         .proposals
         .list()
-        .map_err(|error| refused(&error))?
+        .map_err(Refusal::from)?
         .into_iter()
         .filter(|proposal| proposal.source.client == crate::write::client_name(writing.client))
         .take(MAX_HITS)

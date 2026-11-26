@@ -100,7 +100,7 @@ impl Engine {
             let key = super::citation_key(&CitableFields::new(key_fields(&fields, relative)), |key| {
                 file.key_taken(key) || taken.contains(&key.to_lowercase())
             })
-            .ok_or(WriteProblem::KeyTaken)?;
+            .ok_or(WriteProblem::NoFreeKey)?;
             taken.insert(key.to_lowercase());
             entries.push(entry(&key, fields, relative)?);
             report.unread += usize::from(details.is_none());
@@ -128,16 +128,16 @@ impl Engine {
         // another folder), and the keep not cancelled.
         let check = || {
             if cancel.is_cancelled() {
-                return Err(WriteProblem::Changed);
+                return Err(WriteProblem::NotWritten);
             }
             if FolderIdentity::of(&resolved).as_ref() != Some(&identity)
                 || std::fs::canonicalize(&given).ok().as_ref() != Some(&resolved)
             {
-                return Err(WriteProblem::Changed);
+                return Err(WriteProblem::FolderChanged);
             }
             match state(&path) {
                 Ok(now) if now == before => Ok(()),
-                _ => Err(WriteProblem::Changed),
+                _ => Err(WriteProblem::FolderChanged),
             }
         };
         store.replace_library(&target, text.as_bytes(), after.as_bytes(), check)?;

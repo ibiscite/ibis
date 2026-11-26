@@ -49,6 +49,8 @@ pub enum Recovery {
     ChooseShortcut,
     OpenIbis,
     RestartSession,
+    ListProposals,
+    ProposeAgain,
     None { reason: NoRecoveryReason },
 }
 
@@ -110,6 +112,8 @@ impl Recovery {
             | Self::DownloadFile
             | Self::ChooseShortcut
             | Self::OpenIbis
+            | Self::ListProposals
+            | Self::ProposeAgain
             | Self::Close => F::RecoveryAction,
         }
     }
@@ -183,7 +187,7 @@ impl RecoveryInfo {
     }
 }
 
-/// The desktop and MCP receive this same shape, without pre-rendered English.
+/// Front ends receive this same shape, without pre-rendered words.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Problem {
     pub code: String,
