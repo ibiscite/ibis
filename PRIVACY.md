@@ -65,10 +65,12 @@ yourself in the app. It has no account or crash-upload service. This page descri
 - **Website in front of a browser:** when the picker opens over a browser Ibis
   lists, it reads the front tab's address (macOS: through the Accessibility
   permission, only if already granted; Windows: UI Automation of the address
-  field) and keeps only its site name, such as `overleaf.com`, so a format can
-  be remembered per site. Nothing is asked for, sent or logged; the path,
-  query and full address are dropped at once. A format you choose there is
-  saved for that site name in `settings.json`. Linux does not read it.
+  field) and keeps only the matching site name in the destination table, such
+  as `overleaf.com` or `docs.google.com`, so a format can be remembered per
+  listed site. Unlisted hosts use the browser's per-app format; no unlisted
+  host label is stored. Nothing is asked for, sent or logged; the path,
+  query and full address are dropped at once. A format you choose on a listed
+  site is saved for that site name in `settings.json`. Linux does not read it.
 - **Windows paste:** checks foreground window/process, integrity and password
   field status through UI Automation. Uncertain or disallowed targets copy
   instead. Delivery safeguards are in [architecture](docs/architecture.md#desktop-app).

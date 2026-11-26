@@ -1,6 +1,7 @@
-//! A website as Ibis keeps it: its site name, such as `overleaf.com`, and
-//! nothing else (decision 0031). The platform layer reads the front tab's
-//! address and passes it straight to [`site`], so a path, query, fragment,
+//! A website as Ibis keeps it: its listed site name, such as `overleaf.com`,
+//! and nothing else (decision 0031). Unlisted hosts have no site identity.
+//! The platform layer reads the front tab's address and passes it straight
+//! to [`site`], so a path, query, fragment,
 //! sign-in name or port never leaves the read that found it.
 
 use super::{APPS, App, AppId, System};
@@ -12,10 +13,11 @@ const MAX_HOST: usize = 253;
 /// in its address field (which may leave out `https://`). Only web pages
 /// have one: `file:`, `about:`, browser pages, IP addresses and single-label
 /// hosts such as `localhost` have none, and nor does anything with a sign-in
-/// name, which could hide the real host. A site Ibis lists is named as its
-/// table entry, so `www.overleaf.com` and `eu.overleaf.com` are one site;
-/// any other keeps its whole host without `www.`, so `docs.google.com` stays
-/// apart from `mail.google.com`.
+/// name, which could hide the real host. Only sites in the destination table
+/// have an identity, named as their table entry: `www.overleaf.com` and
+/// `eu.overleaf.com` are one site, while `docs.google.com` stays apart from
+/// `mail.google.com`. Unlisted hosts return `None` so formats stay per app
+/// without keeping any unlisted host labels.
 pub fn site(address: &str) -> Option<AppId> {
     let address = address.trim();
     if address.is_empty() || address.len() > 4096 || address.chars().any(|c| c.is_whitespace() || c.is_control()) {
@@ -41,7 +43,7 @@ pub fn site(address: &str) -> Option<AppId> {
 }
 
 /// The site name for a host, as [`site`] keeps it; `None` for anything that
-/// is not a domain name.
+/// is not a listed domain name.
 pub(super) fn name(host: &str) -> Option<String> {
     let host = host.strip_suffix('.').unwrap_or(host).to_ascii_lowercase();
     let host = host.strip_prefix("www.").unwrap_or(&host);
@@ -57,7 +59,7 @@ pub(super) fn name(host: &str) -> Option<String> {
     {
         return None;
     }
-    Some(row(host).map_or_else(|| host.to_owned(), |entry| entry.id.to_owned()))
+    row(host).map(|entry| entry.id.to_owned())
 }
 
 /// The listed site that holds `host`: the host itself or the nearest domain

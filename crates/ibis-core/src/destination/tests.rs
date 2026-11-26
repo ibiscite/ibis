@@ -244,6 +244,38 @@ fn web(id: &str) -> Option<AppId> {
 }
 
 #[test]
+fn unlisted_hosts_never_become_site_identities() {
+    for host in [
+        "example.org",
+        "notes.example.org",
+        "invented-person.notes.example.org",
+        "www.notes.example.org",
+        "private.example.co.uk",
+        "xn--bcher-kva.example",
+        "google.com",
+        "unlisted.google.com",
+        "overleaf.com.example.org",
+        "notoverleaf.com",
+    ] {
+        assert_eq!(site(&format!("https://{host}/private?token=invented")), None, "{host}");
+        let id = AppId {
+            system: System::Web,
+            id: host.into(),
+        };
+        assert_eq!(id.normalized(), "", "{host}");
+        assert_eq!(lookup(&id), None, "{host}");
+    }
+    // Keep each listed host intact, including service labels such as docs.google.com.
+    for entry in APPS.iter().filter(|entry| entry.system == System::Web) {
+        assert_eq!(
+            site(&format!("https://{}/private?token=invented", entry.id)),
+            web(entry.id)
+        );
+        assert_eq!(site(&format!("https://eu.{}/private", entry.id)), web(entry.id));
+    }
+}
+
+#[test]
 fn a_site_is_only_its_name_never_a_path_query_or_sign_in() {
     for (address, kept) in [
         (
@@ -258,12 +290,14 @@ fn a_site_is_only_its_name_never_a_path_query_or_sign_in() {
             web("docs.google.com"),
         ),
         ("https://mail.google.com/mail/u/0/#inbox", web("mail.google.com")),
-        // Unlisted: the whole host without www., so neighbours stay apart.
-        ("http://www.notes.example.org./a/b", web("notes.example.org")),
-        ("https://wiki.example.net\\a", web("wiki.example.net")),
+        // Unlisted hosts have no site identity, whatever their address form.
+        ("http://www.notes.example.org./a/b", None),
+        ("https://wiki.example.net\\a", None),
         // A sign-in name could hide the real host.
         ("https://docs.google.com@evil.example/x?y", None),
         ("https://user:secret@example.org/", None),
+        ("https://evil.example@docs.google.com/x?y", None),
+        ("https://user:secret@overleaf.com/", None),
         // Not web pages, or not domain names.
         ("file:///Users/invented/thesis.tex", None),
         ("chrome://settings", None),
@@ -275,6 +309,8 @@ fn a_site_is_only_its_name_never_a_path_query_or_sign_in() {
         ("http://localhost:3000/", None),
         ("https://example.org:port/", None),
         ("https://-bad-.example.org/", None),
+        ("https://-bad-.overleaf.com/", None),
+        ("https://bad..overleaf.com/", None),
         ("https://exa mple.org/", None),
         ("search words", None),
         ("", None),
@@ -284,6 +320,11 @@ fn a_site_is_only_its_name_never_a_path_query_or_sign_in() {
     let long = format!("https://{}.example.org/", "a".repeat(64));
     assert_eq!(site(&long), None);
     let deep = format!("https://{}example.org/", "a.".repeat(130));
+    assert_eq!(site(&deep), None);
+    // Listed suffixes still require valid DNS labels and a bounded host.
+    let long = format!("https://{}.overleaf.com/", "a".repeat(64));
+    assert_eq!(site(&long), None);
+    let deep = format!("https://{}overleaf.com/", "a.".repeat(130));
     assert_eq!(site(&deep), None);
 }
 

@@ -55,8 +55,8 @@ pub struct AppId {
 impl AppId {
     /// The form the table uses: bundle IDs compare without case, as macOS
     /// does; a Windows executable is its lower-case file name, whatever path
-    /// the platform reported; a site is its site name, or nothing when the ID
-    /// is not one, so no path or query is ever kept or compared.
+    /// the platform reported; a site is its listed site name, or nothing when
+    /// the ID is not one, so no unlisted host, path or query is kept or compared.
     pub fn normalized(&self) -> String {
         match self.system {
             System::Web => site::name(&self.id).unwrap_or_default(),

@@ -203,24 +203,36 @@ fn a_format_chosen_on_a_site_stays_with_that_site() {
 }
 
 #[test]
-fn a_site_ibis_does_not_list_is_remembered_alone_and_otherwise_follows_the_browser() {
+fn unlisted_sites_use_only_the_browsers_remembered_format() {
     let firefox = app(Macos, "org.mozilla.firefox");
-    let wiki = site("https://wiki.example.org/page?id=0");
-    let other = site("https://notes.example.net/");
+    let wiki = ibis_core::destination::site("https://wiki.example.org/page?id=0");
+    let other = ibis_core::destination::site("https://notes.example.net/");
     let mut settings = Settings::default();
     settings.remember_app_output(&firefox, "ieee".into());
-    // Nothing remembered for the site: the browser's format, and Forget
-    // removes the browser's, since that is what chose it.
     assert_eq!(
-        at(&settings, &firefox, Some(&wiki)),
+        at(&settings, &firefox, wiki.as_ref()),
         ("ieee".into(), FormatFrom::App, FormatKind::Documents)
     );
-    settings.remember_app_output(&wiki, "modern-language-association".into());
-    assert_eq!(at(&settings, &firefox, Some(&wiki)).0, "modern-language-association");
-    assert_eq!(at(&settings, &firefox, Some(&other)).0, "ieee");
-    forget_at(&mut settings, Some(&firefox), Some(&other));
-    assert_eq!(at(&settings, &firefox, Some(&other)).1, FormatFrom::Suggestion);
-    assert_eq!(at(&settings, &firefox, Some(&wiki)).0, "modern-language-association");
+    let owner = remembers_for(Some(&firefox), wiki.as_ref());
+    assert_eq!(owner.as_ref(), Some(&firefox));
+    settings.remember_app_output(&firefox, "modern-language-association".into());
+    assert_eq!(at(&settings, &firefox, wiki.as_ref()).0, "modern-language-association");
+    assert_eq!(at(&settings, &firefox, other.as_ref()).0, "modern-language-association");
+    assert_eq!(remembered_for(&settings, Some(&firefox), wiki.as_ref()), Some(&firefox));
+    assert_eq!(settings.device.app_outputs.len(), 1);
+    assert_eq!(settings.device.app_outputs[0].app, firefox);
+    forget_at(&mut settings, Some(&firefox), other.as_ref());
+    assert!(settings.device.app_outputs.is_empty());
+    let suggestion = choose_at(&settings, Some(&firefox), wiki.as_ref());
+    assert_eq!(suggestion.from, FormatFrom::Suggestion);
+    assert!(accept_suggestion(
+        &mut settings,
+        Some(&firefox),
+        wiki.as_ref(),
+        &suggestion
+    ));
+    assert_eq!(settings.device.app_outputs.len(), 1);
+    assert_eq!(settings.device.app_outputs[0].app, firefox);
 }
 
 #[test]
@@ -276,6 +288,9 @@ fn a_website_entry_holding_anything_but_a_site_name_is_dropped_when_read() {
     let device: crate::settings::Device = serde_json::from_value(serde_json::json!({
         "app_outputs": [
             {"app": {"system": "web", "id": "https://example.org/private?token=invented"}, "output": "ieee"},
+            {"app": {"system": "web", "id": "example.org"}, "output": "ieee"},
+            {"app": {"system": "web", "id": "invented-person.notes.example.org"}, "output": "ieee"},
+            {"app": {"system": "web", "id": "overleaf.com.example.org"}, "output": "ieee"},
             {"app": {"system": "web", "id": "www.overleaf.com"}, "output": "natbib"},
             {"app": {"system": "web", "id": "overleaf.com"}, "output": "autocite"},
             {"app": {"system": "macos", "id": "com.google.chrome"}, "output": "apa"},
@@ -284,4 +299,19 @@ fn a_website_entry_holding_anything_but_a_site_name_is_dropped_when_read() {
     .unwrap_or_else(|error| panic!("{error}"));
     let kept: Vec<_> = device.app_outputs.iter().map(|entry| entry.app.id.as_str()).collect();
     assert_eq!(kept, ["overleaf.com", "com.google.chrome"]);
+}
+
+#[test]
+fn an_unlisted_site_name_cannot_be_remembered_directly() {
+    let mut settings = Settings::default();
+    for host in [
+        "example.org",
+        "invented-person.notes.example.org",
+        "overleaf.com.example.org",
+    ] {
+        let id = app(ibis_core::destination::System::Web, host);
+        settings.remember_app_output(&id, "ieee".into());
+        assert_eq!(settings.app_output(&id), None);
+        assert!(settings.device.app_outputs.is_empty());
+    }
 }
