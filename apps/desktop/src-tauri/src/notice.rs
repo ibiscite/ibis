@@ -104,7 +104,34 @@ pub(crate) struct Notice {
     /// Advanced each time the picker opens: a copy claimed before then never
     /// shows its notice over the search field.
     retirements: Retirements,
-    format: Mutex<Option<(u32, Option<AppId>, ibis_engine::format::FormatChoice)>>,
+    format: Mutex<Option<(u32, FormatReceipt)>>,
+}
+
+/// The format and browser/site context fixed when the citation was copied.
+pub(crate) struct FormatReceipt {
+    app: Option<AppId>,
+    site: Option<AppId>,
+    choice: ibis_engine::format::FormatChoice,
+}
+
+impl FormatReceipt {
+    pub(crate) fn for_copy(
+        settings: &ibis_engine::settings::Settings,
+        app: Option<&AppId>,
+        site: Option<&AppId>,
+        output: &ibis_core::contract::OutputSpec,
+    ) -> Option<Self> {
+        let choice = ibis_engine::format::choose_at(settings, app, site);
+        (choice.output == *output).then(|| Self {
+            app: app.cloned(),
+            site: site.cloned(),
+            choice,
+        })
+    }
+
+    fn accept(&self, settings: &mut ibis_engine::settings::Settings) -> bool {
+        ibis_engine::format::accept_suggestion(settings, self.app.as_ref(), self.site.as_ref(), &self.choice)
+    }
 }
 
 fn ignores_pointer<R: tauri::Runtime>(app: &AppHandle<R>) -> bool {
@@ -116,25 +143,20 @@ fn ignores_pointer<R: tauri::Runtime>(app: &AppHandle<R>) -> bool {
 }
 
 impl Notice {
-    pub(crate) fn remember_format(
-        &self,
-        token: Option<u32>,
-        app: Option<AppId>,
-        choice: ibis_engine::format::FormatChoice,
-    ) {
+    pub(crate) fn remember_format(&self, token: Option<u32>, receipt: FormatReceipt) {
         let Some(token) = token else { return };
         let Ok(mut format) = self.format.lock() else { return };
-        if format.as_ref().is_none_or(|(newer, _, _)| *newer < token) {
-            *format = Some((token, app, choice));
+        if format.as_ref().is_none_or(|(newer, _)| *newer < token) {
+            *format = Some((token, receipt));
         }
     }
-    fn take_format(&self, token: Option<u32>, app: Option<&AppId>) -> Option<ibis_engine::format::FormatChoice> {
+    fn take_format(&self, token: Option<u32>, app: Option<&AppId>) -> Option<FormatReceipt> {
         let mut format = self.format.lock().ok()?;
         if format
             .as_ref()
-            .is_some_and(|(pending, target, _)| Some(*pending) == token && target.as_ref() == app)
+            .is_some_and(|(pending, receipt)| Some(*pending) == token && receipt.app.as_ref() == app)
         {
-            format.take().map(|(_, _, choice)| choice)
+            format.take().map(|(_, receipt)| receipt)
         } else {
             None
         }
@@ -310,22 +332,22 @@ fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>
         .as_ref()
         .filter(|_| pasted)
         .is_some_and(|id| app.state::<crate::destination::AppMemory>().take_plugin_note(id));
-    if let Some(choice) = notice.take_format(owner.latest_token, target.as_ref())
-        && choice.from == ibis_engine::format::FormatFrom::Suggestion
+    if let Some(format) = notice.take_format(owner.latest_token, target.as_ref())
+        && format.choice.from == ibis_engine::format::FormatFrom::Suggestion
     {
         // A copy explains its format without claiming a paste or accepting it.
         // Only a successful paste remembers the suggestion and spends its receipt.
         let explain = if pasted {
             let mut first = false;
             let saved = app.state::<crate::preferences::SettingsFile>().update(|settings| {
-                first = ibis_engine::format::accept_suggestion(settings, target.as_ref(), &choice);
+                first = format.accept(settings);
             });
             saved.is_ok() && first
         } else {
             true
         };
         if explain {
-            text.suggested_format = choice.id;
+            text.suggested_format = format.choice.id;
         }
     }
     text.appearance = app
@@ -746,6 +768,44 @@ mod macos {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn format_receipt_remembers_google_docs_without_changing_the_browser_or_overleaf() -> Result<(), &'static str> {
+        use ibis_core::destination::System;
+        use ibis_engine::format::{FormatFrom, choose_at};
+
+        for (system, id) in [(System::Macos, "com.google.Chrome"), (System::Windows, "chrome.exe")] {
+            let chrome = AppId { system, id: id.into() };
+            let docs = AppId {
+                system: System::Web,
+                id: "docs.google.com".into(),
+            };
+            let overleaf = AppId {
+                system: System::Web,
+                id: "overleaf.com".into(),
+            };
+            let mut settings = ibis_engine::settings::Settings::default();
+            settings.remember_app_output(&chrome, "latex".into());
+            let shown = choose_at(&settings, Some(&chrome), Some(&docs));
+            assert_eq!(shown.from, FormatFrom::Suggestion);
+            let notice = Notice::default();
+            let receipt = FormatReceipt::for_copy(&settings, Some(&chrome), Some(&docs), &shown.output)
+                .ok_or("the shown Google Docs format must have a receipt")?;
+            notice.remember_format(Some(1), receipt);
+            assert!(notice.take_format(Some(2), Some(&chrome)).is_none());
+            assert!(notice.take_format(Some(1), Some(&overleaf)).is_none());
+            let receipt = notice
+                .take_format(Some(1), Some(&chrome))
+                .ok_or("the paste must take its own browser/site receipt")?;
+            assert!(receipt.accept(&mut settings));
+            assert_eq!(settings.app_output(&docs), shown.id.as_deref());
+            assert_eq!(settings.app_output(&chrome), Some("latex"));
+            assert_eq!(settings.app_output(&overleaf), None);
+            assert_eq!(choose_at(&settings, Some(&chrome), Some(&docs)).from, FormatFrom::App);
+            assert!(notice.take_format(Some(1), Some(&chrome)).is_none());
+        }
+        Ok(())
+    }
 
     #[test]
     fn a_picker_opening_retires_a_notice_still_being_delivered() {

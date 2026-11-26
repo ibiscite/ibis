@@ -1,6 +1,7 @@
-//! Apps Ibis knows. IDs are stored normalized (see [`super::AppId::normalized`]);
-//! a test checks that, and that no app appears twice. Add an app only with an
-//! ID taken from the app itself (its `CFBundleIdentifier`, or its executable).
+//! Apps and websites Ibis knows. IDs are stored normalized (see
+//! [`super::AppId::normalized`]); a test checks that, and that no app appears
+//! twice. Add an app only with an ID taken from the app itself (its
+//! `CFBundleIdentifier`, or its executable), and a site only by its site name.
 
 use super::{OutputClass, PasteSafety, System};
 use crate::contract::citation::KeySyntax;
@@ -14,11 +15,14 @@ pub struct App {
     /// Known format kind and suggestion; `None` means the kind is unknown.
     pub output: Option<OutputClass>,
     pub safety: PasteSafety,
+    /// A web browser: the site in its front tab chooses the format, when
+    /// Ibis can read it (decision 0031).
+    pub browser: bool,
 }
 
 use OutputClass::{Formatted, Key};
 use PasteSafety::{NonstandardShortcut, Normal, RemoteDesktop, Terminal, VirtualMachine};
-use System::{Macos, Windows};
+use System::{Macos, Web, Windows};
 
 const fn app(
     system: System,
@@ -33,31 +37,49 @@ const fn app(
         name,
         output,
         safety,
+        browser: false,
+    }
+}
+
+/// A browser: formatted text unless the site in front says otherwise.
+const fn browser(system: System, id: &'static str, name: &'static str) -> App {
+    App {
+        browser: true,
+        ..app(system, id, name, FORMATTED, Normal)
     }
 }
 
 const PANDOC: Option<OutputClass> = Some(Key(KeySyntax::Pandoc));
 const BIBLATEX: Option<OutputClass> = Some(Key(KeySyntax::Biblatex));
+const TYPST: Option<OutputClass> = Some(Key(KeySyntax::Typst));
 const FORMATTED: Option<OutputClass> = Some(Formatted);
 
 pub const APPS: &[App] = &[
-    // These IDs identify an app, never its current document or web page.
-    app(Macos, "com.apple.safari", "Safari", FORMATTED, Normal),
-    app(Macos, "com.google.chrome", "Chrome", FORMATTED, Normal),
-    app(Macos, "org.chromium.chromium", "Chromium", FORMATTED, Normal),
-    app(Macos, "org.mozilla.firefox", "Firefox", FORMATTED, Normal),
-    app(Macos, "com.microsoft.edgemac", "Edge", FORMATTED, Normal),
-    app(Macos, "com.brave.browser", "Brave", FORMATTED, Normal),
-    app(Macos, "com.vivaldi.vivaldi", "Vivaldi", FORMATTED, Normal),
-    app(Macos, "company.thebrowser.browser", "Arc", FORMATTED, Normal),
-    app(Macos, "com.operasoftware.opera", "Opera", FORMATTED, Normal),
-    app(Windows, "chrome.exe", "Chrome", FORMATTED, Normal),
-    app(Windows, "chromium.exe", "Chromium", FORMATTED, Normal),
-    app(Windows, "firefox.exe", "Firefox", FORMATTED, Normal),
-    app(Windows, "msedge.exe", "Edge", FORMATTED, Normal),
-    app(Windows, "brave.exe", "Brave", FORMATTED, Normal),
-    app(Windows, "vivaldi.exe", "Vivaldi", FORMATTED, Normal),
-    app(Windows, "opera.exe", "Opera", FORMATTED, Normal),
+    // Browsers. These IDs identify an app, never its current document or page;
+    // the site in front is read separately and reduced to its site name.
+    browser(Macos, "com.apple.safari", "Safari"),
+    browser(Macos, "com.google.chrome", "Chrome"),
+    browser(Macos, "org.chromium.chromium", "Chromium"),
+    browser(Macos, "org.mozilla.firefox", "Firefox"),
+    browser(Macos, "com.microsoft.edgemac", "Edge"),
+    browser(Macos, "com.brave.browser", "Brave"),
+    browser(Macos, "com.vivaldi.vivaldi", "Vivaldi"),
+    browser(Macos, "company.thebrowser.browser", "Arc"),
+    browser(Macos, "com.operasoftware.opera", "Opera"),
+    browser(Windows, "chrome.exe", "Chrome"),
+    browser(Windows, "chromium.exe", "Chromium"),
+    browser(Windows, "firefox.exe", "Firefox"),
+    browser(Windows, "msedge.exe", "Edge"),
+    browser(Windows, "brave.exe", "Brave"),
+    browser(Windows, "vivaldi.exe", "Vivaldi"),
+    browser(Windows, "opera.exe", "Opera"),
+    // Websites inside a browser, by site name; a site holds its subdomains.
+    app(Web, "overleaf.com", "Overleaf", BIBLATEX, Normal),
+    app(Web, "typst.app", "Typst", TYPST, Normal),
+    app(Web, "docs.google.com", "Google Docs", FORMATTED, Normal),
+    app(Web, "mail.google.com", "Gmail", FORMATTED, Normal),
+    app(Web, "outlook.office.com", "Outlook", FORMATTED, Normal),
+    app(Web, "outlook.live.com", "Outlook", FORMATTED, Normal),
     app(Macos, "com.microsoft.vscode", "Visual Studio Code", PANDOC, Normal),
     app(
         Macos,
@@ -126,6 +148,15 @@ pub const APPS: &[App] = &[
     app(Windows, "texstudio.exe", "TeXstudio", BIBLATEX, Normal),
     app(Windows, "texworks.exe", "TeXworks", BIBLATEX, Normal),
     app(Windows, "winedt.exe", "WinEdt", BIBLATEX, Normal),
+    // Sources are on pull request #2028: each app's own build files and Apple's
+    // App Store record, never a guess.
+    app(Macos, "texstudio", "TeXstudio", BIBLATEX, Normal),
+    app(Macos, "com.vallettaventures.texpad", "Texifier", BIBLATEX, Normal),
+    // R and Quarto writing: Pandoc citations.
+    app(Macos, "com.rstudio.desktop", "RStudio", PANDOC, Normal),
+    app(Windows, "rstudio.exe", "RStudio", PANDOC, Normal),
+    app(Macos, "co.posit.positron", "Positron", PANDOC, Normal),
+    app(Windows, "positron.exe", "Positron", PANDOC, Normal),
     // Terminals: a paste runs as typed input.
     app(Macos, "com.apple.terminal", "Terminal", None, Terminal),
     app(Macos, "com.googlecode.iterm2", "iTerm2", None, Terminal),

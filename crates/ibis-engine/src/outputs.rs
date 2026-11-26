@@ -44,7 +44,7 @@ pub struct OutputInfo {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub entries: bool,
     /// It names Zotero items, so it writes only references read from Zotero
-    /// and refuses any other (Zotero's RTF/ODF Scan markers).
+    /// and refuses any other (markers for the RTF/ODF Scan add-on).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub zotero_items: bool,
 }

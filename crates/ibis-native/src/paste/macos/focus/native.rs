@@ -372,6 +372,20 @@ struct Saved {
 
 thread_local! { static SAVED: RefCell<Saved> = RefCell::default(); }
 
+/// The retained paste window, without querying focus again. Only native site
+/// reading on this main thread may borrow its AX identity.
+pub(crate) fn captured_window(token: u32, pid: i32) -> Option<CFRetained<CFType>> {
+    if !NSThread::isMainThread_class() {
+        return None;
+    }
+    SAVED.with(|saved| {
+        let saved = saved.borrow();
+        let (saved_token, captured) = saved.window.as_ref()?;
+        (*saved_token == token && Native::default().pid(&captured.window).ok() == Some(pid))
+            .then(|| captured.window.0.clone())
+    })
+}
+
 // The control the last selection check proved, for the identity read that
 // follows it in the same final check; any other read takes and drops it.
 thread_local! { static PROVED: RefCell<Option<Element>> = const { RefCell::new(None) }; }

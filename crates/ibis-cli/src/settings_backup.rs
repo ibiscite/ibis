@@ -207,6 +207,7 @@ fn system_label(system: System) -> &'static str {
         System::Macos => "macOS",
         System::Windows => "Windows",
         System::Linux => "Linux",
+        System::Web => "the web",
     }
 }
 

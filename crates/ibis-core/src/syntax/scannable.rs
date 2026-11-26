@@ -1,6 +1,6 @@
-//! Zotero's scannable citation markers, the input to Zotero's RTF Scan and the
-//! ODF Scan add-on (#1531). Tests cover the markers written here, not what
-//! either scan makes of them:
+//! Zotero's scannable citation markers, in the form the separate RTF/ODF Scan
+//! add-on reads (#1531); Zotero's built-in RTF Scan reads author-date
+//! placeholders instead. Tests prove the markers, not a scan round trip:
 //! `{ prefix | label | locator | suffix | identifier }`, one per reference,
 //! joined with nothing between. They name Zotero items, not citation keys, so
 //! only a reference the engine read from a Zotero library can be written, and

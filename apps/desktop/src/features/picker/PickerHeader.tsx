@@ -9,7 +9,7 @@ import type { AppPaste } from "../../api";
 import type { FormatPick, FormatSource } from "./useDestination";
 
 /** The search bar: the search box and the copy format. */
-export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, yours, preview, example, writing, onWritings, usualFormat, onUseUsual, formatLabel, delivery }: {
+export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatScope, rememberedFor, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, yours, preview, example, writing, onWritings, usualFormat, onUseUsual, formatLabel, delivery }: {
   /** Welcome has no search yet; the field stays mounted so focus can return to it. */
   hidden?: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
@@ -31,6 +31,10 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
   formatButtonRef?: React.RefObject<HTMLButtonElement | null>;
   /** The app the picker was opened from, when Ibis knows it. */
   app?: string | null;
+  /** The site or app where the next format pick is saved. */
+  formatScope?: string | null;
+  /** The site or app whose saved format reset removes. */
+  rememberedFor?: string | null;
   formatSource?: FormatSource;
   formatPick?: FormatPick;
   writing?: { name: string } | null;
@@ -82,7 +86,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
           });
         }}
       />
-      {showFormat && (delivery?.editorFormat ? <span className="search-format-label">{delivery.editorFormat}</span> : <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writing={writing} onWritings={onWritings} usualFormat={usualFormat} onUseUsual={onUseUsual} formatLabel={formatLabel} yours={yours} preview={preview} example={example} />)}
+      {showFormat && (delivery?.editorFormat ? <span className="search-format-label">{delivery.editorFormat}</span> : <FormatMenu format={format} buttonRef={formatButtonRef} app={app} formatScope={formatScope} rememberedFor={rememberedFor} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writing={writing} onWritings={onWritings} usualFormat={usualFormat} onUseUsual={onUseUsual} formatLabel={formatLabel} yours={yours} preview={preview} example={example} />)}
     </SearchBar>
   );
 }

@@ -298,7 +298,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         expanded={results.length > 0 && showCitations}
         activeDescendant={showCitations && results[active] ? `result-${active}` : undefined}
         format={format} formatLabel={destination.formatLabel} formatButtonRef={formatButtonRef} delivery={actions.delivery}
-        app={destination.app} formatSource={destination.source} formatPick={destination.pick}
+        app={destination.app} formatScope={destination.formatScope} rememberedFor={destination.rememberedFor} formatSource={destination.source} formatPick={destination.pick}
         writing={destination.writing} usualFormat={destination.usualFormat} onUseUsual={destination.useUsual} onWritings={!editor.label && destination.offersProjects ? menus.openProjects : undefined}
         onFormatOpenChange={onFormatOpenChange}
         pasteChoices={destination.pasteChoices}

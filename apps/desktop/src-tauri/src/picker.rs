@@ -266,7 +266,8 @@ fn show_picker_on_thread(app: &AppHandle, owner: u64, focus: bool) {
         return;
     }
     // Before the panel takes the front: the app Enter will paste into (#1241).
-    let selection = crate::paste::capture(app);
+    // Around it, the website in front if the app is a browser: it chooses the format.
+    let selection = crate::destination::site::capture(app, || crate::paste::capture(app));
     // Native target capture may outlive its request, especially on Windows.
     if !visits.owns(owner) {
         return;

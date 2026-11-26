@@ -75,3 +75,42 @@ test("a missing DOI offers the format menu and BibTeX can recover the citation",
   expect(screen.queryByRole("alert")).toBeNull();
   expect(previews).toContain("bibtex");
 });
+
+test("saving the same format for a site updates the palette status and reset scope", async () => {
+  const site = "overleaf.com";
+  const destination = fixtureDestination({ ...BROWSER, site_id: site, remembered_for: BROWSER.app,
+    format: formatAnswer("cite", "app"), usual_format: "autocite" });
+  const { remembered } = opened(() => destination);
+  await screen.findByText("First");
+  await pick("LaTeX \\cite");
+  await waitFor(() => expect(remembered).toEqual(["cite"]));
+  await waitFor(() => expect(screen.getByRole("status", { name: "Citation format" }).textContent).toContain(`Remembered for ${site}.`));
+  openFormats();
+  expect(screen.getByRole("dialog", { name: "Format" }).textContent).toContain(`Remembered for ${site}.`);
+  expect(screen.getByRole("option", { name: `Use BibLaTeX \\autocite in ${site} again` })).toBeTruthy();
+});
+
+test.each([
+  { site: "overleaf.com", rememberedFor: "overleaf.com", usual: "autocite", usualName: "BibLaTeX \\autocite" },
+  { site: null, rememberedFor: "Example Browser", usual: "apa", usualName: "APA" },
+])("the format palette names and resets the saved owner $rememberedFor at $site", async ({ site, rememberedFor, usual, usualName }) => {
+  const resets: unknown[] = [];
+  let destination = fixtureDestination({ ...BROWSER, site: site ? "Invented site display name" : null, site_id: site,
+    remembered_for: rememberedFor, usual_format: usual, format: formatAnswer("cite", "app"), can_paste: true, can_choose_paste: true });
+  opened(() => destination, {
+    forget_app_output: (args) => {
+      resets.push(args);
+      destination = fixtureDestination({ ...destination, remembered_for: null, format: formatAnswer(usual, "yours") });
+      return null;
+    },
+  });
+  await screen.findByText("First");
+  await waitFor(() => expect(screen.getByRole("status", { name: "Citation format" }).textContent).toContain(`Remembered for ${rememberedFor}.`));
+  openFormats();
+  const palette = screen.getByRole("dialog", { name: "Format" });
+  expect(palette.textContent).toContain(`Remembered for ${rememberedFor}.`);
+  expect(screen.getByRole("option", { name: "Paste into Example Browser from Now On" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("option", { name: `Use ${usualName} in ${rememberedFor} again` }));
+  await waitFor(() => expect(resets).toEqual([{ appId: BROWSER.app_id, identity: null, site }]));
+  await waitFor(() => expect(formatShown()).toBe(usualName));
+});
