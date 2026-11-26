@@ -34,13 +34,18 @@ def options(**changes):
     return argparse.Namespace(**{**vars(OPTIONS), **changes})
 
 
+def field(build):
+    """The delimited build field ibis_core::VERSION is read from."""
+    return f"\nIbis-Build: {build}\n".encode()
+
+
 def elf(build=BUILD, machine=62):
-    return b"\x7fELF" + b"\0" * 14 + struct.pack("<H", machine) + b"\0" * 44 + build.encode()
+    return b"\x7fELF" + b"\0" * 14 + struct.pack("<H", machine) + b"\0" * 44 + field(build)
 
 
 def pe(build=BUILD, machine=0x8664):
     head = b"MZ" + b"\0" * 58 + struct.pack("<I", 64)
-    return head + b"PE\0\0" + struct.pack("<H", machine) + b"\0" * 18 + build.encode()
+    return head + b"PE\0\0" + struct.pack("<H", machine) + b"\0" * 18 + field(build)
 
 
 def version_resource(version):
@@ -199,13 +204,13 @@ class Packages(unittest.TestCase):
     def test_a_program_of_another_system_or_a_longer_version_fails(self):
         # A Linux program as the Intel macOS command line.
         self.assertFails(self.write("ibis-macOS-Intel.tar.gz", cli_tar()), "is a ELF program, not Mach-O", "x86_64-apple-darwin")
-        # A numbered release's version is read where it is delimited; a nightly's names its commit.
-        self.assertTrue(verify.embeds(b"x\r\nUser-Agent: Ibis/0.4.1\r\nZotero", "0.4.1"))
-        self.assertFalse(verify.embeds(b"User-Agent: Ibis/0.4.10\r\n and 0.4.1 elsewhere", "0.4.1"))
-        self.assertTrue(verify.embeds(b"chosen_in0.4.1-nightly.1+abc12342026-11-25", "0.4.1-nightly.1+abc1234"))
-        self.assertFalse(verify.embeds(b"0.4.1-nightly.1+abc9999", "0.4.1-nightly.1+abc1234"))
-        # Packed straight after the full commit hash, as in a nightly's Intel app (#2049).
-        self.assertTrue(verify.embeds(b"fe200f1b23940.4.1-nightly.1+abc1234", "0.4.1-nightly.1+abc1234"))
+        # The build is read from its one delimited field, wherever it sits.
+        self.assertTrue(verify.embeds(b"fe200f1b2394\nIbis-Build: 0.4.1\nZotero", "0.4.1"))
+        self.assertFalse(verify.embeds(b"\nIbis-Build: 0.4.10\n and 0.4.1 elsewhere", "0.4.1"))
+        self.assertTrue(verify.embeds(b"1b2394\nIbis-Build: 0.4.1-nightly.1+abc1234\n", "0.4.1-nightly.1+abc1234"))
+        self.assertFalse(verify.embeds(b"\nIbis-Build: 0.4.1-nightly.1+abc9999\n", "0.4.1-nightly.1+abc1234"))
+        self.assertFalse(verify.embeds(b"\nIbis-Build: 10.4.1-nightly.1+abc1234\n", "0.4.1-nightly.1+abc1234"))
+        self.assertFalse(verify.embeds(b"x0.4.1-nightly.1+abc1234", "0.4.1-nightly.1+abc1234"))
 
     def test_debian_and_rpm_packages_state_the_version(self):
         self.check(self.write("Ibis-Linux.deb", deb_bytes(linux_app())))
@@ -318,7 +323,7 @@ class Packages(unittest.TestCase):
         for name, data in NOTICES.items():
             (app / "Resources/notices" / name).write_bytes(data)
         program = self.dir / "main.c"
-        program.write_text(f'const char *version = "{BUILD}";\nint main(void) {{ return version[0] == 0; }}\n')
+        program.write_text(f'const char *version = "\\nIbis-Build: {BUILD}\\n";\nint main(void) {{ return version[0] == 0; }}\n')
         subprocess.run(["cc", "-arch", "arm64", "-o", str(app / "MacOS/ibis-desktop"), str(program)], check=True)
         info = {"CFBundleShortVersionString": VERSION, "CFBundleIdentifier": "com.example.invented",
                 "CFBundleExecutable": "ibis-desktop", "CFBundlePackageType": "APPL"}

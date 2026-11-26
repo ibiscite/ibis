@@ -354,17 +354,11 @@ def executable_format(data):
 
 
 def embeds(data, build):
-    """The program was built as BUILD. A nightly's build ends in its commit
-    (`0.4.1-nightly.N+abc1234`), which nothing else matches, so it is found
-    as it stands: the linker packs strings with no separator, and the byte
-    before it is often a digit, such as the end of the full commit hash. A
-    numbered release's version alone could be part of a longer one (0.4.1 in
-    0.4.10), so it is found in the one place it is delimited: Ibis's HTTP
-    User-Agent, `User-Agent: Ibis/0.4.1\r\n`, which every Ibis program
-    carries."""
-    if "+" in build:
-        return build.encode() in data
-    return f"User-Agent: Ibis/{build}\r\n".encode() in data
+    """The program was built as BUILD: it holds the delimited field
+    `\\nIbis-Build: BUILD\\n` that ibis_core::VERSION is read from, so a
+    longer build (0.4.10, or 10.4.1-nightly.N+abc1234) never passes for a
+    shorter one, wherever the linker puts it."""
+    return f"\nIbis-Build: {build}\n".encode() in data
 
 
 def runs_here(data):
