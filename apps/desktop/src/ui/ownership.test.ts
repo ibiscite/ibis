@@ -164,9 +164,10 @@ function contextClasses(complex: Complex): string[] {
 const rendered = new Set(list("src/ui/", /\.tsx?$/).filter((name) => !/\.(test|fixture)\.tsx?$/.test(name))
   .flatMap((name) => read(name).replace(/\/\*[^]*?\*\/|\/\/[^\n]*/g, "").match(/[A-Za-z_][\w-]*/g) ?? []));
 
-const styled = [...list("src/", /\.css$/), ...list("canvas/", /\.css$/)]
-  .map((name) => [name, styleRules(read(name)).flatMap(({ selector, line, body }) => splitList(selector)
-    .map((one) => [one, parseSelector(one), line, body] as const))] as const);
+/** A sheet's selectors, one per list item, with the line and declarations of their rule. */
+const parsed = (name: string, css: string) => [name, styleRules(css).flatMap(({ selector, line, body }) => splitList(selector)
+  .map((one) => [one, parseSelector(one), line, body] as const))] as const;
+const styled = [...list("src/", /\.css$/), ...list("canvas/", /\.css$/)].map((name) => parsed(name, read(name)));
 
 /** Each part class and the ui/ stylesheets that style it. */
 const partClasses = new Map<string, Set<string>>();
@@ -349,9 +350,10 @@ const at = (name: string, line: number) => `${name.slice("src/".length)}:${line}
 const ratchet = (what: string, offenders: string[]) => `${what} may only go down (decision 0062). Lower the ceiling when it falls. `
   + `${offenders.length} found:\n${offenders.join("\n")}`;
 
-/** A ui/ selector that names a class not its sheet's own, or reaches the part from a :root, html or body context to set more than knobs. */
-function crossPart(): string[] {
-  return partSheets.flatMap(([name, selectors]) => {
+/** A ui/ selector that names a class not its sheet's own (another part's, or no part's), or reaches
+ * the part from a :root, html or body context to set more than custom properties. */
+function crossPart(sheets: readonly (typeof styled)[number][] = partSheets): string[] {
+  return sheets.flatMap(([name, selectors]) => {
     const part = name.slice("src/ui/".length, -".css".length);
     return selectors.flatMap(([selector, , line, body]) => {
       const foreign = [...new Set(mentions(selector).classes)].filter((word) => !anyPart.has(word) && !ownerOf(word).includes(part))
@@ -363,10 +365,14 @@ function crossPart(): string[] {
 }
 
 const CROSS_PART_CEILING = 177;
-test(`ui/ sheets select only their own part: ${CROSS_PART_CEILING} selectors at most reach another`, () => {
+test(`ui/ sheets select only their own part: ${CROSS_PART_CEILING} selectors at most reach past it`, () => {
   const found = crossPart();
-  expect(found.length, ratchet("Selectors in a ui/ sheet that name another part's class (style it through that part's knobs or props)", found))
-    .toBeLessThanOrEqual(CROSS_PART_CEILING);
+  expect(found.length, ratchet("Selectors in a ui/ sheet that name a class not its own, or set more than custom properties from a :root context "
+    + "(style another part through its knobs or props)", found)).toBeLessThanOrEqual(CROSS_PART_CEILING);
+  const planted = parsed("src/ui/Stack.css", ":root[data-x] .ui-stack { --k: 1; } :root[data-x] .ui-stack { padding: 0; } .ui-stack[data-gap] > .ui-button, .ui-stack-item, .ui-stack .picker-x, .ui-stack.showing { }");
+  expect(crossPart([planted]).map((entry) => entry.split(" › ").slice(1).join(" › ")), "the count sees what it limits").toEqual([
+    ":root[data-x] .ui-stack › :root[data-x] context sets more than custom properties",
+    ".ui-stack[data-gap] > .ui-button › .ui-button (Button)", ".ui-stack .picker-x › .picker-x (no part)"]);
 });
 
 const ID_SELECTOR_CEILING = 23;
@@ -412,10 +418,10 @@ const componentFiles = [...new Set([...list("src/ui/", /^[A-Z]\w*\.tsx$/), ...li
 const partOf = (name: string) => drawsPart[name] ?? name.slice(name.lastIndexOf("/") + 1, -".tsx".length);
 
 /** "file:line › class (part)" for each className a ui/ component or a feature renders from another part. */
-function borrowed(): string[] {
-  return componentFiles.flatMap((name) => {
+function borrowed(files: readonly (readonly [name: string, source: string])[] = componentFiles.map((name) => [name, read(name)] as const)): string[] {
+  return files.flatMap(([name, source]) => {
     const part = partOf(name);
-    return renderedClasses(read(name)).flatMap(({ line, words }) => {
+    return renderedClasses(source).flatMap(({ line, words }) => {
       const foreign = [...new Set(words)].filter((word) => !anyPart.has(word) && ownerOf(word).length && !ownerOf(word).includes(part))
         .map((word) => `${word} (${ownerOf(word).join(", ")})`);
       return foreign.length ? [`${at(name, line)} › ${foreign.join(", ")}`] : [];
@@ -428,6 +434,9 @@ test(`components render another part's class names at most ${BORROWED_CLASS_CEIL
   const found = borrowed();
   expect(found.length, ratchet("className attributes in ui/ and features/ that render another part's classes (compose that part instead)", found))
     .toBeLessThanOrEqual(BORROWED_CLASS_CEILING);
+  const source = "<li className=\"ui-option result-tile\" /><b className=\"visually-hidden showing\" /><i className=\"picker-x\" />";
+  expect(borrowed([["src/ui/ChoiceList.tsx", source], ["src/features/picker/Option.tsx", source]]), "the count sees what it limits")
+    .toEqual(["ui/ChoiceList.tsx:1 › ui-option (Option), result-tile (Option)"]);
 });
 
 // Chromium leaves ::before and ::after unpainted on rows that mount after the sheet when a
