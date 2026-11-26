@@ -23,6 +23,7 @@ has its own page; read only the one your change touches:
 | [First run and choice screens](design/choice-screens.md) | Welcome, no library, empty and failed libraries | C12 |
 | [Settings](design/settings.md) | The Settings window and its pages | C18, D17 |
 | [Source checks and sheets](design/sources-and-sheets.md) | The bibliography check, passages (planned), Cited Since Opening | |
+| [User research](design/research.md) | Research questions, reference journeys, session scripts and how findings change the design | |
 
 ## Principles
 
