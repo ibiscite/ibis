@@ -10,6 +10,8 @@ publish = false
 [features]
 # Only the CLI serves this adapter, in its own process.
 endnote = ["dep:quick-xml"]
+# Only the CLI parses documents, in its own `ibis __document` child (decision 0060).
+documents = ["ibis-core/documents"]
 
 [dependencies]
 schemars = "=1.2.3"

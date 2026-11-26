@@ -19,8 +19,6 @@ use ibis_core::destination::{AppId, is_browser, site};
 /// The longest the read may hold the picker's opening, as one paste query
 /// (decision 0029).
 pub const LIMIT: Duration = Duration::from_millis(50);
-/// The second look at the window, after the paste capture.
-const CONFIRM: Duration = Duration::from_millis(15);
 
 /// What was in front when the picker opened.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,7 +31,7 @@ pub enum Front {
 }
 
 /// The exact window retained by paste capture, never a fresh focus query.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapturedWindow {
     /// The opaque token for the retained macOS AX document window.
     Macos(u32),
@@ -43,27 +41,20 @@ pub enum CapturedWindow {
 
 /// The platform calls behind [`read`], so tests can stand in for them.
 pub trait Source {
-    /// A window's identity, equal only to the same window.
-    type Window: PartialEq;
     /// The app in front: its process and its ID. Ibis's own process when
     /// one of its windows has the keyboard, as the paste capture counts it.
     fn front(&self) -> Option<(i32, AppId)>;
     /// Whether Ibis may read other apps' controls, checked without asking.
     fn allowed(&self) -> bool;
-    /// `pid`'s focused window, by `deadline`.
-    fn window(&self, pid: i32, deadline: Instant) -> Option<Self::Window>;
-    /// Whether the read window is the exact window paste capture retained.
-    fn matches_capture(&self, window: &Self::Window, captured: CapturedWindow) -> bool;
-    /// The address of the page `window` shows, by `deadline`. Only
-    /// [`read_with`] sees it.
-    fn address(&self, window: &Self::Window, deadline: Instant) -> Option<String>;
+    /// The address in the exact retained paste window, owned by `pid`, by
+    /// `deadline`. Only [`read_with`] sees the address. Never query focus here.
+    fn address(&self, window: CapturedWindow, pid: i32, deadline: Instant) -> Option<String>;
 }
 
-/// The app in front and its site, read through `source` around `capture`,
-/// the paste capture, which always runs once and whose answer comes back
-/// beside it; `own` is Ibis's process. The site counts only when the same
-/// window is focused before and after the capture and equals its retained
-/// window. No front when the app in front cannot be told.
+/// Capture once, then read the site from the window retained for paste.
+/// `own` is Ibis's process; an opening from Ibis keeps the earlier site.
+/// No front when the app in front cannot be told. No site when the retained
+/// window is missing, belongs to another process, fails or exceeds the deadline.
 pub fn read_with<S: Source, T>(
     source: &S,
     own: i32,
@@ -75,21 +66,13 @@ pub fn read_with<S: Source, T>(
     if pid == own {
         return (Some(Front::Ibis), capture().0);
     }
+    let (captured, window) = capture();
     let deadline = Instant::now() + LIMIT;
-    let read = (is_browser(&app) && source.allowed())
-        .then(|| source.window(pid, deadline))
+    let site = (is_browser(&app) && source.allowed())
+        .then(|| window.and_then(|window| source.address(window, pid, deadline)))
         .flatten()
-        .and_then(|window| {
-            let site = source.address(&window, deadline).and_then(|address| site(&address))?;
-            Some((window, site))
-        });
-    let (captured, captured_window) = capture();
-    let site = read.and_then(|(window, site)| {
-        let same = captured_window.is_some_and(|captured| source.matches_capture(&window, captured))
-            && source.front().is_some_and(|(now, _)| now == pid)
-            && source.window(pid, Instant::now() + CONFIRM).as_ref() == Some(&window);
-        same.then_some(site)
-    });
+        .filter(|_| Instant::now() < deadline)
+        .and_then(|address| site(&address));
     (Some(Front::App { app, pid, site }), captured)
 }
 
@@ -126,11 +109,11 @@ mod tests {
     struct Fake {
         front: Option<(i32, AppId)>,
         allowed: bool,
-        address: Option<&'static str>,
-        /// (Handle, identity) at each look, in turn; the last one repeats.
-        windows: RefCell<Vec<(u32, u32)>>,
+        address: Cell<Option<&'static str>>,
+        window: CapturedWindow,
         asked: Cell<u32>,
         deadline: RefCell<Option<Instant>>,
+        slow: bool,
     }
 
     impl Fake {
@@ -138,44 +121,35 @@ mod tests {
             Self {
                 front: Some((42, AppId { system, id: id.into() })),
                 allowed: true,
-                address,
-                windows: RefCell::new(vec![(1, 1)]),
+                address: Cell::new(address),
+                window: CapturedWindow::Macos(1),
                 asked: Cell::new(0),
                 deadline: RefCell::new(None),
+                slow: false,
             }
         }
     }
 
     impl Source for Fake {
-        type Window = (u32, u32);
         fn front(&self) -> Option<(i32, AppId)> {
             self.front.clone()
         }
         fn allowed(&self) -> bool {
             self.allowed
         }
-        fn window(&self, _pid: i32, _deadline: Instant) -> Option<Self::Window> {
-            let mut windows = self.windows.borrow_mut();
-            if windows.len() > 1 {
-                Some(windows.remove(0))
-            } else {
-                windows.first().copied()
-            }
-        }
-        fn address(&self, _window: &Self::Window, deadline: Instant) -> Option<String> {
+        fn address(&self, window: CapturedWindow, pid: i32, deadline: Instant) -> Option<String> {
             self.asked.set(self.asked.get() + 1);
             self.deadline.replace(Some(deadline));
-            self.address.map(str::to_owned)
-        }
-        fn matches_capture(&self, window: &Self::Window, captured: CapturedWindow) -> bool {
-            match captured {
-                CapturedWindow::Macos(id) => id == window.0,
-                CapturedWindow::Windows(handle) => handle == window.0 as usize,
+            if self.slow {
+                std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
             }
+            (window == self.window && Some(pid) == self.front.as_ref().map(|(pid, _)| *pid))
+                .then(|| self.address.get().map(str::to_owned))
+                .flatten()
         }
     }
 
-    /// Reads around a stand-in capture, which must run exactly once.
+    /// Reads from a stand-in capture, which must run exactly once.
     fn read(fake: &Fake, own: i32) -> Option<Front> {
         let (front, captured) = read_with(fake, own, || ("captured", Some(CapturedWindow::Macos(1))));
         assert_eq!(captured, "captured");
@@ -219,70 +193,47 @@ mod tests {
     }
 
     #[test]
-    fn a_window_switched_during_the_capture_gives_no_site() {
-        let fake = Fake::new(System::Macos, "com.google.Chrome", Some("https://overleaf.com/"));
-        fake.windows.replace(vec![(1, 1), (2, 2)]);
-        assert!(matches!(read(&fake, 7), Some(Front::App { site: None, .. })));
-    }
-
-    #[test]
-    fn reused_windows_handle_with_a_new_identity_uses_the_app_fallback() {
-        let fake = Fake::new(System::Windows, "chrome.exe", Some("https://overleaf.com/"));
-        for (identity, expected) in [(1, site("https://overleaf.com/")), (2, None)] {
-            fake.windows.replace(vec![(1, 1)]);
-            let (front, captured) = read_with(&fake, 7, || {
-                // A closes after the address read; the same process gives
-                // B the same HWND, but a different UIA identity.
-                fake.windows.replace(vec![(1, identity)]);
-                ("captured", Some(CapturedWindow::Windows(1)))
-            });
-            assert_eq!(captured, "captured");
-            assert_eq!(
-                front,
-                Some(Front::App {
-                    app: AppId {
-                        system: System::Windows,
-                        id: "chrome.exe".into(),
-                    },
-                    pid: 42,
-                    site: expected,
-                })
-            );
-        }
-    }
-
-    #[test]
-    fn site_requires_the_captured_window_even_when_focus_returns_to_the_read_window() {
-        for (system, id, windows) in [
-            (
-                System::Macos,
-                "com.google.Chrome",
-                [CapturedWindow::Macos(2), CapturedWindow::Macos(1)],
-            ),
-            (
-                System::Windows,
-                "chrome.exe",
-                [CapturedWindow::Windows(2), CapturedWindow::Windows(1)],
-            ),
+    fn site_comes_from_the_captured_window_after_a_tab_switch_or_handle_reuse() {
+        for (system, id, window) in [
+            (System::Macos, "com.google.Chrome", CapturedWindow::Macos(1)),
+            (System::Windows, "chrome.exe", CapturedWindow::Windows(1)),
         ] {
-            let fake = Fake::new(system, id, Some("https://overleaf.com/"));
-            for (captured_window, expected) in [
-                (Some(windows[0]), None),
-                (None, None),
-                (Some(windows[1]), site("https://overleaf.com/")),
-            ] {
-                // Both surrounding reads see A; capture retained B (or no window).
-                fake.windows.replace(vec![(1, 1), (1, 1)]);
-                let mut captures = 0;
-                let (front, captured) = read_with(&fake, 7, || {
-                    captures += 1;
-                    ("captured", captured_window)
-                });
-                assert_eq!(captures, 1);
-                assert_eq!(captured, "captured");
-                assert_eq!(site_of(front), expected);
-            }
+            let fake = Fake {
+                window,
+                ..Fake::new(system, id, Some("https://overleaf.com/"))
+            };
+            let mut captures = 0;
+            let (front, captured) = read_with(&fake, 7, || {
+                captures += 1;
+                // Ctrl+Tab changes the site without changing the window. A
+                // replacement window reusing an HWND must also get its own site.
+                fake.address.set(Some("https://docs.google.com/document/d/invented"));
+                ("captured", Some(window))
+            });
+            assert_eq!(captures, 1);
+            assert_eq!(captured, "captured");
+            assert_eq!(site_of(front), site("https://docs.google.com/"));
         }
+    }
+
+    #[test]
+    fn site_is_read_from_the_retained_window_even_if_another_window_has_focus() {
+        let fake = Fake {
+            window: CapturedWindow::Macos(2),
+            ..Fake::new(System::Macos, "com.google.Chrome", Some("https://overleaf.com/"))
+        };
+        let (front, _) = read_with(&fake, 7, || ((), Some(CapturedWindow::Macos(2))));
+        assert_eq!(site_of(front), site("https://overleaf.com/"));
+        assert_eq!(site_of(read_with(&fake, 7, || ((), None)).0), None);
+    }
+
+    #[test]
+    fn a_late_site_read_leaves_the_browser_format_in_charge() {
+        let fake = Fake {
+            slow: true,
+            ..Fake::new(System::Macos, "com.google.Chrome", Some("https://overleaf.com/"))
+        };
+        assert!(matches!(read(&fake, 7), Some(Front::App { site: None, .. })));
     }
 
     #[test]

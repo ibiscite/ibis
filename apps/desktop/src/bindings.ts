@@ -309,7 +309,7 @@ export const CITATION_FORMS = ["normal","narrative","author-only","year-only","f
 
 export const DEFAULT_OUTPUT = "pandoc" as const;
 
-export const DEFAULT_PREFERENCES = {"accent":"system","appearance":"system","density":"comfortable","interface_language":"system","larger_text":false,"menu_bar":true,"paste":true,"picker_placement":"centre","recent_citations":true,"small_surprises":true} as const;
+export const DEFAULT_PREFERENCES = {"accent":"system","appearance":"system","density":"compact","interface_language":"system","larger_text":false,"menu_bar":true,"paste":true,"picker_placement":"centre","recent_citations":true,"small_surprises":true} as const;
 
 export const DEFAULT_STYLE = "apa" as const;
 
@@ -898,6 +898,8 @@ export type PickerDestination = {
 	paste: AppPaste | null;
 	/** An unrecognised app has a proven target but no delivery choice yet. */
 	paste_question: boolean;
+	/** The app or site whose remembered format reset removes, named by the engine. */
+	remembered_for?: string | null;
 	/**
 	 * The website in front in that app, by name, when it is a browser and
 	 * the site could be read: formats are remembered for it, while paste

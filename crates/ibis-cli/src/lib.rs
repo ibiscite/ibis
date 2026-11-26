@@ -19,7 +19,18 @@ mod generated;
 mod human;
 mod keys;
 mod out;
+pub mod pdf_details;
 pub mod pdf_text;
+
+/// `ibis __document`: the document child, under the PDF child's CPU, core
+/// and address-space limits (decision 0060).
+pub fn run_document_child() -> u8 {
+    #[cfg(unix)]
+    if pdf_text::limit_resources().is_err() {
+        return 1;
+    }
+    ibis_sources::document::child::serve(std::io::stdin().lock(), std::io::stdout().lock())
+}
 mod proposals;
 mod settings_backup;
 mod sources;
@@ -702,7 +713,10 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
             // PDFs and built-in source adapters run in this same executable,
             // each in a child process.
             let engine = match std::env::current_exe() {
-                Ok(program) => engine.with_pdf_reader(program.clone()).with_built_in_sources(program),
+                Ok(program) => engine
+                    .with_pdf_reader(program.clone())
+                    .with_document_reader(program.clone())
+                    .with_built_in_sources(program),
                 Err(_) => engine,
             };
             run_engine(engine, arguments, input, output, errors, mode, Defaults::App)

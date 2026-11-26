@@ -8,6 +8,7 @@ pub use bibtex::edit as bibtex_edit;
 mod candidates;
 mod child;
 mod csl_json;
+pub mod document;
 #[cfg(feature = "endnote")]
 pub mod endnote;
 mod exported;
@@ -39,6 +40,10 @@ pub use file::{
 // about 0.85 GiB, and a 58 MiB file of 200,000 records in about 2.6 GiB. The
 // 64 MiB file cap is the real bound.
 pub const MAX_LIBRARY_RECORDS: usize = 200_000;
+
+/// The largest record any reader keeps, measured as its CSL data; a larger
+/// one is skipped with a work-limit warning. One bound for every format.
+pub(crate) const MAX_RECORD_BYTES: usize = 1024 * 1024;
 
 /// Days in a month of the proleptic Gregorian calendar; months outside 1–12 have 31.
 pub(crate) fn days_in_month(year: i32, month: u8) -> u8 {
@@ -216,6 +221,8 @@ pub enum SourceCapability {
     AttachmentText,
     /// Changes an AI app proposes and the person confirms in Ibis (decision 0055).
     Proposals,
+    /// Each record's original entry as the file wrote it, which `entry` copies.
+    OriginalEntries,
 }
 
 impl SourceCapability {

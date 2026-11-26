@@ -122,7 +122,7 @@ pub fn usual_at(settings: &Settings, app: Option<&AppId>, site: Option<&AppId>) 
 }
 
 /// The app or website whose remembered format [`choose_at`] uses, if one does.
-fn remembered<'a>(settings: &Settings, app: Option<&'a AppId>, site: Option<&'a AppId>) -> Option<&'a AppId> {
+pub fn remembered_for<'a>(settings: &Settings, app: Option<&'a AppId>, site: Option<&'a AppId>) -> Option<&'a AppId> {
     let saved = |id: &&AppId| settings.app_output(id).and_then(outputs::find).is_some();
     match site_for(app, site) {
         Some(site) if saved(&site) => Some(site),
@@ -140,7 +140,7 @@ pub fn remembers_for(app: Option<&AppId>, site: Option<&AppId>) -> Option<AppId>
 /// Forget the remembered format [`choose_at`] uses, whichever of the website
 /// or the app it belongs to.
 pub fn forget_at(settings: &mut Settings, app: Option<&AppId>, site: Option<&AppId>) {
-    if let Some(id) = remembered(settings, app, site).cloned() {
+    if let Some(id) = remembered_for(settings, app, site).cloned() {
         settings.forget_app_output(&id);
     }
 }
@@ -215,7 +215,7 @@ pub fn offers_projects(settings: &Settings, app: Option<&AppId>) -> bool {
 /// As [`offers_projects`], for `app` with the website in front in it.
 pub fn offers_projects_at(settings: &Settings, app: Option<&AppId>, site: Option<&AppId>) -> bool {
     !settings.device.writings.is_empty()
-        || remembered(settings, app, site)
+        || remembered_for(settings, app, site)
             .and_then(|id| settings.app_output(id))
             .and_then(outputs::find)
             .is_some_and(|saved| usual_at(settings, app, site).id.as_deref() != Some(saved.id.as_str()))

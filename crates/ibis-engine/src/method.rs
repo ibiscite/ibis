@@ -46,6 +46,8 @@ pub enum Needs {
     Records,
     /// Attachments whose text can be read.
     AttachmentText,
+    /// Each record's original entry as its file wrote it.
+    OriginalEntries,
     /// Whatever the method it calls needs.
     AsCalled,
 }
@@ -55,6 +57,7 @@ impl Needs {
         match self {
             Self::Records => Some(SourceCapability::BibliographicRecords),
             Self::AttachmentText => Some(SourceCapability::AttachmentText),
+            Self::OriginalEntries => Some(SourceCapability::OriginalEntries),
             Self::Nothing | Self::AsCalled => None,
         }
     }
@@ -263,7 +266,7 @@ rows! {
     Entry "entry": EntryRequest => Checked<EntryResult> {
         answer: answers::entry,
         reply: Reply::Entry,
-        needs: Records,
+        needs: OriginalEntries,
         network: Offline,
         palette: [Reference],
     }
@@ -271,7 +274,7 @@ rows! {
     Outline "outline": OutlineRequest => Checked<OutlineResult> {
         answer: answers::outline,
         reply: Reply::Outline,
-        needs: AttachmentText,
+        needs: Records,
         network: Offline,
         palette: [Reference],
     }

@@ -14,7 +14,8 @@ const script = (name) => fileURLToPath(new URL(`./${name}`, import.meta.url));
 function build(t, target, packages) {
   const dir = mkdtempSync(join(tmpdir(), "ibis-packages-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  for (const file of ["LICENSE", "NOTICE.md"]) writeFileSync(join(dir, file), file);
+  mkdirSync(join(dir, "apps/desktop/src-tauri/notices"), { recursive: true });
+  for (const file of ["LICENSE", "NOTICE.md", "THIRD-PARTY-NOTICES.txt"]) writeFileSync(join(dir, "apps/desktop/src-tauri/notices", file), file);
   mkdirSync(join(dir, `target/${target}/release/bundle`), { recursive: true });
   for (const path of packages) {
     mkdirSync(join(dir, `target/${target}/release/bundle`, path, ".."), { recursive: true });
@@ -26,7 +27,7 @@ function build(t, target, packages) {
     const result = spawnSync("bash", [script("collect-packages.sh")], { cwd: dir, encoding: "utf8", timeout: 10_000,
       env: { ...process.env, TARGET: target, CLI_TARGET: "cli", RUNNER_OS: "Linux", ...env } });
     const dist = existsSync(join(dir, "dist")) ? readdirSync(join(dir, "dist")).sort() : [];
-    return { ...result, dist, read: (name) => readFileSync(join(dir, "dist", name), "utf8") };
+    return { ...result, dist, dir, read: (name) => readFileSync(join(dir, "dist", name), "utf8") };
   };
 }
 
@@ -36,6 +37,8 @@ test("packages get plain names per computer and a checksum list that never lists
   assert.deepEqual(run.dist, ["Ibis-Linux.AppImage", "Ibis-Linux.deb", "Ibis-Linux.rpm", "SHA256SUMS-x86_64-unknown-linux-gnu.txt", "ibis-Linux.tar.gz"]);
   const listed = run.read("SHA256SUMS-x86_64-unknown-linux-gnu.txt").trim().split("\n").map((line) => line.split(/\s+\*?/)[1]).sort();
   assert.deepEqual(listed, run.dist.filter((name) => !name.startsWith("SHA256SUMS")));
+  const archive = spawnSync("tar", ["-tzf", join(run.dir, "dist/ibis-Linux.tar.gz")], { encoding: "utf8" });
+  assert.deepEqual(archive.stdout.trim().split("\n").sort(), ["LICENSE", "NOTICE.md", "THIRD-PARTY-NOTICES.txt", "ibis"]);
 });
 
 test("no packages, two packages with one name or an unknown computer publish nothing", { skip }, (t) => {
@@ -74,6 +77,11 @@ test("desktop packaging stages the matching CLI before every bundle and keeps st
   assert.deepEqual(linux.externalBin, []);
   assert.equal(linux.resources["binaries/ibis"], "binaries/ibis");
   assert.equal(linux.linux, undefined, "Linux CLI resources need no maintainer scripts or dependencies");
+  // Every app package carries the notices folder the notices job wrote (#1271).
+  for (const file of ["LICENSE", "NOTICE.md", "THIRD-PARTY-NOTICES.txt"]) {
+    assert.ok(bundle.resources.includes(`notices/${file}`), file);
+    assert.equal(linux.resources[`notices/${file}`], `notices/${file}`, file);
+  }
   const nightlyDeb = nightlyConfig("0.3.4-nightly.20261112000000", "linux").bundle.linux.deb;
   assert.equal(nightlyDeb.postInstallScript, undefined);
   assert.equal(nightlyDeb.preRemoveScript, undefined);

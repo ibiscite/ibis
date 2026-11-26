@@ -253,7 +253,7 @@ impl ClosedReader {
 
 /// The folder Zotero or the person chose, with links in its own path resolved
 /// once: only what lies below it is opened without following any link. Windows
-/// keeps the path as given, since its verbatim form fails the local-file checks.
+/// keeps the path as given and refuses reparse points when opening it.
 pub fn trusted_folder(path: &Path) -> PathBuf {
     // Classify every component and symlink target against the cached mounts
     // before probing it; plain canonicalize could touch a remote root first.
@@ -292,9 +292,9 @@ pub fn read_text_cache(
 
 const LOCAL_FILE_BUDGET: Duration = Duration::from_secs(10);
 
-/// Use an opened regular, resident local file without following a link at
-/// any component. The operation shares a bounded I/O slot and one deadline
-/// with opening; cancelled or late results are dropped, never published.
+/// Use an opened regular, resident local file without following any link in
+/// its path. Opening and the operation share a bounded I/O slot and one
+/// deadline; cancelled or late results are dropped, never published.
 pub fn with_local_file<T: Send + 'static>(
     path: &Path,
     cancelled: Arc<dyn Fn() -> bool + Send + Sync>,

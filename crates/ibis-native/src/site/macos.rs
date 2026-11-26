@@ -1,4 +1,4 @@
-//! The macOS read: the address of the page in the browser's focused window,
+//! The macOS read: the address of the page in the browser's captured window,
 //! through the Accessibility grant alone. Public SDK AX/CF calls with a
 //! closed attribute set; the only text read is the window's `AXDocument` or
 //! the web area's `AXURL`, which goes straight back to the site reduction. Nothing here prompts,
@@ -21,7 +21,6 @@ use objc2_core_foundation::{CFArray, CFGetTypeID, CFRetained, CFString, CFType, 
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
     fn AXIsProcessTrusted() -> u8;
-    fn AXUIElementCreateApplication(pid: i32) -> *const c_void;
     fn AXUIElementGetTypeID() -> usize;
     fn AXUIElementCopyAttributeValue(
         element: *const c_void,
@@ -39,7 +38,6 @@ const MAX_DEPTH: usize = 16;
 /// The only attributes the read may name.
 #[derive(Clone, Copy)]
 enum Attribute {
-    FocusedWindow,
     Document,
     Children,
     Role,
@@ -48,13 +46,6 @@ enum Attribute {
 
 #[derive(Clone)]
 pub(super) struct Element(CFRetained<CFType>);
-
-impl PartialEq for Element {
-    fn eq(&self, other: &Self) -> bool {
-        // The safe binding uses CFEqual: the same AX element, never a description.
-        self.0 == other.0
-    }
-}
 
 impl Element {
     /// Only passed +1 Copy/Create results.
@@ -84,7 +75,6 @@ impl Element {
             return None;
         }
         let name = CFString::from_static_str(match attribute {
-            Attribute::FocusedWindow => "AXFocusedWindow",
             Attribute::Document => "AXDocument",
             Attribute::Children => "AXChildren",
             Attribute::Role => "AXRole",
@@ -97,10 +87,6 @@ impl Element {
             unsafe { AXUIElementCopyAttributeValue(self.ptr(), CFRetained::as_ptr(&name).as_ptr().cast(), &mut value) };
         let owned = Self::owned(value);
         (error == 0).then_some(owned).flatten()
-    }
-
-    fn window(&self, deadline: Instant) -> Option<Self> {
-        self.copy(Attribute::FocusedWindow, deadline).and_then(Self::of)
     }
 
     fn children(&self, deadline: Instant) -> Vec<Self> {
@@ -138,8 +124,6 @@ impl Element {
 pub(super) struct Native;
 
 impl super::Source for Native {
-    type Window = Element;
-
     fn front(&self) -> Option<(i32, AppId)> {
         // The picker panel does not activate Ibis: with one of its windows
         // key, the paste capture keeps the earlier app, and so does this read.
@@ -173,18 +157,11 @@ impl super::Source for Native {
         unsafe { AXIsProcessTrusted() != 0 }
     }
 
-    fn window(&self, pid: i32, deadline: Instant) -> Option<Element> {
-        // SAFETY: Create returns a +1 AX object for the process, checked non-null.
-        let application = Element(Element::owned(unsafe { AXUIElementCreateApplication(pid) })?);
-        application.window(deadline)
-    }
-
-    fn matches_capture(&self, window: &Element, captured: super::CapturedWindow) -> bool {
-        matches!(captured, super::CapturedWindow::Macos(token)
-            if crate::paste::macos::matches_window(token, &window.0))
-    }
-
-    fn address(&self, window: &Element, deadline: Instant) -> Option<String> {
+    fn address(&self, captured: super::CapturedWindow, pid: i32, deadline: Instant) -> Option<String> {
+        let super::CapturedWindow::Macos(token) = captured else {
+            return None;
+        };
+        let window = Element(crate::paste::macos::captured_window(token, pid)?);
         // A window may name the page it shows, as a document window names its file.
         if let Some(address) = window.address(Attribute::Document, deadline) {
             return Some(address);

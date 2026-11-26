@@ -32,7 +32,7 @@ export function usePickerPreferences(
   const formatField = useRef<"output" | "key_output">("output");
   /** The failure shown is a read's, which a later successful read ends. */
   const readFailed = useRef(false);
-  const [density, setDensity] = useState<Density>("comfortable");
+  const [density, setDensity] = useState<Density>(DEFAULT_PREFERENCES.density);
   const [largerText, setLargerText] = useState(false);
   const [queue] = useState(() => new PreferencePatchQueue({
     read: async () => ({ preferences: await pickerPreferences().catch(() => null) }),

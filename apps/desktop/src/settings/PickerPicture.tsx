@@ -1,7 +1,7 @@
 import type { RecordId } from "../bindings";
 import { createRef, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Density, SearchResult } from "../bindings";
+import { DEFAULT_PREFERENCES, type Density, type SearchResult } from "../bindings";
 import { PickerHeader } from "../features/picker/PickerHeader";
 import { ResultRow } from "../features/picker/ResultList";
 import { useInterfaceMessages } from "../i18n";
@@ -20,7 +20,7 @@ const ignore = () => undefined;
 const styles = (foundationStyles + iconStyles + buttonStyles + iconButtonStyles + optionStyles + bandStyles + searchBarStyles + pickerStyles).replace(/@import[^;]+;/g, "")
   .replace(/:root(\[[^\]]+\])?/g, (_, attribute: string | undefined) => attribute ? `:host(${attribute})` : ":host");
 /** `frame` is the window's size in CSS pixels; the picture is that window scaled (the default size otherwise). */
-export function PickerPicture({ density = "comfortable", appearance, split = false, frame }: {
+export function PickerPicture({ density = DEFAULT_PREFERENCES.density, appearance, split = false, frame }: {
   density?: Density; appearance?: string; split?: boolean; frame?: readonly [number, number];
 }) {
   const { text } = useInterfaceMessages();

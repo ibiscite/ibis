@@ -89,6 +89,9 @@ pub(crate) struct PickerDestination {
     /// The engine's answer: the format the next citation uses and which level
     /// chose it (decision 0042). The picker shows it as it is.
     pub(crate) format: ibis_engine::format::FormatChoice,
+    /// The app or site whose remembered format reset removes, named by the engine.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) remembered_for: Option<String>,
     /// Your format for this kind, used by the return-to-usual action.
     pub(crate) usual_format: String,
     pub(crate) find_open: bool,
@@ -363,6 +366,7 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
             app_id: None,
             app_identity: None,
             format,
+            remembered_for: None,
             usual_format,
             find_open: false,
             unreadable: false,
@@ -398,6 +402,13 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
             .map_or(0, |rows| rows.len() as u32)
     };
     let front_site = site::current(app, &id);
+    let remembered_for = context.remembered_for.as_ref().map(|owner| {
+        if owner.system == ibis_core::destination::System::Web {
+            owner.normalized()
+        } else {
+            name.clone()
+        }
+    });
     PickerDestination {
         app: Some(name),
         site: front_site.as_ref().map(display_name),
@@ -405,6 +416,7 @@ pub(crate) fn present(app: &AppHandle, context: &ibis_engine::app_context::Conte
         app_id: Some(id.normalized()),
         app_identity,
         format,
+        remembered_for,
         usual_format,
         find_open: ibis_core::destination::finds_in_app(&id),
         unreadable,

@@ -95,25 +95,25 @@ test.each([false, true])("a failed search notice takes the notice line in a stea
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);
 });
 
-test("the shelf oracle rejects clipping, shrinking and placement inside the middle scroller", () => {
+test("the citation oracle rejects clipping, growing, leaving the bar and placement inside the middle scroller", () => {
   vi.stubGlobal("matchMedia", () => ({ matches: false }));
-  let bounds = new DOMRect(0, 320, 480, 40);
+  let bounds = new DOMRect(0, 360, 480, 40);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
     if (this.matches(".search-bar")) return new DOMRect(0, 0, 480, 80);
     if (this.matches("footer")) return new DOMRect(0, 360, 480, 40);
     return bounds;
   });
-  render(<main><header className="search-bar" /><div className="picker-content" /><div className="shelf" style={{ flexShrink: 0, overflowY: "visible" }}><section className="shelf-output" /></div><footer /></main>);
+  render(<main><header className="search-bar" /><div className="picker-content" /><footer><div className="bar-citation"><div className="shelf" style={{ overflowY: "visible" }}><section className="shelf-output" /></div></div></footer></main>);
   const band = document.querySelector(".shelf");
   expect(isWholeShelf()).toBe(true);
-  bounds = new DOMRect(0, 320, 480, 42);
+  bounds = new DOMRect(0, 360, 480, 42);
   expect(isWholeShelf()).toBe(false);
-  bounds = new DOMRect(-2, 320, 480, 40);
+  bounds = new DOMRect(-2, 360, 480, 40);
   expect(isWholeShelf()).toBe(false);
   bounds = new DOMRect(0, 320, 480, 40);
-  band.style.flexShrink = "1";
   expect(isWholeShelf()).toBe(false);
-  band.style.flexShrink = "0"; band.style.overflowY = "auto";
+  bounds = new DOMRect(0, 360, 480, 40);
+  band.style.overflowY = "auto";
   expect(isWholeShelf()).toBe(false);
   band.style.overflowY = "visible";
   document.querySelector(".picker-content").append(band);
@@ -126,19 +126,19 @@ test.each([{ coarse: false, doubled: false }, { coarse: true, doubled: false }, 
   let height = doubled ? 80 : coarse ? 44 : 40;
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
     if (this.matches(".search-bar")) return new DOMRect(0, 0, 720, 80);
-    if (this.matches("footer")) return new DOMRect(0, 500, 720, 40);
-    return new DOMRect(0, 400, 720, height);
+    if (this.matches("footer")) return new DOMRect(0, 500, 720, 100);
+    return new DOMRect(0, 500, 720, height);
   });
-  render(<main><header className="search-bar" /><div className="shelf" style={{ flexShrink: 0, overflowY: "visible", "--space-10": doubled ? "80px" : "40px", "--control-h": doubled ? "64px" : "32px", "--touch-target": "44px" }}><section className="shelf-output" /></div><footer /></main>);
+  render(<main><header className="search-bar" /><footer><div className="shelf" style={{ overflowY: "visible", "--space-10": doubled ? "80px" : "40px", "--control-h": doubled ? "64px" : "32px", "--touch-target": "44px" }}><section className="shelf-output" /></div></footer></main>);
   expect(isWholeShelf()).toBe(true);
   height = doubled ? 96 : 80;
   expect(isWholeShelf()).toBe(false);
 });
 
 test("the inspector oracle rejects a panel over the list, the bands or past the window", () => {
-  const rects = { inspector: new DOMRect(432, 61, 288, 323), "search-bar": new DOMRect(0, 0, 720, 53), shelf: new DOMRect(8, 392, 704, 40), "picker-content": new DOMRect(0, 53, 432, 339) };
+  const rects = { inspector: new DOMRect(432, 61, 288, 323), "search-bar": new DOMRect(0, 0, 720, 53), "delivery-bar": new DOMRect(0, 392, 720, 88), "picker-content": new DOMRect(0, 53, 432, 339) };
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () { return rects[this.className]; });
-  render(<main><div className="search-bar" /><div className="picker-content" /><section className="inspector" /><div className="shelf" /></main>);
+  render(<main><div className="search-bar" /><div className="picker-content" /><section className="inspector" /><footer className="delivery-bar" /></main>);
   vi.stubGlobal("innerWidth", 720); vi.stubGlobal("innerHeight", 480);
   expect(isSeatedInspector()).toBe(true);
   rects["picker-content"] = new DOMRect(0, 53, 720, 339);

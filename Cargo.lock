@@ -2155,6 +2155,7 @@ dependencies = [
  "jiff",
  "lopdf",
  "nix",
+ "quick-xml 0.42.0",
  "serde",
  "serde_json",
  "tempfile",

@@ -1,5 +1,5 @@
 //! The Windows read: the browser's address field, through UI Automation,
-//! which needs no grant. Only the focused element's process, the window's
+//! which needs no grant. Only the captured window's process, its
 //! controls and the first address field's value are read; the walk never
 //! enters a page, so no page content is read.
 
@@ -44,18 +44,7 @@ impl Drop for Pending {
 
 pub(super) struct Native;
 
-/// A handle can be reused within the same browser process. Keep the UIA
-/// identity too, so the confirmation cannot give a new window the old site.
-#[derive(Clone, PartialEq, Eq)]
-pub(super) struct Window {
-    handle: usize,
-    pid: u32,
-    runtime_id: Vec<i32>,
-}
-
 impl super::Source for Native {
-    type Window = Window;
-
     fn front(&self) -> Option<(i32, AppId)> {
         let window = w::HWND::GetForegroundWindow()?;
         let (_, pid) = window.GetWindowThreadProcessId();
@@ -75,51 +64,18 @@ impl super::Source for Native {
         true
     }
 
-    fn window(&self, pid: i32, deadline: Instant) -> Option<Window> {
-        let window = w::HWND::GetForegroundWindow()?;
-        let (_, owner) = window.GetWindowThreadProcessId();
-        if i32::try_from(owner).ok()? != pid {
+    fn address(&self, captured: super::CapturedWindow, pid: i32, deadline: Instant) -> Option<String> {
+        let super::CapturedWindow::Windows(handle) = captured else {
             return None;
-        }
-        let handle = window.ptr() as usize;
-        with_window(handle, owner, deadline, move |_, element| {
-            let runtime_id = element.get_runtime_id().ok()?;
-            (!runtime_id.is_empty()).then_some(Window {
-                handle,
-                pid: owner,
-                runtime_id,
-            })
-        })
-    }
-
-    fn matches_capture(&self, window: &Window, captured: super::CapturedWindow) -> bool {
-        matches!(captured, super::CapturedWindow::Windows(handle) if handle == window.handle)
-    }
-
-    fn address(&self, window: &Window, deadline: Instant) -> Option<String> {
-        let foreground = w::HWND::GetForegroundWindow()?;
-        if foreground.ptr() as usize != window.handle {
-            return None;
-        }
-        let window = window.clone();
-        with_window(window.handle, window.pid, deadline, move |automation, element| {
-            if element.get_runtime_id().ok()? != window.runtime_id {
-                return None;
-            }
-            address_field(automation, element)
-        })
+        };
+        read_address(handle, u32::try_from(pid).ok()?, deadline)
     }
 }
 
-/// Both identity and address reads need COM on their own thread. Keep all
+/// The address read needs COM on its own thread. Keep all
 /// UIA calls under the same worker limit and the caller's deadline; a late
 /// answer is dropped with the channel.
-fn with_window<T: Send + 'static>(
-    handle: usize,
-    pid: u32,
-    deadline: Instant,
-    read: impl FnOnce(&UIAutomation, &UIElement) -> Option<T> + Send + 'static,
-) -> Option<T> {
+fn read_address(handle: usize, pid: u32, deadline: Instant) -> Option<String> {
     if Instant::now() >= deadline {
         return None;
     }
@@ -138,7 +94,7 @@ fn with_window<T: Send + 'static>(
                 if window.get_process_id().ok()? != pid {
                     return None;
                 }
-                read(&automation, &window)
+                address_field(&automation, &window)
             })();
             let _ = send.send(result);
         })

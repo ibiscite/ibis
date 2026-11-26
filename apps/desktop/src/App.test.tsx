@@ -29,7 +29,7 @@ test("a pasted list previews and copies every result in order, with a safe missi
   fireEvent.paste(box, { clipboardData: { getData: () => "b\na\nmissing" } });
   expect((box as HTMLInputElement).value).toBe("b\ta\tmissing");
   await screen.findByText("Pasted list");
-  expect(await screen.findByText("Copy 2 citations · Pandoc")).toBeTruthy();
+  expect(await screen.findByText("Copy 2 Citations")).toBeTruthy();
   expect(await screen.findByText("Not in your library: <script>invented</script>")).toBeTruthy();
   expect(document.querySelector("script")).toBeNull();
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b; @a"));
@@ -54,7 +54,7 @@ const formatButton = (name: string | RegExp = /^Citation format /) => within(scr
 function formatValue() {
   const shown = formatButton().getAttribute("aria-label")!.slice("Citation format ".length);
   const choices = OUTPUTS.map((output) => output.id);
-  return choices.find((choice) => shown === `${outputName(choice)}` || shown === `${outputName(choice)} · This paste`);
+  return choices.find((choice) => shown === outputName(choice));
 }
 
 const selectedKeys = citationKeys;
@@ -557,6 +557,10 @@ test("inside Zotero Enter opens the PDF or item, Command-O shows it, and Alt-Ent
   await waitFor(() => expect(open).toHaveBeenCalledTimes(3));
   expect(open.mock.calls[2]?.[0]).toMatchObject({ reveal: false });
   expect(calls).not.toContain("deliver_citation");
+  // The bar's action does what it says, as Enter does: it opens, never copies.
+  fireEvent.click(screen.getByRole("button", { name: "Open PDF, or show item in Zotero" }));
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(4));
+  expect(calls).not.toContain("deliver_citation");
   fireEvent.keyDown(search, { key: "Enter", altKey: true });
   await waitFor(() => expect(calls).toContain("deliver_citation"));
 });
@@ -568,8 +572,20 @@ test("a known wrong-work key is refused and never reaches native copy, by Enter 
   });
   render(<App />);
   await screen.findByText("A key in thesis.bib identifies a different work.");
-  expect(document.querySelector<HTMLButtonElement>(".footer-action")?.disabled).toBe(true);
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  // The action is off but still focusable and spoken, described by its reason in the bar.
+  const action = document.querySelector<HTMLButtonElement>(".footer-action")!;
+  expect(action.getAttribute("aria-disabled")).toBe("true");
+  expect(document.getElementById(action.getAttribute("aria-describedby")!)?.textContent).toBe("A key in thesis.bib identifies a different work.");
+  // Each Enter on the refusal is said again: a new announcement per press, the same words.
+  const said = [...document.querySelectorAll('.delivery-bar [role="alert"]')].find((node) => !node.closest(".bar-reason"))!;
+  const announced: string[] = [];
+  const observer = new MutationObserver((records) => { for (const record of records) for (const node of record.addedNodes) announced.push(node.textContent ?? ""); });
+  observer.observe(said, { childList: true, subtree: true });
+  for (let press = 0; press < 2; press++) {
+    await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
+  }
+  observer.disconnect();
+  expect(announced).toEqual(Array(2).fill("Not pasted or copied. A key in thesis.bib identifies a different work."));
   expect(called).not.toContain("deliver_citation");
   // Dragging delivers what Enter pastes, so it delivers nothing here either.
   const beak = document.querySelector<HTMLElement>(".shelf-leading")!;
@@ -604,14 +620,17 @@ test("leaving a writing restores the app's output and copies a fresh preview", a
   render(<App />);
   await screen.findByText("Synthetic source");
   const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Citation format / });
-  await waitFor(() => expect(formatButton().getAttribute("aria-label")).toContain("Field Guide"));
+  // The pop-up names the format alone; whose it is, the project, is its spoken status.
+  const formatStatus = () => screen.getByRole("status", { name: "Citation format" }).textContent;
+  await waitFor(() => expect(formatStatus()).toContain("Field Guide"));
+  expect(formatButton().getAttribute("aria-label")).not.toContain("Field Guide");
   fireEvent.click(formatButton());
   fireEvent.click(await screen.findByRole("option", { name: "New project…" }));
   const dialog = await screen.findByRole("dialog", { name: "Projects" });
   fireEvent.click(await within(dialog).findByRole("button", { name: "No Project" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Projects" })).toBeNull());
   await waitFor(() => expect(formatButton().getAttribute("aria-label")).toContain("Typst"));
-  expect(formatButton().getAttribute("aria-label")).not.toContain("Field Guide");
+  expect(formatStatus()).not.toContain("Field Guide");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
   await waitFor(() => expect(copied).toEqual(["typst:[2,0]"]));
 });
@@ -637,7 +656,7 @@ test("the format palette offers Projects only when the engine does", async () =>
 // Editor requests
 const plain = (text: string | null | undefined) => (text ?? "").replace(/[⁨⁩]/g, "");
 
-test("a waiting editor is named with its format, and its end asks for a fresh preview", async () => {
+test("a waiting editor's format is named once, in the header, and its end asks for a fresh preview", async () => {
   let waiting: { request: number; format: string } | null = { request: 1, format: "Pandoc" };
   let previews = 0;
   backend({
@@ -647,7 +666,10 @@ test("a waiting editor is named with its format, and its end asks for a fresh pr
   });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "signals" } });
-  await waitFor(() => expect(plain(document.body.textContent)).toContain("Citing for your editor in Pandoc."));
+  await waitFor(() => expect(plain(document.body.textContent)).toContain("Citing for your editor. Esc cancels."));
+  expect(document.querySelector(".search-format-label")?.textContent).toBe("Pandoc");
+  expect(plain(document.body.textContent).match(/Pandoc/g)).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Send to Editor" })).toBeTruthy();
   await waitFor(() => expect(document.body.textContent).toContain("@taylor2026"));
   const before = previews;
   waiting = null;
@@ -689,4 +711,20 @@ test("words the engine kept as words say so in one notice line", async () => {
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "room 22" } });
   expect(await screen.findByText("Kept as words. For a page, add a comma: “room, 22”.")).toBeTruthy();
+});
+
+test("the drawer is read and tabbed to where it is seen: after the list, before the bar", async () => {
+  backend({ search: () => [result("a", "Invented work")], preview_file_citation: () => receipt("[@a]") });
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /^Edit / }));
+  const drawer = await screen.findByRole("dialog", { name: /Citation details|Invented work/ });
+  const list = document.getElementById("results")!, bar = document.querySelector("footer.delivery-bar")!;
+  expect(list.compareDocumentPosition(drawer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(drawer.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // Tab order follows: the details' fields come before the bar's Library, action and More.
+  const order = [...document.querySelectorAll<HTMLElement>("button, input, [tabindex='0']")].filter((node) => !node.closest("[inert], [aria-hidden='true']"));
+  const page = order.findIndex((node) => drawer.contains(node) && node.matches("input"));
+  const more = order.findIndex((node) => bar.contains(node) && /^More/.test(node.getAttribute("aria-label") ?? node.textContent ?? ""));
+  expect(page).toBeGreaterThanOrEqual(0);
+  expect(more).toBeGreaterThan(page);
 });

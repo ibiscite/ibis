@@ -4,3 +4,5 @@
 # Keep only the invented starting corpus; libFuzzer adds hash-named mutations.
 /corpus/damaged_bibtex/*
 !/corpus/damaged_bibtex/*.bib
+# The nightly job's grown corpus, kept in its cache, never committed.
+/cached-corpus/

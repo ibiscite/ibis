@@ -36,9 +36,12 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   const canPaste = !editorFormat && d.ready && Boolean(destination?.can_paste);
   const saving = saves > 0;
   const app = rememberAppOutput ? destination?.app ?? null : null;
+  // Format picks belong to the site; delivery and projects belong to the browser.
+  const formatScope = app ? destination?.site_id ?? app : null;
   // Ids the engine no longer lists are as good as none.
   const writing = destination?.writing ?? null;
   const baseFormat = listedOutput(destination?.format.id) ?? fallback;
+  const rememberedFor = held !== null && held !== baseFormat ? formatScope : destination?.remembered_for ?? formatScope;
   const format = destinationFormat(d, fallback);
   const unlisted = Boolean(d.ready && destination && !listedOutput(destination.format.id));
   // Subscriptions keep the first render's functions, so they read the newest default.
@@ -92,7 +95,7 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   const remembering = { ...d, remembers: Boolean(rememberAppOutput) };
   const askPaste = asksPaste(remembering);
   const pasteChoices = Boolean(rememberAppOutput && destination?.can_choose_paste);
-  return { snapshotReceiver, appId: destination?.app_id ?? null, app, format, editorFormat, ready, saving, canChooseFormat, source, pick, shouldAsk: !editorFormat && shouldAsk(remembering), read, choose,
+  return { snapshotReceiver, appId: destination?.app_id ?? null, app, formatScope, rememberedFor, format, editorFormat, ready, saving, canChooseFormat, source, pick, shouldAsk: !editorFormat && shouldAsk(remembering), read, choose,
     findOpen: Boolean(!editorFormat && ready && destination?.find_open),
     formatLabel: editorFormat ?? (unlisted ? say("citations-unlisted") : undefined),
     writing, writingContext: destination?.writing_context ?? null, readProblem: d.editProblem ?? d.readProblem ?? (unlisted ? say("writing-unsupported") : null), contextVersion: destination?.context_version ?? null, writingChanged, editWriting,

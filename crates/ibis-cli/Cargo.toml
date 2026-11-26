@@ -12,7 +12,7 @@ clap = { version = "4.6.7", features = ["string"] }
 ibis-core = { path = "../ibis-core" }
 ibis-engine = { path = "../ibis-engine" }
 # The built-in EndNote source adapter, served as `ibis __source endnote`.
-ibis-sources = { path = "../ibis-sources", features = ["endnote"] }
+ibis-sources = { path = "../ibis-sources", features = ["documents", "endnote"] }
 serde_json = "1.0.154"
 serde = { version = "1.0.229", features = ["derive"] }
 jiff = "0.2.38"
@@ -22,6 +22,8 @@ unicode-segmentation = "1.13.3"
 # The PDF extractor's child process (decision 0055). Only `ibis` parses PDFs,
 # never the desktop app: lopdf is pure Rust and forbids unsafe code.
 lopdf = { version = "0.47.0", default-features = false }
+# The XMP packet a PDF carries, read in the same child.
+quick-xml = "=0.42.0"
 
 [target.'cfg(unix)'.dependencies]
 # The child's address-space and processor-time limits.

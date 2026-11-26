@@ -5,19 +5,24 @@ token containing its output words, with a soft fill and an always-visible
 remove button with Undo. Output brackets and separators remain plain text.
 Search remains a separate text field.
 
-A token opens an upward popover for this citation's form, page/type, prefix and
-suffix. Reference actions live in More and shortcuts. Reader and warnings use
-the side panel. This keeps editing on the output without widening the window.
+The line is the first part of the delivery bar, the one band at the window's
+foot that also holds the library (when it needs the person), the one action and
+More (maintainer, 2026-11-25). A token opens this citation's form, page/type,
+prefix and suffix in a drawer that rises from the bar across the window's
+width, in the frame's flow: the list gives it room, so it covers no row. Peek
+opens in the same drawer. Reference actions live in More and shortcuts. Reader
+and warnings use the side panel. This keeps editing on the output without
+widening the window.
 
 Numeric tokens add a quiet author/year handle. Long tokens end in an ellipsis
 after a third of the line; details and tooltips expose the full text. Moving a
-token enables Keep My Order and reports it in the footer.
+token enables Keep My Order and reports it in the bar's action.
 
 ⌘↓ from Search focuses the last token. Left/Right move focus, Shift+Left/Right
 reorder, Delete removes, Down or Space opens details, and Up or Esc returns to
 Search. More lists the same actions. Enter always delivers.
 
-`ui/CitationToken` owns token presentation, `ui/Popover` the anchored surface,
+`ui/CitationToken` owns token presentation, `ui/Drawer` the details' surface,
 and `ui/Inspector` the Reader and warnings. Shared motion tokens govern entry,
 moves, removal and Undo; Reduce Motion fades or uses the final state. Motion
 never delays Enter.

@@ -54,7 +54,7 @@ impl FrontSite {
     }
 }
 
-/// Read the site in front around `capture`, the paste capture, before the
+/// Read the site from the window retained by `capture`, the paste capture, before the
 /// picker shows; `capture` runs once and its answer is returned.
 pub(crate) fn capture<T>(app: &AppHandle, capture: impl FnOnce() -> T) -> T {
     let own = i32::try_from(std::process::id()).unwrap_or(i32::MAX);

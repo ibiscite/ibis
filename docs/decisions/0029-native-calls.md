@@ -144,23 +144,25 @@ absent answer, or an address that is not a web page leaves no site, and the
 browser's own format applies. Linux reads nothing.
 
 On macOS, with `AXIsProcessTrusted` already true, `site/macos.rs` reads a
-closed set: `AXFocusedWindow`, then the window's `AXDocument`, else a bounded
+closed set on the retained paste window: its `AXDocument`, else a bounded
 breadth-first walk (200 elements, depth 16) of `AXChildren` and `AXRole`
 through container roles only (window, groups, split and tab groups, scroll and
 layout areas) to the first `AXWebArea`, whose `AXURL` is read. Toolbars,
 controls and the web area itself are never entered, so no page content or
 typed field text is read. On Windows `site/windows.rs` asks UI Automation, on
-its own thread, for the foreground top-level window it checked (by HWND, owned
+its own thread, for the retained paste window (by HWND, owned
 by the browser's process) and the value of the first Edit control in that
 window's control view (200 elements), never entering a Document. At most two reads that outlived their
 opening may still run; a third opening reads nothing. These reads are separate from the paste
 proofs, which still allow no role, value or tree traversal.
 
-The read runs around the paste capture: the browser's focused window (macOS:
-the same `AXFocusedWindow` by `CFEqual`; Windows: the same foreground HWND) is
-looked at before and, within 15 ms, after it, and the site counts only when
-both are the same window of the same process, so it is the window the capture
-took. The site is then bound to the captured browser and its process; when an
+The address is read once, after paste capture, directly from the window the
+paste retained: on macOS its retained AX document window; on Windows its HWND,
+with the process checked on the same UIA element used to read the address.
+There is no earlier address or window-identity cache, so a tab switch during
+capture or a reused HWND reads the captured window's current site. The read
+shares one 50 ms deadline; failure or timeout leaves the browser's format.
+The site is then bound to the captured browser and its process; when an
 Ibis window has the keyboard, the earlier site is kept, as the paste capture
 keeps its app. A format choice or Forget carries the site the picker showed and is
 refused once another site is in front, so a late save never lands on it.

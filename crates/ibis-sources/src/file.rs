@@ -98,17 +98,27 @@ impl Format {
         }
     }
 
-    /// What a library in this format offers. A proposal rewrites the file at
-    /// the path the caller named, so that name must say BibTeX too: never a
-    /// file recognised only by its text, or a link whose own name says another
-    /// format.
+    /// Read-only capabilities follow the canonical file's detected format.
+    /// A proposal rewrites the file at the path the caller named, so that name
+    /// must say BibTeX too: never a file recognised only by its text, or a link
+    /// whose own name says another format.
     fn capabilities(self, asked: &Path) -> &'static [crate::SourceCapability] {
         use crate::SourceCapability::*;
         match self {
-            Self::Bibtex if Self::named(asked) == Some(Self::Bibtex) => {
-                &[BibliographicRecords, NativeCitationKeys, AttachmentText, Proposals]
-            }
-            Self::Bibtex | Self::CslJson => &[BibliographicRecords, NativeCitationKeys, AttachmentText],
+            Self::Bibtex if Self::named(asked) == Some(Self::Bibtex) => &[
+                BibliographicRecords,
+                NativeCitationKeys,
+                AttachmentText,
+                Proposals,
+                OriginalEntries,
+            ],
+            Self::Bibtex => &[
+                BibliographicRecords,
+                NativeCitationKeys,
+                AttachmentText,
+                OriginalEntries,
+            ],
+            Self::CslJson => &[BibliographicRecords, NativeCitationKeys, AttachmentText],
             // Decision 0043: no citation keys and no attachments.
             Self::Ris | Self::Csv => &[BibliographicRecords],
         }
@@ -302,16 +312,21 @@ pub fn original_entry(
     cite: &ibis_core::contract::Fingerprint,
 ) -> Result<String, crate::project::EntryRefusal> {
     use crate::project::EntryRefusal;
-    // Only BibTeX has an entry to copy; most other files say so by name.
-    if Format::named(path).is_some_and(|format| format != Format::Bibtex) {
-        return Err(EntryRefusal::NoOriginal);
-    }
     let observation = stable_observation(path).map_err(|_| EntryRefusal::Changed)?;
-    if Format::of(path, &observation.text) != Ok(Format::Bibtex) {
+    // Share loading's canonical format and capability rule, retaining the
+    // caller's path just as loading does, without probing attachments.
+    let loaded = parse_with_budget(
+        &observation.source,
+        path,
+        &observation.text,
+        bibtex::Budget::for_input(observation.text.len()),
+        None,
+        None,
+    )
+    .map_err(|_| EntryRefusal::Changed)?;
+    if !loaded.capabilities.contains(&crate::SourceCapability::OriginalEntries) {
         return Err(EntryRefusal::NoOriginal);
     }
-    // Parsed from the canonical path, as the library was, so the item's ID matches.
-    let loaded = parse_for_project(&observation.source, &observation.text).map_err(|_| EntryRefusal::Changed)?;
     let current = loaded.snapshot.get(item).ok_or(EntryRefusal::Changed)?;
     if current.fingerprints.cite != *cite {
         return Err(EntryRefusal::Changed);
@@ -485,8 +500,8 @@ pub fn attachment_files(
 }
 
 /// A file field's location beside its library. On Windows the canonical
-/// library folder is a `\\?\C:\` path, where `/` is no separator and which
-/// the local-file checks refuse, so it becomes the plain `C:\` form first.
+/// library folder is a `\\?\C:\` path, where `/` is no separator, so it
+/// becomes the plain `C:\` form before resolving attachment fields.
 pub(crate) fn attachment_path(
     base: &Path,
     location: &Path,
@@ -497,8 +512,8 @@ pub(crate) fn attachment_path(
     } else {
         let mut path = plain_disk(base);
         for part in location.components() {
-            // Windows resolves `..` by name before the file system sees it,
-            // and its local-file checks take only that plain form.
+            // Windows resolves `..` by name before the file system sees it;
+            // the local-file checks refuse ambiguous parent components.
             #[cfg(windows)]
             if part == std::path::Component::ParentDir {
                 path.pop();

@@ -2,10 +2,10 @@ import * as nativeApi from "./api";
 import { useNativeEvent } from "./nativeEvents";
 import { useTimeout } from "./ui/timers";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { idKey } from "./features/picker/choice";
+import { choiceKey, idKey } from "./features/picker/choice";
 import { keysFor, matchesAccelerator } from "./keys";
 import { isMac } from "./platform";
-import { PeekCard } from "./ui/PeekCard";
+import { PeekDrawer } from "./features/picker/PeekDrawer";
 
 import { fullStop, say } from "./i18n";
 import { usePointerSelection } from "./pointerSelection";
@@ -46,7 +46,7 @@ import { useResultScroll } from "./features/picker/useResultScroll";
 import { useShownRows } from "./features/picker/useShownRows";
 import { useCitationRows } from "./features/picker/useCitationRows";
 import { bibliographyDetail, useBibliography } from "./features/picker/useBibliography";
-import { bibliographyCheckNotice } from "./features/picker/BibliographyStatus";
+import { BibliographyCheckFixes, bibliographyCheckNotice } from "./features/picker/BibliographyStatus";
 import { useEditorRequest } from "./features/picker/useEditorRequest";
 import { usePickerSource } from "./features/picker/usePickerSource";
 import { usePickerActions } from "./features/picker/usePickerActions";
@@ -56,7 +56,6 @@ import { usePickerKeys } from "./features/picker/usePickerKeys";
 import { usePickerDelights } from "./features/picker/usePickerDelights";
 import { useEmptyFeedback, useZoomFeedback } from "./ui/Delights";
 import { useInterfaceMessages } from "./i18n";
-import { rowWords } from "./features/picker/ResultList";
 import { PickerShown } from "./features/picker/pickerShown";
 
 // The picker: search, choose one or more references, copy them as a citation.
@@ -171,7 +170,20 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     focusHome, pointer, requestCopy, report,
   });
   const practice = delights.practice;
-  const copyChosen = () => rows.copyChosen(delights.actionForEnter());
+  // Each Enter on a refused citation is said again, once per press (the bar's
+  // alert). The presses belong to this refusal of this citation in this
+  // opening, and are forgotten the moment any of them changes: only a press
+  // is ever announced, never a citation or reason arriving.
+  const refusalOwner = projectRefusal ? `${state.presentation}:${choiceKey(shownChoice)}:${projectRefusal}` : null;
+  const [refusedEnter, setRefusedEnter] = useState<{ owner: string; presses: number } | null>(null);
+  useLayoutEffect(() => { setRefusedEnter((last) => last && last.owner !== refusalOwner ? null : last); }, [refusalOwner]);
+  const refusedPresses = refusalOwner && refusedEnter?.owner === refusalOwner ? refusedEnter.presses : 0;
+  const copyChosen = () => {
+    if (refusalOwner) setRefusedEnter((last) => ({ owner: refusalOwner, presses: last?.owner === refusalOwner ? last.presses + 1 : 1 }));
+    // Enter's outcome in the order the bar names it (enterLabel.ts): an
+    // editor's request is sent, never turned into the first-run practice.
+    rows.copyChosen(editor.label ? "deliver" : delights.actionForEnter());
+  };
   const practiceLine = practice ? practice.pasted === null ? say("picker-practice-offer") : say("picker-practice-pasted", { citation: practice.pasted }) : null;
   const waitingForPractice = practice?.pasted === null && !zoomFeedback && !emptyFeedback.feedback;
   const nothingMatched = Boolean(query) && searchState.resultsQuery === queryKey && results.length === 0 && !error;
@@ -194,6 +206,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     shortcut, perform, dismissChooser: source.dismissChooser, toggle: rows.toggle,
     // A waiting editor's output replaces the picker's.
     writesStyle: editor.label ? editor.style : isStyle(destination.format),
+    practising: practice?.pasted === null, deciding: delights.deciding, refusal: projectRefusal,
   });
   // The format chooser's preview reads the chosen references' keys; it never asks
   // for a preview, which would replace the ticket the shelf copies with. A way to
@@ -226,13 +239,21 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
       emptyFeedback.refuse(text(library?.state === "loading" || library?.state === "reloading" ? "delight-loading" : !library?.has_snapshot ? "delight-no-library" : "delight-empty"));
     },
   });
+  // The bibliography check's fixes, beside its refusal in the bar or its problem in the notice line.
+  const checkFixes = {
+    onRetry: project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined,
+    onLocate: project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined,
+    disabled: !destination.ready || destination.saving || !ready || searchPending,
+  };
+  // The bar's action, a token's Enter and the Page field's Enter do what the bar
+  // says, as Enter in Search does (usePickerKeys): in Find mode that opens the
+  // reference; Alt+Enter in Search still copies.
+  const enterChosen = () => { if (destination.findOpen) { if (results.length > 0) source.openSource(false, false); } else copyChosen(); };
   useNativeEvent(api.onWindowSizeSaved, (saved) => report("windowSize", !saved), { failed: () => report("windowSize") });
   // Peek (⌘Y): the highlighted reference's full details under its row, as Quick Look.
   const [peeked, setPeeked] = useState<string | null>(null);
   const peekRecord = showCitations ? results[active] : undefined;
   const peekOpen = Boolean(peekRecord && peeked === idKey(peekRecord.id));
-  const peekAnchor = useRef<Element | null>(null);
-  peekAnchor.current = peekOpen ? document.getElementById(`result-${active}`) : null;
   commandKeys.current = (event) => {
     if (!matchesAccelerator(event, keysFor("peek"), isMac)) return false;
     event.preventDefault();
@@ -249,17 +270,23 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         // What passes (Undo, a remark, an update) first: it goes by itself.
         <PickerNotices key="passing" state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? practiceLine ?? shorthand.hint ?? (searchState.keptWords ? say("picker-kept-words") : null) ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !practiceLine && !shorthand.hint && delights.passive} onRemarkPassed={waitingForPractice ? undefined : () => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (practiceLine) delights.endPractice(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />,
         ...notices({ projectNotice: project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
-          error: error ?? destination.readProblem, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
+          // A refused citation's reason is the bar's, said once there.
+          error: error ?? destination.readProblem, copyError: copyError === projectRefusal ? null : copyError, copied, missing: ready ? list?.missing : undefined,
           confirmation: state.copyNotice, onDismissCopied: () => send({ type: "dismiss" }) }),
-        bibliographyCheckNotice({ refusal: inspector.panel ? null : projectRefusal, problem: projectProblem,
-          onRetry: project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined,
-          onLocate: project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined,
-          disabled: !destination.ready || destination.saving || !ready || searchPending }),
+        bibliographyCheckNotice({ refused: Boolean(projectRefusal), problem: projectProblem, ...checkFixes }),
         shortcut?.error && <LineNotice key="shortcut">
           {`${shortcut.registered ? say("picker-shortcut-not-used", { reason: fullStop(shortcut.error) })
             : say("picker-shortcut-unavailable", { shortcut: shortcut.shortcut, reason: fullStop(shortcut.error) })}${shortcut.desktop && !welcomeShown ? ` ${shortcut.desktop.guidance}` : ""}`}
         </LineNotice>,
       ].filter(Boolean)}
+      bar={<PickerStatusFooter
+          refusal={projectRefusal} refusedPresses={refusedPresses}
+          refusalActions={<BibliographyCheckFixes {...checkFixes} />}
+          api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run} citationLine={citationLine}
+          copyChosen={enterChosen} recents={recents}
+          operations={operations} altHeld={altHeld}  emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
+          project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
+          peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />}
       search={<PickerHeader
         hidden={welcomeShown} yours={preferences.format} preview={formatPreview} example={formatExample}
         onResetPosition={api.resetWindowPosition}
@@ -271,7 +298,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         expanded={results.length > 0 && showCitations}
         activeDescendant={showCitations && results[active] ? `result-${active}` : undefined}
         format={format} formatLabel={destination.formatLabel} formatButtonRef={formatButtonRef} delivery={actions.delivery}
-        app={destination.app} formatSource={destination.source} formatPick={destination.pick}
+        app={destination.app} formatScope={destination.formatScope} rememberedFor={destination.rememberedFor} formatSource={destination.source} formatPick={destination.pick}
         writing={destination.writing} usualFormat={destination.usualFormat} onUseUsual={destination.useUsual} onWritings={!editor.label && destination.offersProjects ? menus.openProjects : undefined}
         onFormatOpenChange={onFormatOpenChange}
         pasteChoices={destination.pasteChoices}
@@ -294,25 +321,11 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
         state={state} send={send} showCitations={showCitations} results={results} output={output} chosen={shownChoice}
-        changeReference={rows.changeReference} copyChosen={copyChosen} libraryOf={scope.libraryOf} format={format} input={input} inspector={inspector} citationLine={citationLine}
+        changeReference={rows.changeReference} copyChosen={enterChosen} libraryOf={scope.libraryOf} format={format} input={input} inspector={inspector} citationLine={citationLine}
         deliverable={!searchPending && preferences.ready && library?.state !== "reloading" && destination.ready && !destination.saving} />
-      <PickerStatusFooter
-        copyProblem={projectRefusal}
-        api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run} citationLine={citationLine}
-        copyChosen={copyChosen} recents={recents}
-        operations={operations} altHeld={altHeld}  emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
-        project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
-        peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />
       <PickerOverlays api={{ ...api, editWriting: destination.editWriting! }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
-      {peekRecord && <PeekCard triggerRef={peekAnchor} open={peekOpen} onClose={() => setPeeked(null)}
-        label={say("peek-label", { title: peekRecord.title || peekRecord.key })} title={peekRecord.title || peekRecord.key} byline={peekRecord.authors}
-        facts={[
-          ...peekRecord.container ? [{ label: say("peek-container"), value: peekRecord.container }] : [],
-          { label: say("peek-year"), value: peekRecord.year ? String(peekRecord.year) : say("picker-no-date") },
-          ...rowWords.itemType(peekRecord.item_type) ? [{ label: say("peek-type"), value: rowWords.itemType(peekRecord.item_type)! }] : [],
-          { label: say("peek-key"), value: peekRecord.key, mono: true },
-        ]} />}
+      {peekRecord && peekOpen && <PeekDrawer record={peekRecord} onClose={() => setPeeked(null)} />}
     </Frame>
     </PickerShown>
   );
