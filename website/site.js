@@ -69,9 +69,7 @@ const textEntry = target => target?.closest?.('input, textarea, select, [content
 function keyboardHelp() {
   const dialog = document.querySelector(".keyboard-help"), button = document.querySelector(".keyboard-help-open");
   if (!dialog || !button) return;
-  // The ? key needs a keyboard: offer the button only with a fine hover pointer; the key itself always works.
-  const fine = matchMedia("(hover: hover) and (pointer: fine)"), offer = () => { button.hidden = !fine.matches; };
-  fine.addEventListener("change", offer); offer();
+  button.hidden = false;
   button.addEventListener("click", () => dialog.showModal());
   dialog.querySelector("button").addEventListener("click", () => dialog.close());
   document.addEventListener("keydown", event => {

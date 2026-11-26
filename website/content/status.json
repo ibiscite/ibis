@@ -25,6 +25,10 @@
       "note": "Remembered formats, Change Last Citation and selected text as search"
     },
     {
+      "text": "A format for each website",
+      "note": "New in 0.3.13: in a browser on macOS or Windows, each site keeps its own format when Ibis can read the site’s name"
+    },
+    {
       "text": "Projects",
       "note": "A project keeps its own format and can check its keys against the project’s own .bib"
     },
@@ -46,7 +50,7 @@
     },
     {
       "text": "Your PDFs, for AI apps",
-      "note": "New in 0.3.13: AI apps can read and search a reference’s PDF text, only in the libraries you allow in Settings"
+      "note": "AI apps can read and search a reference’s PDF text, only in the libraries you allow in Settings"
     },
     {
       "text": "A folder of PDFs as a library",

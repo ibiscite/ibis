@@ -150,13 +150,11 @@ test("the picker shortcut opens and focuses home from every inner page, and leav
 });
 
 test("question mark opens keyboard help outside text entry and ignores held keys or composition", () => {
-  const { ctx, media } = context(), events = {}, button = control(), close = control(), dialog = { ...control(), opened: 0,
+  const { ctx } = context(), events = {}, button = control(), close = control(), dialog = { ...control(), opened: 0,
     querySelector: () => close, showModal() { this.opened++; }, close() { this.closed = true; } };
   ctx.document.querySelector = selector => selector === ".keyboard-help" ? dialog : button;
   ctx.document.addEventListener = (name, fn) => { events[name] = fn; };
   ctx.keyboardHelp();
-  assert.equal(button.hidden, true, "a touch screen gets no Keyboard shortcuts button");
-  media.matches = true; media.change(); assert.equal(button.hidden, false);
   const press = extra => ({ key: "?", target: { closest: () => null }, preventDefault() { this.prevented = true; }, ...extra });
   for (const extra of [{ target: { closest: () => ({}) } }, { repeat: true }, { isComposing: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
     const event = press(extra); events.keydown(event); assert.ok(!event.prevented);
@@ -740,13 +738,10 @@ test("all routes fit the requested viewports in both themes and directions; visi
         assert.equal(await page.getByRole("dialog").evaluate(node => node.scrollHeight <= node.clientHeight + 1), true, "keyboard help fits the viewport");
         await page.keyboard.press("Escape");
         assert.equal(await page.getByRole("dialog").isVisible(), false);
-        const helpButton = page.getByRole("button", { name: "Keyboard shortcuts ?", exact: true });
-        // A touch phone has no ? key to advertise, so the footer offers the button only with a fine pointer.
-        if (width === 375) assert.equal(await helpButton.count(), 0, "no keyboard help button on a touch phone");
-        else {
-          await helpButton.click(); await page.keyboard.press("Escape");
-          assert.equal(await helpButton.evaluate(node => node === document.activeElement), true, "Escape returns focus to the help button");
-        }
+        // Every device keeps the button (a tablet may have a keyboard); only a fine pointer shows the ? cap.
+        const helpButton = page.getByRole("button", { name: width === 375 ? "Keyboard shortcuts" : "Keyboard shortcuts ?", exact: true });
+        await helpButton.click(); await page.keyboard.press("Escape");
+        assert.equal(await helpButton.evaluate(node => node === document.activeElement), true, "Escape returns focus to the help button");
         if (missing) {
           assert.equal(await page.getByRole("heading", { name: "Page not found" }).isVisible(), true);
           if (width >= 992) assert.equal(await page.locator("h1").evaluate(node => {
