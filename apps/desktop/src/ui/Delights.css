@@ -1,10 +1,7 @@
-.ui-shortcut-echo[data-echo] .ui-row { background: var(--fill-quiet-hover); }
-.ui-shortcut-echo + .ui-shortcut-echo .ui-row { border-top: var(--border-width) solid var(--separator); }
-.ui-shortcut-echo + .ui-row { border-top: var(--border-width) solid var(--separator); }
 /* About: one centred column, as System Settings' About: the icon, the name, the
    version, Check for Updates and the lines; the cards, links and licence line
    below share the page's width, and the links and licence are centred too. */
-.ui-about-hero { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding-block: var(--space-4) var(--space-2); text-align: center; }
+.ui-about-hero { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding-block-start: var(--space-4); text-align: center; }
 .ui-about-hero > .ui-about-icon { margin-block-end: var(--space-2); }
 .ui-about-name { margin: 0; font-size: var(--type-display-size); line-height: var(--type-display-line); font-weight: 700; }
 /* The mission is the hero's lead, in the text colour; the line on the name under
@@ -33,6 +30,8 @@
 .ui-about-line[data-highlighted], .ui-about-hero .ui-about-line[data-highlighted] { background: var(--highlight); border-radius: var(--r-small); color: var(--text); }
 .ui-about-line > [data-said] { display: block; animation: about-said var(--dur-2) var(--ease-out); }
 @keyframes about-said { from { opacity: 0; } }
+/* The links and the licence line close the page together, a gutter apart. */
+.ui-about-foot { display: flex; flex-direction: column; gap: var(--gutter); }
 .ui-about-links { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-1); }
 .ui-about-free { margin: 0; text-align: center; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 .ui-quiet-status { color: var(--text-secondary); font: 400 var(--type-label-size) / var(--type-label-line) var(--font); }

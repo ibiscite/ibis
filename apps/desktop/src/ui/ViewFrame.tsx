@@ -1,4 +1,4 @@
-import { useContext, type HTMLAttributes, type ReactNode, type RefObject } from "react";
+import { useContext, useLayoutEffect, type HTMLAttributes, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Band } from "./Band";
 import { Button } from "./Button";
@@ -7,6 +7,26 @@ import { KeyHint } from "./KeyCaps";
 import { composingKey, LayerParent, type LayerHandle } from "./layers";
 import { LayerScope } from "./Layer";
 import "./ViewFrame.css";
+
+// A view can take focus on pointerdown. Only that press's companion mousedown
+// would move focus back to the trigger. A new pointerdown replaces the press
+// even if the browser never delivered the old one's release.
+let openingPress: { pointer: PointerEvent; views: number } | undefined;
+if (typeof document !== "undefined") {
+  document.addEventListener("pointerdown", (pointer) => {
+    openingPress = { pointer, views: 0 };
+  }, true);
+  const end = (event: PointerEvent) => {
+    if (event.pointerId === openingPress?.pointer.pointerId) openingPress = undefined;
+  };
+  for (const type of ["pointerup", "pointercancel"] as const) document.addEventListener(type, end, true);
+  window.addEventListener("blur", () => { openingPress = undefined; });
+  document.addEventListener("mousedown", (event) => {
+    const press = openingPress;
+    openingPress = undefined;
+    if (press?.views && event.button === press.pointer.button && event.target === press.pointer.target) event.preventDefault();
+  }, true);
+}
 
 /** A view of the picker window: the picker's content swaps out for the view, edge to edge, in the picker's own
  * header and footer geometry. The back chevron sits where the bird does, then the
@@ -30,6 +50,12 @@ export function ViewFrame({ title, titleId, search, back, layer, status, actions
   frameRef?: RefObject<HTMLDivElement | null>;
 } & Omit<HTMLAttributes<HTMLDivElement>, "title">) {
   const within = useContext(LayerParent) !== null;
+  useLayoutEffect(() => {
+    const press = openingPress;
+    if (!press) return;
+    press.views++;
+    return () => { press.views--; };
+  }, []);
   return createPortal(<LayerScope layer={layer}><div ref={frameRef} className="ui-view" aria-labelledby={titleId} {...dialog} data-layer-surface data-layer-within={within || undefined}
     onKeyDown={(event) => { if (layer.nearest() && !composingKey(event.nativeEvent)) onKeyDown?.(event); }}>
     {/* The pointer's Back, in the icon column; the footer's Back is the one keys and screen readers reach. */}

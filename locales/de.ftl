@@ -591,7 +591,7 @@ look-window-large = Groß
 look-window-custom = Eigene
 look-window-custom-note = Ziehen Sie an einer Kante des Fensters, um die Größe selbst festzulegen. Ibis merkt sie sich für jeden Bildschirm.
 look-text-size = Textgröße
-look-text-size-description = Die Schriftgröße im Fenster, unabhängig von der Textgröße des Mac.
+look-text-size-description = Die Schriftgröße in Ibis und in den Einstellungen, unabhängig von der Textgröße des Mac.
 look-default-text = Standard
 look-larger-text = Größer
 look-sample-title = Der stille Garten
@@ -664,7 +664,7 @@ canvas-pressed = Gedrückt
 canvas-focused = Tastaturfokus
 
 general-small-surprises-label = Vogelfakten und Meilensteine
-general-small-surprises-description = Vogelfakten, Meilensteine und Jahrestage.
+general-small-surprises-description = Ein Fakt, wenn Sie in „Über Ibis“ auf den Vogel klicken, und ein kurzer Hinweis, wenn Sie einen Meilenstein erreichen.
 settings-surprises-words = überraschung easter egg spaß kleine überraschungen
 delight-name = Benannt nach dem Vogel, den die alten Ägypter mit Thot verbanden, dem Gott der Schrift und Hüter der Aufzeichnungen.
 delight-fact-touch = Schneesichler finden ihre Nahrung durch Tasten, wenn sie im Schlamm stochern.
@@ -695,7 +695,6 @@ choice-use-file = { $name } verwenden
 choice-back = Andere Quelle wählen
 
 backup-words = sicherung backup wiederherstellen export import umzug migrieren neuer computer sync icloud onedrive
-backup-title = Anderer Computer
 backup-label = Einstellungen sichern
 backup-description =
     { $platform ->
@@ -752,7 +751,6 @@ peek-container = Erschienen in
 peek-year = Jahr
 peek-type = Typ
 peek-key = Zitierschlüssel
-citation-details-page = Seite
 locator-act = Akt
 locator-appendix = Anhang
 locator-article-locator = Artikel
@@ -1012,7 +1010,7 @@ picker-citation-warnings = Zitationswarnungen
 picker-window-reset = Fensterposition zurückgesetzt.
 picker-undo = Rückgängig
 picker-notices = Hinweise
-picker-undo-failed = Rückgängig machen fehlgeschlagen. Versuchen Sie es erneut.
+picker-undo-failed = Rückgängig fehlgeschlagen. Bitte erneut versuchen.
 picker-preview-pending = Wird formatiert…
 picker-preview-error = Diese Zitation konnte nicht formatiert werden. Wählen Sie einen anderen Stil oder kopieren Sie die Zitierschlüssel.
 picker-preview-refused = Diese Zitation konnte nicht vorbereitet werden. Schließen und öffnen Sie Ibis erneut, um es noch einmal zu versuchen.
@@ -1436,6 +1434,8 @@ palette-no-actions = Keine passenden Aktionen
 picker-format-title = Format
 palette-search-formats = Formate suchen
 palette-no-formats = Keine passenden Formate
+palette-choose = Auswählen
+palette-no-matches = Keine Treffer
 palette-use-again = { $format } in { $app } wieder verwenden
 palette-use-for-app = Für { $app } verwenden
 palette-use-default = Überall verwenden
@@ -1482,6 +1482,7 @@ mcp-cite-description = Zitiert refs aus search der Reihe nach, optional mit Fund
 
 # The desktop's bundled command. Never execute another program to check its version.
 command-install = ibis-Befehl installieren
+command-install-button = Installieren
 command-install-description = Im Terminal suchen und zitieren, mit derselben Bibliothek und denselben Einstellungen.
 command-remove = Befehl entfernen
 command-checking = ibis-Befehl wird geprüft…
@@ -1937,6 +1938,7 @@ cli-greeting = Ibis { $version } findet Referenzen und zitiert sie überall.
 
 # Settings and ibis agents share these app connections.
 settings-ai-apps = KI-Apps
+ai-apps-group = Apps auf diesem Computer
 ai-apps-command-line = Befehlszeile
 ai-apps-description = Verbinden Sie Ibis mit den KI-Apps auf diesem Computer.
 ai-apps-words = agenten ki MCP Claude Codex Cursor VS Code Gemini Windsurf LM Studio ChatGPT ki-apps assistenten
@@ -1959,7 +1961,7 @@ app-failure-reject-proposal = { proposals-failed }
 app-failure-reject-app-proposals = { proposals-failed }
 command-words = befehlszeile terminal shell konsole PATH agenten MCP
 ai-apps-checking = KI-Apps werden geprüft…
-ai-apps-not-connected = Nicht verbunden.
+ai-apps-not-connected = Nicht verbunden
 ai-apps-connected = Verbunden. Starten Sie in der App eine neue Sitzung, um Ibis zu verwenden.
 ai-apps-stale = Der ibis-Befehl wurde verschoben oder fehlt.
 ai-apps-different = Diese App hat eine andere Ibis-Verbindung. Prüfen Sie die Änderung unten.

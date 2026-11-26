@@ -45,11 +45,6 @@ export function useKeyPulse(accelerator: string | readonly string[], enabled = t
   return pressed ?? false;
 }
 
-export function ShortcutEcho({ keys, children }: { keys: readonly string[]; children: ReactNode }) {
-  const pressed = useKeyPulse(keys, keys.length > 0);
-  return <div className="ui-shortcut-echo" data-echo={pressed || undefined}>{children}</div>;
-}
-
 /** The app icon itself. A click dips the bird's beak and the line below it says something new. */
 export function AboutDelight({ dip, enabled, onClick }: { dip: number; enabled: boolean; onClick: () => void }) {
   const { text } = useInterfaceMessages();

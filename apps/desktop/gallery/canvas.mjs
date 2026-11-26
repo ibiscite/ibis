@@ -68,11 +68,16 @@ for (const scenario of scenarios) for (const mode of modes) for (const theme of 
   await page.close();
 }
 // The guards across states (canvas/audit.ts): every scenario at the default
-// window, words and covers at the narrowest, More in a short window.
-for (const [viewport, pass] of [[{ width: 720, height: 480 }, "frame"], [{ width: 480, height: 360 }, "narrow"], [{ width: 640, height: 240 }, "short"]]) {
+// window, words and covers at the narrowest, More and the drawer's menus in a
+// short window, and a Settings search jump at Settings' own window, which scrolls.
+for (const [viewport, pass] of [[{ width: 720, height: 480 }, "frame"], [{ width: 480, height: 360 }, "narrow"], [{ width: 640, height: 240 }, "short"], [{ width: 920, height: 560 }, "reveal"]]) {
   const page = await load(viewport);
   await page.emulateMedia({ colorScheme: "light", forcedColors: "none", contrast: "no-preference" });
-  failures.push(...await page.evaluate((pass) => window.IbisCanvas.audit(document.getElementById("host"), { pass, theme: "light" }), pass));
+  await page.exposeFunction("captureCanvas", async () => {
+    const png = await page.screenshot({ animations: "disabled", scale: "css" });
+    return `data:image/png;base64,${png.toString("base64")}`;
+  });
+  failures.push(...await page.evaluate((pass) => window.IbisCanvas.audit(document.getElementById("host"), { pass, theme: "light", capture: window.captureCanvas }), pass));
   await page.close();
 }
 await browser.close();

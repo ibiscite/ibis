@@ -90,8 +90,8 @@ export function SettingsFileRow({ settings, highlighted }: { settings: ReturnTyp
   const { text } = useInterfaceMessages();
   const { openSettingsFile, openFailed, dismissOpen } = settings;
   if (!openSettingsFile) return null;
-  return <><Row id="open-settings-file" {...rowDetails("open-settings-file", text)} highlighted={highlighted === "open-settings-file"}>
+  return <Row id="open-settings-file" {...rowDetails("open-settings-file", text)} highlighted={highlighted === "open-settings-file"}
+    problem={openFailed && <>{text("settings-open-failed")} <Button size="small" onPress={dismissOpen}>{text("picker-dismiss")}</Button></>}>
     <Button onPress={openSettingsFile}>{text("settings-open")}</Button>
-  </Row>
-  {openFailed && <Status role="alert">{text("settings-open-failed")} <Button size="small" onPress={dismissOpen}>{text("picker-dismiss")}</Button></Status>}</>;
+  </Row>;
 }

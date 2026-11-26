@@ -6,7 +6,7 @@ import { currentPlatform } from "../platform";
 import { Button } from "./Button";
 import { Note, ResetSlot, Row } from "./Layout";
 import { ShortcutRecorder } from "./ShortcutRecorder";
-import { ShortcutEcho, useKeyPulse } from "./Delights";
+import { useKeyPulse } from "./Delights";
 import { Status } from "./Status";
 
 /** Both Settings pages edit the same owner. This component only presents it. */
@@ -18,7 +18,7 @@ export function ShortcutSetting({ rowId, details, status, problem, saving, highl
   echo?: boolean; table?: boolean;
 }) {
   const { text } = useInterfaceMessages();
-  const pressed = useKeyPulse(status?.shortcut ?? "", table && echo && Boolean(status?.shortcut));
+  const pressed = useKeyPulse(status?.shortcut ?? "", echo && Boolean(status?.shortcut));
   const mac = currentPlatform() === "macos";
   const defaultLabel = shortcutLabel(DEFAULT_PICKER_SHORTCUT, mac);
   const isDefault = status && /^[a-z]$/i.test(status.shortcut.split("+").at(-1)?.trim() ?? "")
@@ -40,9 +40,9 @@ export function ShortcutSetting({ rowId, details, status, problem, saving, highl
       {problem && <Status className="ui-row-problem" role="alert">{text(problem.id, problem.args)}</Status>}
     </td></tr>}
   </>;
-  return <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><Row id={rowId} label={details.label} highlighted={highlighted} reset={reset}
+  return <Row id={rowId} label={details.label} highlighted={highlighted} echo={pressed} reset={reset}
       description={status?.desktop?.guidance ?? (status ? details.description : undefined)}
       problem={problem ? text(problem.id, problem.args) : undefined}>
       {controls}
-    </Row></ShortcutEcho>;
+    </Row>;
 }

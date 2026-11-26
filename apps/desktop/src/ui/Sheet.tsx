@@ -89,7 +89,7 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
     <div ref={body} className="ui-sheet-body scroll-area" tabIndex={0} role="group" aria-labelledby={titleId} aria-busy={busy || undefined}>
       <div className="ui-sheet-content">
         {description && <p id={aboutId} className="ui-sheet-lead">{description}</p>}
-        {children}
+        <div className="ui-sheet-parts">{children}</div>
       </div>
     </div>
   </ViewFrame>;

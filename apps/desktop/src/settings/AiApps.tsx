@@ -57,7 +57,7 @@ export function AiApps({ api, highlighted, refresh = 0 }: { api: Api; highlighte
       if (pendingRead.current) { pendingRead.current = false; read(); }
     });
   };
-  return <Section id="agent-apps" title={text("settings-ai-apps")}>
+  return <Section id="agent-apps" title={text("ai-apps-group")}>
     <Group>
       {!apps && <Row label={text("ai-apps-checking")} pending={!failed} />}
       {apps?.map((app) => {
@@ -65,10 +65,8 @@ export function AiApps({ api, highlighted, refresh = 0 }: { api: Api; highlighte
         const action = app.state in ACTIONS ? ACTIONS[app.state as keyof typeof ACTIONS] : null;
         const detail = failed?.id === app.id ? failed.detail : undefined;
         const note = detail ?? (app.state === "different" ? app.diff : null);
-        return <Row key={app.id} id={`agent-app-${app.id}`} label={app.name} description={<>
-          {description}
-          {app.needs_command && !app.ibis_on_path && app.state !== "plugin" && <> {text("ai-apps-command-needed")}</>}
-        </>} highlighted={highlighted === "agent-apps"}>
+        return <Row key={app.id} id={`agent-app-${app.id}`} label={app.name} description={description} highlighted={highlighted === "agent-apps"}
+          note={app.needs_command && !app.ibis_on_path && app.state !== "plugin" && text("ai-apps-command-needed")}>
           {action && <Button aria-labelledby={`agent-app-${app.id}-action agent-app-${app.id}`} isDisabled={busy} onPress={() => change(app)}><span id={`agent-app-${app.id}-action`}>{text(action)}</span></Button>}
           {note && <Note problem={Boolean(detail)}><code dir="ltr">{note.split("\n").map((line, index) => <Fragment key={`${index}:${line}`}>{index > 0 && <br />}<span>{line}</span></Fragment>)}</code></Note>}
         </Row>;

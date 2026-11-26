@@ -325,6 +325,9 @@
   /* Where a row's icon column starts: the window inset, then the row's own padding. */
   --row-start: calc(var(--inset) + var(--row-pad));
   --heading-offset: calc(var(--row-pad) + var(--border-width));
+  /* Between the parts of a Settings page or a sheet (sections, cards, notes):
+     the page's own gap, so nothing between two sections can halve it. */
+  --section-gap: var(--space-8);
   --inspector-width: 18rem; --inspector-column: 15rem;
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
   --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);

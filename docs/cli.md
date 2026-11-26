@@ -11,7 +11,7 @@ The desktop app includes the matching `ibis` built from the same commit.
   `~/.local/bin/ibis` to the command inside its bundle or package, so where
   that folder is on PATH, installing the app is all it takes. It skips this when another `ibis`
   (Homebrew, a download, the other Ibis channel) comes first on PATH and while
-  the app still runs from its disk image. After that, Settings › AI Apps › Command Line
+  the app still runs from its disk image. After that, Settings › AI Apps › Command line
   decides: **Install the ibis command** adds it and removing it there is
   respected at every later launch. The link follows the app's updates.
   Keep the macOS app in its permanent location. Install creates the link even
@@ -816,7 +816,7 @@ requests finish before exit. Process exit codes do not apply per request.
 
 **Settings › AI Apps** and `ibis agents` share the engine and saved app
 settings. Connect, disconnect, repair a stale path, or review and replace a
-different entry with the row’s button. **Command Line** installs `ibis`.
+different entry with the row’s button. **Command line** installs `ibis`.
 
 ```sh
 ibis agents setup            # asks first

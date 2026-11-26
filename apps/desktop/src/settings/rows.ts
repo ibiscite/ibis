@@ -47,7 +47,7 @@ export const ROWS: readonly SettingRow[] = ([
   ...preferences,
   ...Object.entries(NATIVE_SETTINGS).map(([native, row]) => ({ ...row, native: native as NativeSetting })),
   { id: "cli-command", page: "ai-apps", group: "ai-apps-command-line", label: "command-install", description: "command-install-description", keywords: "command-words" },
-  { id: "agent-apps", page: "ai-apps", label: "settings-ai-apps", description: "ai-apps-description", keywords: "ai-apps-words" },
+  { id: "agent-apps", page: "ai-apps", label: "ai-apps-group", description: "ai-apps-description", keywords: "ai-apps-words" },
   { id: "attachment-text", page: "ai-apps", label: "attachment-text-label", description: "attachment-text-description", keywords: "attachment-text-words" },
   { id: "proposed-changes", page: "ai-apps", label: "proposals-title", description: "proposals-description", keywords: "proposals-words" },
   { id: "backup-settings", page: "general", label: "backup-label", description: "backup-description", keywords: "backup-words" },

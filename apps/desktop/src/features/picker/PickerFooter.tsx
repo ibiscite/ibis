@@ -84,7 +84,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
     window.addEventListener("resize", measure);
     return () => { observer?.disconnect(); window.removeEventListener("resize", measure); };
   }, [hints.enter, hints.shiftEnter, hints.escape, altHeld, platform, status]);
-  return <footer className="delivery-bar" data-menu-floor data-refused={refusal ? "" : undefined}>
+  return <footer className="delivery-bar" data-refused={refusal ? "" : undefined}>
     {/* The reason sits in the bar, over the citation it is about, with its fixes. */}
     {refusal && <div className="bar-reason">
       <span className="bar-reason-mark" aria-hidden="true"><Icon name="warning" /></span>

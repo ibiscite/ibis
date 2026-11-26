@@ -119,12 +119,70 @@ test.each(rules)("$says", (rule) => {
 // [C3] Alignment is decided once, by bands and tokens, never copied as arithmetic:
 // the count of calc() in the app's stylesheets may only fall. Lower the ceiling
 // when it does; a part that needs a column takes a Band or a token instead.
-const CALC_CEILING = 113;
+const CALC_CEILING = 112;
 test(`calc() in the app's stylesheets stays at or under ${CALC_CEILING}`, () => {
   const count = (css: string) => css.replace(/\/\*[^]*?\*\//g, "").match(/\bcalc\(/g)?.length ?? 0;
   const found = sheets.filter(([file]) => !file.startsWith("website/")).reduce((sum, [, css]) => sum + count(css), 0);
   expect(found).toBeLessThanOrEqual(CALC_CEILING);
   expect(count("/* calc(1px) */ .planted { width: calc(1px + 1rem); }"), "the count sees what it limits").toBe(1);
+});
+
+// Ratchets of decision 0062 (docs/decisions/0062-closed-parts-owned-space-fitted-layers.md,
+// "Ratchets"): values come from roles in tokens.css, so each count below may only go down.
+// Lower the ceiling in the change that lowers the count; the failure lists every offender.
+/** The app's own sheets, read as raw text so each finding keeps its line (the object model above has none). */
+const appSheets = sheets.filter(([file]) => !file.startsWith("website/"));
+/** Comments, strings and url() blanked to spaces, so offsets still point at their lines. */
+const blank = (css: string) => css.replace(/\/\*[^]*?\*\/|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|url\([^)]*\)/g, (found) => found.replace(/[^\n]/g, " "));
+const lineOf = (text: string, offset: number) => text.slice(0, offset).split("\n").length;
+/** A length written out, never zero, and never part of a name (--gap-2px, .w-10px). */
+const literal = () => /(?<![\w.#-])-?(\d*\.?\d+)(px|rem|em|ch|vw|vh)(?![\w-])/g;
+const lengthsIn = (text: string, from: number) => [...text.matchAll(literal())]
+  .filter(([, number]) => Number.parseFloat(number!) !== 0).map((found) => [found[0], from + found.index!] as const);
+/** Each literal length in a declaration's value, with its line; at-rule conditions are not declarations. */
+function literalLengths(css: string): [length: string, line: number][] {
+  const text = blank(css);
+  return [...text.matchAll(/[{;]\s*(--[\w-]+|-?[a-z][a-z-]*)\s*:\s*([^;{}]+)(?=[;}])/g)].flatMap((found) => {
+    const start = found.index! + found[0].length - found[2]!.length;
+    return lengthsIn(found[2]!, start).map(([length, at]) => [length, lineOf(text, at)] as const);
+  });
+}
+/** Each length in an @media or @container condition, with its line. */
+function breakpoints(css: string): [length: string, line: number][] {
+  const text = blank(css);
+  return [...text.matchAll(/@(?:media|container)\b([^{;]*)/g)].flatMap((found) => lengthsIn(found[1]!, found.index! + found[0].length - found[1]!.length)
+    .map(([length, at]) => [`${Number.parseFloat(length)}${/[a-z]+$/.exec(length)![0]}`, lineOf(text, at)] as const));
+}
+const spaceReads = (css: string): number[] => {
+  const text = blank(css);
+  return [...text.matchAll(/var\(\s*--space-\d+\b/g)].map((found) => lineOf(text, found.index!));
+};
+const ratchet = (what: string, offenders: string[]) => `${what} may only go down (decision 0062). Lower the ceiling when it falls. `
+  + `${offenders.length} found:\n${offenders.join("\n")}`;
+
+const LITERAL_LENGTH_CEILING = 68;
+test(`literal lengths outside tokens.css stay at or under ${LITERAL_LENGTH_CEILING}`, () => {
+  const found = appSheets.filter(([file]) => outsideTokens(file)).flatMap(([file, css]) => literalLengths(css).map(([length, line]) => `${file}:${line} ${length}`));
+  expect(found.length, ratchet("Literal px, rem, em, ch, vw and vh outside tokens.css (take a role token instead)", found)).toBeLessThanOrEqual(LITERAL_LENGTH_CEILING);
+  expect(literalLengths("/* 9px */ @media (max-width: 30em) { .planted { margin: 0 -4px 0px calc(1.5rem + 2ch); --gap-2px: var(--x-10px); content: \"3px\"; } }")
+    .map(([length]) => length), "the count sees what it limits").toEqual(["-4px", "1.5rem", "2ch"]);
+});
+
+const SPACE_READ_CEILING = 240;
+test(`direct var(--space-N) reads outside tokens.css stay at or under ${SPACE_READ_CEILING}`, () => {
+  const found = appSheets.filter(([file]) => outsideTokens(file)).flatMap(([file, css]) => spaceReads(css).map((line) => `${file}:${line}`));
+  expect(found.length, ratchet("Direct --space-N reads outside tokens.css (read a role such as --inset or --row-pad)", found)).toBeLessThanOrEqual(SPACE_READ_CEILING);
+  expect(spaceReads("/* var(--space-1) */ .planted { gap: var(--space-2); padding: var( --space-10) var(--space-role); }"), "the count sees what it limits").toEqual([1, 1]);
+});
+
+const BREAKPOINT_CEILING = 11;
+test(`distinct breakpoints in @media and @container stay at or under ${BREAKPOINT_CEILING}`, () => {
+  const where = new Map<string, string[]>();
+  for (const [file, css] of appSheets) for (const [length, line] of breakpoints(css)) where.set(length, [...where.get(length) ?? [], `${file}:${line}`]);
+  const found = [...where].sort(([a], [b]) => a.localeCompare(b)).map(([length, places]) => `${length}: ${places.join(", ")}`);
+  expect(where.size, ratchet("Distinct breakpoint values (name them once as a size class instead)", found)).toBeLessThanOrEqual(BREAKPOINT_CEILING);
+  expect(breakpoints("@media (max-height: 400px) and (max-width: .75em) { .planted { width: 9px; } } @container side (width < 400px) { }")
+    .map(([length]) => length), "the count sees what it limits").toEqual(["400px", "0.75em", "400px"]);
 });
 
 /** Movements without a Reduce Motion answer: the same selector in the same file

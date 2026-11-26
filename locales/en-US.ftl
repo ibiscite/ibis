@@ -135,7 +135,7 @@ app-share-page-pdfs = The PDFs folder holds the PDFs that came with them.
 ## What a citation could not say in full.
 
 warning-source-field = A field of { $reference } could not be fully converted. Check it in your library.
-warning-sentence-case-expected = APA expects sentence case for the title of { $reference }. Its capitalization was kept as stored, so check it in your document.
+warning-sentence-case-expected = APA expects sentence case for the title of { $reference }. Its capitalisation was kept as stored, so check it in your document.
 loss-locator = the page or location
 loss-prefix = the text before
 loss-suffix = the text after
@@ -146,7 +146,7 @@ notice-needs-document-context = This style numbers citations or places notes acr
 notice-reference-entry = This is the full reference entry.
 notice-full-first-note = This is the full form a first note uses; later notes to the same work are usually shorter.
 notice-year-suffix-withheld = Two of these works share author and year. Add the year letters (such as 2026a and 2026b) in your document, because they depend on its whole reference list.
-notice-input-language-unsupported = Ibis does not recognize locator words in this language. Give the page or location in English, such as “p. 12”.
+notice-input-language-unsupported = Ibis does not recognise locator words in this language. Give the page or location in English, such as “p. 12”.
 
 ## Citation forms, by their one name.
 
@@ -414,7 +414,7 @@ general-placement-bottom-left = Bottom left
 general-placement-bottom-right = Bottom right
 general-menu-bar-description = If hidden, open Ibis from Applications to come back here.
 general-paste-title = Pasting
-general-behavior-title = Behavior
+general-behavior-title = Behaviour
 general-paste-label = Paste into the app you came from
 general-paste-key =
     { $platform ->
@@ -602,7 +602,7 @@ look-window-large = Large
 look-window-custom = Custom
 look-window-custom-note = Drag an edge of the picker to set your own size. Ibis remembers it on each display.
 look-text-size = Text size
-look-text-size-description = The size of the picker’s words, apart from the Mac’s own text size.
+look-text-size-description = The size of the words in Ibis and in Settings, apart from the Mac’s own text size.
 look-default-text = Default
 look-larger-text = Larger
 look-sample-title = The quiet garden
@@ -675,7 +675,7 @@ canvas-pressed = Pressed
 canvas-focused = Keyboard focus
 
 general-small-surprises-label = Bird facts and milestones
-general-small-surprises-description = Bird facts, milestones and anniversaries.
+general-small-surprises-description = A fact when you click the bird in About, and a short note when you reach a milestone.
 settings-surprises-words = delight easter egg fun
 delight-name = Named for the bird ancient Egyptians linked with Thoth, god of writing and keeper of records.
 delight-fact-touch = White ibises find food by touch as they probe the mud.
@@ -706,7 +706,6 @@ choice-use-file = Use { $name }
 choice-back = Choose Another Source
 
 backup-words = backup restore export import move migrate new computer sync iCloud OneDrive
-backup-title = Another computer
 backup-label = Back up settings
 backup-description =
     { $platform ->
@@ -764,7 +763,6 @@ peek-container = Published in
 peek-year = Year
 peek-type = Type
 peek-key = Citation key
-citation-details-page = Page
 locator-act = Act
 locator-appendix = Appendix
 locator-article-locator = Article
@@ -1424,7 +1422,7 @@ citations-keys-description = Used where you write citation keys, and in apps Ibi
 citations-apps = Formats remembered for apps
 citations-forget = Forget
 citations-writings = Projects
-settings-open-file = Open Settings File
+settings-open-file = Open settings file
 settings-open = Open
 settings-file-description = Edits to settings.json apply while Ibis is running.
 picker-use-usual = Use { $format } in { $app } again
@@ -1454,6 +1452,8 @@ palette-no-actions = No matching actions
 picker-format-title = Format
 palette-search-formats = Search formats
 palette-no-formats = No matching formats
+palette-choose = Choose
+palette-no-matches = No matches
 palette-use-again = Use { $format } in { $app } Again
 palette-use-for-app = Use for { $app }
 palette-use-default = Use Everywhere
@@ -1500,6 +1500,7 @@ mcp-cite-description = Cite refs from search, in order, with optional locators. 
 
 # The desktop's bundled command. Never execute another program to check its version.
 command-install = Install the ibis command
+command-install-button = Install
 command-install-description = Search and cite from a terminal with the same library and settings.
 command-remove = Remove Command
 command-checking = Checking the ibis command…
@@ -1956,7 +1957,8 @@ cli-greeting = Ibis { $version } finds references and cites them anywhere.
 
 # Settings and ibis agents share these app connections.
 settings-ai-apps = AI Apps
-ai-apps-command-line = Command Line
+ai-apps-group = Apps on this computer
+ai-apps-command-line = Command line
 ai-apps-description = Connect Ibis to the AI apps on this computer.
 ai-apps-words = agents MCP Claude Codex Cursor VS Code Gemini Windsurf LM Studio ChatGPT AI apps
 proposals-title = Proposed changes
@@ -1978,7 +1980,7 @@ app-failure-reject-proposal = { proposals-failed }
 app-failure-reject-app-proposals = { proposals-failed }
 command-words = command line terminal shell PATH agents MCP
 ai-apps-checking = Checking AI apps…
-ai-apps-not-connected = Not connected.
+ai-apps-not-connected = Not connected
 ai-apps-connected = Connected. Start a new session in the app to use Ibis.
 ai-apps-stale = The ibis command has moved or is missing.
 ai-apps-different = This app has a different Ibis connection. Review the change below.
@@ -1987,7 +1989,7 @@ ai-apps-connect = Connect
 ai-apps-disconnect = Disconnect
 ai-apps-repair = Repair
 ai-apps-replace = Replace…
-ai-apps-command-needed = The ibis command is missing. Install it in Command Line above so this app can start Ibis.
+ai-apps-command-needed = The ibis command is missing. Install it in Command line above so this app can start Ibis.
 ai-apps-failed = Could not change the AI app connection. Check the app’s settings and folder permissions, then try again.
 ai-apps-kept = Other servers and settings are kept. A backup is kept beside each changed file, the same as ibis agents in a terminal.
 app-failure-agent-apps = { ai-apps-failed }

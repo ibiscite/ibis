@@ -9,14 +9,21 @@
 .choice-title { color: var(--text); font-size: var(--type-lead-size); line-height: var(--type-lead-line); font-weight: var(--strong); }
 .choice-line { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .choice-list { display: flex; flex-direction: column; gap: var(--space-1); outline: none; text-align: start; }
-.choice-screen .choice-row { display: flex; align-items: center; gap: var(--row-gap); min-width: 0; height: auto; padding-inline: var(--row-pad); border-radius: var(--r-control); outline: none; color: var(--text); cursor: default; }
-.choice-screen .choice-row + .choice-row { margin-top: 0; }
-.choice-screen .result-title, .choice-screen .choice-help { white-space: normal; overflow: visible; display: block; overflow-wrap: anywhere; }
-:root[data-density="compact"] .choice-screen .choice-help { display: block; }
-.choice-help { margin-top: var(--space-1); }
-.choice-tag { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.choice-line-title > .result-title { flex: 0 1 auto; }
-.choice-line-title > .choice-keys { margin-inline-start: 0; white-space: nowrap; }
+/* A choice row draws its own parts (choice-*), never a result row's classes, so
+   the list's density and resting-row rules (Option.css) cannot reach it: its tile
+   keeps its plate and size in Compact and Comfortable alike. */
+.choice-screen .choice-row { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-width: 0; max-inline-size: 100%; min-height: var(--row-height); padding-block: var(--space-2); padding-inline: var(--row-pad); border-radius: var(--r-control); outline: none; color: var(--text); cursor: default; }
+@media (pointer: coarse) { .choice-screen .choice-row { min-height: max(var(--row-height), var(--touch-target)); } }
+.choice-tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); border-radius: var(--r-small); background: var(--fill-control); color: var(--text-secondary); }
+.choice-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.choice-line-title { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
+/* dir="auto" words keep their own direction but align with the row's (match-parent),
+   so a Latin name or help line in an Arabic window starts where the row starts. */
+.choice-name { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; text-align: match-parent; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
+.choice-keys, .choice-help, .choice-tag { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.choice-keys { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.choice-help { display: block; margin-top: var(--space-1); overflow-wrap: anywhere; text-align: match-parent; }
+.choice-tag { flex: none; margin-inline-start: auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .choice-row[data-focused] .choice-keys { color: var(--selected-text-secondary); }
 .choice-row[data-suggested] .choice-tile { background: var(--accent); color: var(--text-on-accent); }
 /* The focused row is the active one, filled as a selected result row. */
@@ -28,10 +35,9 @@
 .choice-row[data-focused]:not([data-suggested]) .choice-tile { color: inherit; }
 @media (hover: hover) {
   .choice-row[data-hovered]:not([data-focused]) { background: var(--fill-quiet-hover); }
-  /* A choice tile keeps its icon; only result tiles turn into add controls. */
-  .choice-row[data-hovered] .choice-tile .type-icon { opacity: 1; }
 }
 @media (forced-colors: active) {
+  .choice-tile { forced-color-adjust: none; background: Canvas; color: CanvasText; }
   .choice-row[data-focused] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
 }
 /* Four starts, row-major, at every text size. Natural row heights and wrapping
@@ -43,7 +49,7 @@
 .choice-screen[data-grid] .choice-row { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-auto-rows: min-content; align-items: start; align-content: start; gap: 0 var(--space-2); margin: 0; min-height: 4rem; background: var(--fill-control); padding: var(--space-3); }
 .choice-screen[data-grid] .choice-tile { grid-row: 1; height: var(--type-body-line); }
 .choice-screen[data-grid] .choice-tile { background: transparent; }
-.choice-screen[data-grid] .result-title { font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.choice-screen[data-grid] .choice-name { font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .choice-screen[data-grid] .choice-tag { grid-column: 2; max-width: 100%; margin-top: var(--space-1); white-space: normal; overflow-wrap: anywhere; text-align: start; }
 .choice-screen[data-grid] .choice-row[data-focused] { background: var(--selected); }
 @media (hover: hover) {

@@ -1,12 +1,16 @@
 import { Icon } from "../icons";
-import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type PointerEvent, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
+import { Children, createContext, isValidElement, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type PointerEvent, type ReactElement, type ReactNode, type Ref, type RefObject } from "react";
 import { composing as isComposing } from "../composition";
 import { flushSync } from "react-dom";
 import { mergeProps, setInteractionModality } from "react-aria";
 import { Header, Menu as AriaMenu, MenuItem as AriaMenuItem, MenuSection as AriaMenuSection, MenuStateContext, MenuTrigger, Separator, Text } from "react-aria-components";
 import { Button } from "./Button";
 import { markScrollEdges } from "./ScrollArea";
-import { Floating } from "./Layer";
+import { Floating, useViewFallback } from "./Layer";
+import { useLayer, type LayerClose } from "./layers";
+import { ViewFrame } from "./ViewFrame";
+import { say } from "../i18n";
+import { LEAST_ROWS } from "./region";
 import { useMenuLifecycle } from "./useMenuLifecycle";
 import { usePresence, usePresenceSlot } from "./presence";
 import "./Menu.css";
@@ -22,85 +26,38 @@ export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement |
   return `${placement.startsWith("top") ? "top" : "bottom"} ${end ? "right" : "left"}` as const;
 }
 
-/** Keep React Aria's placement boundary inside the viewport and below the
- * return field. A wrapped picker can put its footer trigger below the window.
- * A menu opened from above the `[data-menu-floor]` region (the footer) also
- * ends above it, so it never covers the footer's actions. */
-export function useMenuBoundary(open: boolean, returnRef?: RefObject<HTMLElement | null>, trigger?: RefObject<HTMLElement | null>) {
-  const [boundary, setBoundary] = useState<HTMLElement>();
-  const [clearBottom, setClearBottom] = useState(0);
-  useLayoutEffect(() => {
-    if (!open) return;
-    let current = true, frame = 0, signature = "";
-    let node: HTMLElement | null = null;
-    const floor = document.querySelector<HTMLElement>("[data-menu-floor]");
-    const above = floor && trigger?.current && !floor.contains(trigger.current) ? floor : null;
-    const layout = trigger?.current?.closest("main") ?? trigger?.current?.parentElement;
-    const update = () => {
-      if (!current) return;
-      const bottom = Math.max(0, returnRef?.current?.getBoundingClientRect().bottom ?? 0);
-      // Never above the top edge, even in a window too short for both.
-      const end = above && window.innerHeight > 400 ? Math.max(bottom, above.getBoundingClientRect().top) : window.innerHeight;
-      const rect = trigger?.current?.getBoundingClientRect();
-      const next = [innerWidth, innerHeight, bottom, end, rect?.x, rect?.y, rect?.width, rect?.height].join(",");
-      if (next === signature) return;
-      signature = next;
-      const previous = node;
-      node = document.createElement("div");
-      node.dataset.menuBoundary = "";
-      node.setAttribute("aria-hidden", "true");
-      Object.assign(node.style, { position: "fixed", inset: "0", top: `${bottom}px`, bottom: `${Math.max(0, innerHeight - end)}px`, pointerEvents: "none" });
-      document.body.append(node);
-      // React Aria observes target size, not position-only layout changes.
-      // A fresh boundary asks that same fitting owner to recompute placement
-      // and its height cap, without remounting the focused menu content.
-      setBoundary(node);
-      setClearBottom(bottom);
-      previous?.remove();
-    };
-    update();
-    const schedule = () => {
-      if (!current || frame) return;
-      frame = requestAnimationFrame(() => { frame = 0; update(); });
-    };
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
-    if (returnRef?.current) observer?.observe(returnRef.current);
-    if (above) observer?.observe(above);
-    if (trigger?.current) observer?.observe(trigger.current);
-    // A neighbour can move a fixed-size anchor: header wrapping, middle-area
-    // settling, shelf folding and a footer growing all belong to this owner.
-    if (layout) {
-      observer?.observe(layout);
-      for (const child of layout.children) observer?.observe(child);
+/** What an anchored menu must show, measured on its drawn surface: its chrome
+ * (padding, heading, note, filter) and its first `LEAST_ROWS` whole rows,
+ * or all of them when it has fewer; with no rows, its empty state. Read from
+ * the content's own sizes, so a capped, scrolling menu measures the same. */
+export function menuLeast(surface: HTMLElement): number {
+  const list = surface.querySelector<HTMLElement>('[role="menu"]');
+  if (!list) return surface.scrollHeight;
+  const chrome = surface.scrollHeight - list.offsetHeight;
+  const rows = list.querySelectorAll('[role^="menuitem"]');
+  const last = rows[Math.min(LEAST_ROWS, rows.length) - 1];
+  // Rows' boxes already include the list's scroll offset.
+  const top = list.getBoundingClientRect().top - list.scrollTop;
+  return Math.ceil(chrome + (last ? last.getBoundingClientRect().bottom - top : list.scrollHeight));
+}
+
+/** The collection's current row, including React Aria's virtual focus. */
+export function menuHighlight(list: HTMLElement | null): string | undefined {
+  return list?.querySelector<HTMLElement>("[data-focused][data-item]")?.dataset.item;
+}
+
+/** Reveal the row inside its own list, without moving the window. */
+function revealMenuRow(list: HTMLElement, row: HTMLElement) {
+  for (let scroller = row.parentElement; scroller; scroller = scroller.parentElement) {
+    if (scroller === list || /auto|scroll/.test(getComputedStyle(scroller).overflowY)) {
+      const top = scroller.getBoundingClientRect().top + scroller.clientTop;
+      const bottom = top + scroller.clientHeight;
+      const item = row.getBoundingClientRect();
+      if (item.top < top) scroller.scrollTop += Math.floor(item.top - top);
+      else if (item.bottom > bottom) scroller.scrollTop += Math.ceil(item.bottom - bottom);
     }
-    const changed = new MutationObserver(schedule);
-    if (layout) changed.observe(layout, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "style", "hidden", "data-folded"] });
-    window.addEventListener("resize", schedule);
-    window.visualViewport?.addEventListener("resize", schedule);
-    document.addEventListener("scroll", schedule, true);
-    schedule();
-    return () => {
-      current = false;
-      cancelAnimationFrame(frame);
-      observer?.disconnect();
-      changed.disconnect();
-      window.removeEventListener("resize", schedule);
-      window.visualViewport?.removeEventListener("resize", schedule);
-      document.removeEventListener("scroll", schedule, true);
-      node?.remove();
-    };
-  }, [open, returnRef, trigger]);
-  const getTargetRect = useCallback((target: Element) => {
-    const rect = target.getBoundingClientRect();
-    if (!boundary?.isConnected) return rect;
-    const bounds = boundary.getBoundingClientRect();
-    // Preserve the real anchor when visible; shift an off-window trigger into
-    // the boundary so placement can still flip and cap against usable space.
-    if (rect.top >= 8 && rect.bottom <= bounds.bottom - 8) return rect;
-    const top = Math.max(clearBottom + 8 - 6 - rect.height, Math.min(rect.top, bounds.bottom - 8));
-    return new DOMRect(rect.x, top, rect.width, rect.height);
-  }, [boundary, clearBottom]);
-  return { boundaryElement: boundary, getTargetRect };
+    if (scroller === list) break;
+  }
 }
 
 /** A scrolling menu ends on a whole row, never a cut one (#1031). Pass the
@@ -171,7 +128,8 @@ export function MenuRow({ itemId, ...props }: ComponentPropsWithRef<"div"> & { i
     manager.setFocused(true);
     manager.setFocusedKey(itemId);
   };
-  return <div {...mergeProps(props, { onPointerMove })} />;
+  // Named, so a menu that turns into a view opens on the row it had highlighted.
+  return <div {...mergeProps(props, { onPointerMove })} data-item={itemId} />;
 }
 
 const ActionFocusContext = createContext<(() => void) | null>(null);
@@ -275,13 +233,19 @@ type MenuProps = {
 export function Menu({ label, id, trigger, triggerRef, triggerClassName, triggerVariant = "secondary", triggerSize = "default", triggerTitle, triggerLabel, isOpen, onOpenChange, tabFocusRef, placement = "bottom end", children }: MenuProps) {
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
-  const boundary = useMenuBoundary(isOpen, tabFocusRef, button);
   // The footer's leading status row opens above its leading edge; trailing
   // footer actions keep their own placement. React Aria owns the gap and fit.
   const leadingStatus = triggerClassName?.split(/\s+/).includes("library-status-trigger");
   const renderedPlacement = useMenuPlacement(isOpen, button, leadingStatus ? "top start" : placement);
   const { list, listRef, opening } = useMenuLifecycle(isOpen);
   const wholeRows = useWholeRows(list);
+  // With room for its least on neither side, it opens as a view (decision 0062).
+  const fallback = useViewFallback(isOpen);
+  const highlighted = useRef<string | undefined>(undefined);
+  const cramped = () => {
+    highlighted.current = menuHighlight(list.current);
+    fallback.cramped();
+  };
   const [skipExit, setSkipExit] = useState(false);
   useEffect(() => { if (!isOpen) fromTrigger.current = false; }, [isOpen]);
   useEffect(() => {
@@ -290,12 +254,8 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     const keepFocusedVisible = () => {
       const node = list.current;
       const active = document.activeElement;
-      if (!node || !(active instanceof HTMLElement) || !node.contains(active)) return;
-      const top = node.getBoundingClientRect().top + node.clientTop;
-      const bottom = top + node.clientHeight;
-      const item = active.getBoundingClientRect();
-      if (item.top < top) node.scrollTop += Math.floor(item.top - top);
-      else if (item.bottom > bottom) node.scrollTop += Math.ceil(item.bottom - bottom);
+      if (!node || !(active instanceof HTMLElement) || active === node || !node.contains(active)) return;
+      revealMenuRow(node, active);
     };
     window.addEventListener("resize", keepFocusedVisible);
     return () => window.removeEventListener("resize", keepFocusedVisible);
@@ -313,28 +273,66 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
     if (inner && inner !== list.current) return false;
     leave(event ? button.current : tabFocusRef?.current);
   };
+  const frame = <div className="menu-frame" onKeyDownCapture={(event) => {
+    if (isComposing(event)) { event.stopPropagation(); return; }
+    // Tab leaves the entire menu, from any depth.
+    if (event.key !== "Tab" || tabFocusRef === undefined) return;
+    event.preventDefault();
+    event.stopPropagation();
+    leave(tabFocusRef.current);
+  }} onKeyUpCapture={(event) => { if (isComposing(event)) event.stopPropagation(); }}>
+    <MenuList key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label}
+      autoFocus={fallback.asView && highlighted.current !== undefined ? false : fromTrigger.current ? undefined : "first"}
+      render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
+      {children}
+    </MenuList>
+  </div>;
   // Outside the collection builder so submenu portals inherit the action owner.
-  return <ActionFocusContext.Provider value={() => leave(tabFocusRef?.current)}><MenuTrigger isOpen={isOpen} onOpenChange={(open) => { fromTrigger.current = open; onOpenChange(open); }}>
+  return <ActionFocusContext.Provider value={() => leave(tabFocusRef?.current)}><MenuTrigger isOpen={isOpen} onOpenChange={(open) => { if (!fallback.heeds(open)) return; fromTrigger.current = open; onOpenChange(open); }}>
     <Button variant={triggerVariant} size={triggerSize} aria-label={label} ref={(node) => {
       button.current = node;
       if (typeof triggerRef === "function") triggerRef(node);
       else if (triggerRef) triggerRef.current = node;
     }} className={triggerClassName}
       render={(props) => <button {...props as ComponentPropsWithRef<"button">} title={triggerTitle} aria-label={triggerLabel ?? label} />}>{trigger}</Button>
-    <Floating kind="menu" open={isOpen} onClose={close} ref={wholeRows} className="menu-popover ui-overlay" placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
-      <div className="menu-frame" onKeyDownCapture={(event) => {
-        if (isComposing(event)) { event.stopPropagation(); return; }
-        // Tab leaves the entire menu, from any depth.
-        if (event.key !== "Tab" || tabFocusRef === undefined) return;
-        event.preventDefault();
-        event.stopPropagation();
-        leave(tabFocusRef.current);
-      }} onKeyUpCapture={(event) => { if (isComposing(event)) event.stopPropagation(); }}>
-        <MenuList key={opening} ref={listRef} id={id} className="menu scroll-area" aria-label={label} autoFocus={fromTrigger.current ? undefined : "first"}
-          render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-label={label} aria-labelledby={undefined} />}>
-          {children}
-        </MenuList>
-      </div>
-    </Floating>
+    {fallback.asView ? <MenuView label={label} highlighted={highlighted.current} onClose={close} onBack={() => leave(button.current)}>{frame}</MenuView>
+      : <Floating kind="menu" open={isOpen} onClose={close} ref={wholeRows} className="menu-popover ui-overlay" anchor={button} least={menuLeast} onCramped={cramped} placement={renderedPlacement} offset={6} containerPadding={8} shouldSkipAnimation={skipExit}>
+        {frame}
+      </Floating>}
   </MenuTrigger></ActionFocusContext.Provider>;
+}
+
+/** A menu opened as a view of the window (decision 0062), the way the palettes
+ * open: the same list and rows, as tall as the window allows, scrolling inside.
+ * Esc, Back and a pick close it as they close the menu. */
+function MenuView({ label, highlighted, onClose, onBack, children }: { label: string; highlighted?: string; onClose: LayerClose; onBack: () => void; children: ReactNode }) {
+  const layer = useLayer("palette", true, (event) => { layer.leave(); return onClose(event); });
+  const titleId = useId();
+  const frame = useRef<HTMLDivElement>(null);
+  // The view takes the keyboard as it opens, as the menu did: the list moved
+  // here from the popover, and focus left with it.
+  useLayoutEffect(() => {
+    const surface = frame.current;
+    if (!surface) return;
+    const takeFocus = () => {
+      const list = surface.querySelector<HTMLElement>('[role="menu"]');
+      if (!list) return false;
+      const rows = list.querySelectorAll<HTMLElement>("[data-item]");
+      if (highlighted !== undefined && !rows.length) return false;
+      const row = [...rows].find((item) => item.dataset.item === highlighted);
+      if (row) {
+        row.focus({ preventScroll: true });
+        revealMenuRow(list, row);
+      } else if (!surface.contains(document.activeElement)) list.focus({ preventScroll: true });
+      return true;
+    };
+    if (takeFocus()) return;
+    // React Aria can mount the list before its collection has built the rows.
+    const collection = new MutationObserver(() => { if (takeFocus()) collection.disconnect(); });
+    collection.observe(surface, { childList: true, subtree: true });
+    return () => collection.disconnect();
+  }, [highlighted]);
+  return <ViewFrame title={label} titleId={titleId} frameRef={frame} role="dialog" aria-modal="true" layer={layer} back={{ label: say("palette-back"), onBack: () => { layer.leave(); onBack(); } }}>
+    <div className="menu-view">{children}</div>
+  </ViewFrame>;
 }

@@ -1,3 +1,5 @@
+import { LEAST_ROWS, visibleBox } from "../src/ui/region";
+
 // The layout rules of docs/design.md as data, checked on whatever screen is
 // mounted. One table, read by the Mac's WebKit gallery (gallery/webkit.swift)
 // and the Chromium canvas renderer (gallery/canvas.mjs), so a rule written
@@ -52,7 +54,7 @@ export const panes = { pane: ".inspector:not([data-reading])", top: ".search-bar
 export const stacks = [".inspector-titles", ".inspector-column", ".citation-details", ".ui-drawer-lead"] as const;
 
 /** [C12] A grid of choice cards: one height, and each glyph level with its title's first line. */
-export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".result-title" } as const;
+export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".choice-name" } as const;
 
 /** Every interface glyph has one of two fixed pixel sizes; its filled artwork stays as vendored. */
 export const glyphs = { selector: "svg.ui-icon", sizes: [16, 20] } as const;
@@ -300,8 +302,14 @@ export async function settle(quiet = 250, longest = 4000): Promise<void> {
   try {
     while (performance.now() - last < quiet && performance.now() - start < longest) await new Promise((done) => setTimeout(done, 50));
   } finally { observer.disconnect(); }
-  for (const animation of document.getAnimations()) {
-    // A looping animation (a spinner) has no end; it keeps running.
+  finishAnimations();
+}
+
+/** Every animation with an end ends now, as the page settles to it. A looping
+ * animation (a spinner) has no end; it keeps running. */
+function finishAnimations() {
+  // A DOM without animations (jsdom) has none to end.
+  for (const animation of document.getAnimations?.() ?? []) {
     try { if (animation.effect?.getComputedTiming().endTime !== Infinity) animation.finish(); } catch { /* already gone */ }
   }
 }
@@ -504,7 +512,12 @@ export function paintOnly(root: ParentNode = document): string[] {
       });
       if (worst) failures.push(`[C24 states] ${label(part)} [${state}] ${worst.node === part ? "changes its own" : `moves ${label(worst.node)}`} ${worst.edge} by ${worst.delta.toFixed(1)}px`);
     }
-  } finally { still.remove(); }
+  } finally {
+    still.remove();
+    // Taking `animation: none` away starts every entrance again (a view fading
+    // in from opacity 0): the page is left as settled as it was found.
+    finishAnimations();
+  }
   return failures;
 }
 
@@ -595,4 +608,198 @@ export function overflow(node: HTMLElement, lines: number): string | null {
   if (node.scrollWidth > node.clientWidth + tolerance) return `cut by ${node.scrollWidth - node.clientWidth}px`;
   if (node.scrollHeight > lines * line + tolerance) return `${Math.round(node.scrollHeight / line)} lines`;
   return null;
+}
+
+/** The box of a node a person can see: the window and every clipping ancestor
+ * cut it. Null when nothing of it shows. */
+function clipped(node: Element): DOMRect | null {
+  let { left, top, right, bottom } = node.getBoundingClientRect();
+  left = Math.max(left, 0); top = Math.max(top, 0);
+  right = Math.min(right, document.documentElement.clientWidth || innerWidth); bottom = Math.min(bottom, document.documentElement.clientHeight || innerHeight);
+  for (let part = node.parentElement; part && part !== document.body; part = part.parentElement) {
+    const style = getComputedStyle(part);
+    if (style.overflowX === "visible" && style.overflowY === "visible") continue;
+    const clip = part.getBoundingClientRect();
+    left = Math.max(left, clip.left + part.clientLeft); top = Math.max(top, clip.top + part.clientTop);
+    right = Math.min(right, clip.left + part.clientLeft + (part.clientWidth || clip.width)); bottom = Math.min(bottom, clip.top + part.clientTop + (part.clientHeight || clip.height));
+  }
+  return right > left && bottom > top ? new DOMRect(left, top, right - left, bottom - top) : null;
+}
+
+/** How much of a node is drawn: its own and its ancestors' opacity, none when
+ * it is hidden. A row at opacity 0 takes the point but shows nothing. */
+function drawn(node: Element): number {
+  if (getComputedStyle(node).visibility === "hidden") return 0;
+  let alpha = 1;
+  for (let part: Element | null = node; part; part = part.parentElement) {
+    const style = getComputedStyle(part);
+    if (style.display === "none") return 0;
+    const own = parseFloat(style.opacity);
+    if (!Number.isNaN(own)) alpha *= own;
+  }
+  return alpha;
+}
+
+/** Whether a node paints over what is under it: a fill, a picture or its own words. */
+function paints(node: Element): boolean {
+  if (drawn(node) < .1) return false;
+  const style = getComputedStyle(node);
+  if (paint(style.backgroundColor)[3] > .05 || (style.backgroundImage && style.backgroundImage !== "none")) return true;
+  if (node instanceof SVGElement || /^(IMG|CANVAS|VIDEO|IFRAME)$/.test(node.tagName)) return true;
+  return [...node.childNodes].some((child) => child.nodeType === Node.TEXT_NODE && child.textContent?.trim());
+}
+
+/** What hides `node` at a point from a person: walking down from the top, the
+ * first thing that paints before the node (or something inside it); null when
+ * the node shows. Hit testing skips what takes no pointer, so every layer takes
+ * one while it looks: a cover with pointer-events: none still hides. */
+function coverAt(node: Element, x: number, y: number): Element | null {
+  const every = document.createElement("style");
+  every.textContent = "*, *::before, *::after { pointer-events: auto !important; }";
+  document.head.append(every);
+  let stack: Element[];
+  try { stack = document.elementsFromPoint(x, y); } finally { every.remove(); }
+  for (const hit of stack) {
+    if (hit === node || node.contains(hit)) return null;
+    if (paints(hit)) return hit;
+  }
+  return document.documentElement;
+}
+
+type PaintPoint = { x: number; y: number };
+type ReadPaint = (points: readonly PaintPoint[]) => Promise<readonly number[]>;
+
+/** The runner captures the composited viewport as a PNG data URL. The browser
+ * reads it in CSS pixels so the same samples work at any device scale. */
+export function viewportPaint(capture: () => Promise<string>): ReadPaint {
+  return async (points) => {
+    const snapshot = new Image();
+    snapshot.src = await capture();
+    await snapshot.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = snapshot.naturalWidth;
+    canvas.height = snapshot.naturalHeight;
+    const context = canvas.getContext("2d", { willReadFrequently: true })!;
+    context.drawImage(snapshot, 0, 0);
+    return points.map(({ x, y }) => {
+      const [r, g, b, a] = context.getImageData(Math.floor(x * canvas.width / innerWidth), Math.floor(y * canvas.height / innerHeight), 1, 1).data;
+      return (r! << 24) | (g! << 16) | (b! << 8) | a!;
+    });
+  };
+}
+
+function wholeBox(node: HTMLElement): DOMRect | null {
+  const box = node.getBoundingClientRect(), shown = clipped(node);
+  if (!shown || box.height < 2 || drawn(node) < .1) return null;
+  if (shown.top > box.top + tolerance || shown.bottom < box.bottom - tolerance) return null;
+  if (shown.left > box.left + tolerance || shown.right < box.right - tolerance) return null;
+  return shown;
+}
+
+/** Change a part's own paint in place and see whether it reaches the screen.
+ * An inset shadow changes neither geometry nor stacking order. An opaque
+ * cover leaves the sampled pixel unchanged, whatever draws it or takes input.
+ * Group disjoint boxes so another probe cannot change a part's sampled pixel. */
+async function sampleMenuPaint(parts: { node: HTMLElement; box: DOMRect | null }[], readPaint: ReadPaint): Promise<Set<HTMLElement>> {
+  const batches: { node: HTMLElement; box: DOMRect }[][] = [];
+  for (const { node, box } of parts) {
+    if (!box) continue;
+    const batch = batches.find((group) => group.every((other) => !overlaps(box, other.box)));
+    if (batch) batch.push({ node, box });
+    else batches.push([{ node, box }]);
+  }
+  const visible = new Set<HTMLElement>();
+  for (const batch of batches) {
+    const points = batch.map(({ box }) => ({ x: box.left + Math.min(box.width / 2, 24), y: box.top + box.height / 2 }));
+    const restore = batch.map(({ node }) => {
+      const before = node.style.getPropertyValue("box-shadow"), priority = node.style.getPropertyPriority("box-shadow");
+      const hadStyle = node.hasAttribute("style");
+      return () => {
+        node.style.setProperty("box-shadow", before, priority);
+        if (!hadStyle && !node.style.length) node.removeAttribute("style");
+      };
+    });
+    const sample = (colour: string) => {
+      for (const { node } of batch) node.style.setProperty("box-shadow", `inset 0 0 0 100vmax ${colour}`, "important");
+      return readPaint(points);
+    };
+    try {
+      const dark = await sample("black");
+      const light = await sample("white");
+      batch.forEach(({ node }, index) => { if (dark[index] !== light[index]) visible.add(node); });
+    } finally {
+      for (const undo of restore) undo();
+    }
+  }
+  return visible;
+}
+
+async function paintedMenuParts(parts: HTMLElement[], readPaint: ReadPaint): Promise<Set<HTMLElement>> {
+  // The first paint of an offscreen view can wake a pending layout update,
+  // such as positioning a popover after its drawer's entrance finishes.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const boxes = parts.map((node) => ({ node, box: wholeBox(node) }));
+    const visible = await sampleMenuPaint(boxes, readPaint);
+    const stable = boxes.every(({ node, box: before }) => {
+      const after = wholeBox(node);
+      return before?.left === after?.left && before?.top === after?.top && before?.right === after?.right && before?.bottom === after?.bottom;
+    });
+    if (stable) return visible;
+  }
+  return new Set();
+}
+
+/** Every open menu's list: anchored, or opened as a view of the window. */
+export const menuLists = '.menu-popover [role="menu"], .ui-view [role="menu"], .ui-view [role="listbox"]';
+
+/** [C9 rows] Every open anchored menu shows at least its least of whole rows
+ * (ui/region's `LEAST_ROWS`, or every row it has) that a person can see:
+ * inside the window, cut by no clipping ancestor and with paint reaching the
+ * screen at each sampled point. With a filter, the filter shows
+ * too; with no matches, its empty state is the least. A menu with room on
+ * neither side opens as a view of the window instead, as the palettes do: the
+ * window is then the limit, so its filter and every row its list's box holds
+ * whole show, and at least one. */
+export async function menuRows(readPaint: ReadPaint, root: ParentNode = document): Promise<string[]> {
+  const failures: string[] = [];
+  for (const list of root.querySelectorAll<HTMLElement>(menuLists)) {
+    const view = list.closest(".ui-view") !== null;
+    const surface = list.closest<HTMLElement>(".menu-popover, .ui-view")!;
+    const name = list.getAttribute("aria-label") ?? label(list);
+    const filter = surface.querySelector<HTMLElement>("input");
+    const rows = [...list.querySelectorAll<HTMLElement>('[role="option"], [role^="menuitem"]')];
+    const empty = rows.length ? null : (list.firstElementChild as HTMLElement | null) ?? list;
+    const visible = await paintedMenuParts([...rows, ...(filter ? [filter] : []), ...(empty ? [empty] : [])], readPaint);
+    if (filter && !visible.has(filter)) failures.push(`[C9 rows] menu "${name}": its filter is not visible`);
+    const room = view ? clipped(list) : null;
+    const held = view ? rows.filter((row) => { const box = row.getBoundingClientRect(); return room !== null && box.top >= room.top - tolerance && box.bottom <= room.bottom + tolerance; }).length : rows.length;
+    const needed = view ? Math.max(Math.min(1, rows.length), held) : Math.min(LEAST_ROWS, rows.length);
+    const shown = rows.filter((row) => visible.has(row)).length;
+    if (shown < needed) failures.push(`[C9 rows] ${view ? "view" : "menu"} "${name}": ${shown} of ${needed} rows visible and whole in a ${innerWidth} × ${innerHeight} window`);
+    // With no rows, what the list draws instead (a palette's "No matches"), or the list.
+    if (empty && !visible.has(empty)) failures.push(`[C9 rows] menu "${name}": its empty state is not visible`);
+  }
+  return failures;
+}
+
+/** [C9 reveal] After a jump (ui/reveal), the focused element intersects what a
+ * person sees of its scroll box: inside it, and not under its sticky title.
+ * The box is ui/region's `visibleBox`, the one definition the reveal keeps to. */
+export function focusInView(scroller: Element | null): string[] {
+  if (!scroller) return ["[C9 reveal] no scroll box to look in"];
+  const focused = document.activeElement;
+  if (!(focused instanceof HTMLElement) || !scroller.contains(focused)) return [`[C9 reveal] the keyboard is not in ${label(scroller)} but on ${focused ? label(focused) : "nothing"}`];
+  // A control drawn by its label (a hidden radio) is where its label is.
+  const own = focused.getBoundingClientRect();
+  const box = own.width * own.height >= 16 ? own : (focused.closest("label, .ui-row") ?? focused).getBoundingClientRect();
+  const seen = visibleBox(scroller);
+  const across = Math.min(box.right, seen.right) - Math.max(box.left, seen.left), down = Math.min(box.bottom, seen.bottom) - Math.max(box.top, seen.top);
+  if (across <= 1 || down <= 1) return [`[C9 reveal] ${label(focused)} spans ${box.top.toFixed(0)}–${box.bottom.toFixed(0)}px, outside what shows of ${label(scroller)} (${seen.top.toFixed(0)}–${seen.bottom.toFixed(0)}px)`];
+  // In the box, it must also be drawn and not under a layer, whatever that layer's pointer-events.
+  // A labelled control is drawn with its label (a segment over its native radio, a switch's thumb over its box).
+  const drawnAs = focused.closest("label") ?? (box === own ? focused : focused.closest(".ui-row") ?? focused);
+  const x = (Math.max(box.left, seen.left) + Math.min(box.right, seen.right)) / 2, y = (Math.max(box.top, seen.top) + Math.min(box.bottom, seen.bottom)) / 2;
+  if (drawn(drawnAs) < .1) return [`[C9 reveal] ${label(focused)} is in view but not drawn (opacity ${drawn(drawnAs).toFixed(2)})`];
+  const cover = coverAt(drawnAs, x, y);
+  return cover ? [`[C9 reveal] ${label(focused)} is in view but covered by ${label(cover)}`] : [];
 }

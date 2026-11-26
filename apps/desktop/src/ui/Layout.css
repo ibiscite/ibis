@@ -2,7 +2,6 @@
    card (Group) spans its section from edge to edge, and every heading,
    description and row's words start --heading-offset inside it, on the row text. */
 .ui-section { display: flex; flex: none; flex-direction: column; gap: var(--space-2); min-width: 0; scroll-margin-block: var(--space-6); }
-.ui-section + .ui-section { margin-block-start: var(--gutter); }
 /* One section heading, shared with the shortcuts list and the keys sheet. */
 .ui-section-title, .ui-shortcut-table th[scope="rowgroup"] {
   margin: 0; padding: 0 var(--heading-offset); color: var(--text-secondary);
@@ -25,12 +24,18 @@
 }
 /* A row whose control names itself (a picture choice) gives the control the card. */
 .ui-row[data-bare] { padding: var(--space-3); }
-/* A divider belongs to the row below and is inset to its text on both sides, as
-   System Settings draws it. A highlighted row's fill is its own edge. */
-.ui-row + .ui-row::before { content: ""; position: absolute; inset-block-start: 0; inset-inline: var(--row-pad); border-top: var(--border-width) solid var(--separator); }
-.ui-row[data-highlighted]::before, .ui-row[data-highlighted] + .ui-row::before { display: none; }
+/* The card owns its dividers: every row in it draws one above itself, inset to
+   its text on both sides as System Settings draws it, unless it opens its
+   parent. Anything above a row in the card (the live picture over Appearance)
+   is divided from it the same way. `:nth-child(of S)` is avoided: Chromium
+   leaves the pseudo-element unpainted when rows mount. A highlighted or echoing
+   row's fill is its own edge. */
+.ui-group .ui-row:not(:first-child)::before, .ui-details-body > .ui-row:first-child::before { content: ""; position: absolute; inset-block-start: 0; inset-inline: var(--row-pad); border-top: var(--border-width) solid var(--separator); }
+.ui-row:is([data-highlighted], [data-echo])::before, .ui-row:is([data-highlighted], [data-echo]) + .ui-row::before { display: none; }
 .ui-row { transition: background-color var(--dur-1) ease-out; }
 .ui-row[data-highlighted] { background: var(--highlight); }
+/* A pressed shortcut's row briefly takes the quiet fill. */
+.ui-row[data-echo] { background: var(--fill-quiet-hover); }
 /* The disclosure row's chevron points to its rows, then down while they show. */
 .ui-details-mark { display: inline-flex; flex: none; color: var(--text-secondary); rotate: 180deg; }
 .ui-details-toggle[aria-expanded="true"] .ui-details-mark { rotate: -90deg; }

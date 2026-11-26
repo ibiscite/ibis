@@ -87,6 +87,13 @@ const fixtures: Partial<Record<Scenario, {
   // The details, then More over them: More takes their place.
   "reference-details-more": { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', 'button[aria-label="More"]'] },
   "show-as-menu": { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', ".citation-field .ui-popup-button"] },
+  // The drawer's menus, each opened in place (decision 0062): Show as, then the
+  // locator's 29 types, at the default text and with Larger text.
+  "show-as-menu-larger": { preferences: { larger_text: true }, keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', ".citation-field .ui-popup-button"] },
+  "locator-menu": { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', ".citation-locator-type"] },
+  "locator-menu-larger": { preferences: { larger_text: true }, keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', ".citation-locator-type"] },
+  // And at 200 % text, where a small window has room for it beside the field on neither side.
+  "locator-menu-200": { preferences: { larger_text: true }, textZoom: 2, keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', ".citation-locator-type"] },
   "writings-pending": { click: 'button[aria-label="Use Field Notes"]' },
   "library-selector": { library: zoteroLibrary },
   "library-menu": { library: zoteroLibrary, click: ".library-status-trigger" },
@@ -368,6 +375,8 @@ function Canvas({ host, scenario, settings, theme }: { host: HTMLElement; scenar
       if (!button || button.disabled || document.documentElement.hasAttribute("data-picker-hidden")) return;
       clicks.shift();
       if (!clicks.length) observer.disconnect();
+      // As a person would: a control scrolled out of its drawer is scrolled to first.
+      button.scrollIntoView?.({ block: "nearest" });
       button.click();
     };
     const observer = new MutationObserver(open);
@@ -479,7 +488,7 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
 }
 
 /** Every guard of canvas/geometry.ts over the scenarios, for the runners: see canvas/audit.ts. */
-export function audit(host: HTMLElement, options: Parameters<typeof runAudit>[3] = {}): Promise<string[]> {
+export function audit(host: HTMLElement, options: Parameters<typeof runAudit>[3]): Promise<string[]> {
   return runAudit(host, mount, scenarios, options);
 }
 

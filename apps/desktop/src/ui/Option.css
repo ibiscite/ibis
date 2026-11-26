@@ -40,7 +40,9 @@
 .ui-option[data-citation-selected] .result-tile { background: var(--scarlet); color: var(--on-scarlet); }
 /* Comfortable: the year shares the title's first line at every size and view. Compact puts it in the byline. */
 .result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
-.result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
+/* A dir="auto" title keeps its own direction but aligns with the row (match-parent),
+   so a Latin title in an Arabic list starts where the row starts. */
+.result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: match-parent; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
 .result-year, .result-meta, .result-why, .result-project { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .result-year { flex-shrink: 0; margin-inline-start: auto; font-variant-numeric: tabular-nums; }
 /* The meta line wraps only when the byline, type and library badge cannot

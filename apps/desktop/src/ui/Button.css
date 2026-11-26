@@ -1,9 +1,14 @@
-/* One state table for buttons (ui/README.md, "Components and their states"), independent of the feature. */
+/* One state table for buttons (ui/README.md, "Components and their states"), independent of the feature.
+   Every variant's fill in every state is set here and nowhere else. A part that
+   draws a button on its own surface adjusts it through custom properties, never by
+   restyling .ui-button: --button-fill (rest), --button-fill-hover,
+   --button-fill-pressed (pressed, selected or open) and --button-ring (the focus
+   ring's outline; `none` where the part rings its own surface). */
 .ui-button[data-variant] {
   display: inline-flex; align-items: center; justify-content: center;
   gap: var(--space-2); position: relative; min-height: var(--action-h);
   padding: 0 var(--space-3); border: var(--border-width) solid var(--stroke-field);
-  border-radius: var(--r-control); background: var(--fill-control); color: var(--text);
+  border-radius: var(--r-control); background: var(--button-fill, var(--fill-control)); color: var(--text);
   font: inherit; min-width: 0; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; white-space: normal;
   cursor: default; touch-action: manipulation;
 }
@@ -12,20 +17,20 @@
 .ui-button[data-size="small"] { min-height: var(--control-small-h); padding-inline: var(--space-2); }
 /* A 24 px fill still has a 32 px pointer target, inside the footer's padding. */
 .ui-button[data-size="small"]::after { inset: calc(-1 * (var(--control-h) - var(--control-small-h)) / 2 - var(--border-width)) var(--border-outside); }
-.ui-button[data-variant="quiet"], .ui-button[data-variant="icon"] { background: transparent; border-color: transparent; color: var(--control-icon-color, var(--text-secondary)); }
+.ui-button[data-variant="quiet"], .ui-button[data-variant="icon"] { background: var(--button-fill, transparent); border-color: transparent; color: var(--control-icon-color, var(--text-secondary)); }
 /* A quiet button's words are label colour, as a Mac borderless button's title, so they keep 4.5:1. */
 .ui-button[data-variant="quiet"] { color: var(--control-icon-color, var(--text)); }
 .ui-button[data-variant="primary"], .ui-button[data-variant="secondary"] { min-width: 4rem; }
 .ui-button[data-variant="icon"] { min-width: var(--control-h); padding: 0; }
-.ui-button[data-variant="primary"] { background: var(--primary); color: var(--text-on-accent); border-color: transparent; }
+.ui-button[data-variant="primary"] { background: var(--button-fill, var(--primary)); color: var(--text-on-accent); border-color: transparent; }
 @media (hover: hover) {
-  .ui-button[data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-control-hover); }
-  .ui-button:is([data-variant="quiet"], [data-variant="icon"])[data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-quiet-hover); color: var(--control-icon-hover-color, var(--text)); }
-  .ui-button[data-variant="primary"][data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--accent-hover); }
+  .ui-button[data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--button-fill-hover, var(--fill-control-hover)); }
+  .ui-button:is([data-variant="quiet"], [data-variant="icon"])[data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--button-fill-hover, var(--fill-quiet-hover)); color: var(--control-icon-hover-color, var(--text)); }
+  .ui-button[data-variant="primary"][data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--button-fill-hover, var(--accent-hover)); }
 }
-.ui-button:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--fill-control-pressed); }
-.ui-button:is([data-variant="quiet"], [data-variant="icon"]):is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--fill-control-hover); }
-.ui-button[data-variant="primary"]:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--accent-pressed); }
+.ui-button:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--button-fill-pressed, var(--fill-control-pressed)); }
+.ui-button:is([data-variant="quiet"], [data-variant="icon"]):is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--button-fill-pressed, var(--fill-control-hover)); }
+.ui-button[data-variant="primary"]:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--button-fill-pressed, var(--accent-pressed)); }
 .ui-button[data-variant="icon"][data-selected]:not([data-pressed], [data-disabled], [aria-disabled="true"]) { background: var(--fill-control-pressed); color: var(--text); }
 /* A press gives a little and springs back. Only the contents move: the button's
    box, and so its hit area, keeps its size, or a press near an edge could be
@@ -33,9 +38,9 @@
 .ui-button[data-variant] > * { transition: scale var(--dur-1) var(--ease-spring); }
 .ui-button[data-pressed]:not([data-disabled], [aria-disabled="true"]) > * { scale: var(--press-scale); }
 @media (prefers-reduced-motion: reduce) { .ui-button[data-variant] > * { transition: none; } }
-.ui-button[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); box-shadow: none; }
-.ui-button:is([data-disabled], [aria-disabled="true"]) { background: var(--fill-control); color: var(--text-disabled); }
-.ui-button:is([data-variant="quiet"], [data-variant="icon"]):is([data-disabled], [aria-disabled="true"]) { background: transparent; }
+.ui-button[data-focus-visible] { outline: var(--button-ring, var(--ring-width) solid var(--ring)); outline-offset: var(--ring-offset); box-shadow: none; }
+.ui-button:is([data-disabled], [aria-disabled="true"]) { background: var(--button-fill, var(--fill-control)); color: var(--text-disabled); }
+.ui-button:is([data-variant="quiet"], [data-variant="icon"]):is([data-disabled], [aria-disabled="true"]) { background: var(--button-fill, transparent); }
 /* Presentational controls inherit their option's paired foreground. Darkening
    overlays preserve white checks on citation/selection fills. */
 .ui-button[data-pointer-only] { --control-icon-color: currentColor; --control-icon-hover-color: currentColor; --fill-quiet-hover: var(--on-fill-h); --fill-control-hover: var(--on-fill-p); }
@@ -62,13 +67,13 @@
 /* Action: a launcher's main action, as Raycast's footer draws it. Its words in the
    text colour at medium weight and the one accent on its key cap; no plate at rest,
    so the eye stays on the results. Hover and press are the quiet fills. */
-.ui-button[data-variant="action"] { background: transparent; color: var(--text); font-weight: 500; border-color: transparent; }
+.ui-button[data-variant="action"] { background: var(--button-fill, transparent); color: var(--text); font-weight: 500; border-color: transparent; }
 .ui-button[data-variant="action"] .key-caps kbd { background: var(--primary); color: var(--text-on-accent); }
 /* An action that is off is dimmed and loses its accent too: nothing on it says "press". */
 .ui-button[data-variant="action"]:is([data-disabled], [aria-disabled="true"]) { color: var(--text-disabled); }
 .ui-button[data-variant="action"]:is([data-disabled], [aria-disabled="true"]) .key-caps kbd { background: var(--fill-control); color: var(--text-disabled); }
-@media (hover: hover) { .ui-button[data-variant="action"][data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-quiet-hover); } }
-.ui-button[data-variant="action"]:is([data-pressed], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--fill-control-hover); }
+@media (hover: hover) { .ui-button[data-variant="action"][data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--button-fill-hover, var(--fill-quiet-hover)); } }
+.ui-button[data-variant="action"]:is([data-pressed], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--button-fill-pressed, var(--fill-control-hover)); }
 @media (forced-colors: active) {
   .ui-button[data-variant="action"]:not([data-disabled], [aria-disabled="true"]) { background: Canvas; color: CanvasText; border-color: CanvasText; }
   .ui-button[data-variant="action"] .key-caps kbd { forced-color-adjust: none; background: Highlight; color: HighlightText; }

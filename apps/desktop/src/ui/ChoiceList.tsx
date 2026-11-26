@@ -5,7 +5,6 @@ import { currentPlatform } from "../platform";
 import { useResultsLayout } from "./ResultsArea";
 import { Stack } from "./Stack";
 import "./ChoiceList.css";
-import "./Option.css";
 
 /** One row of a choice screen: a tile, a title, one help line and an optional trailing tag. */
 export type Choice = {
@@ -63,17 +62,18 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
       <ListBox ref={list} className="choice-list" layout={grid ? "grid" : "stack"} aria-labelledby={heading} selectionMode="none" autoFocus={autoFocus && !focusId ? "first" : undefined}
         onAction={(id) => onChoose(String(id))}>
         {choices.map((choice) => (
-          <ListBoxItem key={choice.id} id={choice.id} textValue={choice.title} className="ui-option choice-row"
+          <ListBoxItem key={choice.id} id={choice.id} textValue={choice.title} className="choice-row"
             render={(props) => <div {...props as ComponentPropsWithRef<"div">} aria-keyshortcuts={choice.keys ? ariaKeys(choice.keys, mac) : undefined} />}
             data-suggested={choice.suggested || undefined}>
-            <span className="result-tile choice-tile" aria-hidden="true">{choice.icon}</span>
-            <span className="result-body">
+            {/* Its own parts, not a result row's: the list's density and resting-row rules never reach a choice. */}
+            <span className="choice-tile" aria-hidden="true">{choice.icon}</span>
+            <span className="choice-body">
               {/* The key follows its title's words, on their line, so it never floats at the card's far edge. */}
-              <span className="result-line choice-line-title"><span className="result-title" dir="auto">{choice.title}</span>
-                {choice.keys && <span className="result-year choice-keys" aria-hidden="true"><bdi dir="ltr">{keyLabel(choice.keys, mac)}</bdi></span>}</span>
-              {choice.help && <span className="result-meta choice-help" dir="auto">{choice.help}</span>}
+              <span className="choice-line-title"><span className="choice-name" dir="auto">{choice.title}</span>
+                {choice.keys && <span className="choice-keys" aria-hidden="true"><bdi dir="ltr">{keyLabel(choice.keys, mac)}</bdi></span>}</span>
+              {choice.help && <span className="choice-help" dir="auto">{choice.help}</span>}
             </span>
-            {choice.tag && <span className="result-year choice-tag" dir="auto" title={choice.tag}>{choice.tag}</span>}
+            {choice.tag && <span className="choice-tag" dir="auto" title={choice.tag}>{choice.tag}</span>}
           </ListBoxItem>
         ))}
       </ListBox>
