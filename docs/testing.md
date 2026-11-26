@@ -57,6 +57,13 @@ and inspect the `.snap` diff.
 | Picture gate | Every canvas PNG matches the committed visual spec in `apps/desktop/gallery/baselines/`, using pinned Linux WebKit and fonts. | Does not replace visual review or native platform checks. |
 | Script tests | Workflow helpers, packages, publication, update feeds, budgets and Markdown links. | Native helpers have separate platform requirements. |
 
+The daemon integration tests exercise every generated JSON-RPC method against
+the in-process engine and stdio, race CLI and MCP startup, and check build
+replacement, crash recovery and settings writes. Source-adapter tests kill a
+daemon with a parser and a descendant running. The existing Windows Rust CI
+job runs these tests and the named pipe's SID and first-instance tests. Unix
+unit tests exercise directory permissions and peer UID comparisons.
+
 Committed pictures are the visual spec: CI rejects missing/extra pictures, dimension changes, or more than 0.01% differing pixels (pixelmatch threshold 0.1); failures attach actuals and diffs.
 To accept a visual change, run `bash scripts/update-picture-baselines.sh RUN_ID` on the failed run, review the PNGs and commit them with the change.
 Baselines come only from that pinned CI image, never from a local render; an empty baseline folder fails until seeded this way.

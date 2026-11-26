@@ -65,10 +65,8 @@ pub(crate) fn command() -> clap::Command {
 /// The settings file a command uses: Nightly's when asked; otherwise the
 /// stable app's, or Nightly's when only Nightly has settings here.
 pub(crate) fn settings_file(nightly: bool) -> Result<(&'static str, PathBuf), Failure> {
-    let directory = ibis_engine::identity::config_dir()
-        .ok_or_else(|| Failure::new(ErrorCode::Usage, cli("cli-settings-no-folder", &[])))?;
-    let [stable, night] =
-        app_libraries::APPS.map(|(identifier, app)| (app, directory.join(identifier).join("settings.json")));
+    let stable = profile_file(false)?;
+    let night = profile_file(true)?;
     if nightly {
         return Ok(night);
     }
@@ -82,10 +80,23 @@ pub(crate) fn settings_file(nightly: bool) -> Result<(&'static str, PathBuf), Fa
     Ok(if only_nightly { night } else { stable })
 }
 
-pub(crate) fn run(matches: &ArgMatches) -> Result<DispatchResult, Failure> {
+pub(super) fn profile_file(nightly: bool) -> Result<(&'static str, PathBuf), Failure> {
+    let directory = ibis_engine::identity::config_dir()
+        .ok_or_else(|| Failure::new(ErrorCode::Usage, cli("cli-settings-no-folder", &[])))?;
+    let (identifier, app) = app_libraries::APPS[usize::from(nightly)];
+    Ok((app, directory.join(identifier).join("settings.json")))
+}
+
+pub(super) fn is_nightly(path: &Path) -> bool {
+    path.parent()
+        .and_then(Path::file_name)
+        .is_some_and(|name| name == app_libraries::APPS[1].0)
+}
+
+pub(crate) fn run(matches: &ArgMatches, backend: &crate::headless::Backend<'_>) -> Result<DispatchResult, Failure> {
     match matches.subcommand() {
         Some(("export", args)) => export(args),
-        Some(("import", args)) => import(args),
+        Some(("import", args)) => import(args, backend),
         _ => Err(Failure::new(ErrorCode::Usage, cli("cli-settings-action-needed", &[]))),
     }
 }
@@ -112,8 +123,9 @@ fn export(args: &ArgMatches) -> Result<DispatchResult, Failure> {
     ))
 }
 
-fn import(args: &ArgMatches) -> Result<DispatchResult, Failure> {
-    let (app, path) = settings_file(args.get_flag("nightly"))?;
+fn import(args: &ArgMatches, backend: &crate::headless::Backend<'_>) -> Result<DispatchResult, Failure> {
+    let nightly = args.get_flag("nightly");
+    let (app, path) = settings_file(nightly)?;
     let chosen = args
         .get_one::<PathBuf>("backup")
         .cloned()
@@ -122,9 +134,7 @@ fn import(args: &ArgMatches) -> Result<DispatchResult, Failure> {
     let dry_run = args.get_flag("dry-run");
     if !dry_run && !plan.is_empty() {
         // Through the one settings owner, in turn with any other change (decision 0040).
-        ibis_engine::settings::Owner::open(path.clone())
-            .restore(&plan)
-            .map_err(|error| backup_failure(&error))?;
+        backend.restore(path, &plan)?;
     }
     let restored = !dry_run && !plan.is_empty();
     let changes: Vec<_> = plan.changes.iter().map(backup::shown).collect();
@@ -252,6 +262,75 @@ fn value_label(setting: &str, value: Option<&Value>) -> String {
     }
 }
 
-fn backup_failure(error: &BackupError) -> Failure {
+pub(super) fn backup_failure(error: &BackupError) -> Failure {
     Failure::new(backup::code(error), backup::message(error))
+}
+
+/// Fixed native write failures, without OS errors or settings text on the socket.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(super) enum SaveProblem {
+    Changed,
+    Busy,
+    Unreadable,
+    Invalid,
+    ZoteroEntry(usize),
+    Newer(u32),
+    Backup(Box<Self>),
+}
+
+impl From<ibis_engine::settings::SettingsError> for SaveProblem {
+    fn from(error: ibis_engine::settings::SettingsError) -> Self {
+        use ibis_engine::settings::SettingsError::*;
+        match error {
+            Changed => Self::Changed,
+            Busy => Self::Busy,
+            Unreadable(_) => Self::Unreadable,
+            Invalid(_) => Self::Invalid,
+            InvalidZoteroLibraryEntry { position } => Self::ZoteroEntry(position),
+            NewerVersion(version) => Self::Newer(version),
+            Backup(problem) => Self::Backup(Box::new((*problem).into())),
+        }
+    }
+}
+
+impl From<SaveProblem> for ibis_engine::settings::SettingsError {
+    fn from(error: SaveProblem) -> Self {
+        match error {
+            SaveProblem::Changed => Self::Changed,
+            SaveProblem::Busy => Self::Busy,
+            SaveProblem::Unreadable => Self::Unreadable(std::io::Error::from(std::io::ErrorKind::Other)),
+            SaveProblem::Invalid => Self::Invalid(String::new()),
+            SaveProblem::ZoteroEntry(position) => Self::InvalidZoteroLibraryEntry { position },
+            SaveProblem::Newer(version) => Self::NewerVersion(version),
+            SaveProblem::Backup(problem) => Self::Backup(Box::new((*problem).into())),
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(super) enum RestoreProblem {
+    Current(SaveProblem),
+    Settings(SaveProblem),
+    Changed,
+}
+
+impl From<BackupError> for RestoreProblem {
+    fn from(error: BackupError) -> Self {
+        match error {
+            BackupError::Current(error) => Self::Current(error.into()),
+            BackupError::Settings(error) => Self::Settings(error.into()),
+            BackupError::Changed => Self::Changed,
+            _ => Self::Settings(SaveProblem::Invalid),
+        }
+    }
+}
+
+impl From<RestoreProblem> for BackupError {
+    fn from(error: RestoreProblem) -> Self {
+        match error {
+            RestoreProblem::Current(error) => Self::Current(error.into()),
+            RestoreProblem::Settings(error) => Self::Settings(error.into()),
+            RestoreProblem::Changed => Self::Changed,
+        }
+    }
 }

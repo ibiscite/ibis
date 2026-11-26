@@ -6,7 +6,7 @@
 use ibis_core::contract::{CitationForm, EngineError, ErrorCode, ErrorReason, OutputSpec};
 use ibis_core::syntax::CAPABILITIES;
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 /// What a citation is written in when nothing names an output.
@@ -16,7 +16,7 @@ pub const DEFAULT: &str = "pandoc";
 pub const DEFAULT_STYLE: &str = "apa";
 
 /// One output, as the `outputs` method lists it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct OutputInfo {
     /// Stable: settings store it, `--format` and MCP's `format` take it, and
     /// `{"kind":"preset","name":ID}` names it in a request.
@@ -49,7 +49,7 @@ pub struct OutputInfo {
     pub zotero_items: bool,
 }
 
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct OutputsResult {
     /// The key outputs first, then the common styles, most used first.
     pub outputs: Vec<OutputInfo>,

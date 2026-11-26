@@ -11,7 +11,7 @@ use ibis_core::contract::{
     CitationRequest, CitationResult, CitationWarningCode, EngineError, ErrorCode, ExitCode, SnapshotObject,
 };
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 type Answer<T> = Result<DispatchResult<T>, EngineError>;
@@ -151,7 +151,7 @@ pub(crate) fn outputs(_: &Engine, OutputsRequest {}: OutputsRequest, cancel: &Ca
 }
 
 /// One method's contract, as `schema` lists it.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MethodSchema {
     pub method: Method,
     /// What an open library must offer for the method to have anything to work on.
@@ -159,7 +159,7 @@ pub struct MethodSchema {
     /// Whether answering may reach the network.
     pub network: crate::method::Network,
     /// The selections the picker's ⌘K list offers the method for.
-    pub palette: &'static [crate::method::Selection],
+    pub palette: Vec<crate::method::Selection>,
     /// The contract version these schemas describe.
     pub contract: u8,
     /// The JSON Schema of the method's parameters.
@@ -180,7 +180,7 @@ pub(crate) fn schema(_: &Engine, request: SchemaRequest, cancel: &Cancellation) 
             method,
             needs: method.needs(),
             network: method.network(),
-            palette: method.palette(),
+            palette: method.palette().to_vec(),
             contract: ibis_core::contract::CONTRACT_VERSION,
             params: (method.row().params)(),
             result: (method.row().result)(),

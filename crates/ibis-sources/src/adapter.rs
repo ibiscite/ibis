@@ -24,7 +24,9 @@ use crate::{LibraryKind, LoadedLibrary, SourceCapability, SourceWarning, Warning
 mod response;
 
 #[cfg(unix)]
-pub use crate::child::{Termination, exit_on_termination};
+pub use crate::child::{
+    ClientOperation, GUARD_ARGUMENT, Termination, detach, exit_on_termination, guard_daemon_children, run_guard,
+};
 
 /// The argument that makes `ibis` serve a built-in adapter: `ibis __source NAME`.
 pub const CHILD_ARGUMENT: &str = "__source";
@@ -65,6 +67,7 @@ pub struct SourceAdapter {
     name: String,
     program: PathBuf,
     arguments: Vec<OsString>,
+    directory: Option<PathBuf>,
     deadline: Duration,
 }
 impl std::fmt::Debug for SourceAdapter {
@@ -100,6 +103,7 @@ impl SourceAdapter {
                 name: name.into(),
                 program: program.to_path_buf(),
                 arguments: vec![CHILD_ARGUMENT.into(), name.into()],
+                directory: None,
                 deadline: DEADLINE,
             });
         }
@@ -124,6 +128,7 @@ impl SourceAdapter {
             name: name.into(),
             program,
             arguments: vec![],
+            directory: None,
             deadline: DEADLINE,
         })
     }
@@ -138,6 +143,12 @@ impl SourceAdapter {
         &self.name
     }
 
+    /// The caller's current directory, when it is using an engine server.
+    pub fn with_directory(mut self, directory: PathBuf) -> Self {
+        self.directory = Some(directory);
+        self
+    }
+
     /// Read `library` once, within the deadline.
     pub fn read(&self, library: Option<&str>, cancelled: &dyn Fn() -> bool) -> Result<AdapterLoad, AdapterError> {
         let request = serde_json::to_vec(&AdapterRequest {
@@ -148,6 +159,9 @@ impl SourceAdapter {
         .map_err(|_| AdapterError::Failed)?;
         let mut command = std::process::Command::new(&self.program);
         command.args(&self.arguments);
+        if let Some(directory) = &self.directory {
+            command.current_dir(directory);
+        }
         let answer = crate::child::run(
             command,
             &request,

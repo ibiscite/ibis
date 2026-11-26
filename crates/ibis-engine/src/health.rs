@@ -103,7 +103,7 @@ impl SourceHealth {
 }
 
 /// A result with the health of the sources it consulted.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Checked<T> {
     #[serde(flatten)]
     pub value: T,

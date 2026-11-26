@@ -922,7 +922,7 @@ fn snapshot(path: &Path) -> Snapshot {
 /// One process owns the writer section, including direct saves outside a queue.
 /// Only another process can make the stable side-file lock refuse immediately.
 /// The empty lock file stays in place: removing it would split the lock domain.
-fn writer_lock(path: &Path) -> Result<WriterLock, SettingsError> {
+pub(super) fn writer_lock(path: &Path) -> Result<WriterLock, SettingsError> {
     static WRITER: Mutex<()> = Mutex::new(());
     // A save started while this thread already holds the writer would wait on
     // itself forever: refuse it at once instead, and fail loudly in tests.
@@ -973,7 +973,7 @@ thread_local! {
     static HOLDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-struct WriterLock {
+pub(super) struct WriterLock {
     file: fs::File,
     _local: MutexGuard<'static, ()>,
 }

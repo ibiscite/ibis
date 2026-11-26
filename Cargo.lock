@@ -2159,7 +2159,9 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "unicode-segmentation",
+ "windows-sys 0.61.2",
  "zip",
 ]
 
@@ -3183,6 +3185,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+ "memoffset",
 ]
 
 [[package]]

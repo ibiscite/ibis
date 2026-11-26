@@ -73,7 +73,7 @@ struct StyleRow {
     length: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[schemars(rename = "StyleInfo")]
 pub struct StyleEntry {
     pub id: String,
@@ -91,11 +91,12 @@ pub struct StyleEntry {
     /// CSL's citation format, such as `author-date`, `numeric` or `note`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schemars(!default)]
     pub fields: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[schemars(rename = "LocaleInfo")]
 pub struct LocaleEntry {
     pub tag: String,
@@ -103,7 +104,7 @@ pub struct LocaleEntry {
     pub english: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[schemars(rename = "StylesResult")]
 pub struct StylePage {
     pub styles: Vec<StyleEntry>,

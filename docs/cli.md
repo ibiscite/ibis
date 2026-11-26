@@ -798,6 +798,25 @@ with its reason, with pasting on and permitted). Writing citations put this
 under `citation.destination`. This describes policy, not a paste action.
 Plain output remains the citation with a stderr note.
 
+## Shared local engine
+
+`search`, `show`, `cite` (including `--records`), `libraries`, `project`,
+`entry`, `outline`, `read`, `find-in`, `share`, `styles`, `outputs`, `schema`
+and `call` use a shared background engine. `ibis mcp`, `sources keep`,
+project edits and settings imports use it too. Each invocation applies its
+own library flags. Ibis starts the engine when needed and stops it 60
+seconds after the last client disconnects.
+
+`ibis daemon` is the internal entry point. A same-user local socket or named
+pipe connects the clients. If Ibis cannot start the daemon, these commands
+run in their own process. This also covers Linux sessions without
+`XDG_RUNTIME_DIR`. An older client reports a newer running engine and can
+use the matching `ibis` build. [Architecture](architecture.md#warm-local-engine)
+
+`ibis serve --stdio` runs its own engine for programs that use the stdio
+contract. `ibis toggle` continues to talk to the desktop app. `ibis doctor`
+and `ibis sources check` independently inspect the sources they report.
+
 ## JSON-RPC server
 
 `ibis serve --stdio --file refs.bib` uses JSON-RPC 2.0 with LSP

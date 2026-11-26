@@ -2,7 +2,7 @@
 //! never produces an empty candidate: callers keep their last good snapshot.
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -221,20 +221,87 @@ impl SourceSnapshot {
     }
 
     /// What two observations compare, without keeping the text alive.
-    fn seen(self) -> Seen {
-        Seen {
+    pub fn revision(&self) -> SourceRevision {
+        SourceRevision {
             digest: Fingerprint::of_bytes(self.text.as_bytes()),
-            source: self.source,
+            source: self.source.clone(),
         }
     }
 }
 
 /// An earlier observation, remembered only to compare with a later one: a
 /// full copy of a large library per observation would multiply its cost.
-#[derive(PartialEq, Eq)]
-struct Seen {
+#[derive(Clone, PartialEq, Eq)]
+pub struct SourceRevision {
     source: PathBuf,
     digest: Fingerprint,
+}
+
+/// Reuse parsing across warm connections while reading the bytes that exist
+/// now. The spelling of a source path still controls its write capabilities.
+#[derive(Default)]
+pub struct FileLoads {
+    recent: Mutex<Vec<(SourceRevision, bool, LoadedLibrary)>>,
+    parses: AtomicU64,
+}
+
+impl FileLoads {
+    pub fn parses(&self) -> u64 {
+        self.parses.load(Ordering::Relaxed)
+    }
+
+    pub fn open(
+        &self,
+        path: &Path,
+        cancelled: &impl Fn() -> bool,
+    ) -> Result<(LoadedLibrary, SourceSnapshot, Option<SourceRevision>), SourceError> {
+        let scope = io::Scope::new(cancelled);
+        let observation = SourceSnapshot::read_with(path, || {}, &scope)?;
+        let revision = observation.revision();
+        let bibtex = Format::named(path) == Some(Format::Bibtex);
+        let mut recent = self.recent.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let loaded = if let Some(index) = recent
+            .iter()
+            .position(|(seen, writable, _)| *seen == revision && *writable == bibtex)
+        {
+            let entry = recent.remove(index);
+            let loaded = entry.2.clone();
+            recent.push(entry);
+            loaded
+        } else {
+            let previous = recent.iter().rev().find(|(seen, _, _)| seen.source == revision.source);
+            self.parses.fetch_add(1, Ordering::Relaxed);
+            let loaded = parse(path, &observation, previous.map(|entry| &entry.2.snapshot), &scope)?;
+            // Folder listings and attachment availability can change without
+            // changing the source file's bytes.
+            if loaded.kind == crate::LibraryKind::Folder
+                || loaded
+                    .snapshot
+                    .objects()
+                    .iter()
+                    .any(|item| matches!(item.object, LibraryObject::Attachment(_)))
+            {
+                return Ok((loaded, observation, None));
+            }
+            recent.retain(|(seen, _, _)| seen.source != revision.source || *seen == revision);
+            // A large library can occupy the cache by itself. The engine that
+            // opened it keeps its snapshot alive independently of eviction.
+            while recent.len() >= 8
+                || (!recent.is_empty()
+                    && recent
+                        .iter()
+                        .map(|entry| entry.2.snapshot.objects().len())
+                        .sum::<usize>()
+                        + loaded.snapshot.objects().len()
+                        > 100_000)
+            {
+                recent.remove(0);
+            }
+            recent.push((revision.clone(), bibtex, loaded.clone()));
+            loaded
+        };
+        Ok((loaded, observation, Some(revision)))
+    }
 }
 
 /// Load once and retain an observation for the watch-registration gap check.
@@ -339,10 +406,10 @@ fn stable_observation_with(
     settle: impl FnOnce(),
     scope: &io::Scope<'_>,
 ) -> Result<SourceSnapshot, SourceError> {
-    let before = SourceSnapshot::read_with(path, || {}, scope)?.seen();
+    let before = SourceSnapshot::read_with(path, || {}, scope)?.revision();
     settle();
     let after = SourceSnapshot::read_with(path, || {}, scope)?;
-    if before != after.clone().seen() {
+    if before != after.revision() {
         return Err(SourceError::Changing);
     }
     Ok(after)
@@ -711,7 +778,7 @@ impl SourceWatch {
             .spawn(move || {
                 // Hashed here, not on the opening thread; the text it frees is
                 // a whole library that the gap check below does not need.
-                let mut snapshot = snapshot.map(SourceSnapshot::seen);
+                let mut snapshot = snapshot.as_ref().map(SourceSnapshot::revision);
                 // Also check once after registration to close the load/watch gap.
                 let mut error_reported = false;
                 // Windows reports one delete as several directory events: the
@@ -798,13 +865,13 @@ fn stable_read(
     path: &Path,
     events: &Receiver<()>,
     stopped: &AtomicBool,
-    snapshot: &mut Option<Seen>,
+    snapshot: &mut Option<SourceRevision>,
     error_reported: bool,
     previous: Option<&Snapshot>,
 ) -> Result<Option<LoadedLibrary>, SourceError> {
     let cancelled = || stopped.load(Ordering::SeqCst);
     let scope = &io::Scope::new(&cancelled);
-    let before = SourceSnapshot::read_with(path, || {}, scope)?.seen();
+    let before = SourceSnapshot::read_with(path, || {}, scope)?.revision();
     // A zero-length file and a valid prefix can both occur during a save.
     // Require identical observations separated by another quiet interval.
     match events.recv_timeout(SETTLE) {
@@ -816,7 +883,7 @@ fn stable_read(
         return Err(SourceError::Changing);
     }
     let after = SourceSnapshot::read_with(path, || {}, scope)?;
-    let seen = after.clone().seen();
+    let seen = after.revision();
     if before != seen {
         return Err(SourceError::Changing);
     }

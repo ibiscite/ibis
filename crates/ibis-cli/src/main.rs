@@ -2,6 +2,13 @@
 use std::io::IsTerminal;
 fn main() -> std::process::ExitCode {
     let arguments: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    #[cfg(unix)]
+    if arguments
+        .get(1)
+        .is_some_and(|arg| arg == ibis_sources::adapter::GUARD_ARGUMENT)
+    {
+        return std::process::ExitCode::from(ibis_sources::adapter::run_guard());
+    }
     // The PDF extractor's child process, started only by `ibis` itself; it
     // reads no settings and opens no library (decision 0055).
     if arguments
@@ -37,6 +44,13 @@ fn main() -> std::process::ExitCode {
         Ok(termination) => termination,
         Err(_) => return std::process::ExitCode::from(70),
     };
+    if arguments.len() == 2 && arguments[1] == "daemon" {
+        let status = ibis::run_daemon();
+        #[cfg(unix)]
+        termination.exit(status);
+        #[cfg(not(unix))]
+        return std::process::ExitCode::from(status);
+    }
     let output = std::io::stdout();
     let mode = ibis::OutputMode::Streams {
         stdout: output.is_terminal(),

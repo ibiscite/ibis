@@ -60,7 +60,7 @@ pub(crate) fn command() -> Command {
             .arg(Arg::new("no-bibliography").long("no-bibliography").action(ArgAction::SetTrue).help("Stop checking a bibliography in this project")))
 }
 
-fn failure(error: WritingError) -> Failure {
+pub(super) fn failure(error: WritingError) -> Failure {
     let code = match &error {
         WritingError::NotFound => ErrorCode::NotFound,
         WritingError::ContextUnavailable => ErrorCode::SourceUnavailable,
@@ -72,6 +72,94 @@ fn failure(error: WritingError) -> Failure {
         error => error.to_string(),
     };
     Failure::new(code, message)
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) enum Edit {
+    Create {
+        name: String,
+        output: OutputSpec,
+        bibliography: Option<PathBuf>,
+    },
+    Rename {
+        id: String,
+        name: String,
+    },
+    Remove {
+        id: String,
+    },
+    Update {
+        id: String,
+        output: Option<OutputSpec>,
+        bibliography: Option<PathBuf>,
+        clear: bool,
+    },
+}
+
+impl Edit {
+    pub fn save(self, owner: &settings::Owner) -> Result<Writing, WritingError> {
+        owner
+            .change(|settings| match self {
+                Self::Create {
+                    name,
+                    output,
+                    bibliography,
+                } => writings::create(settings, name, output, bibliography),
+                Self::Rename { id, name } => writings::rename(settings, &id, name),
+                Self::Remove { id } => writings::remove(settings, &id),
+                Self::Update {
+                    id,
+                    output,
+                    bibliography,
+                    clear,
+                } => {
+                    let old = writings::find(settings, &id)?.clone();
+                    writings::update(
+                        settings,
+                        &id,
+                        output.unwrap_or(old.format),
+                        if clear { None } else { bibliography.or(old.bibliography) },
+                    )
+                }
+            })
+            .map(|(_, writing)| writing)
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub(super) enum SaveProblem {
+    InvalidName,
+    DuplicateName,
+    NotFound,
+    TooMany,
+    Invalid,
+    Settings(settings_backup::SaveProblem),
+}
+
+impl From<WritingError> for SaveProblem {
+    fn from(error: WritingError) -> Self {
+        match error {
+            WritingError::InvalidName => Self::InvalidName,
+            WritingError::DuplicateName => Self::DuplicateName,
+            WritingError::NotFound => Self::NotFound,
+            WritingError::TooMany => Self::TooMany,
+            WritingError::Settings(error) => Self::Settings(error.into()),
+            _ => Self::Invalid,
+        }
+    }
+}
+
+impl From<SaveProblem> for WritingError {
+    fn from(error: SaveProblem) -> Self {
+        match error {
+            SaveProblem::InvalidName => Self::InvalidName,
+            SaveProblem::DuplicateName => Self::DuplicateName,
+            SaveProblem::NotFound => Self::NotFound,
+            SaveProblem::TooMany => Self::TooMany,
+            SaveProblem::Invalid => Self::Invalid,
+            SaveProblem::Settings(error) => Self::Settings(error.into()),
+        }
+    }
 }
 
 fn load(nightly: bool) -> Result<(PathBuf, settings::Settings), Failure> {
@@ -185,7 +273,11 @@ fn view(writing: &Writing) -> Value {
         "bibliography":writing.bibliography.as_ref().and_then(|path| path.file_name()).map(|name| name.to_string_lossy())})
 }
 
-pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, Failure> {
+pub(crate) fn run(
+    engine: &Engine,
+    args: &ArgMatches,
+    backend: &crate::headless::Backend<'_>,
+) -> Result<DispatchResult, Failure> {
     let nightly = args.get_flag("nightly");
     let (action, args) = args
         .subcommand()
@@ -234,46 +326,45 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
             exit_code: ExitCode::Ok,
         });
     } else {
-        let owner = settings::Owner::open(path);
         let id = args
             .try_get_one::<String>("id")
             .ok()
             .flatten()
-            .map(String::as_str)
-            .unwrap_or("");
-        match action {
+            .cloned()
+            .unwrap_or_default();
+        let edit = match action {
             "create" => {
                 let output = output(engine, args)?
                     .ok_or_else(|| Failure::new(ErrorCode::Usage, cli("cli-writing-format-needed", &[])))?;
                 let bibliography = bibliography(args)?;
                 let name = args.get_one::<String>("name").cloned().unwrap_or_default();
-                owner.change(|settings| writings::create(settings, name, output, bibliography))
+                Edit::Create {
+                    name,
+                    output,
+                    bibliography,
+                }
             }
             "rename" => {
                 let name = args.get_one::<String>("name").cloned().unwrap_or_default();
-                owner.change(|settings| writings::rename(settings, id, name))
+                Edit::Rename { id, name }
             }
-            "remove" => owner.change(|settings| writings::remove(settings, id)),
+            "remove" => Edit::Remove { id },
             "update" => {
                 let output = output(engine, args)?;
                 let bibliography = bibliography(args)?;
                 let clear = args.get_flag("no-bibliography");
-                owner.change(|settings| {
-                    let old = writings::find(settings, id)?.clone();
-                    writings::update(
-                        settings,
-                        id,
-                        output.unwrap_or(old.format),
-                        if clear { None } else { bibliography.or(old.bibliography) },
-                    )
-                })
+                Edit::Update {
+                    id,
+                    output,
+                    bibliography,
+                    clear,
+                }
             }
             _ => {
                 return Err(Failure::new(ErrorCode::Usage, cli("cli-writing-action-needed", &[])));
             }
-        }
-        .map(|(_, writing)| writing)
-        .map_err(failure)?
+        };
+        backend.edit(path, edit)?
     };
     Ok(DispatchResult {
         data: json!({"writing":view(&result),"action":action}),

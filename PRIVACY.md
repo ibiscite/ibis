@@ -119,6 +119,12 @@ paths or native object descriptions. OS reporting follows system settings.
 documents, clipboard contents or citation history to an Ibis service. Explicit
 MCP responses go to the client that started the server, as listed below.
 
+The command line and MCP share a local engine. On Unix a private domain
+socket checks the peer's user ID. On Windows a local named pipe checks the
+peer's user token. The engine holds loaded libraries and sessions in memory
+and has no network listener. Temporary runtime files contain no reference
+data. Zotero and MCP keep the data flows listed below.
+
 | Flow | Destination and consent |
 | --- | --- |
 | Running Zotero | `127.0.0.1:23119`, after choosing Zotero. Reads metadata and Better BibTeX keys; requests stay on this computer. |
