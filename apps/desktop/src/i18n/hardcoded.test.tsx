@@ -12,7 +12,7 @@ afterEach(async () => { await resetApp(); setInterfaceLanguage("en-US"); });
 /** Words the window shows that did not come from the catalogue: in the
  * pseudolocale every catalogue word is inside ⟦ ⟧, so anything else with
  * letters is a hard-coded word, or invented data named here. Code, such as a
- * diff or a BibTeX entry, is data. Words Rust says (a pane's name, a proposal)
+ * diff or a BibTeX entry, is data. Words Rust says (a pane’s name)
  * come from the demo here and from Rust's catalogue in the app. */
 function hardCoded(data: RegExp) {
   const said = [...document.body.querySelectorAll(":not(code, code *, pre, pre *)")].flatMap((node) => [
@@ -47,6 +47,6 @@ test.each(["general", "look", "citations", "ai-apps", "shortcuts", "about"])("Se
   render(<InterfaceMessagesProvider messages={messages}><SettingsApp api={demoApi()} initialPage={page} /></InterfaceMessagesProvider>);
   await screen.findAllByRole("heading");
   await act(async () => {});
-  const demo = /Accessibility|In [^.]+ desktop: .*|Change title of “River signals”\.|Add “A map of the reeds” as lin2026map\.|\d+\/\d+\/\d+, [\d:]+ [AP]M|Sample references|signals\.bib|Desktop|desktop|Code/g;
+  const demo = /Accessibility|In [^.]+ desktop: .*|title|River signals|A map of the reeds|lin2026map|\d+\/\d+\/\d+, [\d:]+ [AP]M|Sample references|signals\.bib|Desktop|desktop|Code/g;
   expect(hardCoded(new RegExp(`${demo.source}|${names.source}`, "g"))).toEqual([]);
 });

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useRef } from "react";
 
 /** Reads cannot overtake changes; keyed changes may finish independently. */
-export function useSettingsRequests<T>(load: () => Promise<T>, loaded: (value: T) => void, failed: () => void) {
+export function useSettingsRequests<T>(load: () => Promise<T>, loaded: (value: T) => void, failed: (error: unknown) => void) {
   const sequence = useRef(0);
   const pending = useRef(new Map<string, number>());
   const live = useRef(false);
@@ -24,7 +24,7 @@ export function useSettingsRequests<T>(load: () => Promise<T>, loaded: (value: T
   const read = useCallback((): void => {
     if (!live.current || isPending()) return;
     const request = begin();
-    void load().then((value) => { if (request.current()) accept(value); }, () => { if (request.current()) reject(); });
+    void load().then((value) => { if (request.current()) accept(value); }, (error: unknown) => { if (request.current()) reject(error); });
   }, [load, begin, isPending]);
   return { read, begin, isPending };
 }

@@ -108,7 +108,7 @@ impl From<Error> for ibis_core::contract::Problem {
         let (code, id, recovery) = match error {
             Error::Session(error) => return error.problem(),
             Error::Presented(problem) => return problem,
-            Error::SnapshotChanged => ("snapshot_changed", "app-command-snapshot-changed", R::SelectReferences),
+            Error::SnapshotChanged => ("snapshot-changed", "app-command-snapshot-changed", R::SelectReferences),
             Error::Cancelled => {
                 return ibis_core::contract::EngineError::new(ibis_core::contract::ErrorCode::Cancelled).into();
             }

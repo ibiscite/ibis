@@ -141,17 +141,55 @@ fn an_added_reference_is_appended_with_a_new_key_and_every_other_byte_kept() {
         },
     );
     assert_eq!(
-        again.err().map(|error| error.problem),
-        Some(WriteProblem::AlreadyInLibrary)
+        again.err().map(Problem::from),
+        Some(WriteProblem::AlreadyInLibrary.problem())
     );
     assert_eq!(
         fixture
             .engine
             .apply_proposal(&fixture.store, &proposal.id)
             .err()
-            .map(|error| error.problem),
-        Some(WriteProblem::Decided)
+            .map(Problem::from),
+        Some(WriteProblem::Decided.problem())
     );
+}
+
+#[test]
+fn a_non_bib_library_has_different_recovery_for_adds_and_edits() {
+    use ibis_core::contract::Recovery;
+
+    let fixture = fixture();
+    let path = fixture.bib.with_file_name("lantern.json");
+    fs::write(
+        &path,
+        r#"[{"id":"lantern","citation-key":"lantern","type":"book","title":"Invented lanterns"}]"#,
+    )
+    .unwrap();
+    fixture.engine.open_file(&path, &Cancellation::default()).unwrap();
+    let reference = item(&fixture, "lantern");
+
+    let add = ProposeRequest::Add {
+        library: Some(reference.library.clone()),
+        fields: paper(),
+    };
+    let change = ProposeRequest::Fields {
+        item: reference.clone(),
+        fields: object(json!({"title": "Invented lanterns, revised"})),
+    };
+    let tags = ProposeRequest::Tags {
+        item: reference,
+        add: vec!["lighting".into()],
+        remove: vec![],
+    };
+    for (request, code, recovery) in [
+        (add, "library-kind", Recovery::ChooseLibrary),
+        (change, "library-kind-edit", Recovery::ReviewLibrary),
+        (tags, "library-kind-edit", Recovery::ReviewLibrary),
+    ] {
+        let error = fixture.engine.propose(&fixture.store, source(), request).unwrap_err();
+        assert_eq!(error.problem().info.recovery(), recovery);
+        assert_eq!(error.problem().code, code);
+    }
 }
 
 #[test]
@@ -199,12 +237,10 @@ fn a_reference_changed_since_the_proposal_is_not_written() {
         .unwrap();
     let edited = BIB.replace("Synthetic signals", "Synthetic signals, revised");
     fs::write(&fixture.bib, &edited).unwrap();
-    assert_eq!(
-        fixture.store.show(&proposal.id).unwrap().refusal,
-        Some(WriteProblem::Changed)
-    );
     let refused = fixture.engine.apply_proposal(&fixture.store, &proposal.id);
-    assert_eq!(refused.err().map(|error| error.problem), Some(WriteProblem::Changed));
+    let problem = refused.unwrap_err();
+    assert_eq!(problem.problem(), &WriteProblem::Changed.problem());
+    assert_eq!(fixture.store.show(&proposal.id).unwrap().refusal, Some(problem.into()));
     assert_eq!(fs::read_to_string(&fixture.bib).unwrap(), edited);
     assert!(backups(&fixture.bib).is_empty());
     assert_eq!(fixture.store.get(&proposal.id).unwrap().status, Status::Pending);
@@ -241,8 +277,8 @@ fn private_fields_and_unknown_records_are_refused_by_name() {
             .propose(&fixture.store, source(), ProposeRequest::Add { library: None, fields })
             .unwrap_err();
         assert_eq!(
-            (refused.problem, refused.field.as_deref()),
-            (WriteProblem::Invalid, Some(name))
+            refused.problem(),
+            WriteError::about(WriteProblem::Invalid, name).problem()
         );
     }
     let refused = fixture.engine.propose(
@@ -254,7 +290,10 @@ fn private_fields_and_unknown_records_are_refused_by_name() {
             remove: vec![],
         },
     );
-    assert_eq!(refused.err().map(|error| error.problem), Some(WriteProblem::Invalid));
+    assert_eq!(
+        refused.err().map(Problem::from),
+        Some(WriteError::about(WriteProblem::Invalid, "a, b").into())
+    );
     assert!(fixture.store.list().unwrap().is_empty());
 }
 
@@ -293,7 +332,7 @@ fn a_library_folder_replaced_by_a_link_is_not_written() {
     fs::rename(&folder, &moved).unwrap();
     std::os::unix::fs::symlink(&moved, &folder).unwrap();
     let refused = fixture.engine.apply_proposal(&fixture.store, &proposal.id);
-    assert_eq!(refused.err().map(|error| error.problem), Some(WriteProblem::NotOpen));
+    assert_eq!(refused.err().map(Problem::from), Some(WriteProblem::NotOpen.problem()));
     assert_eq!(fs::read_to_string(moved.join("refs.bib")).unwrap(), BIB);
 }
 
@@ -313,7 +352,7 @@ fn only_a_library_open_in_this_engine_is_written() {
         .unwrap();
     let other = Engine::new().unwrap().without_file_watches();
     let refused = other.apply_proposal(&fixture.store, &proposal.id);
-    assert_eq!(refused.err().map(|error| error.problem), Some(WriteProblem::NotOpen));
+    assert_eq!(refused.err().map(Problem::from), Some(WriteProblem::NotOpen.problem()));
     assert_eq!(fs::read_to_string(&fixture.bib).unwrap(), BIB);
 }
 
@@ -456,8 +495,8 @@ fn a_failed_backup_leaves_the_library_and_proposal_unchanged() {
             .engine
             .apply_proposal(&fixture.store, &proposal.id)
             .unwrap_err()
-            .problem,
-        WriteProblem::BackupFailed
+            .problem(),
+        &WriteProblem::BackupFailed.problem()
     );
     assert_eq!(fs::read_to_string(&fixture.bib).unwrap(), BIB);
     assert_eq!(fixture.store.get(&proposal.id).unwrap().status, Status::Pending);

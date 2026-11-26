@@ -46,7 +46,7 @@ impl Proposals {
         let entries = match fs::read_dir(&self.dir) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(_) => return Err(WriteProblem::ProposalUnreadable.into()),
+            Err(_) => return Err(WriteProblem::StoreUnreadable.into()),
         };
         let mut proposals: Vec<Proposal> = entries
             .take(MAX_ENTRIES)

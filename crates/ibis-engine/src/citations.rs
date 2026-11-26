@@ -908,11 +908,11 @@ impl Worker {
         for (wire, form) in CitationForm::ALL.into_iter().map(|form| (form, form)) {
             cancel.check().map_err(SessionError::from)?;
             let semantic_reason = if entry {
-                Some("Reference entries have no name forms. Choose another style.")
+                Some(FormUnavailable::Entries)
             } else if bare_keys {
-                Some("Keys only has no name forms. Choose another output.")
+                Some(FormUnavailable::KeysOnly)
             } else if textcite && form == CitationForm::Normal {
-                Some("Not with \\textcite")
+                Some(FormUnavailable::Textcite)
             } else {
                 None
             };
@@ -920,7 +920,7 @@ impl Worker {
                 forms.push(FormOption {
                     form: wire,
                     example: None,
-                    reason: Some(reason.into()),
+                    reason: Some(reason),
                 });
                 continue;
             }
@@ -955,13 +955,10 @@ impl Worker {
                         example
                     }
                 }),
-                reason: (!supported).then(|| {
-                    if alone {
-                        "Only when cited alone"
-                    } else {
-                        "Not in this output"
-                    }
-                    .into()
+                reason: (!supported).then_some(if alone {
+                    FormUnavailable::CitedAlone
+                } else {
+                    FormUnavailable::Output
                 }),
             });
         }

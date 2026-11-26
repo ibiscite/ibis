@@ -63,8 +63,8 @@ pub struct ProjectStatus {
     pub revision: u32,
     pub name: String,
     pub state: ProjectState,
-    /// Why the newest read failed, as a sentence ending in a full stop.
-    pub reason: Option<String>,
+    /// Why the newest read failed. Each front end words it.
+    pub reason: Option<ProjectProblem>,
     /// The first lines that could not be read.
     pub damaged_lines: Vec<u32>,
 }
@@ -362,11 +362,7 @@ impl ProjectBibliography {
             revision: slot.revision,
             name,
             state,
-            reason: slot
-                .read
-                .as_ref()
-                .and_then(ProjectRead::problem)
-                .map(|problem| reason(problem).to_owned()),
+            reason: slot.read.as_ref().and_then(ProjectRead::problem),
             damaged_lines: slot.read.as_ref().map_or_else(Vec::new, |read| {
                 read.damaged_lines().iter().take(5).map(|line| *line as u32).collect()
             }),
@@ -390,17 +386,6 @@ impl ProjectBibliography {
     pub fn commit_generation<T>(&self, generation: u32, write: impl FnOnce() -> T) -> Option<T> {
         let slot = self.lock();
         (slot.generation == generation).then(write)
-    }
-}
-
-fn reason(problem: ProjectProblem) -> &'static str {
-    match problem {
-        ProjectProblem::Unavailable => "It is not there, or not on this computer yet.",
-        ProjectProblem::NotAFile => "It is not a file.",
-        ProjectProblem::TooLarge => "It is larger than 64 MiB.",
-        ProjectProblem::NotUtf8 => "It is not UTF-8 text.",
-        ProjectProblem::Changing => "It is still changing.",
-        ProjectProblem::NotBibtex => "It must be a BibTeX or BibLaTeX file.",
     }
 }
 

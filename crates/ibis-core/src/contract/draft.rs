@@ -49,7 +49,23 @@ pub struct LocatorInput {
 pub struct FormOption {
     pub form: CitationForm,
     pub example: Option<String>,
-    pub reason: Option<String>,
+    /// Why this form is left out; absent when it can be chosen.
+    pub reason: Option<FormUnavailable>,
+}
+/// Why a citation form cannot be chosen. Each front end words it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum FormUnavailable {
+    /// Reference entries have no name forms; another style has.
+    Entries,
+    /// Keys only has no name forms; another output has.
+    KeysOnly,
+    /// `\textcite` names the author already.
+    Textcite,
+    /// Refused in this group; the reference cited alone takes it.
+    CitedAlone,
+    /// This output cannot write the form.
+    Output,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FormDetails {

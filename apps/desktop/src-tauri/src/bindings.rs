@@ -532,6 +532,228 @@ mod tests {
         }
     }
 
+    /// Words come only from the catalogue (decision 0064): no type the web view,
+    /// the engine's contract or the command line's JSON carries holds a
+    /// sentence for a person to read. MCP's text is its own front end's words.
+    /// A refusal is a `Problem`, a reason a closed code, and each front end
+    /// words it. A string field named like words is either data, listed with
+    /// why, or a known offender that may only leave the list.
+    #[test]
+    fn no_contract_type_carries_words_for_a_person() {
+        use serde_json::Value;
+        const DATA: &[(&str, &str)] = &[
+            // The person's own library, the citation Ibis wrote, or a name.
+            ("Annotation.page_label", "the page label the PDF prints"),
+            ("Annotation.text", "the highlighted text from the PDF"),
+            ("Attachment.title", "the attachment's own title"),
+            ("CitationResult.text", "the citation as written"),
+            ("ClosestMatch.title", "the reference's title"),
+            ("Copied.text", "the citation as written"),
+            ("DisplayRun.text", "a run of the citation as written"),
+            ("LocatorInput.text", "the locator as the person typed it"),
+            ("Note.text", "the reference's own note"),
+            ("NoticeMessage.text", "one line of the citation that was copied"),
+            ("Preview.text", "the citation as written"),
+            ("ReceiptSummary.text", "the citation that was copied"),
+            ("SearchQuery.text", "what the person typed"),
+            ("SearchResult.title", "the reference's title"),
+            ("SessionBibliography.text", "the bibliography as written"),
+            ("TextRun.text", "a run of the citation as written"),
+            (
+                "WaitingProposal.lines",
+                "the proposed fields and tags, as `name: value`",
+            ),
+            ("cli:ProposalPreview.lines", "the proposed fields and tags"),
+        ];
+        const OFFENDERS: &[(&str, &str)] = &[
+            ("LibraryStatus.error", "the status owner (0064 step 3)"),
+            ("LibraryStatus.note", "the status owner (0064 step 3)"),
+            ("LibraryStatus.settings_notice", "the status owner (0064 step 3)"),
+            ("ReadingNotice.why", "the status owner (0064 step 3)"),
+            (
+                "ShortcutStatus.error",
+                "a closed code, with Settings › Shortcuts' rewrite",
+            ),
+            ("cli:AgentChange.detail", "agent apps' outcomes as codes"),
+            ("cli:ProjectAssessment.message", "a project conflict as a Problem"),
+            ("Preview.problem", "a copy of `failure`; the picker can word that"),
+            ("Preview.project_refusal", "a project conflict as a Problem"),
+            ("AgentApp.detail", "agent apps' states and steps as codes"),
+        ];
+        const WORDS: &[&str] = &[
+            "body",
+            "caption",
+            "description",
+            "detail",
+            "error",
+            "explanation",
+            "hint",
+            "label",
+            "lines",
+            "message",
+            "note",
+            "notes",
+            "notice",
+            "problem",
+            "reason",
+            "refusal",
+            "sentence",
+            "summary",
+            "text",
+            "title",
+            "why",
+            "words",
+        ];
+        fn through_ref<'a, T>(
+            schema: &'a Value,
+            root: &'a Value,
+            active: &mut BTreeSet<&'a str>,
+            inspect: impl FnOnce(&'a Value, &mut BTreeSet<&'a str>) -> T,
+        ) -> Option<T> {
+            let reference = schema["$ref"].as_str()?;
+            if !active.insert(reference) {
+                return None;
+            }
+            let target = reference
+                .strip_prefix('#')
+                .and_then(|pointer| root.pointer(pointer))
+                .unwrap_or_else(|| panic!("unresolved schema reference {reference}"));
+            let found = inspect(target, active);
+            active.remove(reference);
+            Some(found)
+        }
+        fn is_text<'a>(schema: &'a Value, root: &'a Value, active: &mut BTreeSet<&'a str>) -> bool {
+            if schema.get("enum").is_some() || schema.get("const").is_some() {
+                return false;
+            }
+            if through_ref(schema, root, active, |target, active| is_text(target, root, active)) == Some(true) {
+                return true;
+            }
+            let kinds: Vec<&str> = match &schema["type"] {
+                Value::String(kind) => vec![kind],
+                Value::Array(kinds) => kinds.iter().filter_map(Value::as_str).collect(),
+                _ => Vec::new(),
+            };
+            if kinds.contains(&"string") {
+                return true;
+            }
+            if kinds.contains(&"array") && is_text(&schema["items"], root, active) {
+                return true;
+            }
+            ["anyOf", "oneOf", "allOf"].iter().any(|keyword| {
+                schema[keyword]
+                    .as_array()
+                    .is_some_and(|variants| variants.iter().any(|variant| is_text(variant, root, active)))
+            })
+        }
+        fn walk_schema<'a>(
+            name: &str,
+            schema: &'a Value,
+            root: &'a Value,
+            active: &mut BTreeSet<&'a str>,
+            found: &mut BTreeSet<String>,
+        ) {
+            if let Some(properties) = schema["properties"].as_object() {
+                for (field, value) in properties {
+                    if field.split('_').any(|word| WORDS.contains(&word)) && is_text(value, root, &mut BTreeSet::new())
+                    {
+                        found.insert(format!("{name}.{field}"));
+                    }
+                }
+            }
+            for keyword in ["oneOf", "anyOf", "allOf"] {
+                for variant in schema[keyword].as_array().into_iter().flatten() {
+                    walk_schema(name, variant, root, active, found);
+                }
+            }
+            through_ref(schema, root, active, |target, active| {
+                walk_schema(name, target, root, active, found)
+            });
+        }
+        fn walk(name: &str, schema: &Value, found: &mut BTreeSet<String>) {
+            walk_schema(name, schema, schema, &mut BTreeSet::new(), found);
+        }
+        fn walk_definitions(root: &Value, found: &mut BTreeSet<String>) {
+            for (name, schema) in root["$defs"].as_object().into_iter().flatten() {
+                walk_schema(name, schema, root, &mut BTreeSet::new(), found);
+            }
+        }
+        let contract = super::contract();
+        let engine: Value = serde_json::from_str(include_str!("../../../../fixtures/engine-contract.schema.json"))
+            .unwrap_or_else(|e| panic!("engine contract: {e}"));
+        #[derive(schemars::JsonSchema)]
+        #[allow(dead_code)]
+        struct UserWords(String);
+        #[derive(schemars::JsonSchema)]
+        #[allow(dead_code)]
+        struct WrappedWords {
+            reason: Option<UserWords>,
+        }
+        let mut probe = BTreeSet::new();
+        walk(
+            "WrappedWords",
+            &schemars::schema_for!(WrappedWords).to_value(),
+            &mut probe,
+        );
+        assert_eq!(probe, BTreeSet::from(["WrappedWords.reason".to_owned()]));
+        let recursive = super::json!({
+            "properties": {
+                "reason": {"$ref": "#/$defs/A"},
+                "summary": {"type": "array", "items": {"$ref": "#/$defs/A"}},
+                "text": {"$ref": "#/$defs/Code"},
+                "note": {"$ref": "#/$defs/Loop"}
+            },
+            "$defs": {
+                "A": {"$ref": "#/$defs/B"},
+                "B": {"anyOf": [{"$ref": "#/$defs/A"}, {"type": "string"}]},
+                "Code": {"type": "string", "enum": ["fixed-code"]},
+                "Loop": {"$ref": "#/$defs/Loop"}
+            }
+        });
+        let mut probe = BTreeSet::new();
+        walk("Recursive", &recursive, &mut probe);
+        assert_eq!(
+            probe,
+            BTreeSet::from(["Recursive.reason".to_owned(), "Recursive.summary".to_owned()])
+        );
+        let mut found = BTreeSet::new();
+        walk_definitions(&super::json!({"$defs": contract["output"]}), &mut found);
+        walk_definitions(&super::json!({"$defs": contract["input"]}), &mut found);
+        walk_definitions(&engine, &mut found);
+        // Engine types only the command line serialises, by their own labels.
+        for (name, schema) in [
+            (
+                "cli:AgentChange",
+                schemars::schema_for!(ibis_engine::agent_apps::Change),
+            ),
+            (
+                "cli:ProjectAssessment",
+                schemars::schema_for!(ibis_engine::ProjectAssessment),
+            ),
+            (
+                "cli:ProposalPreview",
+                schemars::schema_for!(ibis_engine::write::Preview),
+            ),
+        ] {
+            walk(name, &schema.to_value(), &mut found);
+        }
+        let listed: BTreeSet<String> = DATA
+            .iter()
+            .chain(OFFENDERS)
+            .map(|(field, _)| (*field).to_owned())
+            .collect();
+        let new: Vec<_> = found.difference(&listed).collect();
+        assert!(
+            new.is_empty(),
+            "words for a person in a contract type; send a Problem, a Message or a closed code instead: {new:?}"
+        );
+        let gone: Vec<_> = listed.difference(&found).collect();
+        assert!(
+            gone.is_empty(),
+            "no longer in any contract type; take them off the list: {gone:?}"
+        );
+    }
+
     /// Run by `node scripts/gen.mjs`, which writes `src/bindings.ts` from it.
     #[test]
     #[ignore = "writes the desktop contract for gen.mjs"]

@@ -4,7 +4,7 @@
 //! own approval of a tool call is never enough. Without the flag they are not
 //! listed and a call is an unknown tool.
 use super::*;
-use crate::write::{Proposals, ProposeRequest, Source, Via, WriteError};
+use crate::write::{Proposals, ProposeRequest, Source, Via, WriteError, WriteProblem};
 use ibis_core::contract::{ItemRef, LibraryId};
 
 /// What a server started with `--allow-writes` knows to record a proposal.
@@ -70,8 +70,12 @@ pub(super) fn full_list() -> Value {
     )
 }
 
-fn refused(error: &WriteError) -> Refusal {
-    Refusal::bad(ToolProblem::Proposal, &[("reason", &error.sentence())])
+fn refused(error: WriteError) -> Refusal {
+    let mut refusal = Refusal::from(error);
+    if let Some(advice) = crate::catalogue::text("mcp-error-proposal", None, &[("reason", &refusal.advice)]) {
+        refusal.advice = advice.into();
+    }
+    refusal
 }
 
 fn fields_input() -> Value {
@@ -170,11 +174,11 @@ fn item(engine: &Engine, arguments: &Map<String, Value>, cancel: &Cancellation) 
 fn proposed(engine: &Engine, writing: &Writing<'_>, request: ProposeRequest) -> Result<Value, Refusal> {
     let proposal = engine
         .propose(writing.proposals, source(writing), request)
-        .map_err(|error| refused(&error))?;
+        .map_err(refused)?;
     let mut answer = json!({
         "proposal": proposal.id,
         "status": proposal.status,
-        "summary": crate::write::summary(&proposal),
+        "summary": crate::catalogue::message(&crate::write::summary(&proposal), crate::catalogue::Audience::Agent),
         "next": NOT_YET,
         "provenance": PROVENANCE,
     });
@@ -194,12 +198,9 @@ fn add(
 ) -> Result<Value, Refusal> {
     let library = match arguments.get("library") {
         None => None,
-        Some(Value::String(library)) => Some(LibraryId::new(library).map_err(|_| {
-            refused(&WriteError {
-                problem: crate::write::WriteProblem::UnknownReference,
-                field: None,
-            })
-        })?),
+        Some(Value::String(library)) => {
+            Some(LibraryId::new(library).map_err(|_| refused(WriteProblem::UnknownLibrary.into()))?)
+        }
         Some(_) => return Err(Refusal::bad(ToolProblem::Arguments, &[])),
     };
     let fields = fields(arguments)?;
@@ -248,7 +249,7 @@ fn proposals(
     let mine: Vec<Value> = writing
         .proposals
         .list()
-        .map_err(|error| refused(&error))?
+        .map_err(Refusal::from)?
         .into_iter()
         .filter(|proposal| proposal.source.client == crate::write::client_name(writing.client))
         .take(MAX_HITS)
@@ -256,7 +257,7 @@ fn proposals(
             json!({
                 "proposal": proposal.id,
                 "status": proposal.status,
-                "summary": crate::write::summary(&proposal),
+                "summary": crate::catalogue::message(&crate::write::summary(&proposal), crate::catalogue::Audience::Agent),
             })
         })
         .collect();
@@ -265,7 +266,7 @@ fn proposals(
         .libraries
         .into_iter()
         // Only libraries that can take a proposal, by kind, never by file name.
-        .filter(|library| engine.proposal_target(&library.id).is_ok())
+        .filter(|library| engine.proposal_target(&library.id).is_ok_and(|target| target.is_some()))
         .map(|library| json!({"library": library.id, "kind": "bibtex", "references": library.objects}))
         .collect();
     Ok(json!({"proposals": mine, "libraries": libraries, "provenance": PROVENANCE}))

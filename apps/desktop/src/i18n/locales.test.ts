@@ -1,6 +1,6 @@
 import { parse, type Pattern } from "@fluent/syntax";
 import { expect, test } from "vitest";
-import { createInterfaceMessages, LANGUAGES, type InterfaceLanguage } from ".";
+import { createInterfaceMessages, LANGUAGES, problemText, type InterfaceLanguage } from ".";
 
 /** Each message, attribute and term by name, with what a translation must keep:
  * its variables and references (across variants) and its selectors' keys. */
@@ -32,6 +32,17 @@ function shape(source: string) {
 const english = shape(LANGUAGES["en-US"].source);
 const translations = (Object.keys(LANGUAGES) as InterfaceLanguage[]).filter((language) => language !== "en-US");
 const PLURAL = /^\*?(zero|one|two|few|many|other)$/;
+
+test("Arabic proposal limits use the binary unit", () => {
+  const messages = createInterfaceMessages(LANGUAGES.ar.source, false, "ar");
+  const rendered = problemText({
+    code: "too-large",
+    message: { id: "refusal-too-large", args: { kib: "64" } },
+    recovery: { action: "edit-input" },
+    focus: "request",
+  }, "", messages.text);
+  expect(rendered).toMatch(/64.*KiB/);
+});
 
 test.each(translations)("%s says every English message with the same placeables, and nothing else", (language) => {
   const { entries, junk } = shape(LANGUAGES[language].source);

@@ -974,6 +974,30 @@
               {
                 "properties": {
                   "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "none",
                     "type": "string"
                   },
@@ -2688,6 +2712,30 @@
               {
                 "properties": {
                   "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "none",
                     "type": "string"
                   },
@@ -4221,6 +4269,30 @@
                 "properties": {
                   "action": {
                     "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
                     "type": "string"
                   }
                 },
@@ -6350,6 +6422,30 @@
                 "properties": {
                   "action": {
                     "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
                     "type": "string"
                   }
                 },
@@ -8491,6 +8587,30 @@
               {
                 "properties": {
                   "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "none",
                     "type": "string"
                   },
@@ -9604,6 +9724,30 @@
               {
                 "properties": {
                   "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "none",
                     "type": "string"
                   },
@@ -10515,6 +10659,30 @@
                 "properties": {
                   "action": {
                     "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
                     "type": "string"
                   }
                 },
@@ -11486,6 +11654,30 @@
               {
                 "properties": {
                   "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "none",
                     "type": "string"
                   },
@@ -12428,6 +12620,30 @@
               {
                 "properties": {
                   "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "none",
                     "type": "string"
                   },
@@ -13274,6 +13490,30 @@
                 "properties": {
                   "action": {
                     "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
                     "type": "string"
                   }
                 },
@@ -14214,6 +14454,30 @@
                 "properties": {
                   "action": {
                     "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
                     "type": "string"
                   }
                 },
@@ -18132,6 +18396,30 @@
                 "properties": {
                   "action": {
                     "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
                     "type": "string"
                   }
                 },

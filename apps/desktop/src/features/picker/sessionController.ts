@@ -81,7 +81,7 @@ export function createSessionController(initial = initialSession()) {
           await afterSaves(() => ports.rememberAppOutput!(save.appId, save.output, save.paste, save.identity, save.site));
           dispatch({ type: "destination-saved", save });
         } catch (error) {
-          dispatch({ type: "destination-save-failed", save, partial: nativeApi.failedCode(error) === "delivery_not_saved" });
+          dispatch({ type: "destination-save-failed", save, partial: nativeApi.failedCode(error) === "delivery-not-saved" });
         }
         dispatch({ type: "destination-save-settled" });
         break;

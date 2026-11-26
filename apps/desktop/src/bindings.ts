@@ -400,7 +400,7 @@ export type ClosestMatch = {
 	title: string;
 };
 
-/** The desktop and MCP receive this same shape, without pre-rendered English. */
+/** Front ends receive this same shape, without pre-rendered words. */
 export type CommandError = {
 	code: ProblemCode;
 	focus: FocusTarget;
@@ -613,8 +613,12 @@ export type FormDetails = {
 export type FormOption = {
 	example: string | null;
 	form: CitationForm;
-	reason: string | null;
+	/** Why this form is left out; absent when it can be chosen. */
+	reason: FormUnavailable | null;
 };
+
+/** Why a citation form cannot be chosen. Each front end words it. */
+export type FormUnavailable = "entries" | "keys-only" | "textcite" | "cited-alone" | "output";
 
 /** The format a citation for one app uses, and why. */
 export type FormatChoice = {
@@ -1042,7 +1046,7 @@ export type Preview = {
 	warnings: CitedWarning[];
 };
 
-/** The desktop and MCP receive this same shape, without pre-rendered English. */
+/** Front ends receive this same shape, without pre-rendered words. */
 export type Problem = {
 	code: ProblemCode;
 	focus: FocusTarget;
@@ -1051,7 +1055,7 @@ export type Problem = {
 };
 
 /** Every code a desktop problem can carry, from the engine's and the app's own failures. */
-export type ProblemCode = "agent-apps" | "alt-gr" | "ambiguous-key" | "annotation-mismatch" | "app-missing" | "app-shortcut" | "apply-proposal" | "attachment-outside-library" | "bad-input" | "bibliography-format" | "bibliography-name-taken" | "bibliography-not-saved" | "bibliography-unavailable" | "busy" | "cancelled" | "changed" | "changed-item" | "cli-status" | "clipboard-unavailable" | "configure-shortcuts" | "conflicting-key" | "connect-agent-app" | "copy-cli-profile" | "copy-editor-endpoint" | "copy-project-entry" | "copy-version" | "csv-template" | "damaged-entry" | "delivery_not_saved" | "destination-exists" | "destination-unwritable" | "disconnect-agent-app" | "document-format" | "drag-paste-app" | "duplicate-key" | "duplicate-record" | "editor-pending" | "empty-selection" | "find-sources" | "find-zotero" | "finish-paste-guide" | "formatter-unavailable" | "hide-picker" | "in-use" | "internal" | "invalid" | "invalid-key" | "invalid-locale" | "invalid-locator" | "invalid-rich-text" | "invalid-too-many-items" | "key-format" | "library-cut-short" | "library_loading" | "missing-details" | "missing-doi" | "missing-file" | "missing-item" | "missing-key" | "needs-modifier" | "newer" | "newer-format" | "no-answer" | "no-attachment-text" | "no-library" | "no-such-pages" | "not-a-backup" | "not-citable" | "not-downloaded" | "not-found" | "not-from-zotero" | "not-ibis" | "not-local" | "not-prepared" | "not-saved" | "open-found-library" | "open-settings-file" | "output-too-large" | "picker-shortcut" | "project-ambiguous-context" | "project-changed" | "project-conflict" | "project-context-unavailable" | "project-duplicate-name" | "project-invalid" | "project-invalid-context" | "project-invalid-name" | "project-not-found" | "project-output-unavailable" | "project-too-many" | "recent-history-not-saved" | "recent-references-failed" | "reject-app-proposals" | "reject-proposal" | "rejected-record" | "resource-limit" | "row-context" | "search-failed" | "set-cli-installed" | "set-window-size" | "settings-busy" | "settings-changed" | "settings-file" | "settings-invalid" | "settings-newer" | "settings-read-only" | "settings-read-timeout" | "settings-unreadable" | "settings-unusable" | "snapshot_changed" | "source-failed" | "source-library-needed" | "source-library-not-found" | "source-manager-closed" | "source-not-found" | "source-not-opened" | "source-permission" | "source-unavailable" | "strict-citation" | "too-many-items" | "unavailable" | "undo-window-position" | "unknown-format" | "unknown-locale" | "unknown-output" | "unknown-style" | "unreadable" | "unsupported-form" | "unsupported-output" | "usage" | "use-sample-library" | "use-zotero-libraries" | "waiting-proposals" | "zotero-needs-opening" | "zotero-no-space" | "zotero-not-found" | "zotero-profile-needed" | "zotero-sharing-off";
+export type ProblemCode = "agent-apps" | "already-in-library" | "alt-gr" | "ambiguous-key" | "annotation-mismatch" | "app-missing" | "app-shortcut" | "apply-proposal" | "attachment-outside-library" | "backup-failed" | "bad-input" | "bibliography-format" | "bibliography-name-taken" | "bibliography-not-saved" | "bibliography-unavailable" | "busy" | "cancelled" | "changed" | "changed-item" | "cli-status" | "clipboard-unavailable" | "configure-shortcuts" | "conflicting-key" | "connect-agent-app" | "copy-cli-profile" | "copy-editor-endpoint" | "copy-project-entry" | "copy-version" | "csv-template" | "damaged" | "damaged-entry" | "decided" | "delivery-not-saved" | "destination-exists" | "destination-unwritable" | "disconnect-agent-app" | "document-format" | "drag-paste-app" | "duplicate-key" | "duplicate-record" | "editor-pending" | "empty-selection" | "find-sources" | "find-zotero" | "finish-paste-guide" | "folder-changed" | "formatter-unavailable" | "hide-picker" | "in-use" | "internal" | "invalid" | "invalid-key" | "invalid-locale" | "invalid-locator" | "invalid-rich-text" | "invalid-too-many-items" | "key-format" | "key-taken" | "library-cut-short" | "library-kind" | "library-kind-edit" | "library-loading" | "missing-details" | "missing-doi" | "missing-file" | "missing-item" | "missing-key" | "needs-modifier" | "newer" | "newer-format" | "no-answer" | "no-attachment-text" | "no-free-key" | "no-library" | "no-such-pages" | "no-target" | "not-a-backup" | "not-citable" | "not-downloaded" | "not-found" | "not-from-zotero" | "not-ibis" | "not-literal" | "not-local" | "not-open" | "not-prepared" | "not-saved" | "not-written" | "open-found-library" | "open-settings-file" | "output-too-large" | "picker-shortcut" | "project-ambiguous-context" | "project-changed" | "project-conflict" | "project-context-unavailable" | "project-duplicate-name" | "project-invalid" | "project-invalid-context" | "project-invalid-name" | "project-not-found" | "project-output-unavailable" | "project-too-many" | "proposal-unreadable" | "recent-history-not-saved" | "recent-references-failed" | "reject-app-proposals" | "reject-proposal" | "rejected-record" | "repeated" | "resource-limit" | "row-context" | "search-failed" | "set-cli-installed" | "set-window-size" | "settings-busy" | "settings-changed" | "settings-file" | "settings-invalid" | "settings-newer" | "settings-read-only" | "settings-read-timeout" | "settings-unreadable" | "settings-unusable" | "snapshot-changed" | "source-failed" | "source-library-needed" | "source-library-not-found" | "source-manager-closed" | "source-not-found" | "source-not-opened" | "source-permission" | "source-unavailable" | "store-unreadable" | "strict-citation" | "too-large" | "too-many" | "too-many-items" | "unavailable" | "undo-window-position" | "unknown-format" | "unknown-library" | "unknown-locale" | "unknown-output" | "unknown-proposal" | "unknown-reference" | "unknown-style" | "unreadable" | "unsupported-form" | "unsupported-output" | "usage" | "use-sample-library" | "use-zotero-libraries" | "waiting-proposals" | "zotero-needs-opening" | "zotero-no-space" | "zotero-not-found" | "zotero-profile-needed" | "zotero-sharing-off";
 
 export type ProjectKeyState = "in" | "missing" | "could-not-check" | "repeated" | "may-name-another";
 
@@ -1062,6 +1066,9 @@ export type ProjectMark = {
 	state: ProjectKeyState;
 };
 
+/** Why a read could not be used. */
+export type ProjectProblem = "not-a-file" | "too-large" | "not-utf8" | "changing" | "unavailable" | "not-bibtex";
+
 /** State of the current bibliography read. */
 export type ProjectState = "reading" | "ready" | "damaged" | "failed";
 
@@ -1071,8 +1078,8 @@ export type ProjectStatus = {
 	damaged_lines: number[];
 	generation: number;
 	name: string;
-	/** Why the newest read failed, as a sentence ending in a full stop. */
-	reason: string | null;
+	/** Why the newest read failed. Each front end words it. */
+	reason: ProjectProblem | null;
 	/**
 	 * Counts reads that changed an answer, which can happen with the status
 	 * otherwise the same, as when an entry is added to a healthy file.
@@ -1087,7 +1094,7 @@ export type ProposalResult = {
 } | {
 	status: "rejected";
 } | {
-	sentence: string;
+	problem: Problem;
 	status: "refused";
 };
 
@@ -1176,6 +1183,10 @@ export type Recovery = {
 	action: "open-ibis";
 } | {
 	action: "restart-session";
+} | {
+	action: "list-proposals";
+} | {
+	action: "propose-again";
 } | {
 	action: "none";
 	reason: NoRecoveryReason;
@@ -1394,9 +1405,9 @@ export type WaitingProposal = {
 	id: string;
 	library: string;
 	lines: string[];
-	refusal: string | null;
+	refusal: Problem | null;
 	source_app: string;
-	summary: string;
+	summary: Message;
 };
 
 /** Safe source diagnostics contain a location and fixed code, never payloads. */

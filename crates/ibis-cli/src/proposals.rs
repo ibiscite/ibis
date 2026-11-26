@@ -4,9 +4,10 @@
 //! preview, so no agent with a shell can confirm its own proposal.
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use ibis_core::contract::{ErrorCode, ExitCode};
+use ibis_core::contract::{ErrorCode, ExitCode, Recovery};
 use ibis_engine::DispatchResult;
-use ibis_engine::write::{Preview, Proposal, Proposals, Status, WriteError, WriteProblem};
+use ibis_engine::catalogue::{self, Audience};
+use ibis_engine::write::{Preview, Proposal, Proposals, Status};
 use serde_json::json;
 
 use crate::{Failure, settings_backup};
@@ -49,7 +50,7 @@ pub(crate) fn run(matches: &ArgMatches) -> Result<DispatchResult, Failure> {
     let id = |args: &ArgMatches| args.get_one::<String>("id").cloned().unwrap_or_default();
     match matches.subcommand() {
         Some(("list", _)) => {
-            let proposals = store.list().map_err(failure)?;
+            let proposals = store.list()?;
             let text = if proposals.is_empty() {
                 "No proposals.\n".to_owned()
             } else {
@@ -58,26 +59,17 @@ pub(crate) fn run(matches: &ArgMatches) -> Result<DispatchResult, Failure> {
             Ok(result(json!({"proposals": proposals}), text))
         }
         Some(("show", args)) => {
-            let preview = store.show(&id(args)).map_err(failure)?;
+            let preview = store.show(&id(args))?;
             let text = shown(&preview);
             Ok(result(json!(preview), text))
         }
         Some(("reject", args)) => {
-            let proposal = store.reject(&id(args)).map_err(failure)?;
+            let proposal = store.reject(&id(args))?;
             let text = format!("Rejected {}; no library changed.\n", proposal.id);
             Ok(result(json!(proposal), text))
         }
         _ => Err(Failure::new(ErrorCode::Usage, "name an action: list, show or reject")),
     }
-}
-
-fn failure(error: WriteError) -> Failure {
-    let code = match error.problem {
-        WriteProblem::UnknownProposal => ErrorCode::NotFound,
-        WriteProblem::Decided => ErrorCode::BadInput,
-        _ => ErrorCode::SourceUnavailable,
-    };
-    Failure::new(code, error.sentence())
 }
 
 fn status(status: Status) -> &'static str {
@@ -94,7 +86,7 @@ fn line(proposal: &Proposal) -> String {
         proposal.id,
         status(proposal.status),
         proposal.target.name(),
-        ibis_engine::write::summary(proposal)
+        catalogue::message(&ibis_engine::write::summary(proposal), Audience::Cli)
     )
 }
 
@@ -106,7 +98,7 @@ fn shown(preview: &Preview) -> String {
         status(proposal.status),
         proposal.source.client,
         preview.library,
-        preview.summary
+        catalogue::message(&preview.summary, Audience::Cli)
     );
     for line in &preview.lines {
         text.push_str(&format!("  {line}\n"));
@@ -117,11 +109,11 @@ fn shown(preview: &Preview) -> String {
     if let Some(after) = &preview.after {
         text.push_str(&format!("\nAfter applying:\n{after}\n"));
     }
-    match preview.refusal {
-        Some(WriteProblem::Decided) => {}
+    match &preview.refusal {
+        Some(problem) if problem.info.recovery() == Recovery::Close => {}
         Some(problem) => text.push_str(&format!(
             "\nThis cannot be applied now: {}\n",
-            WriteError { problem, field: None }.sentence()
+            catalogue::problem(problem, Audience::Cli)
         )),
         None => text.push_str("\nApply or reject it in the Ibis app.\n"),
     }

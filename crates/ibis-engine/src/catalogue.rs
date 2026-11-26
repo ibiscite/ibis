@@ -109,7 +109,7 @@ impl Audience {
 }
 
 /// The groups of engine codes, each a message per code.
-pub const GROUPS: [&str; 9] = [
+pub const GROUPS: [&str; 10] = [
     "error",
     "reason",
     "problem",
@@ -119,6 +119,7 @@ pub const GROUPS: [&str; 9] = [
     "notice",
     "form",
     "cause",
+    "refusal",
 ];
 
 fn bundle_in(language: Language) -> &'static FluentBundle<FluentResource> {
@@ -283,6 +284,12 @@ mod tests {
             let reason = serde_json::from_value(serde_json::json!(name)).unwrap_or_else(|error| panic!("{error}"));
             problems.push(EngineError::because(ErrorCode::BadInput, reason).into());
         }
+        for name in names::<crate::write::WriteProblem>() {
+            let refusal: crate::write::WriteProblem =
+                serde_json::from_value(serde_json::json!(name)).unwrap_or_else(|error| panic!("{error}"));
+            problems.push(refusal.problem());
+            problems.push(crate::write::WriteError::about(refusal, "title").into());
+        }
         for problem in problems {
             let said = super::problem(&problem, Audience::App);
             assert!(
@@ -338,6 +345,14 @@ mod tests {
                 .into_iter()
                 .map(|error| error.message_id().to_owned()),
         );
+        let refusals: Vec<crate::write::WriteProblem> = names::<crate::write::WriteProblem>()
+            .into_iter()
+            .filter_map(|name| serde_json::from_value(serde_json::Value::String(name)).ok())
+            .collect();
+        assert!(!refusals.is_empty(), "refusal lists its codes");
+        for refusal in refusals {
+            ids.extend([refusal.message_id(false), refusal.message_id(true)]);
+        }
         ids
     }
 

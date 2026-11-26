@@ -204,7 +204,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       return copy.enqueue(request, async (): Promise<DeliveryOutcome> => {
         if (generation !== copyGeneration || sequence !== clipboard.sequence || citation !== latestPreview) throw { code: "cancelled" };
         const { preview } = prepared(args);
-        if (args.ticket !== activeTicket) throw { code: "snapshot_changed" };
+        if (args.ticket !== activeTicket) throw { code: "snapshot-changed" };
         Object.assign(clipboard, { text: preview.text, html: clipboardHtml.get(preview.ticket) ?? null, owner: "ibis", sequence: clipboard.sequence + 1 });
         const token = ++nextDelivery;
         proof = { ...(captured ?? capture()), replaces: replaces.length > 0 ? replaces : null, presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, epoch: lifecycle.epoch, written: lifecycle.elapsed, paste: appChoices.get(target.appId)?.paste ?? null };
@@ -222,7 +222,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
           : { outcome: "copied-only", copied, reason: delivered.reason };
       }).catch((error) => {
         if (error?.code === "cancelled") return { outcome: "cancelled" } as const;
-        if (error?.code === "snapshot_changed") return changedDelivery;
+        if (error?.code === "snapshot-changed") return changedDelivery;
         throw error;
       });
     },

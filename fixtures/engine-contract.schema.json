@@ -2466,6 +2466,30 @@
           "properties": {
             "action": {
               "type": "string",
+              "const": "list-proposals"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "propose-again"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
               "const": "none"
             },
             "reason": {

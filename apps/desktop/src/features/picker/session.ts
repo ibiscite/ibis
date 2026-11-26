@@ -406,7 +406,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
   const result = event.outcome;
   if (result.outcome === "cancelled") return [finish(s, f), []];
   if (result.outcome === "refused") {
-    const stale = ["snapshot_changed", "changed-item", "missing-item"].includes(result.problem.code);
+    const stale = ["snapshot-changed", "changed-item", "missing-item"].includes(result.problem.code);
     return [finish(ownsCompletion(s, f, live) ? { ...s, copyError: problemText(result.problem, say("picker-copy-error")) } : s, f), stale ? [{ type: "refresh" }] : []];
   }
   const outcome = result.copied;

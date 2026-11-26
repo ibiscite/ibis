@@ -915,8 +915,10 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
                 mode,
             )
         }
-        Err(failure) if matches.subcommand_name() == Some("serve") => {
-            let error = failure.error;
+        Err(Failure {
+            error: Diagnostic::Engine(error),
+            ..
+        }) if matches.subcommand_name() == Some("serve") => {
             if protocol::write_frame(&mut output, &ibis_engine::rpc::failure(None, error)).is_err() {
                 70
             } else {
@@ -1065,7 +1067,6 @@ fn source_values<T: Clone + Eq + Send + Sync + 'static>(matches: &ArgMatches, id
     values
 }
 
-/// A failure keeps its contract code, and so its exit code; the message is for people only.
 /// Runs a filesystem wait on its own thread for at most the two seconds that
 /// docs/architecture.md allows, so a stalled disk cannot hold a command. A
 /// one-shot command leaves at most one such call behind before it exits.
@@ -1082,35 +1083,62 @@ fn bounded_for<T: Send + 'static>(timeout: Duration, operation: impl FnOnce() ->
 }
 
 struct Failure {
-    error: EngineError,
+    error: Diagnostic,
     message: Option<String>,
     recovery: Option<(Vec<String>, Vec<String>)>,
 }
+
+enum Diagnostic {
+    Engine(EngineError),
+    Proposal(ibis_engine::write::WriteError),
+}
+
 impl Failure {
     fn new(code: ErrorCode, message: impl Into<String>) -> Self {
         Self::explained(EngineError::new(code), message)
     }
     fn explained(error: EngineError, message: impl Into<String>) -> Self {
         Self {
-            error,
+            error: Diagnostic::Engine(error),
             message: Some(message.into()),
             recovery: None,
         }
     }
     fn sentence(&self) -> String {
-        self.message
-            .clone()
-            .unwrap_or_else(|| ibis_engine::catalogue::error(&self.error, ibis_engine::catalogue::Audience::Cli))
+        use ibis_engine::catalogue::{self, Audience};
+        self.message.clone().unwrap_or_else(|| match &self.error {
+            Diagnostic::Engine(error) => catalogue::error(error, Audience::Cli),
+            Diagnostic::Proposal(error) => catalogue::problem(error.problem(), Audience::Cli),
+        })
+    }
+    fn code(&self) -> ErrorCode {
+        match &self.error {
+            Diagnostic::Engine(error) => error.code,
+            Diagnostic::Proposal(error) => error.category(),
+        }
     }
     /// What an agent reads when its libraries did not open. Agents never see paths.
     fn refusal(&self) -> ibis_engine::mcp::Refusal {
-        ibis_engine::mcp::Refusal::startup(self.error)
+        match &self.error {
+            Diagnostic::Engine(error) => ibis_engine::mcp::Refusal::startup(*error),
+            Diagnostic::Proposal(error) => error.clone().into(),
+        }
     }
 }
 impl From<EngineError> for Failure {
     fn from(error: EngineError) -> Self {
         Self {
-            error,
+            error: Diagnostic::Engine(error),
+            message: None,
+            recovery: None,
+        }
+    }
+}
+
+impl From<ibis_engine::write::WriteError> for Failure {
+    fn from(error: ibis_engine::write::WriteError) -> Self {
+        Self {
+            error: Diagnostic::Proposal(error),
             message: None,
             recovery: None,
         }
@@ -2332,17 +2360,21 @@ fn emit(
         let (code, envelope, text) = match result.and_then(|result| result.bounded().map_err(Failure::from)) {
             Ok(result) => (result.exit_code, json!(Envelope::success(result.data)), result.text),
             Err(failure) => {
-                // The sentence goes to stderr in both modes; --json adds the stable code on stdout.
+                // The sentence goes to stderr in both modes; --json adds the diagnostic on stdout.
                 say(&failure.sentence());
+                let code = failure.code().exit_code();
                 if !json {
-                    return (failure.error.code.exit_code().value(), Vec::new());
+                    return (code.value(), Vec::new());
                 }
-                let mut envelope = json!(Envelope::<Value>::failure(failure.error));
+                let mut envelope = match failure.error {
+                    Diagnostic::Engine(error) => json!(Envelope::<Value>::failure(error)),
+                    Diagnostic::Proposal(error) => json!(Envelope::<Value, _>::failure_with(Problem::from(error))),
+                };
                 if let Some((suggestions, next)) = failure.recovery {
                     envelope["error"]["suggestions"] = json!(suggestions);
                     envelope["error"]["next"] = json!(next);
                 }
-                (failure.error.code.exit_code(), envelope, None)
+                (code, envelope, None)
             }
         };
         let encoded = if json {

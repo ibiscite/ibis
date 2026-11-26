@@ -938,6 +938,11 @@ ibis proposals show 3f9c2a7d41b8e605
 ibis proposals reject 3f9c2a7d41b8e605
 ```
 
+With `--json`, a refused proposal operation returns a Problem in `error`.
+A successful `show` includes `data.refusal` when the proposal cannot be applied.
+MCP proposal refusals carry the same Problem in `structuredContent.error`.
+Each Problem carries its code, catalogue message with arguments, recovery and focus.
+
 `show` prints the change and, for a `.bib` file, the entry as it is and as it
 would be written. There is no `apply` command: the person applies a proposal
 in **Settings › AI Apps › Proposed changes**, after the same preview. Applying writes `.bib` files only. It
