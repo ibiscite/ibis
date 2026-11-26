@@ -72,7 +72,7 @@ def app_files(prefix, programs, notices=NOTICES):
 
 
 def linux_app(prefix="./usr", build=BUILD):
-    return app_files(f"{prefix}/lib/Ibis Nightly", {f"{prefix}/bin/ibis-nightly": elf(build), f"{prefix}/bin/ibis": elf(build)})
+    return app_files(f"{prefix}/lib/Ibis Nightly", {f"{prefix}/bin/ibis-nightly": elf(build), f"{prefix}/lib/Ibis Nightly/binaries/ibis": elf(build)})
 
 
 def deb_bytes(files, version=VERSION):
@@ -218,6 +218,9 @@ class Packages(unittest.TestCase):
         self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(linux_app(), version="0.4.0")), "says version '0.4.0'")
         self.assertFails(self.write("Ibis-Linux.rpm", rpm_bytes(linux_app(), version="0.4.0")), "says version '0.4.0'")
         self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(linux_app(build="0.4.0"))), "the app does not embed version")
+        # Only the command line Settings installs counts; a current copy elsewhere cannot stand in.
+        elsewhere = linux_app() | {"./usr/lib/Ibis Nightly/binaries/ibis": elf("0.4.0"), "./usr/bin/ibis": elf()}
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(elsewhere)), "bundled command-line does not embed")
         no_program = {k: v for k, v in linux_app().items() if "/bin/ibis-nightly" not in k}
         self.assertFails(self.write("Ibis-Linux.rpm", rpm_bytes(no_program)), "0 app programs")
 
@@ -325,6 +328,7 @@ class Packages(unittest.TestCase):
         program = self.dir / "main.c"
         program.write_text(f'const char *version = "\\nIbis-Build: {BUILD}\\n";\nint main(void) {{ return version[0] == 0; }}\n')
         subprocess.run(["cc", "-arch", "arm64", "-o", str(app / "MacOS/ibis-desktop"), str(program)], check=True)
+        shutil.copy(app / "MacOS/ibis-desktop", app / "MacOS/ibis")
         info = {"CFBundleShortVersionString": VERSION, "CFBundleIdentifier": "com.example.invented",
                 "CFBundleExecutable": "ibis-desktop", "CFBundlePackageType": "APPL"}
         (app / "Info.plist").write_bytes(plistlib.dumps(info))
@@ -336,6 +340,14 @@ class Packages(unittest.TestCase):
         self.check(image, target, options(identifier="com.example.invented"))
         self.assertFails(image, "names 'com.example.invented', not com.example.other", target, options(identifier="com.example.other"))
         self.assertFails(image, "signed by .*, not the pinned certificate", target, options(signing_leaf="0" * 40))
+        # A stale command line beside a current app fails the whole package.
+        program.write_text('const char *version = "\\nIbis-Build: 0.4.0\\n";\nint main(void) { return version[0] == 0; }\n')
+        subprocess.run(["cc", "-arch", "arm64", "-o", str(app / "MacOS/ibis"), str(program)], check=True)
+        subprocess.run(["codesign", "-f", "-s", "-", str(app.parent)], check=True, capture_output=True)
+        stale = self.dir / "stale" / image.name
+        stale.parent.mkdir()
+        subprocess.run(["hdiutil", "create", "-quiet", "-fs", "HFS+", "-srcfolder", str(source), "-format", "UDZO", str(stale)], check=True)
+        self.assertFails(stale, "bundled command-line does not embed", target, options(identifier="com.example.invented"))
 
 
 if __name__ == "__main__":

@@ -428,12 +428,19 @@ class Check:
         self.require(out.returncode == 0 and self.options.build in out.stdout.split(),
                      f"the {what} did not report {self.options.build} (exit {out.returncode}: {(out.stdout + out.stderr).strip()[:120]!r})")
 
-    def bundled_command_line(self, root):
-        """The command line an app package carries runs and reports its version,
-        which proves the version of a package (the AppImage) whose format
-        records none."""
-        binary = self.executable([full for rel, full in files(root) if Path(rel).name in CLI_NAMES], "bundled command-line")
-        if binary is not None:
+    def bundled_command_line(self, root, where=None, run=True):
+        """The command line an app package carries, at WHERE (relative to
+        ROOT), the one place the app runs it from: built for this processor
+        as this build, and run where this computer can. It proves the version
+        of a package (the AppImage) whose format records none. Without WHERE,
+        the package's one program named as the command line."""
+        tree = list(files(root))
+        if where is None:
+            candidates = [full for rel, full in tree if Path(rel).name in CLI_NAMES]
+        else:
+            candidates = [full for rel, full in tree if rel == where]
+        binary = self.executable(candidates, "bundled command-line")
+        if binary is not None and run:
             self.reports_version(binary, "bundled command line")
 
     def command_line(self, root):
@@ -457,6 +464,8 @@ class Check:
             self.require(info.get("CFBundleIdentifier") == options.identifier,
                          f"Info.plist names {info.get('CFBundleIdentifier')!r}, not {options.identifier}")
         self.executable([app / "Contents/MacOS" / str(info.get("CFBundleExecutable", "?"))], "app")
+        # Beside the app's executable, where Settings installs it from.
+        self.bundled_command_line(root, (app / "Contents/MacOS/ibis").relative_to(root).as_posix())
         if shutil.which("codesign") is None:
             self.problems.append("codesign is needed to check a macOS app")
             return
@@ -479,6 +488,12 @@ class Check:
                          and not rel.startswith("$")], "app")
 
 
+def linux_cli(product):
+    """Where a Linux app package installs the command line Settings uses: its
+    resource folder's `binaries/ibis` (cli_install.rs)."""
+    return f"usr/lib/{product}/binaries/ibis"
+
+
 def check_package(path, notices, options, target):
     check = Check(notices, options, target)
     mounts = []
@@ -498,12 +513,12 @@ def check_package(path, notices, options, target):
                 elif name.endswith((".deb", ".rpm")):
                     check.require(meta.get("Version") == options.version, f"the package says version {meta.get('Version')!r}")
                     check.linux_app(root)
-                    check.bundled_command_line(root)
+                    check.bundled_command_line(root, linux_cli(options.product))
                 elif name.endswith(".AppImage"):
                     # Its bundler rewrites the bundled command line, which then
                     # does not start on its own; header and embedded version only.
                     check.linux_app(root)
-                    check.executable([full for rel, full in files(root) if Path(rel).name in CLI_NAMES], "bundled command-line")
+                    check.bundled_command_line(root, linux_cli(options.product), run=False)
                 elif name.endswith("-setup.exe"):
                     check.require(meta.get("ProductVersion") == options.version,
                                   f"the setup executable says version {meta.get('ProductVersion')!r}")
