@@ -419,7 +419,9 @@ class Check:
         """Start a command line this computer can run and require its version."""
         if not runs_here(binary.read_bytes()):
             return  # Cross-built (Intel on Apple silicon): checked from its header only.
-        binary.chmod(0o755)
+        # A disk image mounts read-only; its programs already carry the bit.
+        if not os.access(binary, os.X_OK):
+            binary.chmod(0o755)
         try:
             out = subprocess.run([str(binary), "--version"], capture_output=True, text=True, timeout=30)
         except (OSError, subprocess.SubprocessError) as error:

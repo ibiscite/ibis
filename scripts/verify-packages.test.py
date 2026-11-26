@@ -118,7 +118,7 @@ class Packages(unittest.TestCase):
             (self.notices / name).write_bytes(data)
         self.digests = verify.load_notices(self.notices)
         # Invented programs never start; the real ones do in Preview.
-        original = verify.runs_here
+        original = self.native_runs_here = verify.runs_here
         verify.runs_here = lambda data: False
         self.addCleanup(setattr, verify, "runs_here", original)
 
@@ -326,7 +326,8 @@ class Packages(unittest.TestCase):
         for name, data in NOTICES.items():
             (app / "Resources/notices" / name).write_bytes(data)
         program = self.dir / "main.c"
-        program.write_text(f'const char *version = "\\nIbis-Build: {BUILD}\\n";\nint main(void) {{ return version[0] == 0; }}\n')
+        program.write_text(f'#include <stdio.h>\nconst char *version = "\\nIbis-Build: {BUILD}\\n";\n'
+                           f'int main(void) {{ puts("ibis {BUILD}"); return version[0] == 0; }}\n')
         subprocess.run(["cc", "-arch", "arm64", "-o", str(app / "MacOS/ibis-desktop"), str(program)], check=True)
         shutil.copy(app / "MacOS/ibis-desktop", app / "MacOS/ibis")
         info = {"CFBundleShortVersionString": VERSION, "CFBundleIdentifier": "com.example.invented",
@@ -335,8 +336,10 @@ class Packages(unittest.TestCase):
         subprocess.run(["codesign", "-s", "-", str(app.parent)], check=True, capture_output=True)
         image = self.dir / "Ibis-macOS-Apple-silicon.dmg"
         subprocess.run(["hdiutil", "create", "-quiet", "-fs", "HFS+", "-srcfolder", str(source), "-format", "UDZO", str(image)], check=True)
-        # One image (each takes seconds), checked three ways.
+        # One image (each takes seconds), checked three ways. The command line
+        # runs from the read-only mount, as on the Apple silicon runner.
         target = "aarch64-apple-darwin"
+        verify.runs_here = self.native_runs_here
         self.check(image, target, options(identifier="com.example.invented"))
         self.assertFails(image, "names 'com.example.invented', not com.example.other", target, options(identifier="com.example.other"))
         self.assertFails(image, "signed by .*, not the pinned certificate", target, options(signing_leaf="0" * 40))
