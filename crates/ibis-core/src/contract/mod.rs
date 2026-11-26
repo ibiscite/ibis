@@ -2,6 +2,8 @@
 
 pub mod adapter;
 pub mod citation;
+pub mod document;
+pub use document::{Cite, Cited, MAX_TEXT_BYTES, Manuscript, Place, ScanFinding, ScanProblem, TextKind};
 mod csl;
 pub use csl::{CompactName, Csl, CslRef};
 pub mod envelope;

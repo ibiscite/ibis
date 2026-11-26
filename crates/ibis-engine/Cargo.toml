@@ -39,6 +39,8 @@ libc = "0.2.191"
 [dev-dependencies]
 # Counts requested heap bytes for the library memory check; no unsafe code here.
 stats_alloc = "0.1.10"
+# Document tests read in process; the engine itself only starts the child.
+ibis-sources = { path = "../ibis-sources", features = ["documents"] }
 
 [lints]
 workspace = true

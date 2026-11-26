@@ -1,5 +1,5 @@
 //! Win32 source-locality, process and free-space checks. Cache files use core's creator.
-use super::{ClosedError, Control, drive_path};
+use super::{ClosedError, Control, windows_drive_path};
 use std::mem::size_of;
 use std::os::windows::{ffi::OsStrExt, io::AsRawHandle};
 use std::path::Path;
@@ -57,23 +57,9 @@ fn wide(path: &Path) -> Result<Vec<u16>, ClosedError> {
 }
 
 // Check the raw spelling too: Path::components silently removes interior '.'.
-fn checked_path(path: &Path) -> Result<Vec<u16>, ClosedError> {
+pub(super) fn checked_path(path: &Path) -> Result<Vec<u16>, ClosedError> {
     let value = wide(path)?;
-    if !drive_path(path) {
-        return Err(ClosedError::UnsafeSource);
-    }
-    for part in value[3..value.len() - 1]
-        .split(|c| matches!(*c, 47 | 92))
-        .filter(|p| !p.is_empty())
-    {
-        if part == [46]
-            || part == [46, 46]
-            || part.iter().any(|c| *c == 58 || *c < 32 || (127..=159).contains(c))
-            || matches!(part.last(), Some(46 | 32))
-        {
-            return Err(ClosedError::UnsafeSource);
-        }
-    }
+    windows_drive_path(&value[..value.len() - 1]).ok_or(ClosedError::UnsafeSource)?;
     Ok(value)
 }
 
@@ -90,18 +76,21 @@ fn attributes(path: &[u16], control: &Control) -> Result<u32, ClosedError> {
 pub(super) fn local(path: &Path, control: &Control) -> Result<(), ClosedError> {
     control.check()?;
     let value = checked_path(path)?;
-    let mut current = vec![value[0], 58, 92, 0];
+    let disk = windows_drive_path(&value[..value.len() - 1]).ok_or(ClosedError::UnsafeSource)?;
+    let root = [value[disk], 58, 92, 0];
+    let mut current = value[..disk + 3].to_vec();
+    current.push(0);
     control.check()?;
-    // SAFETY: current is a drive root with a trailing slash and NUL. This
+    // SAFETY: root is a drive root with a trailing slash and NUL. This
     // classification precedes every attribute probe, including the root.
-    let kind = unsafe { GetDriveTypeW(current.as_ptr()) };
+    let kind = unsafe { GetDriveTypeW(root.as_ptr()) };
     // DRIVE_REMOVABLE, DRIVE_FIXED, DRIVE_CDROM, DRIVE_RAMDISK. Numeric
     // constants avoid enabling System_WindowsProgramming just for names.
     if !matches!(kind, 2 | 3 | 5 | 6) {
         return Err(ClosedError::UnsafeSource);
     }
     attributes(&current, control)?;
-    for part in value[3..value.len() - 1]
+    for part in value[disk + 3..value.len() - 1]
         .split(|c| matches!(*c, 47 | 92))
         .filter(|p| !p.is_empty())
     {
@@ -242,7 +231,7 @@ mod tests {
         for path in [
             r"C:relative",
             r"\\server\share\data",
-            r"\\?\C:\data",
+            r"\\?\UNC\server\share\data",
             r"C:\a\..\b",
             r"C:\a\.\b",
             r"C:\a:stream",

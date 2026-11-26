@@ -500,8 +500,8 @@ pub fn attachment_files(
 }
 
 /// A file field's location beside its library. On Windows the canonical
-/// library folder is a `\\?\C:\` path, where `/` is no separator and which
-/// the local-file checks refuse, so it becomes the plain `C:\` form first.
+/// library folder is a `\\?\C:\` path, where `/` is no separator, so it
+/// becomes the plain `C:\` form before resolving attachment fields.
 pub(crate) fn attachment_path(
     base: &Path,
     location: &Path,
@@ -512,8 +512,8 @@ pub(crate) fn attachment_path(
     } else {
         let mut path = plain_disk(base);
         for part in location.components() {
-            // Windows resolves `..` by name before the file system sees it,
-            // and its local-file checks take only that plain form.
+            // Windows resolves `..` by name before the file system sees it;
+            // the local-file checks refuse ambiguous parent components.
             #[cfg(windows)]
             if part == std::path::Component::ParentDir {
                 path.pop();

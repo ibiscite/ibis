@@ -468,4 +468,14 @@ mod offline_tests {
 }
 
 #[cfg(test)]
+mod parser_tests {
+    /// Documents are parsed only in the command line's `ibis __document`
+    /// child (decision 0060): the readers must not be built into the app.
+    #[test]
+    fn the_app_is_built_without_document_readers() {
+        assert!(!std::hint::black_box(ibis_core::syntax::DOCUMENT_READERS));
+    }
+}
+
+#[cfg(test)]
 mod test_citations;
