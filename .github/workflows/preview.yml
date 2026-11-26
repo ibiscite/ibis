@@ -152,7 +152,7 @@ jobs:
 
   # The notices every package ships (#1271): the licence text of every Rust
   # crate and npm package compiled into Ibis, written once from the lockfiles
-  # so every build carries the same bytes. Fails when a dependency has none.
+  # so every build carries the same bytes; and the npm list for the SBOMs.
   notices:
     name: Third-party notices
     needs: nightly-commit
@@ -210,6 +210,18 @@ jobs:
         with:
           name: third-party-notices
           path: notices/*
+          if-no-files-found: error
+          retention-days: 14
+
+      # The interface's npm packages, for every package's SBOM (#50).
+      - name: List the npm packages
+        run: python3 scripts/sbom.py npm npm-packages.json
+
+      - name: Keep the npm list
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-packages
+          path: npm-packages.json
           if-no-files-found: error
           retention-days: 14
 
@@ -375,16 +387,33 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: bash scripts/collect-packages.sh
 
-      # Opens every package as its format needs and requires the notices.
-      - name: Check the notices in every package
+      - name: Download the npm list
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-packages
+          path: ${{ runner.temp }}/npm
+
+      # What each package is built from (CycloneDX, scripts/sbom.py), on the
+      # system that built it: build dependencies follow it. The sbom job binds
+      # each file to the final bytes, after macOS signing.
+      - name: Write the SBOMs
         env:
           TARGET: ${{ matrix.target }}
-          # Matches "Choose the app identity" above.
-          PRODUCT: ${{ startsWith(github.ref, 'refs/tags/v') && 'Ibis' || 'Ibis Nightly' }}
+          REF: ${{ github.ref }}
+          NPM: ${{ runner.temp }}/npm/npm-packages.json
         run: |
+          cargo fetch --locked
           python=python3
           if [ "$RUNNER_OS" = Windows ]; then python=python; fi
-          "$python" scripts/verify-packages.py dist "$TARGET" apps/desktop/src-tauri/notices "$PRODUCT"
+          "$python" scripts/sbom.py sbom "$TARGET" "$CLI_TARGET" "$(node scripts/update-feed.mjs expected "$REF")" "$NPM"
+
+      - name: Keep the SBOMs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-${{ matrix.target }}
+          path: sbom/*
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Attest build provenance
         id: provenance
@@ -646,14 +675,158 @@ jobs:
           retention-days: 14
           overwrite: true
 
+  # Opens every package on its own system, after signing and as people will
+  # download it, before anything installs or publishes it (#227): checksums,
+  # notices, the version it states and embeds, its processor, the macOS
+  # signature and identity, and the command line it runs. Planted bad copies
+  # of the same packages must be refused first, so the check cannot pass by
+  # opening nothing. Intel macOS is checked here, on Apple silicon, but never
+  # started. Windows and Linux do not wait on macOS signing.
+  verify:
+    name: Verify packages (${{ matrix.name }})
+    needs: [build, sign-macos]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS (Apple silicon), os: macos-15, target: aarch64-apple-darwin }
+          - { name: macOS (Intel), os: macos-15, target: x86_64-apple-darwin }
+          - { name: Windows, os: windows-2025, target: x86_64-pc-windows-msvc }
+          - { name: Linux, os: ubuntu-24.04, target: x86_64-unknown-linux-gnu }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # A signing failure leaves unsigned macOS packages, which must not pass.
+      - name: Require the signed macOS packages
+        if: contains(matrix.target, 'apple')
+        env:
+          SIGNING: ${{ needs.sign-macos.result }}
+        run: |
+          if [ "$SIGNING" != success ] && [ "$SIGNING" != skipped ]; then
+            echo "::error::macOS signing ended with $SIGNING; its packages are not verified."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Download the packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ibis-${{ matrix.target }}
+          path: dist
+
+      - name: Download the notices
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: third-party-notices
+          path: notices
+
+      # The expected version comes from the tag or the commit, never from the build.
+      - name: Verify every package
+        env:
+          TARGET: ${{ matrix.target }}
+          REF: ${{ github.ref }}
+          LEAF: ${{ vars.MACOS_SIGNING_LEAF }}
+          # Matches "Choose the app identity" in the build job.
+          IDENTIFIER: ${{ startsWith(github.ref, 'refs/tags/v') && 'com.ibiscite.ibis' || 'com.ibiscite.ibis.nightly' }}
+          PRODUCT: ${{ startsWith(github.ref, 'refs/tags/v') && 'Ibis' || 'Ibis Nightly' }}
+        run: |
+          version=$(node scripts/update-feed.mjs expected "$REF")
+          build=$version
+          if [[ "$REF" != refs/tags/v* ]]; then build="$version+${GITHUB_SHA:0:7}"; fi
+          signed=()
+          # Whenever signing is configured; a skipped signing job then fails here.
+          if [[ "$TARGET" == *apple* ]] && [ -n "$LEAF" ]; then signed=(--signing-leaf "$LEAF"); fi
+          python=python3
+          if [ "$RUNNER_OS" = Windows ]; then python=python; fi
+          "$python" scripts/verify-packages.py dist "$TARGET" notices --version "$version" --build "$build" \
+            --identifier "$IDENTIFIER" --product "$PRODUCT" "${signed[@]}" --self-test
+
+  # Binds each package to its SBOM with a GitHub SBOM attestation, on the
+  # final bytes (after macOS signing); publishing verifies them and attaches
+  # the SBOM files to the release (#50). Holds no secret.
+  sbom:
+    name: Attest SBOMs (${{ matrix.name }})
+    needs: [build, sign-macos]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS (Apple silicon), target: aarch64-apple-darwin, platform: macOS-Apple-silicon }
+          - { name: macOS (Intel), target: x86_64-apple-darwin, platform: macOS-Intel }
+          - { name: Windows, target: x86_64-pc-windows-msvc, platform: Windows }
+          - { name: Linux, target: x86_64-unknown-linux-gnu, platform: Linux }
+    steps:
+      # Unsigned macOS packages after a signing failure must not be attested.
+      - name: Require the signed macOS packages
+        if: contains(matrix.target, 'apple')
+        env:
+          SIGNING: ${{ needs.sign-macos.result }}
+        run: |
+          if [ "$SIGNING" != success ] && [ "$SIGNING" != skipped ]; then
+            echo "::error::macOS signing ended with $SIGNING; its packages get no SBOM attestation."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Download the packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ibis-${{ matrix.target }}
+          path: dist
+
+      - name: Download the SBOMs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sbom-${{ matrix.target }}
+          path: sbom
+
+      - name: Check the SBOMs
+        env:
+          REF: ${{ github.ref }}
+          PLATFORM: ${{ matrix.platform }}
+        run: python3 scripts/sbom.py --check "$(node scripts/update-feed.mjs expected "$REF")" "sbom/Ibis-$PLATFORM.cdx.json" "sbom/ibis-$PLATFORM-cli.cdx.json"
+
+      - name: Attest the app packages' SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/Ibis-${{ matrix.platform }}*
+          sbom-path: sbom/Ibis-${{ matrix.platform }}.cdx.json
+
+      - name: Attest the command line's SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/ibis-${{ matrix.platform }}.*
+          sbom-path: sbom/ibis-${{ matrix.platform }}-cli.cdx.json
+
   # Install each package the way a user would, start the installed app and
   # drive it with the native smoke test, so a broken installer or a package
-  # that will not start is never published. The Intel disk image is built but
-  # not installed: this job uses only Apple silicon macOS runners.
+  # that will not start is never published. The Intel disk image is verified
+  # but not installed: this job uses only Apple silicon runners.
   install:
     name: Install and start (${{ matrix.name }})
-    needs: [build, sign-macos, windows-paste]
-    if: ${{ !cancelled() && needs.build.result == 'success' && needs.windows-paste.result == 'success' && (needs.sign-macos.result == 'success' || needs.sign-macos.result == 'skipped') }}
+    needs: [build, sign-macos, windows-paste, verify]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.windows-paste.result == 'success' && (needs.sign-macos.result == 'success' || needs.sign-macos.result == 'skipped') && needs.verify.result == 'success' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -710,8 +883,8 @@ jobs:
 
   publish:
     name: Publish release
-    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish) && needs.build.result == 'success' && needs.install.result == 'success' && needs.release-checks.result == 'success' && needs.style-changes.result == 'success' }}
-    needs: [build, install, release-checks, style-changes]
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish) && needs.build.result == 'success' && needs.verify.result == 'success' && needs.sbom.result == 'success' && needs.install.result == 'success' && needs.release-checks.result == 'success' && needs.style-changes.result == 'success' }}
+    needs: [build, verify, sbom, install, release-checks, style-changes]
     # The Latest read and publish must not interleave.
     concurrency:
       group: publish-numbered-release
@@ -755,13 +928,20 @@ jobs:
           pattern: ibis-*
           merge-multiple: true
 
+      - name: Download the SBOMs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: sbom
+          pattern: sbom-*
+          merge-multiple: true
+
       - name: Download the style changes
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: style-changes
           path: style-changes
 
-      - name: Verify checksums and tag-bound provenance before publication
+      - name: Verify checksums, tag-bound provenance and SBOMs before publication
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -772,6 +952,7 @@ jobs:
           for file in dist/*; do
             gh attestation verify "$file" --repo "$REPO" --source-ref "$SOURCE_REF" --source-digest "$SOURCE_SHA" --signer-workflow "$REPO/.github/workflows/preview.yml"
           done
+          bash scripts/verify-sboms.sh
 
       # As in the nightly job: sign only verified packages, and stop if a
       # signature names any key other than the one built into the app.
@@ -848,8 +1029,8 @@ jobs:
 
   nightly:
     name: Publish nightly pre-release
-    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) && needs.build.result == 'success' && needs.install.result == 'success' }}
-    needs: [build, install]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish) && needs.build.result == 'success' && needs.verify.result == 'success' && needs.sbom.result == 'success' && needs.install.result == 'success' }}
+    needs: [build, verify, sbom, install]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     # Holds the nightly update signing key, which Ibis (stable) never trusts.
@@ -888,16 +1069,25 @@ jobs:
           pattern: ibis-*
           merge-multiple: true
 
-      - name: Verify checksums and main-bound provenance before publication
+      - name: Download the SBOMs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: sbom
+          pattern: sbom-*
+          merge-multiple: true
+
+      - name: Verify checksums, main-bound provenance and SBOMs before publication
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          SOURCE_REF: refs/heads/main
           SOURCE_SHA: ${{ github.sha }}
         run: |
           (cd dist && sha256sum --check SHA256SUMS-*.txt)
           for file in dist/*; do
-            gh attestation verify "$file" --repo "$REPO" --source-ref refs/heads/main --source-digest "$SOURCE_SHA" --signer-workflow "$REPO/.github/workflows/preview.yml"
+            gh attestation verify "$file" --repo "$REPO" --source-ref "$SOURCE_REF" --source-digest "$SOURCE_SHA" --signer-workflow "$REPO/.github/workflows/preview.yml"
           done
+          bash scripts/verify-sboms.sh
 
       # Signs only packages whose checksums and provenance were just verified,
       # then lists them in the update file; a signature with any other key ID

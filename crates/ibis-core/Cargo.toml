@@ -7,6 +7,10 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# The manuscript and marker readers, run only in the CLI's document child (decision 0060).
+documents = []
+
 [dependencies]
 schemars = "=1.2.3"
 sha2 = "0.11.1"

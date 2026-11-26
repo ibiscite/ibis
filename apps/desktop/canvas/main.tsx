@@ -61,14 +61,15 @@ const zoteroLibrary: Partial<LibraryStatus> = { zotero: true, snapshot_zotero: t
 /** What differs from the loaded picker. Each entry is real app state: the
  * picture is whatever the app draws for it. */
 const fixtures: Partial<Record<Scenario, {
-  query?: string; library?: Partial<LibraryStatus>; rows?: SearchResult[]; preferences?: { density?: "compact"; larger_text?: boolean; output?: string };
+  query?: string; library?: Partial<LibraryStatus>; rows?: SearchResult[]; preferences?: { density?: "compact" | "comfortable"; larger_text?: boolean; output?: string };
   /** The session's text size from ⌘+/⌘− (1 is 100%). */
   textZoom?: number;
   /** Clicked in order, each once the one before has drawn what it opens. */
   click?: string | string[]; keys?: KeyboardEventInit[];
 }>> = {
   "editor-request": { preferences: { output: "apa" } },
-  "picker-refusal": { click: 'button[aria-label^="Edit "]' },
+  // A refused citation: the action off, its reason in the bar, nothing opened.
+  "picker-refusal": {},
   "retained-citation": {},
   "settings-details": { click: "button.ui-details-toggle" },
   more: { library: zoteroLibrary },
@@ -96,7 +97,8 @@ const fixtures: Partial<Record<Scenario, {
   "zotero-closed": { query: "", library: { state: "error", has_snapshot: false, references: 0, zotero: true, name: "Zotero", problem: "zotero_closed", error: "Zotero’s library cannot be read while it is closed" } },
   unreadable: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "unreadable", error: "the library file does not contain valid reference data" } },
   stale: { library: { stale: true, zotero: true, snapshot_zotero: true, name: "Zotero", snapshot_name: "Zotero", error: "Zotero’s library cannot be read while it is closed", problem: "zotero_closed", checked_at: Date.now() - 2 * 3_600_000 } },
-  compact: { preferences: { density: "compact" } },
+  // The other density: Compact is the default.
+  comfortable: { preferences: { density: "comfortable" } },
   "text-80": { textZoom: 0.8 },
   "text-120": { textZoom: 1.2 },
   "larger-text": { preferences: { larger_text: true } },
@@ -362,7 +364,7 @@ function Canvas({ host, scenario, settings, theme }: { host: HTMLElement; scenar
       const focused = host.contains(document.activeElement) ? document.activeElement : search;
       if (keys.length) { focused!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...keys.shift()! })); return; }
       if (!clicks.length) { observer.disconnect(); return; }
-      const button = host.querySelector<HTMLButtonElement>(clicks[0]!) ?? document.querySelector<HTMLButtonElement>(`.ui-popover ${clicks[0]!}`);
+      const button = host.querySelector<HTMLButtonElement>(clicks[0]!) ?? document.querySelector<HTMLButtonElement>(`.ui-drawer ${clicks[0]!}`);
       if (!button || button.disabled || document.documentElement.hasAttribute("data-picker-hidden")) return;
       clicks.shift();
       if (!clicks.length) observer.disconnect();

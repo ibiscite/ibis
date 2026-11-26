@@ -25,10 +25,9 @@ const remember = (output: OutputId) => { recent.splice(0, recent.length, output,
  * the palette: the way back to your format first, your recent formats, the
  * app's own choices, then every format by typing, with a key citation or a
  * labelled style example beside the list. Focus returns to Search. */
-export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writing, onWritings, preview, example, usualFormat, onUseUsual, formatLabel, deliveryLabel }: {
+export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writing, onWritings, preview, example, usualFormat, onUseUsual, formatLabel }: {
   format: OutputId;
   formatLabel?: string;
-  deliveryLabel?: string;
   usualFormat?: OutputId | null;
   onUseUsual?: () => void;
   /** Your own format, the one a "back" row returns to. */
@@ -56,8 +55,9 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   example?: FormatExample | null;
 }) {
   const [open, setOpen] = useState(false);
+  // The pop-up names the format alone: where it goes is the bar's action, and
+  // whose format it is, the palette's heading and the spoken status beside it.
   const name = formatLabel ?? outputName(format);
-  const value = deliveryLabel ? say("picker-format-for-app", { format: name, app: deliveryLabel }) : writing ? say("picker-format-for-app", { format: name, app: writing.name }) : source === "held" ? say("picker-format-this-paste", { format: name }) : source === "default" || !app ? name : say("picker-format-for-app", { format: name, app });
   const why = writing ? say("writing-remembered", { name: isolate(writing.name) }) : source === "held" ? say("picker-format-held", { format: name }) : source === "default" ? app ? say("picker-format-app-default", { app }) : say("picker-format-no-app")
     : app ? source === "remembered" ? say("picker-format-remembered", { app }) : say("picker-format-suggested", { app }) : source === "suggested" ? say("picker-format-suggestion") : say("picker-format-no-app");
   const next = writing ? say("writing-pick") : source === "held" ? pick === "app" ? say("picker-pick-to-remember") : pick === "default" ? say("picker-pick-to-set-default") : ""
@@ -111,10 +111,10 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   return <>
     <span role="status" aria-label={say("picker-format-label")} className="visually-hidden">{`${name}. ${why}`}</span>
     <PopupButton ref={buttonRef} keys={keysFor("format")} isDisabled={disabled} className="toolbar-menu-button"
-      aria-label={`${say("picker-format-label")} ${value}`} aria-expanded={open} aria-haspopup="dialog"
+      aria-label={`${say("picker-format-label")} ${name}`} aria-expanded={open} aria-haspopup="dialog"
       onPress={() => { if (open) close("dismiss"); else { setOpen(true); onOpenChange?.(true); } }}
       // ↓ opens it too, as on every pop-up button.
-      onKeyDown={(event) => { if (event.key === "ArrowDown" && !open && !disabled) { setOpen(true); onOpenChange?.(true); } else event.continuePropagation(); }}>{value}</PopupButton>
+      onKeyDown={(event) => { if (event.key === "ArrowDown" && !open && !disabled) { setOpen(true); onOpenChange?.(true); } else event.continuePropagation(); }}>{name}</PopupButton>
     {open && <Palette id="format-palette" title={say("picker-format-title")} subtitle={(item) => once(item) ? say("picker-pick-heading-this-paste") : whose} placeholder={say("palette-search-formats")}
       sections={sections} initial={back ? "back" : format} onAction={choose} onClose={close} empty={say("palette-no-formats")}
       actionLabel={(item) => item.back || listedOutput(item.id) ? say(pick === "paste" || once(item) ? "palette-use-this-paste" : pick === "default" || !app ? "palette-use-default" : "palette-use-for-app", { app: writing?.name ?? app ?? "" }) : say("palette-run")}

@@ -1,8 +1,10 @@
 import { recordId } from "./test-fixtures";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { backend, prepared, receipt, resetApp, result } from "./testing/app";
+import { fixtureDestination } from "./testing/format";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(resetApp);
@@ -74,4 +76,114 @@ test.each(["offer", "preview"] as const)("first Enter stays in Ibis when the %s 
 
   await enter();
   expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
+});
+
+test("the bar names no action until the opening's offer says what Enter does, then the practice", async () => {
+  let finishOffer!: () => void;
+  const calls = backend({
+    search: () => [result("aster2026", "Invented gardens")],
+    delight_view: () => new Promise((resolve) => { finishOffer = () => resolve({ practice: true, status: null, peck: false }); }),
+    preview_file_citation: () => receipt("[@aster2026]"),
+  });
+  await act(async () => { render(<App />); });
+  // The preview is ready first: the action keeps its room, but says nothing Enter may not do.
+  expect(screen.queryByRole("button", { name: /^(Copy|Paste)/ })).toBeNull();
+  expect(document.querySelector(".footer-action")?.getAttribute("aria-hidden")).toBe("true");
+  await act(async () => { finishOffer(); });
+  expect(screen.getByRole("button", { name: "Paste Here to Try" })).toBeTruthy();
+  await enter();
+  expect(calls).not.toContain("deliver_citation");
+  expect(screen.getByText(/\[@aster2026\].*pasted here/)).toBeTruthy();
+  // After the practice, the bar and Enter both deliver.
+  expect(screen.queryByRole("button", { name: "Paste Here to Try" })).toBeNull();
+});
+
+test("an editor's request is sent, never turned into the practice, while the offer is still being read", async () => {
+  let finish!: (view: unknown) => void;
+  const calls = backend({
+    search: () => [result("a", "Invented A")],
+    editor_request: () => ({ request: 1, format: "Pandoc" }),
+    delight_view: () => new Promise((resolve) => { finish = resolve; }),
+    preview_file_citation: () => receipt("[@a]"),
+  });
+  await act(async () => { render(<App />); });
+  expect(screen.getByRole("button", { name: "Send to Editor" })).toBeTruthy();
+  await enter();
+  await act(async () => { finish({ practice: true, status: null, peck: false }); });
+  expect(calls).toContain("deliver_citation");
+  expect(screen.queryByText(/pasted here/)).toBeNull();
+});
+
+test("a refusal is said for Enter on that citation only, never carried to another", async () => {
+  const reason = "A key in thesis.bib identifies a different work.";
+  const calls = backend({
+    search: ({ query }) => [result(query.text || "a", `Invented ${query.text || "a"}`)],
+    preview_file_citation: ({ items }) => ({ ...receipt(`[@${items[0]!.id.key}]`), project_refusal: items[0]!.id.key === recordId("b") ? null : reason }),
+  });
+  await act(async () => { render(<App />); });
+  await enter();
+  await act(async () => { fireEvent.change(searchBox(), { target: { value: "b" } }); });
+  await enter();
+  expect(calls.filter((call) => call === "deliver_citation")).toHaveLength(1);
+  const added: string[] = [];
+  const observer = new MutationObserver((records) => { for (const record of records) for (const node of record.addedNodes) added.push(node.textContent ?? ""); });
+  observer.observe(document.querySelector(".delivery-bar")!, { childList: true, subtree: true });
+  await act(async () => { fireEvent.change(searchBox(), { target: { value: "c" } }); });
+  observer.disconnect();
+  expect(added).not.toContain(`Not pasted or copied. ${reason}`);
+});
+
+test("returning to a refused citation is not a press: nothing is said until Enter", async () => {
+  const reason = "A key in thesis.bib identifies a different work.";
+  backend({
+    search: ({ query }) => [result(query.text || "a", `Invented ${query.text || "a"}`)],
+    preview_file_citation: ({ items }) => ({ ...receipt(`[@${items[0]!.id.key}]`), project_refusal: items[0]!.id.key === recordId("b") ? null : reason }),
+  });
+  await act(async () => { render(<App />); });
+  await enter();
+  await act(async () => { fireEvent.change(searchBox(), { target: { value: "b" } }); });
+  const added: string[] = [];
+  const observer = new MutationObserver((records) => { for (const record of records) for (const node of record.addedNodes) added.push(node.textContent ?? ""); });
+  observer.observe(document.querySelector(".delivery-bar")!, { childList: true, subtree: true });
+  await act(async () => { fireEvent.change(searchBox(), { target: { value: "a" } }); });
+  observer.disconnect();
+  expect(added).not.toContain(`Not pasted or copied. ${reason}`);
+});
+
+test("a refusal whose reason changes waits for a fresh press before it is said again", async () => {
+  let generation = 1;
+  const reason = () => `A key in ${generation === 1 ? "thesis.bib" : "article.bib"} identifies a different work.`;
+  backend({
+    search: () => [result("a", "Invented A")],
+    "project-status": () => ({ name: generation === 1 ? "thesis.bib" : "article.bib", generation, revision: 0, state: "ready", damaged_lines: [], reason: null }),
+    preview_file_citation: () => ({ ...receipt("[@a]"), project_refusal: reason() }),
+  });
+  await act(async () => { render(<App />); });
+  await enter();
+  generation = 2;
+  await act(async () => { await emit("project:changed", [2, 0]); });
+  expect(screen.getByText(reason())).toBeTruthy();
+  const said = [...document.querySelectorAll('.delivery-bar [role="alert"]')].find((node) => !node.closest(".bar-reason"));
+  expect(said?.textContent).toBe("");
+  await enter();
+  expect(said?.textContent).toBe(`Not pasted or copied. ${reason()}`);
+});
+
+test("in Find mode the bar offers Open only while there is a result to open, as Enter does", async () => {
+  const open = vi.fn(() => null);
+  const calls = backend({
+    library_status: () => ({ state: "loaded", has_snapshot: true, zotero: true, snapshot_zotero: true, zotero_libraries: ["user"], name: "Zotero", references: 1, warnings: 0, error: null, problem: null, note: null }),
+    destination: () => fixtureDestination({ app: "Zotero", app_id: "org.zotero.zotero", find_open: true }),
+    search: ({ query }) => query.text ? [] : [result("a", "Invented A")],
+    zotero_groups: () => [], open_library_source: open,
+  });
+  await act(async () => { render(<App />); });
+  expect(screen.getByRole("button", { name: "Open PDF, or show item in Zotero" })).toBeTruthy();
+  await act(async () => { fireEvent.keyDown(searchBox(), { key: "Enter", shiftKey: true }); });
+  await act(async () => { fireEvent.change(searchBox(), { target: { value: "missing" } }); });
+  // The citation is kept, but nothing can be opened: the bar promises nothing.
+  expect(screen.queryByRole("button", { name: "Open PDF, or show item in Zotero" })).toBeNull();
+  await enter();
+  expect(open).not.toHaveBeenCalled();
+  expect(calls).not.toContain("deliver_citation");
 });

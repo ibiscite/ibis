@@ -1,14 +1,16 @@
 /* [C24] The picker window's frame (ui/Frame.tsx): slots in one order at every size,
-   search, the list's heading line, content with the Inspector beside it, shelf and
-   footer. Each slot's height is its own and never depends on what another holds,
-   so nothing that appears or passes moves the list, the shelf or the footer. */
+   search, the list's heading line, content with the Inspector beside it, the
+   drawer and the delivery bar. Each slot's height is its own and never depends on
+   what another holds, so nothing that appears or passes moves the search, the
+   list's first row or the bar; an open drawer takes its room from the list's end. */
 main.ui-frame {
   height: 100dvh; container-type: inline-size; overflow: hidden; display: grid;
-  grid-template: "search search" auto "notice panel" auto "middle panel" minmax(0, 1fr) "shelf shelf" auto "footer footer" auto / minmax(0, 1fr) auto;
+  grid-template: "search search" auto "notice panel" auto "middle panel" minmax(0, 1fr) "drawer drawer" auto "bar bar" auto / minmax(0, 1fr) auto;
 }
 main.ui-frame > .search-bar { grid-area: search; }
-main.ui-frame > .shelf { grid-area: shelf; }
-main.ui-frame > footer { grid-area: footer; }
+main.ui-frame > .ui-drawer-slot { grid-area: drawer; min-width: 0; }
+main.ui-frame > .ui-drawer-slot:empty { display: none; }
+main.ui-frame > footer { grid-area: bar; }
 
 /* The heading line: the list's heading, or a notice standing in for it at the same
    height. With neither (an empty state, the commands) the line is not drawn, so

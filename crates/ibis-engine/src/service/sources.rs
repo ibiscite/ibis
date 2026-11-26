@@ -247,6 +247,7 @@ impl Engine {
             resources: Arc::new(resources),
             watch_files: false,
             pdf: self.pdf.clone(),
+            documents: self.documents.clone(),
             built_in_sources: self.built_in_sources.clone(),
             external_sources: self.external_sources.clone(),
             attachment_text_outside_library: self.attachment_text_outside_library,

@@ -187,18 +187,13 @@ fn cached(control: &Control) -> Result<Vec<Mount>, ClosedError> {
 pub(super) fn resolved(path: &Path, control: &Control) -> Result<PathBuf, ClosedError> {
     control.check()?;
     let mounts = cached(control)?;
-    let resolved = walk(
-        path,
-        &mounts,
-        |path| std::fs::symlink_metadata(path),
-        |path| std::fs::read_link(path),
-    );
+    let resolved = walk(path, &mounts, |path| std::fs::symlink_metadata(path));
     control.check()?;
     resolved
 }
 
 /// Classify a path before opening it, without probing any component. The
-/// caller walks below an already resolved root with no-follow handles.
+/// caller opens each component through no-follow handles.
 pub(super) fn local(path: &Path, control: &Control) -> Result<(), ClosedError> {
     control.check()?;
     let mounts = cached(control)?;
@@ -226,7 +221,6 @@ fn walk(
     path: &Path,
     mounts: &[Mount],
     metadata: impl Fn(&Path) -> std::io::Result<std::fs::Metadata>,
-    read_link: impl Fn(&Path) -> std::io::Result<PathBuf>,
 ) -> Result<PathBuf, ClosedError> {
     if !path.is_absolute() {
         return Err(ClosedError::UnsafeSource);
@@ -268,7 +262,7 @@ fn walk(
             if links > 40 {
                 return Err(ClosedError::UnsafeSource);
             }
-            let target = read_link(&current).map_err(|_| ClosedError::UnsafeSource)?;
+            let target = std::fs::read_link(&current).map_err(|_| ClosedError::UnsafeSource)?;
             current.pop();
             if target.is_absolute() {
                 current = PathBuf::from("/");
@@ -308,19 +302,14 @@ mod tests {
                 format!("1 0 8:1 / / rw - ext4 /dev/synthetic rw\n2 1 0:2 / /mnt/remote rw - {kind} synthetic rw\n");
             let mounts = linux_table(table.as_bytes()).unwrap_or_else(|| panic!("synthetic table"));
             let probes = Cell::new(0);
-            let checked = walk(
-                Path::new("/mnt/remote/Zotero"),
-                &mounts,
-                |path| {
-                    probes.set(probes.get() + 1);
-                    if path == Path::new("/mnt") {
-                        std::fs::metadata("/")
-                    } else {
-                        panic!("remote path was probed")
-                    }
-                },
-                |_| panic!("no symlinks"),
-            );
+            let checked = walk(Path::new("/mnt/remote/Zotero"), &mounts, |path| {
+                probes.set(probes.get() + 1);
+                if path == Path::new("/mnt") {
+                    std::fs::metadata("/")
+                } else {
+                    panic!("remote path was probed")
+                }
+            });
             assert_eq!(checked, Err(ClosedError::UnsafeSource), "{kind}");
             assert_eq!(probes.get(), 1);
         }
@@ -342,12 +331,9 @@ mod tests {
         let table = b"1 0 8:1 / / rw - ext4 /dev/synthetic rw\n2 1 0:2 / /remote rw - nfs synthetic rw\n3 2 8:1 / /remote/local-bind rw - ext4 /dev/synthetic rw\n";
         let mounts = linux_table(table).unwrap_or_else(|| panic!("table"));
         assert_eq!(
-            walk(
-                Path::new("/remote/local-bind/Zotero"),
-                &mounts,
-                |_| panic!("the remote ancestor must not be probed"),
-                |_| panic!("no symlink")
-            ),
+            walk(Path::new("/remote/local-bind/Zotero"), &mounts, |_| panic!(
+                "the remote ancestor must not be probed"
+            )),
             Err(ClosedError::UnsafeSource)
         );
         assert!(linux_table(b"2 1 8:1 / /only-child rw - ext4 synthetic rw\n").is_none());

@@ -7,18 +7,20 @@ import { currentPlatform } from "../platform";
 import { ButtonKeys, KeyHint } from "./KeyCaps";
 import { usePresence } from "./presence";
 
-type Look = Pick<ComponentPropsWithRef<"button">, "ref" | "title" | "aria-busy" | "aria-keyshortcuts" | "aria-hidden" | "inert"> & {
+type Look = Pick<ComponentPropsWithRef<"button">, "ref" | "title" | "aria-busy" | "aria-keyshortcuts" | "aria-hidden" | "aria-disabled" | "inert"> & {
   /** `action`: a launcher's main action, quiet words with the accent on its key cap. */
   variant?: "primary" | "action" | "secondary" | "quiet" | "icon"; size?: "default" | "small"; className?: string;
   label?: string; keys?: string; icon?: ReactNode;
 };
 
 /** Shared pointer, keyboard, touch and disabled states; callers own the action. */
+/** `aria-disabled`: unavailable but still focusable and spoken, so a screen reader
+ * hears it and the reason it describes; its press is the caller's to refuse. */
 export function Button({ variant = "secondary", size = "default", className = "", label, keys, icon, children, ...props }: Omit<ButtonProps, "className"> & Look) {
   const { counts, register } = usePresence({ keys: 0 });
   const shortcut = keys ? ariaKeys(keys, currentPlatform() === "macos") : props["aria-keyshortcuts"];
   return <ButtonKeys.Provider value={register}><AriaButton {...props} aria-label={props["aria-label"] ?? label} className={`ui-button ${className}`} data-variant={variant} data-size={size} data-keys={counts.keys ? "" : undefined}
-    render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-busy={props["aria-busy"]} aria-keyshortcuts={shortcut} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)}>
+    render={props.render ?? ((native) => <button {...native as ComponentPropsWithRef<"button">} title={props.title} aria-busy={props["aria-busy"]} aria-disabled={props["aria-disabled"]} aria-keyshortcuts={shortcut} aria-hidden={props["aria-hidden"]} tabIndex={props.excludeFromTabOrder ? -1 : native.tabIndex} />)}>
     {(values) => <>{icon && <span className="ui-button-icon">{icon}</span>}
       {label ? keys ? <KeyHint label={label} keys={keys} primary={variant === "primary" || variant === "action"} hidden echo /> : <bdi>{label}</bdi> : typeof children === "function" ? children(values) : children}
 </>}

@@ -12,6 +12,7 @@ import type { ShelfCopied } from "./session";
 import { composing } from "../../composition";
 import { Button } from "../../ui/Button";
 import { CitationToken } from "../../ui/CitationToken";
+import { FrameCitation } from "../../ui/Frame";
 import { useDelayed } from "../../ui/timers";
 import { beak } from "../../brand";
 import { CitationInspector } from "./CitationInspector";
@@ -52,7 +53,7 @@ function Beak({ closing = false }: { closing?: boolean }) {
 
 /** One line of exact engine output. Citation details open from each token;
  * a folded citation retains its full text and every reference's identity. */
-export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, deliverable = true, keepOrder = false, inspector, onSubmit, copyProblem, announce, selected, highlightedReference, highlightedReferences, onChangeReference, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, outputNotices = [], problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
+export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, deliverable = true, keepOrder = false, inspector, onSubmit, announce, selected, highlightedReference, highlightedReferences, onChangeReference, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, outputNotices = [], problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
   inspector: CitationInspectorState;
   actionsRef?: Ref<CitationLineActions | null>;
   /** Moves a reference a place along the line's order (`shown`), as the session does. */
@@ -60,7 +61,6 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   onKeepOrder?: (on: boolean) => void;
   /** Enter in Page does what it does in Search. */
   onSubmit?: () => void;
-  copyProblem?: string | null;
   /** Enter would deliver the shown citation now; until then nothing drags. */
   deliverable?: boolean;
   keepOrder?: boolean;
@@ -189,11 +189,6 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     const target = token?.querySelector("button") ?? (origin?.isConnected ? origin : output.current?.querySelector<HTMLElement>(".shelf-actions button")) ?? fallbackFocusRef?.current;
     target?.focus({ preventScroll: true });
   }, [panel, fallbackFocusRef]);
-  // The details grow from their reference's token, or from the control that opened them.
-  const anchor = useRef<Element | null>(null);
-  useLayoutEffect(() => {
-    anchor.current = (panel?.kind === "reference" && panel.reference ? tokenButton(panel.reference) : null) ?? (panel?.origin.isConnected ? panel.origin : output.current);
-  });
   const fromPrevious = !ready && retainedTokens;
   const referenceAt = (item: number) => fromPrevious ? references.find((reference) => idKey(reference.id) === retainedIds[item]) : references[item];
   // The shelf is one line: an output written on several (BibTeX) reads as one here, its words in full in the tooltip.
@@ -328,12 +323,12 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
       {announce ? [say("picker-selection-count", { count: selected.size }), ...partialWarnings.map((w) => warningText(w))].join(" ") : ""}
     </Status>
     <Status className="visually-hidden">{keepOrder ? orderNote : ""}</Status>
-    {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} anchor={anchor} heading={labels[editedIndex] ?? say("picker-citation-details")}
+    {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} heading={labels[editedIndex] ?? say("picker-citation-details")}
       keepOrder={style && onKeepOrder && references.length > 1 && edited && isSelected(edited) ? { checked: keepOrder, onChange: onKeepOrder } : null}
       reference={panel.kind === "warnings" ? undefined : edited} index={editedIndex} selected={Boolean(edited && isSelected(edited))} previewReceipt={previewReceipt} output={`${style}:${keys}`}
-      failure={shown === "failed" ? fullProblem : ready?.project_refusal ?? copyProblem ?? null} notes={{ entry: entryNotice, output: currentWarnings, closest: partialWarnings }}
+      failure={shown === "failed" ? fullProblem : null} notes={{ entry: entryNotice, output: currentWarnings, closest: partialWarnings }}
       onChange={onChangeReference} onSubmit={onSubmit} onRemove={remove} onClose={close} />}
-    {hasShelf ? <div className="shelf" data-folded={compact || undefined} data-copied={copied ? "" : undefined} ref={preserveFocus}>
+    {hasShelf ? <FrameCitation><div className="shelf" data-folded={compact || undefined} data-copied={copied ? "" : undefined} ref={preserveFocus}>
       <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? say("picker-preview") : say("picker-citation-details")}
         tabIndex={focusable && shown !== undefined && !copied && !singleToken && !citationTokens ? 0 : undefined}
         className="shelf-output" data-keys={keys || undefined} data-state={!copied && (shown === null || typeof shown === "string") ? shown ?? "pending" : undefined}>
@@ -373,6 +368,6 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
             onPress={(event) => open("failure", event.target as HTMLElement, references[0])}>{say("picker-details")}</Button>}
         </div>
       </section>
-    </div> : null}
+    </div></FrameCitation> : null}
   </>;
 }

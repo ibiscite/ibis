@@ -11,7 +11,7 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API, closed database and Better BibTeX), discovery, database snapshots and file watches. Includes the built-in EndNote [source adapter](source-adapters.md). Each reader declares what its library offers. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
-| `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor and built-in source adapters it starts as its own child processes (`ibis __extract-pdf`, with `lopdf`; `ibis __source NAME`). Depends on core and engine, and enables the EndNote reader in `ibis-sources` for the adapter process. |
+| `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor and built-in source adapters it starts as its own child processes (`ibis __extract-pdf`, with `lopdf`; `ibis __document`; `ibis __source NAME`). Depends on core and engine, and enables the EndNote reader and the document readers in `ibis-sources` for those processes. |
 | `crates/ibis-native` | Native paste with no window toolkit: the target capture, its proofs and their platform calls, and every `unsafe` block they need. The host supplies windows, the paste setting and the keyboard layout. Depends on core only. |
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste delivery through `ibis-native`, shortcuts, settings dialogs and updates. Depends on core, engine, native and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
@@ -30,6 +30,9 @@ receipt and never waits; settings reads use the owner's published view
 
 The desktop links the engine in process, with generated TypeScript bindings;
 it is given no PDF reader, so PDF parsing never runs in the app ([0055](decisions/0055-agent-layers-full-text-writes-remote.md)).
+Documents (manuscripts for `check` and `export`) are parsed only in `ibis __document`, the
+command line's child; the readers sit behind the `documents` feature of `ibis-core` and
+`ibis-sources`, which only `ibis-cli` enables, and a desktop test proves them absent ([0060](decisions/0060-one-document-pipeline.md)).
 Contracts for the CLI, JSON-RPC and MCP are in [the CLI reference](cli.md); the
 desktop also provides the [editor endpoint](parity.md#better-bibtex-cite-as-you-write).
 Library results carry `source_health` from the state they read; later refresh

@@ -169,7 +169,7 @@ mod tests {
         let settings = SettingsFile::new(directory.path().join("settings.json"));
         settings.update(|saved| {
             saved.portable.output = Some("apa".into());
-            saved.portable.density = Some(Density::Compact);
+            saved.portable.density = Some(Density::Comfortable);
             saved.portable.larger_text = Some(true);
         })?;
         let path = directory.path().join("invented.bib");
@@ -280,7 +280,7 @@ mod tests {
             assert_eq!(snapshot.destination.as_ref().map_err(Clone::clone)?, &destination);
             let preferences = snapshot.preferences.as_ref().map_err(Clone::clone)?;
             assert_eq!(preferences.output.id(), "apa");
-            assert_eq!(preferences.density, Density::Compact);
+            assert_eq!(preferences.density, Density::Comfortable);
             assert!(preferences.larger_text);
         }
         let (observed, preparing) = app.state::<Presentation>().subscribe(app.handle(), 8);

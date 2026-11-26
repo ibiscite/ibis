@@ -77,7 +77,7 @@ Library commands save only the private identity key; explicit `settings` and
 `projects` commands also write the settings you choose.
 
 In `libraries --json`, each library lists the `capabilities` its reader
-declares (`bibliographic-records`, key kinds, `attachment-text`, `proposals`)
+declares (`bibliographic-records`, key kinds, `attachment-text`, `proposals`, `original-entries`)
 and a `revision` that changes whenever its published content may have changed.
 A tool that mirrors a library compares `revision` and rereads only when it
 differs. RIS and CSV files declare records only: they have no citation keys,

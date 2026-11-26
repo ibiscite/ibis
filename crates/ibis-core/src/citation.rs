@@ -7,8 +7,8 @@ use crate::syntax::{MAX_CITATION_BYTES, MAX_CITATION_ITEMS};
 pub struct ItemSupport {
     pub locator: bool,
     pub form: bool,
-    /// The output prints bibliographic data, so a record needs some public
-    /// details (decision 0061). Key citations and record exports can name a
+    /// The output prints bibliographic data, so a record needs a public title,
+    /// author or editor (decision 0061). Key citations and record exports can name a
     /// record without descriptive metadata and do not ask.
     pub details: bool,
 }
@@ -86,16 +86,13 @@ pub fn check<'a>(
         .collect())
 }
 
-/// Whether a record has public bibliographic data beyond its item type, in
-/// the fields a citation actually uses (note overrides applied). Privacy
-/// filtering may leave only a publisher or date; the renderer decides whether
-/// those details have a printed form in the requested style.
+/// Whether a record has a public title, author or editor after applying note
+/// overrides and privacy filtering (decision 0061).
 pub fn has_details(record: &Record) -> bool {
     let fields = crate::citable::CitableFields::new(record.csl.to_map());
-    fields
-        .plain()
-        .iter()
-        .any(|(name, value)| name != "type" && has_value(value))
+    ["title", "author", "editor"]
+        .into_iter()
+        .any(|name| fields.plain().get(name).is_some_and(has_value))
 }
 
 fn has_value(value: &serde_json::Value) -> bool {

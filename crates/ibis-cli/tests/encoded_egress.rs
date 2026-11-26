@@ -68,7 +68,7 @@ fn doi_records() -> Value {
     ])
 }
 
-fn exports_are_private(records: Value) {
+fn exports_are_private(records: Value, formatted_refusal: Option<&str>) {
     let mut leaks = Vec::new();
     for format in FORMATS {
         let mut child = Command::new(env!("CARGO_BIN_EXE_ibis"))
@@ -114,6 +114,18 @@ fn exports_are_private(records: Value) {
                 result["outcomes"].as_array().unwrap().len(),
                 records.as_array().unwrap().len()
             );
+        } else if !["bibtex", "csl-json"].contains(format)
+            && let Some(error) = formatted_refusal
+        {
+            // Filtering every title and creator leaves only unrelated metadata.
+            assert_eq!(result["text"], "", "{format}: {result}");
+            let outcomes = result["outcomes"].as_array().unwrap();
+            assert_eq!(outcomes.len(), records.as_array().unwrap().len());
+            for (item, outcome) in outcomes.iter().enumerate() {
+                assert_eq!(outcome["item"], item, "{format}: {outcome}");
+                assert_eq!(outcome["outcome"], "refused", "{format}: {outcome}");
+                assert_eq!(outcome["error"], error, "{format}: {outcome}");
+            }
         } else {
             assert!(
                 result["text"].as_str().unwrap().contains("Invented"),
@@ -170,7 +182,7 @@ fn mcp_is_private(records: Value) {
 
 #[test]
 fn percent_encoded_paths_never_leave_cli_exports() {
-    exports_are_private(path_records(PATHS));
+    exports_are_private(path_records(PATHS), Some("missing-details"));
 }
 
 #[test]
@@ -183,5 +195,5 @@ fn wrapped_paths_never_leave_mcp_search_or_show() {
 
 #[test]
 fn doi_shaped_paths_never_leave_cli_exports() {
-    exports_are_private(doi_records());
+    exports_are_private(doi_records(), None);
 }

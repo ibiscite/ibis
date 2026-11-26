@@ -20,3 +20,10 @@ website. “Ibis Nightly” uses the rolling `nightly` tag; “Ibis update feed�
 Windows ships one package, the per-user NSIS `Ibis-Windows-setup.exe`, which
 also carries Windows updates. The MSI was dropped (maintainer, 2026-11-14);
 Nightly never had one, since Windows Installer versions cannot carry “nightly”.
+
+2026-11-25 (maintainer, #50): numbered releases become immutable on GitHub
+(Settings → General → Releases → Enable release immutability), switched on once
+the release-hardening series lands. Every file, SBOMs included, is attached
+while a release is a draft. The rolling `nightly` and `stable` releases
+predate the setting and stay replaceable; they must never be recreated
+([RELEASING.md](../../RELEASING.md#immutable-releases)).

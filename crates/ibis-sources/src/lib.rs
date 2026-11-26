@@ -8,6 +8,7 @@ pub use bibtex::edit as bibtex_edit;
 mod candidates;
 mod child;
 mod csl_json;
+pub mod document;
 #[cfg(feature = "endnote")]
 pub mod endnote;
 mod exported;
@@ -226,6 +227,8 @@ pub enum SourceCapability {
     AttachmentText,
     /// Changes an AI app proposes and the person confirms in Ibis (decision 0055).
     Proposals,
+    /// Each record's original entry as the file wrote it, which `entry` copies.
+    OriginalEntries,
 }
 
 impl SourceCapability {
