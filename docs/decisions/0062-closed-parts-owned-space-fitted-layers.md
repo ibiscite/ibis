@@ -170,10 +170,11 @@ from CI, as [testing](../testing.md) says.
   similar works (authors, year, journal or publisher). Highlighting changes
   only the paint. The density decides how much room every row gets, never
   just the highlighted one.
-- **Larger Text scales the words and the rows that hold them, everywhere,
-  Settings included.** Icons, window insets and control chrome stay at their
-  native size, as with macOS text sizes. The description in Appearance says
-  exactly that.
+- **Larger Text scales the whole interface proportionally**, everywhere,
+  Settings included: words, rows, controls, icons and spacing grow together,
+  as macOS's own Larger Text display setting does. Changed by the maintainer
+  later the same day: growing only the words inside native-size chrome looked
+  inconsistent. It is one scale primitive at the root, read by every part.
 - **Ibis keeps its own System, Light and Dark choice**, a deliberate
   departure from Apple's advice to follow the system only.
 - **Settings keeps its sidebar with search**, a native pattern (System
