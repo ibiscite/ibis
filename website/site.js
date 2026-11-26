@@ -187,7 +187,7 @@ function navigation() {
     pending = false;
     const visible = target => { const box = target.getBoundingClientRect(); return box.top < window.innerHeight && box.bottom > 0; };
     const bottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
-    const current = pinned && visible(pinned) ? pinned : bottom ? targets.at(-1) : targets.filter(target => target.getBoundingClientRect().top <= window.innerHeight * .25).at(-1) || targets[0];
+    const current = pinned && visible(pinned) ? pinned : bottom ? targets.at(-1) : targets.filter(target => target.getBoundingClientRect().top <= window.innerHeight * .25).at(-1);
     links.forEach((link, index) => { if (targets[index] === current) {
       if (!link.hasAttribute("aria-current")) {
         link.setAttribute("aria-current", "location");

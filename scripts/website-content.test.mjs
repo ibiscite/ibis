@@ -112,7 +112,8 @@ test("Get shows every download, installation notes and shared setup steps withou
   assert.doesNotMatch(html, /<details\b|<summary\b/);
 });
 
-test("Features renders all four status lists from one source and credits shipped 0.3.2 features", async () => {
+// The latest published release (gh release list), not version.txt, which runs ahead of it.
+test("Features renders all four status lists from one source and credits features new in 0.3.13", async () => {
   const html = await page("features/");
   const status = JSON.parse(await read("content/status.json"));
   const main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)[1];
@@ -123,7 +124,7 @@ test("Features renders all four status lists from one source and credits shipped
   for (const [, key, list] of lists) assert.deepEqual([...list.matchAll(/<li>([\s\S]*?)<\/li>/g)].map(m => text(m[1])),
     status[key].map(item => item.text + (item.note ?? "")));
   assert.match(html, /Prefix, suffix and Keep My Order/);
-  assert.match(html, /0\.3\.2/);
+  assert.match(html, /New in 0\.3\.13/);
   assert.match(html, /blob\/main\/ROADMAP.md/);
   assert.ok(html.indexOf("Plans can change") < html.indexOf('id="current"'));
 });
@@ -172,10 +173,13 @@ test("assistant chips offer exactly one action, starting with a copyable setup p
     assert.ok(tab.includes(`aria-selected="${i === 0}"`));
     assert.ok(panel.includes(`aria-hidden="${i !== 0}"`));
     assert.equal(/\binert\b/.test(panel), i !== 0);
-    const examples = [...panel.matchAll(/<div class="code single(?: prose)?"><pre><code>([\s\S]*?)<\/code><\/pre>[\s\S]*?<button\b[^>]*data-copy="([^"]+)"/g)];
+    const examples = [...panel.matchAll(/<div class="code\b[^"]*"><pre><code>([\s\S]*?)<\/code><\/pre>[\s\S]*?<button\b[^>]*data-copy="([^"]+)"/g)];
+    // Count Copy buttons on their own, whatever their block's classes, so a second block cannot hide.
+    const copies = panel.match(/<button\b[^>]*\bdata-copy=/g) ?? [];
     const links = [...panel.matchAll(/<a\b[^>]*href="((?:cursor:|vscode:)[^"]+)"[^>]*>([\s\S]*?)<\/a>/g)];
     const sentences = [...panel.matchAll(/<p>([\s\S]*?)<\/p>/g)];
-    assert.equal(examples.length + links.length + sentences.length, 1, `${app} offers exactly one action`);
+    assert.equal(copies.length, examples.length, `${app}: every Copy button belongs to one code block`);
+    assert.equal(copies.length + links.length + sentences.length, 1, `${app} offers exactly one action`);
     if (i < setup.length) {
       assert.equal(text(examples[0][1]), setup[i]);
       assert.equal(text(examples[0][2]), setup[i], `${app} copies the whole line`);

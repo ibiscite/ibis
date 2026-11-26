@@ -22,7 +22,7 @@ export const sections = [
 ];
 export const notFound = { path: "/404.html", title: "Page not found", description: "This Ibis page could not be found." };
 const copyButton = command => `<button class="copy" type="button" data-copy="${escape(command)}" data-copied="Copied" data-failed="Select to copy" title="Copy"><svg class="icon icon-copy" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><svg class="icon icon-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Copy</span></button>`;
-const codeBlock = (code, prose = false) => `<div class="code${code.includes("\n") ? "" : " single"}${prose ? " prose" : ""}"><pre><code>${escape(code)}</code></pre>${copyButton(code)}</div>`;
+const codeBlock = code => `<div class="code${code.includes("\n") ? "" : " single"}"><pre><code>${escape(code)}</code></pre>${copyButton(code)}</div>`;
 // Each command and its real output in one terminal block; Copy takes the command alone.
 const transcripts = text => text.trim().split(/\n(?=\$ )/).map(block => {
   const [command, ...output] = block.split("\n"), line = command.slice(2);
@@ -49,7 +49,7 @@ export async function content(html, page = pages[0], input = new URL(".", import
     robots: page === notFound ? '<meta name="robots" content="noindex">' : "",
     navigation: sections.map(item => { const href = page.path === "/" && item.href.startsWith("/#") ? item.href.slice(1) : item.href; return `<li${item.group ? ' class="group"' : ""}><a href="${href}"${page.path === item.href ? ' aria-current="page"' : ""}><span class="label">${escape(item.label)}</span> <span class="key">@${item.key}</span></a></li>`; }).join(""),
     page: page.file ?? "missing", status: lists, terminal: transcripts(await read("content/terminal.txt")), "writing-apps": writing,
-    "agent-any-prompt": codeBlock("Set up Ibis for me: https://ibiscite.org/setup", true),
+    "agent-any-prompt": codeBlock("Set up Ibis for me: https://ibiscite.org/setup"),
     "agent-claude-command": codeBlock("claude mcp add --scope user ibis -- ibis mcp --app-libraries"),
     "agent-codex-command": codeBlock("codex mcp add ibis -- ibis mcp --app-libraries"),
     "shorthand-result": escape(apps[0].output),

@@ -411,7 +411,7 @@ test("assistant tabs select only the requested setup and keep inactive controls 
   tabs[1].handlers.keydown({ key: "ArrowRight", preventDefault() {} }); check(0);
 });
 
-test("home navigation keeps one current section at the top, on clicks and through scrolling", () => {
+test("home navigation marks no section above Try it, then one current section on clicks and through scrolling", () => {
   const { ctx } = context(), bar = { ...control(), scrollLeft: 0, clientWidth: 300, scrollWidth: 300 };
   const sections = ["try", "where", "why"].map((id, i) => ({ id, top: 1000 + i * 1000,
     getBoundingClientRect() { return { top: this.top, bottom: this.top + 900 }; } }));
@@ -425,7 +425,8 @@ test("home navigation keeps one current section at the top, on clicks and throug
   ctx.document.querySelectorAll = () => links;
   ctx.document.querySelector = selector => selector === ".index nav ul" ? bar : sections.find(section => `#${section.id}` === selector);
   const check = i => assert.deepEqual(links.map(link => link.attrs["aria-current"]), sections.map((_, n) => n === i ? "location" : undefined));
-  ctx.navigation(); check(0);
+  ctx.navigation(); check(-1);
+  sections[0].top = 100; window.handlers.scroll(); check(0);
   sections[0].top = -800; sections[1].top = 200; window.scrollY = 1800;
   window.handlers.scroll(); check(1);
   sections[2].top = 500;
@@ -712,8 +713,9 @@ test("all routes fit the requested viewports in both themes and directions; visi
             (node.tagName !== "PRE" && /auto|scroll/.test(css.overflowX) && node.scrollWidth > node.clientWidth + 1);
         }).map(node => `${node.tagName}.${node.className}`)), [], `${path}: no unexpected nested scrollers at ${width}×${height} ${direction}`);
         const missing = path.startsWith("/missing/");
-        assert.equal(await page.locator('.index nav a[aria-current]').count(), missing ? 0 : 1);
-        if (!missing) assert.equal(await page.locator('.index nav a[aria-current]').evaluate(node => {
+        // Home's top sits above its first section, so nothing there is current yet.
+        assert.equal(await page.locator('.index nav a[aria-current]').count(), missing || path === "/" ? 0 : 1);
+        if (!missing && path !== "/") assert.equal(await page.locator('.index nav a[aria-current]').evaluate(node => {
           const chip = node.getBoundingClientRect(), bar = node.closest("ul").getBoundingClientRect();
           return chip.left >= bar.left - 1 && chip.right <= bar.right + 1;
         }), true, `${path} current key is in view`);
@@ -736,7 +738,8 @@ test("all routes fit the requested viewports in both themes and directions; visi
         assert.equal(await page.getByRole("dialog").evaluate(node => node.scrollHeight <= node.clientHeight + 1), true, "keyboard help fits the viewport");
         await page.keyboard.press("Escape");
         assert.equal(await page.getByRole("dialog").isVisible(), false);
-        const helpButton = page.getByRole("button", { name: "Keyboard shortcuts ?", exact: true });
+        // Every device keeps the button (a tablet may have a keyboard); only a fine pointer shows the ? cap.
+        const helpButton = page.getByRole("button", { name: width === 375 ? "Keyboard shortcuts" : "Keyboard shortcuts ?", exact: true });
         await helpButton.click(); await page.keyboard.press("Escape");
         assert.equal(await helpButton.evaluate(node => node === document.activeElement), true, "Escape returns focus to the help button");
         if (missing) {
