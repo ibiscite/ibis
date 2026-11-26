@@ -167,7 +167,7 @@ all three systems; one ⌘K list.
 - **Order of foundations** ([0064](docs/decisions/0064-one-citation-one-status-generated-surfaces.md)):
   words only from the catalogue; CLI and MCP from the method table; one
   status owner (0063's status line); closed parts, regions and the gate
-  ([0062](docs/decisions/0062-closed-parts-owned-space-fitted-layers.md)); the
+  (0062); the
   empty-search history and formats only in the picker
   ([0063](docs/decisions/0063-form-follows-function.md)); generated events; the
   settings row and schema; the citation-text grammar; the Draft, then typed

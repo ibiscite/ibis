@@ -4,7 +4,7 @@
 desktop, CLI, `serve`, MCP, editor endpoint and plugins) at main `463bc16c`.
 The maintainer chose two product points; the engineering choices follow from
 them and from [0057](0057-one-method-table.md),
-[0062](0062-closed-parts-owned-space-fitted-layers.md) and
+0062 and
 [0063](0063-form-follows-function.md).
 
 ## The maintainer's answers
@@ -52,7 +52,7 @@ them and from [0057](0057-one-method-table.md),
      TypeScript listeners.
    - **Settings:** one settings row with a typed patch and a published JSON
      Schema. The `ibis` command, editors completing `settings.json`, and
-     Settings' rows as data ([0062](0062-closed-parts-owned-space-fitted-layers.md))
+     Settings' rows as data (0062)
      all read it.
    - **Native rows** declare their `access`, which generates capabilities and
      grants.

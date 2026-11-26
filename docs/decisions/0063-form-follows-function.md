@@ -6,7 +6,7 @@ follow function, do not worry about what was done in the past". Ibis does one
 job: in any app, summon it, find the work, build the citation, deliver it, and
 recover if anything went wrong. Each part of the interface exists for one step
 of that job, and each choice and each message has exactly one home.
-[0062](0062-closed-parts-owned-space-fitted-layers.md) says how parts are
+0062 says how parts are
 built; this says which parts exist.
 
 ## The decisions
