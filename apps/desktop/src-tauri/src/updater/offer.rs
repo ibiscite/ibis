@@ -125,7 +125,7 @@ impl OfferUi for tauri::Wry {
 
     fn refresh(app: &AppHandle<Self>) {
         let app = app.clone();
-        tauri::async_runtime::spawn(async move { super::check(&app, false).await });
+        tauri::async_runtime::spawn(async move { super::check(&app, CheckRequest::Automatic).await });
     }
 
     fn availability_changed(app: &AppHandle<Self>, available: bool) {
@@ -217,23 +217,27 @@ pub(crate) enum CheckResult {
 
 pub(super) async fn check<R: OfferUi>(
     app: &AppHandle<R>,
-    asked: bool,
+    request: CheckRequest,
     found: impl std::future::Future<Output = Result<Option<Candidate>, &'static str>>,
 ) -> CheckResult {
     let updates = app.state::<Updates>();
     // Re-read after scheduling too: the saved opt-out may have changed since
     // a focus event or periodic worker requested this automatic check.
-    if !asked && !updates.automatic.load(Ordering::SeqCst) {
+    if !request.current(app) || !request.explicit() && !updates.automatic.load(Ordering::SeqCst) {
         return CheckResult::NotRun;
     }
     let Some(busy) = updates.begin() else {
         return CheckResult::NotRun;
     };
-    match found.await {
+    let found = found.await;
+    if !request.current(app) {
+        return CheckResult::NotRun;
+    }
+    match found {
         Ok(Some(candidate)) => {
             let declined = updates.declined.lock().ok().and_then(|d| d.clone());
-            if asked || declined.as_deref() != Some(candidate.version.as_str()) {
-                present(app, candidate, asked, busy);
+            if request.explicit() || declined.as_deref() != Some(candidate.version.as_str()) {
+                present(app, candidate, request, busy);
             } else {
                 publish_available(app, false);
             }
@@ -273,23 +277,28 @@ pub(super) fn refresh_pending<R: OfferUi>(app: &AppHandle<R>) {
     );
 }
 
-fn present<R: OfferUi>(app: &AppHandle<R>, candidate: Candidate, asked: bool, busy: BusyGuard) {
+fn present<R: OfferUi>(app: &AppHandle<R>, candidate: Candidate, request: CheckRequest, busy: BusyGuard) {
     let handle = app.clone();
     report(
         app.run_on_main_thread(move || {
+            if !request.current(&handle) {
+                return;
+            }
             publish_available(&handle, true);
             let Some(parent) = handle.get_webview_window("main") else {
                 return;
             };
             // Automatic results never open or focus a window, including when the
             // person dismissed the picker while the fresh check was in flight.
-            if !asked && (!handle.state::<Updates>().automatic.load(Ordering::SeqCst) || !ready::<R>(&parent)) {
+            if !request.explicit()
+                && (!handle.state::<Updates>().automatic.load(Ordering::SeqCst) || !ready::<R>(&parent))
+            {
                 return;
             }
             let Some(owner) = handle.state::<ChooserOpen>().begin() else {
                 return;
             };
-            if asked {
+            if request.explicit() {
                 // Explicit tray/More commands may open their parent. The check and
                 // dialog leases prevent show/focus callbacks from starting a retry.
                 R::reveal_picker(&handle);

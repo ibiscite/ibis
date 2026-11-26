@@ -4,7 +4,6 @@
 //! it goes away.
 
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
@@ -113,21 +112,6 @@ pub(crate) enum Page {
     About,
 }
 
-impl Page {
-    fn name(self) -> &'static str {
-        match self {
-            Page::General => "general",
-            Page::Paste => "paste",
-            Page::Look => "look",
-            Page::Libraries => "libraries",
-            Page::Advanced => "advanced",
-            Page::Shortcuts => "shortcuts",
-            Page::Citations => "citations",
-            Page::About => "about",
-        }
-    }
-}
-
 /// Open Settings, or bring it forward, on `page` (General by default). Async so
 /// the window is built from the event loop: a sync command runs inside the
 /// WebView2 callback, where building a second webview deadlocks on Windows.
@@ -140,66 +124,51 @@ pub(crate) async fn open_settings(app: AppHandle, page: Option<Page>, presentati
     show(&app, page, presentation);
 }
 
-/// The page reports the page it now shows (`page`, as asked for) and hears the
-/// latest one asked for. A hidden Settings waiting for that page shows now, so
-/// it never shows an earlier page first; a page that loaded after the request
-/// was sent learns it here.
+/// Read the current presentation, acknowledging `revision` once its page has
+/// rendered. The event listener is installed before the first read.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn settings_shown(app: AppHandle, page: Page) -> Page {
-    let (latest, show) = REQUEST.rendered(page);
-    if show {
+pub(crate) async fn settings_shown(app: AppHandle, revision: Option<u64>) -> SettingsPresentation {
+    if let Some(revision) = revision {
         let handle = app.clone();
-        report(
-            app.run_on_main_thread(move || {
-                if let Some(window) = handle.get_webview_window(LABEL) {
-                    bring_forward(&window);
-                }
-            }),
-            NativeIssue::Window,
-        );
+        let (send, mut receive) = tauri::async_runtime::channel(1);
+        let dispatched = app.run_on_main_thread(move || {
+            reveal(&handle, revision);
+            let _ = send.try_send(());
+        });
+        if checked(dispatched, NativeIssue::Window).is_some() {
+            let _ = receive.recv().await;
+        }
     }
-    latest
+    app.state::<Presentations>().current()
 }
 
 /// Close the paste guide after both grants; a fresh external activation opens
 /// the picker again. Granting permission never captures a target or retries Enter.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn finish_paste_guide(app: AppHandle) -> Result<bool, crate::errors::NativeFailure> {
-    let (sender, receiver) = std::sync::mpsc::channel();
+pub(crate) async fn finish_paste_guide(app: AppHandle, revision: u64) -> Result<bool, crate::errors::NativeFailure> {
+    let (sender, mut receiver) = tauri::async_runtime::channel(1);
     let handle = app.clone();
     app.run_on_main_thread(move || {
         let result = (|| {
             let Some(window) = handle.get_webview_window(LABEL) else {
                 return Ok(false);
             };
-            finish_guide_with(
-                crate::paste::permission::paste_permission().granted,
-                window.is_focused().unwrap_or(false),
-                || dismiss(&handle),
-            )
-            .map_err(|_| crate::errors::NativeFailure)
+            handle
+                .state::<Presentations>()
+                .finish_guide(
+                    revision,
+                    crate::paste::permission::paste_permission().granted,
+                    window.is_focused().unwrap_or(false),
+                    || dismiss(&handle),
+                )
+                .map_err(|_| crate::errors::NativeFailure)
         })();
-        let _ = sender.send(result);
+        let _ = sender.try_send(result);
     })
     .map_err(|_| crate::errors::NativeFailure)?;
-    tauri::async_runtime::spawn_blocking(move || receiver.recv())
-        .await
-        .ok()
-        .and_then(Result::ok)
-        .ok_or(crate::errors::NativeFailure)?
-}
-
-fn finish_guide_with<E>(granted: bool, focused: bool, close: impl FnOnce() -> Result<(), E>) -> Result<bool, E> {
-    if !granted || !focused {
-        return Ok(false);
-    }
-    close()?;
-    // Settings and the nonactivating picker can keep Ibis key after a grant.
-    // Do not infer a new external target here: the next deliberate summon
-    // captures it and retires old proofs before a fresh Enter can paste.
-    Ok(true)
+    receiver.recv().await.ok_or(crate::errors::NativeFailure)?
 }
 
 pub(crate) fn open(app: &AppHandle, page: Option<Page>) {
@@ -216,22 +185,17 @@ fn show(app: &AppHandle, page: Option<Page>, presentation: u64) {
 
 /// Every way into Settings ends here, so each has one effect on the picker.
 pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, presentation: u64) {
-    #[cfg(target_os = "macos")]
-    {
-        report(
-            app.set_activation_policy(tauri::ActivationPolicy::Regular),
-            NativeIssue::Window,
-        );
-        // A dismissed picker hid the whole app; bring it back with Settings.
-        report(app.show(), NativeIssue::Show);
-    }
-    if let Some(window) = app.get_webview_window(LABEL) {
-        present_existing(&window, page);
-        yield_to_window(app, presentation, Takeover::Covered);
+    let requested = app.state::<Presentations>().ask(page.unwrap_or(Page::General));
+    if app.get_webview_window(LABEL).is_none() && !build(app) {
+        destroyed(app);
         return;
     }
-    REQUEST.ask(page.unwrap_or(Page::General), false);
-    let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
+    publish(app, requested);
+    yield_to_window(app, presentation, Takeover::Covered);
+}
+
+fn build<R: PickerHideUi>(app: &AppHandle<R>) -> bool {
+    let url = format!("settings.html?language={}", ibis_engine::catalogue::language().tag());
     let frame = R::settings_frame(app);
     let (size, min) = frame
         .as_ref()
@@ -241,26 +205,16 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
         .inner_size(size.0, size.1)
         .min_inner_size(min.0, min.1)
         .maximizable(false)
-        .focused(true)
+        .focused(false)
         // A system alert leaves Settings without the keyboard; the click that
         // returns to it must also reach the control under the pointer.
         .accept_first_mouse(true)
-        // Shown once its page has loaded, so it never opens as an empty white
-        // surface (in Dark too).
-        .visible(false)
-        .on_page_load(|window, payload| {
-            // A picker opened since asked for the keyboard later: Settings
-            // stays hidden until it is asked for again.
-            if payload.event() == tauri::webview::PageLoadEvent::Finished && FIRST_SHOW.claim() {
-                report(window.show(), NativeIssue::Show);
-                report(window.set_focus(), NativeIssue::Focus);
-            }
-        });
+        // Only the rendered-page acknowledgement can bring it forward.
+        .visible(false);
     builder = match frame {
         Some(frame) => builder.position(frame.origin.0, frame.origin.1),
         None => builder.center(),
     };
-    FIRST_SHOW.begin();
     // The sidebar runs under the traffic lights, as in System Settings, whose
     // window cannot be minimised and is named after its page (the page sets
     // `document.title`; the static English one never reaches other systems).
@@ -291,86 +245,157 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
     let built = checked(builder.build(), NativeIssue::Window);
     #[cfg(target_os = "linux")]
     crate::desktop_theme::reapply(app);
-    match built {
-        Some(window) => {
-            report(window.set_focus(), NativeIssue::Focus);
-            yield_to_window(app, presentation, Takeover::Covered);
-        }
-        None => closed(app),
-    }
+    built.is_some()
 }
 
-/// Every presentation has a page; ordinary Settings opens on General at the top.
-/// A window on screen changes page in place. A hidden one (closed on macOS,
-/// still loading, minimised) shows once its page reports it (`settings_shown`).
-fn present_existing<R: Runtime>(window: &tauri::WebviewWindow<R>, page: Option<Page>) {
-    let page = page.unwrap_or(Page::General);
-    let waits = !window.is_visible().unwrap_or(false);
-    FIRST_SHOW.supersede();
-    REQUEST.ask(page, waits);
-    report(window.emit_to(LABEL, "settings:page", page), NativeIssue::Window);
-    if !waits {
-        bring_forward(window);
-    }
+fn publish<R: Runtime>(app: &AppHandle<R>, presentation: SettingsPresentation) {
+    report(
+        app.emit_to(LABEL, "settings:presentation", presentation),
+        NativeIssue::Window,
+    );
 }
 
-fn bring_forward<R: Runtime>(window: &tauri::WebviewWindow<R>) {
+/// Runs on the native thread, after IPC scheduling. The revision is consumed
+/// here so a newer page or a picker summon can still withdraw this reveal.
+fn reveal<R: Runtime>(app: &AppHandle<R>, revision: u64) {
+    let Some(window) = app.get_webview_window(LABEL) else {
+        return;
+    };
+    if !app.state::<Presentations>().claim(revision) {
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        report(
+            app.set_activation_policy(tauri::ActivationPolicy::Regular),
+            NativeIssue::Window,
+        );
+        // A dismissed picker may have hidden the whole app.
+        report(app.show(), NativeIssue::Show);
+    }
     report(window.unminimize(), NativeIssue::Unminimize);
-    report(window.show(), NativeIssue::Show);
+    if checked(window.show(), NativeIssue::Show).is_none() && !window.is_visible().unwrap_or(false) {
+        retire(app);
+        closed(app);
+        return;
+    }
     report(window.set_focus(), NativeIssue::Focus);
 }
 
-/// The page Settings was last asked for, and whether a hidden Settings waits
-/// for that page to be on it before it shows.
-struct Request(Mutex<(Page, bool)>);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+pub(crate) struct SettingsOpening {
+    id: u64,
+    page: Page,
+}
 
-static REQUEST: Request = Request(Mutex::new((Page::General, false)));
+/// Every page request and close advances the revision. An already open window
+/// keeps its opening id when a request brings it forward on another page.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+pub(crate) struct SettingsPresentation {
+    pub(crate) revision: u64,
+    opening: Option<SettingsOpening>,
+}
 
-impl Request {
-    fn ask(&self, page: Page, waits: bool) {
-        *self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = (page, waits);
-    }
-    /// A picker opened or Settings closed: nothing waits to show any more.
-    fn withdraw(&self) {
-        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).1 = false;
-    }
-    /// The page shows `page`: the latest request, and whether Settings shows
-    /// now (once, and only for the page last asked for).
-    fn rendered(&self, page: Page) -> (Page, bool) {
-        let mut request = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let show = request.1 && request.0 == page;
-        if show {
-            request.1 = false;
-        }
-        (request.0, show)
+impl SettingsPresentation {
+    pub(crate) fn opening_id(self) -> Option<u64> {
+        self.opening.map(|opening| opening.id)
     }
 }
 
-/// Settings' first showing waits for its page. It belongs to the opening
-/// that created it, until a newer opening of the picker or of Settings itself
-/// takes it over.
-struct FirstShow(AtomicBool);
+#[derive(Default)]
+struct PresentationState {
+    current: SettingsPresentation,
+    waiting: bool,
+    shown: bool,
+}
 
-static FIRST_SHOW: FirstShow = FirstShow(AtomicBool::new(false));
+impl PresentationState {
+    fn close(&mut self) -> Option<SettingsPresentation> {
+        self.current.opening.take()?;
+        self.current.revision += 1;
+        self.waiting = false;
+        self.shown = false;
+        Some(self.current)
+    }
+}
 
-impl FirstShow {
-    fn begin(&self) {
-        self.0.store(true, Ordering::SeqCst);
+#[derive(Default)]
+pub(crate) struct Presentations(Mutex<PresentationState>);
+
+impl Presentations {
+    fn state(&self) -> std::sync::MutexGuard<'_, PresentationState> {
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
-    fn supersede(&self) {
-        self.0.store(false, Ordering::SeqCst);
+
+    fn current(&self) -> SettingsPresentation {
+        self.state().current
     }
-    /// Whether the loaded page may still show and focus Settings, once.
-    fn claim(&self) -> bool {
-        self.0.swap(false, Ordering::SeqCst)
+
+    pub(crate) fn ask(&self, page: Page) -> SettingsPresentation {
+        let mut state = self.state();
+        state.current.revision += 1;
+        let id = state.current.opening_id().unwrap_or(state.current.revision);
+        state.current.opening = Some(SettingsOpening { id, page });
+        state.waiting = true;
+        state.current
+    }
+
+    pub(crate) fn claim(&self, revision: u64) -> bool {
+        let mut state = self.state();
+        if !state.waiting || state.current.revision != revision {
+            return false;
+        }
+        state.waiting = false;
+        state.shown = true;
+        true
+    }
+
+    fn withdraw(&self) -> Option<SettingsPresentation> {
+        let mut state = self.state();
+        state.waiting = false;
+        if state.shown { None } else { state.close() }
+    }
+
+    pub(crate) fn close(&self) -> Option<SettingsPresentation> {
+        self.state().close()
+    }
+
+    /// Read or reserve state for the named opening in the same step as its
+    /// lifetime check. The action may take a lock but must not call native UI.
+    pub(crate) fn with_opening<T>(&self, id: u64, action: impl FnOnce() -> T) -> Option<T> {
+        let state = self.state();
+        (state.shown && state.current.opening_id() == Some(id)).then(action)
+    }
+
+    fn finish_guide<E>(
+        &self,
+        revision: u64,
+        granted: bool,
+        focused: bool,
+        close: impl FnOnce() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        let owns_guide = {
+            let state = self.state();
+            state.shown
+                && !state.waiting
+                && state.current.revision == revision
+                && state.current.opening.is_some_and(|opening| opening.page == Page::Paste)
+        };
+        if !owns_guide || !granted || !focused {
+            return Ok(false);
+        }
+        close()?;
+        // The next deliberate summon captures an external target for a fresh Enter.
+        Ok(true)
     }
 }
 
 /// The picker opened: a Settings window still loading must not take the
 /// keyboard from it when its page arrives.
-pub(crate) fn picker_opened() {
-    FIRST_SHOW.supersede();
-    REQUEST.withdraw();
+pub(crate) fn picker_opened(app: &AppHandle) {
+    if let Some(hidden) = app.state::<Presentations>().withdraw() {
+        publish(app, hidden);
+    }
 }
 
 /// How Settings goes away when it is closed.
@@ -400,31 +425,32 @@ pub(crate) fn dismiss_as<R: Runtime>(app: &AppHandle<R>, close: Close) -> tauri:
         return Ok(());
     };
     match close {
-        // The page keeps running while hidden, so its queued saves finish by
-        // themselves; it only resets for the next opening.
-        Close::Hide => hide_then(
-            || {
-                FIRST_SHOW.supersede();
-                REQUEST.withdraw();
-            },
-            || window.hide(),
-            || {
-                report(window.emit_to(LABEL, "settings:hidden", ()), NativeIssue::Window);
-                closed(app);
-            },
-        ),
+        Close::Hide => {
+            window.hide()?;
+            retire(app);
+            closed(app);
+            Ok(())
+        }
         // Through CloseRequested, so the page saves before it is destroyed.
         Close::Destroy => window.close(),
     }
 }
 
-/// A Settings window still loading or waiting for its page must not show
-/// itself once it was closed.
-fn hide_then<E>(withdraw: impl FnOnce(), hide: impl FnOnce() -> Result<(), E>, hidden: impl FnOnce()) -> Result<(), E> {
-    withdraw();
-    hide()?;
-    hidden();
-    Ok(())
+pub(crate) fn destroyed<R: Runtime>(app: &AppHandle<R>) {
+    end_opening(app);
+    closed(app);
+}
+
+fn retire<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(hidden) = end_opening(app) {
+        publish(app, hidden);
+    }
+}
+
+fn end_opening<R: Runtime>(app: &AppHandle<R>) -> Option<SettingsPresentation> {
+    let hidden = app.state::<Presentations>().close()?;
+    app.state::<crate::settings_backup::PendingRestore>().clear();
+    Some(hidden)
 }
 
 /// Settings is on screen, so hiding the whole app would hide it too.
@@ -436,7 +462,7 @@ pub(crate) fn is_open(app: &AppHandle) -> bool {
 
 /// Once Settings closes, Ibis leaves the Dock again and lives in the menu bar,
 /// handing focus back to the app underneath unless the picker is up.
-pub(crate) fn closed<R: Runtime>(app: &AppHandle<R>) {
+fn closed<R: Runtime>(app: &AppHandle<R>) {
     #[cfg(target_os = "macos")]
     {
         report(
@@ -461,9 +487,12 @@ mod tests {
     #[test]
     fn returning_requires_both_grants_and_focus_then_waits_for_a_fresh_external_activation() {
         use std::cell::RefCell;
+        let presentations = Presentations::default();
+        let guide = presentations.ask(Page::Paste);
+        assert!(presentations.claim(guide.revision));
         for (granted, focused) in [(false, false), (false, true), (true, false), (true, true)] {
             let calls = RefCell::new(Vec::new());
-            let result = finish_guide_with(granted, focused, || {
+            let result = presentations.finish_guide(guide.revision, granted, focused, || {
                 calls.borrow_mut().push("close");
                 Ok::<_, ()>(())
             });
@@ -471,7 +500,7 @@ mod tests {
             assert_eq!(*calls.borrow(), if granted && focused { vec!["close"] } else { vec![] });
         }
         assert_eq!(
-            finish_guide_with(true, true, || Err("close failed")),
+            presentations.finish_guide(guide.revision, true, true, || Err("close failed")),
             Err("close failed")
         );
     }
@@ -483,56 +512,74 @@ mod tests {
     }
 
     #[test]
-    fn a_hidden_settings_never_shows_itself_and_a_failed_hide_changes_nothing_else() {
-        let first = FirstShow(AtomicBool::new(false));
-        let mut hidden = false;
-        first.begin(); // closed before its page loaded
+    fn settings_first_load_only_reveals_after_a_render_acknowledgement() {
+        let presentations = Presentations::default();
+        let first = presentations.ask(Page::General);
         assert_eq!(
-            hide_then(|| first.supersede(), || Ok::<_, ()>(()), || hidden = true),
-            Ok(())
+            presentations.current(),
+            first,
+            "a page that misses the event can read it"
         );
-        assert!(hidden, "the app leaves the Dock once Settings is hidden");
-        assert!(!first.claim(), "the page that loads later keeps it hidden");
-        let mut hidden = false;
-        first.begin();
+        let id = first.opening_id().unwrap();
         assert_eq!(
-            hide_then(|| first.supersede(), || Err("hide failed"), || hidden = true),
-            Err("hide failed")
+            presentations.with_opening(id, || ()),
+            None,
+            "window creation and navigation did not reveal Settings"
         );
-        assert!(!hidden, "a window still on screen keeps the app in the Dock");
-        assert!(!first.claim());
-    }
-
-    #[test]
-    fn a_hidden_settings_shows_only_once_the_page_last_asked_for_is_on_it() {
-        let request = Request(Mutex::new((Page::General, false)));
-        request.ask(Page::About, true);
-        request.ask(Page::Shortcuts, true); // asked again before the page caught up
-        assert_eq!(
-            request.rendered(Page::About),
-            (Page::Shortcuts, false),
-            "never an earlier page"
-        );
-        assert_eq!(request.rendered(Page::Shortcuts), (Page::Shortcuts, true));
-        assert_eq!(request.rendered(Page::Shortcuts), (Page::Shortcuts, false), "and once");
-        request.ask(Page::General, true);
-        request.withdraw(); // the picker opened, or Settings closed, meanwhile
-        assert_eq!(request.rendered(Page::General), (Page::General, false));
-        request.ask(Page::Paste, false); // on screen already: it changes page in place
-        assert_eq!(request.rendered(Page::Paste), (Page::Paste, false));
-    }
-
-    #[test]
-    fn a_picker_opened_while_settings_loads_keeps_the_keyboard() {
-        let first = FirstShow(AtomicBool::new(false));
-        first.begin();
-        assert!(first.claim(), "the loaded page shows the Settings it was opened for");
-        assert!(!first.claim(), "and only once: a reload never steals focus");
-        first.begin();
-        first.supersede(); // the picker opened while the page loaded
+        assert!(presentations.claim(first.revision));
+        assert_eq!(presentations.with_opening(id, || ()), Some(()));
         assert!(
-            !first.claim(),
-            "a newer picker keeps the keyboard; Settings shows when asked again"
+            !presentations.claim(first.revision),
+            "a duplicate acknowledgement cannot focus it again"
+        );
+    }
+
+    #[test]
+    fn settings_revalidates_a_queued_reveal_after_a_picker_summon_or_newer_request() {
+        let presentations = Presentations::default();
+        let first = presentations.ask(Page::Shortcuts);
+        // The webview has acknowledged Shortcuts. Before its queued native
+        // reveal runs, the picker is summoned and Settings is asked for again.
+        let hidden = presentations.withdraw().unwrap();
+        assert_eq!(hidden.opening, None);
+        assert!(!presentations.claim(first.revision));
+        let reopened = presentations.ask(Page::Shortcuts);
+        assert_ne!(first.opening.unwrap().id, reopened.opening.unwrap().id);
+        let newer = presentations.ask(Page::About);
+        assert!(!presentations.claim(first.revision));
+        assert!(!presentations.claim(reopened.revision));
+        assert!(presentations.claim(newer.revision));
+        assert!(!presentations.claim(newer.revision));
+    }
+
+    #[test]
+    fn settings_rejects_guide_dismissals_after_close_or_another_page_request() {
+        let presentations = Presentations::default();
+        let first = presentations.ask(Page::Paste);
+        assert!(presentations.claim(first.revision));
+        let about = presentations.ask(Page::About);
+        assert_eq!(about.opening.unwrap().id, first.opening.unwrap().id);
+        assert!(presentations.claim(about.revision));
+        assert_eq!(
+            presentations.finish_guide(first.revision, true, true, || Err(())),
+            Ok(false)
+        );
+
+        presentations.close();
+        let second = presentations.ask(Page::Paste);
+        assert_ne!(first.opening.unwrap().id, second.opening.unwrap().id);
+        assert_eq!(
+            presentations.finish_guide(second.revision, true, true, || Err(())),
+            Ok(false)
+        );
+        assert!(presentations.claim(second.revision));
+        assert_eq!(
+            presentations.finish_guide(first.revision, true, true, || Err(())),
+            Ok(false)
+        );
+        assert_eq!(
+            presentations.finish_guide(second.revision, true, true, || Ok::<_, ()>(())),
+            Ok(true)
         );
     }
 

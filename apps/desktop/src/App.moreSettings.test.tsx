@@ -11,6 +11,7 @@ function settings(page = "general", overrides: Record<string, Handler> = {}) {
   render(<SettingsApp initialPage={page} api={{ ...settingsApi,
     version: async () => "0.2.2", pastePermission: async () => ({ pastes: false, needed: false, granted: false, list: "" }),
     onCloseRequested: async () => () => undefined,
+    settingsShown: undefined,
   }} />);
   return calls;
 }

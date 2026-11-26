@@ -7,8 +7,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::{Updates, available, check, tell};
+use super::{CheckRequest, Updates, available, check, tell};
 use crate::diagnostics::{NativeIssue, report};
+use crate::library::CommandError;
 use crate::preferences::SettingsFile;
 
 /// Whether checks run on their own, as last saved.
@@ -23,48 +24,77 @@ pub(super) fn set_automatic(app: &AppHandle, on: bool) {
 
 /// The worker's queue, started on first use and again after a failure.
 #[derive(Default)]
-pub(super) struct Saver(Mutex<Option<Sender<bool>>>);
+pub(super) struct Saver(Mutex<Option<Sender<Choice>>>);
 
-/// Queue a change. If the worker cannot run, nothing changes and the person
-/// is told.
+struct Choice {
+    on: bool,
+    reply: Option<tauri::async_runtime::Sender<Result<(), CommandError>>>,
+}
+
+/// A choice from the native offer has no Settings page to handle its failure.
 pub(super) fn change(app: &AppHandle, on: bool) {
-    let updates = app.state::<Updates>();
-    let Ok(mut queue) = updates.saver.0.lock() else {
-        return;
-    };
-    if queue.is_none() {
-        *queue = start(app).ok();
-    }
-    let sent = queue.as_ref().map_or(Err(()), |changes| changes.send(on).map_err(drop));
-    if sent.is_err() {
-        *queue = None;
+    if enqueue(app, Choice { on, reply: None }).is_err() {
         tell(app, "Ibis could not change whether it checks for updates. Try again.");
     }
 }
 
-fn start(app: &AppHandle) -> Result<Sender<bool>, ()> {
-    let (changes, queue) = mpsc::channel::<bool>();
+fn enqueue(app: &AppHandle, choice: Choice) -> Result<(), CommandError> {
+    let updates = app.state::<Updates>();
+    let mut queue = updates.saver.0.lock().map_err(|_| CommandError::SettingsUnavailable)?;
+    if queue.is_none() {
+        *queue = start(app).ok();
+    }
+    let sent = queue
+        .as_ref()
+        .map_or(Err(()), |changes| changes.send(choice).map_err(drop));
+    if sent.is_err() {
+        *queue = None;
+    }
+    sent.map_err(|()| CommandError::SettingsUnavailable)
+}
+
+fn start(app: &AppHandle) -> Result<Sender<Choice>, ()> {
+    let (changes, queue) = mpsc::channel();
     let handle = app.clone();
     let worker = std::thread::Builder::new()
         .name("update-setting".to_owned())
-        .spawn(move || serve(queue, |on| save(&handle, on)));
+        .spawn(move || {
+            serve(
+                queue,
+                |on| save(&handle, on),
+                |problem| {
+                    tell(
+                        &handle,
+                        &format!("Your choice could not be saved, so nothing changed: {problem}."),
+                    );
+                },
+            )
+        });
     report(worker.as_ref().map(drop), NativeIssue::UpdateSetting);
     worker.map(|_| changes).map_err(drop)
 }
 
-/// Save each change in turn.
-fn serve(queue: Receiver<bool>, mut save: impl FnMut(bool)) {
-    for on in queue {
-        save(on);
+fn serve(
+    queue: Receiver<Choice>,
+    mut save: impl FnMut(bool) -> Result<(), CommandError>,
+    notify: impl Fn(CommandError),
+) {
+    for Choice { on, reply } in queue {
+        let saved = save(on);
+        if let Some(reply) = reply {
+            let _ = reply.try_send(saved);
+        } else if let Err(problem) = saved {
+            notify(problem);
+        }
     }
 }
 
 /// Saved first, then applied: Settings and the running app change only once
 /// the choice is on disk, so quitting at any moment never loses a choice that
 /// was shown as made. Settings hears what applies either way.
-fn save(app: &AppHandle, on: bool) {
+fn save(app: &AppHandle, on: bool) -> Result<(), CommandError> {
     let file = app.state::<SettingsFile>();
-    let saved = file.owner.change_with(
+    file.owner.change_with(
         |settings| {
             let before = settings.clone();
             settings.device.update_checks = Some(on);
@@ -78,16 +108,13 @@ fn save(app: &AppHandle, on: bool) {
                 })
                 .map_err(crate::library::CommandError::from)
         },
-    );
-    match saved {
-        Ok(()) => {
-            crate::library::refresh_settings_notice(app, &app.state::<SettingsFile>());
-        }
-        Err(problem) => tell(
-            app,
-            &format!("Your choice could not be saved, so nothing changed: {problem}."),
-        ),
-    }
+    )?;
+    crate::library::refresh_settings_notice(app, &app.state::<SettingsFile>());
+    publish(app);
+    Ok(())
+}
+
+fn publish(app: &AppHandle) {
     for window in ["main", crate::settings_window::LABEL] {
         report(
             app.emit_to(window, "update:automatic", automatic(app)),
@@ -100,12 +127,7 @@ fn save(app: &AppHandle, on: bool) {
 pub(crate) fn apply_file_setting(app: &AppHandle, saved: Option<bool>) {
     app.state::<Updates>().question.store(false, Ordering::SeqCst);
     set_automatic(app, saved.unwrap_or(false));
-    for window in ["main", crate::settings_window::LABEL] {
-        report(
-            app.emit_to(window, "update:automatic", automatic(app)),
-            NativeIssue::UpdateSetting,
-        );
-    }
+    publish(app);
 }
 
 /// Whether update checks run on their own; `None` when this build has no updates.
@@ -115,14 +137,22 @@ pub(crate) async fn update_checks(app: AppHandle) -> Option<bool> {
     available(&app).then(|| automatic(&app))
 }
 
-/// Turn automatic checks on or off from Settings. The saved answer arrives
-/// as the `update:automatic` event; changes are queued in click order.
+/// Turn automatic checks on or off from Settings and answer this specific write.
 #[tauri::command]
-#[ibis_desktop_macros::command(main)]
-pub(crate) fn set_update_checks(app: AppHandle, enabled: bool) {
-    if available(&app) {
-        change(&app, enabled);
+#[ibis_desktop_macros::command]
+pub(crate) async fn set_update_checks(app: AppHandle, enabled: bool) -> Result<(), CommandError> {
+    if !available(&app) {
+        return Err(CommandError::SettingsUnavailable);
     }
+    let (send, mut receive) = tauri::async_runtime::channel(1);
+    enqueue(
+        &app,
+        Choice {
+            on: enabled,
+            reply: Some(send),
+        },
+    )?;
+    receive.recv().await.ok_or(CommandError::SettingsUnavailable)?
 }
 
 /// The tray's and menu bar's "Check for Updates…": check now and answer in one
@@ -132,7 +162,7 @@ pub(crate) fn check_from_menu(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let said = if available(&app) {
-            menu_answer(check(&app, true).await)
+            menu_answer(check(&app, CheckRequest::Menu).await)
         } else {
             Some("about-unavailable")
         };
@@ -162,9 +192,9 @@ fn menu_answer(result: super::CheckResult) -> Option<&'static str> {
 /// An update found still opens the offer.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn check_for_updates(app: AppHandle) -> super::CheckResult {
+pub(crate) async fn check_for_updates(app: AppHandle, opening: u64) -> super::CheckResult {
     if available(&app) {
-        check(&app, true).await
+        check(&app, CheckRequest::Settings(opening)).await
     } else {
         super::CheckResult::NotRun
     }
@@ -192,13 +222,36 @@ mod tests {
     #[test]
     fn changes_are_saved_in_the_order_they_were_made() -> Result<(), Box<dyn std::error::Error>> {
         let (changes, queue) = mpsc::channel();
+        let mut replies = Vec::new();
         for on in [true, false, false, true] {
-            changes.send(on)?;
+            let (send, receive) = tauri::async_runtime::channel(1);
+            changes
+                .send(Choice { on, reply: Some(send) })
+                .map_err(|_| "queue closed")?;
+            replies.push(receive);
         }
         drop(changes);
         let mut saved = Vec::new();
-        serve(queue, |on| saved.push(on));
+        serve(
+            queue,
+            |on| {
+                saved.push(on);
+                if on {
+                    Ok(())
+                } else {
+                    Err(CommandError::SettingsUnavailable)
+                }
+            },
+            |_| panic!("a Settings refusal belongs to its caller"),
+        );
         assert_eq!(saved, [true, false, false, true]);
+        assert_eq!(
+            replies
+                .iter_mut()
+                .map(|reply| reply.try_recv().unwrap().is_ok())
+                .collect::<Vec<_>>(),
+            saved
+        );
         Ok(())
     }
 }

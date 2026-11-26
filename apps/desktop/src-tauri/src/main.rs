@@ -125,6 +125,7 @@ fn main() {
         .manage(tray::SearchRequest::default())
         .manage(setup::Offered::default())
         .manage(ChooserOpen::default())
+        .manage(settings_window::Presentations::default())
         .manage(settings_backup::PendingRestore::default())
         .manage(row_context::RowContext::default())
         .manage(editor_endpoint::Pending::default())
@@ -178,7 +179,7 @@ fn main() {
                         api.prevent_close();
                         report(settings_window::dismiss(window.app_handle()), NativeIssue::Window);
                     }
-                    WindowEvent::Destroyed => settings_window::closed(window.app_handle()),
+                    WindowEvent::Destroyed => settings_window::destroyed(window.app_handle()),
                     _ => {}
                 }
                 return;

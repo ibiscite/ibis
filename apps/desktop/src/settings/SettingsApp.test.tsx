@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
+import { StrictMode } from "react";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
-import type { Page, PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
+import type { CheckResult, Page, PickerPreferences, PickerSave, RestorePreview, SettingsPresentation, ShortcutStatus, WindowSize } from "../bindings";
 import { bindingKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { SettingsApp } from "./SettingsApp";
@@ -18,7 +19,19 @@ import { deferred } from "../testing/deferred";
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
 
 function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial<PickerPreferences> = {}) {
+  const presentations = new Set<(presentation: SettingsPresentation) => void>();
+  let snapshot: SettingsPresentation = { revision: 0, opening: { id: 0, page: "general" } };
+  const publish = (next: SettingsPresentation) => {
+    snapshot = next;
+    for (const listener of presentations) listener(next);
+  };
   const state = {
+    snapshot: () => snapshot,
+    present: (page: Page) => {
+      const revision = snapshot.revision + 1;
+      publish({ revision, opening: { id: snapshot.opening?.id ?? revision, page } });
+    },
+    hide: () => publish({ revision: snapshot.revision + 1, opening: null }),
     permission: { pastes: true, needed: true, granted: false, list: "Device Control and Data Access", ...permission },
     preferences: { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true, ...preferences } as PickerPreferences,
     saved: [] as PickerPreferences[],
@@ -29,10 +42,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     finished: 0,
     windowSaved: undefined as ((saved: boolean, revision: number) => void) | undefined,
     windowRevision: 0,
-    pages: [] as ((page: Page) => void)[],
     closes: [] as (() => Promise<void>)[],
-    /** macOS hid the kept window. */
-    hides: [] as (() => Promise<void>)[],
     shortcut: { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null } as ShortcutStatus,
     shortcuts: [] as ((status: ShortcutStatus) => void)[],
     shortcutChoices: [] as (string | null)[],
@@ -69,10 +79,10 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     loginItem: async () => ({ name: "Ibis Nightly", enabled: state.login, problem: null }),
     setLoginItem: async (enabled) => { state.login = enabled; return { name: "Ibis Nightly", enabled, problem: null }; },
     updateChecks: async () => state.updates,
-    setUpdateChecks: async (on) => { state.updates = on; for (const changed of state.automatic) changed(on); return undefined as never; },
+    setUpdateChecks: async (on) => { state.updates = on; for (const changed of state.automatic) changed(on); return null; },
     openAboutLink: vi.fn(async () => undefined),
     copyVersion: vi.fn(async () => null),
-  checkForUpdates: async () => undefined as never,
+    checkForUpdates: async () => undefined as never,
     pastePermission: async () => { state.reads += 1; return state.permission; },
     openPastePermission: async () => { state.opened += 1; return undefined as never; },
     dragPasteApp: vi.fn(async () => undefined),
@@ -89,9 +99,9 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     version: async () => "0.3.0",
     onPreferencesChanged: async (changed) => { state.preferenceEvents.push(changed); return () => { state.preferenceEvents = state.preferenceEvents.filter((each) => each !== changed); }; },
     onSettingsChanged: async (changed) => { state.preferenceEvents.push(changed); return () => { state.preferenceEvents = state.preferenceEvents.filter((each) => each !== changed); }; },
-    onPage: async (handler) => { state.pages.push(handler); return () => undefined; },
+    onPresentation: async (handler) => { presentations.add(handler); return () => { presentations.delete(handler); }; },
     onUpdateChecks: async (handler) => { state.automatic.push(handler); return () => { state.automatic = state.automatic.filter((each) => each !== handler); }; },
-    onCloseRequested: async (handler) => { state.closes.push(() => handler(false)); state.hides.push(() => handler(true)); return () => undefined; },
+    onCloseRequested: async (handler) => { state.closes.push(handler); return () => { state.closes = state.closes.filter((close) => close !== handler); }; },
   };
   return { api, state, commit };
 }
@@ -112,7 +122,7 @@ test("Settings opens at the top of General with every built page in a navigable,
   expect(main.scrollTop).toBe(0);
   // Reopening the current page must reset it too, even though its name did not change.
   main.scrollTop = 320;
-  act(() => state.pages[0]!("general"));
+  act(() => state.present("general"));
   expect(main.scrollTop).toBe(0);
   main.scrollTop = 180;
   fireEvent.click(within(list).getByRole("option", { name: "About Ibis" }));
@@ -133,16 +143,17 @@ test("a hidden Settings opens again as a new window would, on General, and each 
   await screen.findByRole("main", { name: "Appearance" });
   expect(document.title).toBe("Appearance");
   fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
-  await act(async () => state.hides.at(-1)!());
+  await act(async () => state.hide());
   expect(state.preferences.appearance).toBe("dark");
-  expect(screen.getByRole("main", { name: "General" }).scrollTop).toBe(0);
-  expect(document.title).toBe("General");
-  expect(within(sidebar).getByRole<HTMLInputElement>("searchbox").value).toBe("");
+  expect(screen.queryByRole("main")).toBeNull();
+  expect(screen.queryByRole("searchbox")).toBeNull();
   // The next opening reads what is saved now, changed elsewhere meanwhile.
   state.login = true;
-  act(() => state.pages.at(-1)!("shortcuts"));
+  await act(async () => state.present("shortcuts"));
   expect(document.title).toBe("Shortcuts");
-  fireEvent.click(within(sidebar).getByRole("option", { name: "General" }));
+  expect(screen.getByRole<HTMLInputElement>("searchbox", { name: "Search Settings" }).value).toBe("");
+  fireEvent.click(screen.getByRole("option", { name: "General" }));
+  expect(screen.getByRole("main", { name: "General" }).scrollTop).toBe(0);
   await waitFor(() => expect(screen.getByRole("switch", { name: /^(Open at login|Start when you sign in|Start on login)/ })).toHaveProperty("checked", true));
 });
 
@@ -176,9 +187,10 @@ test("a failed save reads back the saved switch and keeps the alert", async () =
   const { api, state, commit } = fakeApi({ granted: true });
   const save = deferred<null>(), read = deferred<PickerPreferences>();
   vi.spyOn(api, "setPickerPreferences").mockImplementation(async (next) => { await save.promise; return commit(next); });
+  const reread = vi.spyOn(api, "pickerPreferences");
   render(<SettingsApp api={api} initialPage="general" />);
   const paste = await screen.findByRole("switch", { name: "Paste into the app you came from" });
-  const reread = vi.spyOn(api, "pickerPreferences").mockReturnValue(read.promise);
+  reread.mockClear().mockReturnValue(read.promise);
   fireEvent.click(paste);
   expect((paste as HTMLInputElement).checked).toBe(false);
   await act(async () => { save.reject(); });
@@ -195,7 +207,7 @@ test("the sidebar switches pages, a page request from the app moves it, and the 
   fireEvent.click(screen.getByRole("option", { name: "About Ibis" }));
   expect(await screen.findByText("Version 0.3.0")).toBeTruthy();
   expect(screen.getByRole("option", { name: "About Ibis" }).getAttribute("aria-current")).toBe("page");
-  act(() => state.pages[0]!("paste"));
+  act(() => state.present("paste"));
   expect(await screen.findByRole("switch", { name: "Paste into the app you came from" })).toBeTruthy();
   const found = await axe.run(container);
   expect(found.violations.map((v) => v.id)).toEqual([]);
@@ -452,19 +464,24 @@ function system(name: string) {
 test("a hidden Settings shows once the page asked for is on it, and catches up with a request it missed", async () => {
   system("macos");
   const { api, state } = fakeApi({ granted: true });
-  let latest: Page = "about"; // asked for while the page was still loading
+  // Both events were sent before the webview started listening.
+  state.present("general");
+  state.present("about");
   const shown: string[] = [];
-  api.settingsShown = vi.fn(async (page: Page) => { shown.push(`${page}: ${document.getElementById("settings-page-title")?.textContent}`); return latest; });
-  render(<SettingsApp api={api} initialPage="general" />);
+  api.settingsShown = vi.fn(async (revision) => {
+    if (revision !== null) shown.push(`${state.snapshot().opening?.page}: ${document.getElementById("settings-page-title")?.textContent}`);
+    return state.snapshot();
+  });
+  render(<StrictMode><SettingsApp api={api} /></StrictMode>);
+  expect(screen.queryByRole("main")).toBeNull();
   await screen.findByRole("main", { name: "About Ibis" });
-  await waitFor(() => expect(shown).toEqual(["general: General", "about: About Ibis"]));
-  await act(async () => state.hides.at(-1)!());
-  expect(shown).toHaveLength(2);
+  await waitFor(() => expect(shown).toEqual(["about: About Ibis"]));
+  await act(async () => state.hide());
+  expect(shown).toHaveLength(1);
   expect(screen.queryByRole("button", { name: /^Version/ })).toBeNull();
-  latest = "shortcuts";
-  await act(async () => state.pages.at(-1)!("shortcuts"));
+  await act(async () => state.present("shortcuts"));
   await waitFor(() => expect(shown.at(-1)).toBe("shortcuts: Shortcuts"));
-  expect(shown).toHaveLength(3);
+  expect(shown).toHaveLength(2);
 });
 
 test("a shortcut save that completes after reopening cannot bring back the old Undo", async () => {
@@ -477,8 +494,8 @@ test("a shortcut save that completes after reopening cannot bring back the old U
   render(<SettingsApp api={api} initialPage="shortcuts" />);
   fireEvent.click(await screen.findByRole("button", { name: "Use Default for Open Ibis" }));
   await waitFor(() => expect(api.setShortcut).toHaveBeenCalledWith(null));
-  act(() => { void state.hides.at(-1)!(); });
-  act(() => { state.pages.at(-1)!("shortcuts"); });
+  act(state.hide);
+  act(() => { state.present("shortcuts"); });
   await act(async () => { finish.resolve(); });
   expect(state.shortcut.shortcut).toBe(DEFAULT_PICKER_SHORTCUT);
   expect(screen.queryByRole("button", { name: "Undo Restore Default Shortcut" })).toBeNull();
@@ -492,8 +509,8 @@ test("a save refused before close does not leave its error on a reopened page", 
   fireEvent.click(await screen.findByRole("radio", { name: "Dark" }));
   const refusal = "Ibis could not save this choice; the saved value is shown.";
   await screen.findByText(refusal);
-  await act(async () => state.hides.at(-1)!());
-  await act(async () => state.pages.at(-1)!("look"));
+  await act(async () => state.hide());
+  await act(async () => state.present("look"));
   expect(screen.queryByText(refusal)).toBeNull();
 });
 
@@ -508,7 +525,7 @@ test.each(["windows", "linux"])("%s re-presenting visible General preserves an u
   fireEvent.click(screen.getByRole("button", { name: "Details…" }));
   fireEvent.click(await screen.findByRole("button", { name: "Restore…" }));
   await screen.findByRole("button", { name: "Restore and Restart" });
-  await act(async () => state.pages.at(-1)!("general"));
+  await act(async () => state.present("general"));
   expect(api.cancelSettingsRestore).not.toHaveBeenCalled();
   expect(screen.queryByRole("button", { name: "Restore and Restart" })).not.toBeNull();
 });
@@ -521,7 +538,7 @@ test("writings changes do not reload the format snapshot while Settings is hidde
   api.formatSettings = vi.fn(async () => ({ apps: [], writings: [{ id: "example", name: "Example draft", bibliography: "example.bib", output: "pandoc" }], unknown: null }));
   render(<SettingsApp api={api} initialPage="citations" />);
   await screen.findByText("Example draft");
-  await act(async () => state.hides.at(-1)!());
+  await act(async () => state.hide());
   vi.mocked(api.formatSettings).mockClear();
   await act(async () => writingsChanged());
   expect(api.formatSettings).not.toHaveBeenCalled();
@@ -538,8 +555,8 @@ test("a completed paste guide cannot disarm the next guide while its reply is in
   await waitFor(() => expect(api.finishPasteGuide).toHaveBeenCalledTimes(1));
 
   state.permission = { ...state.permission, granted: false };
-  await act(async () => { await state.hides.at(-1)!(); window.dispatchEvent(new Event("focus")); });
-  await act(async () => { state.pages.at(-1)!("paste"); });
+  await act(async () => { state.hide(); window.dispatchEvent(new Event("focus")); });
+  await act(async () => { state.present("paste"); });
   await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
   await act(async () => { first.resolve(true); });
 
@@ -547,4 +564,189 @@ test("a completed paste guide cannot disarm the next guide while its reply is in
   state.permission = { ...state.permission, granted: true };
   await act(async () => { window.dispatchEvent(new Event("focus")); });
   expect(api.finishPasteGuide).toHaveBeenCalledTimes(calls + 1);
+});
+
+test("a hidden Settings does not read picker preferences for a change or a failed save", async () => {
+  system("macos");
+  const { api, state } = fakeApi({ granted: true });
+  const save = deferred<PickerSave>();
+  const read = vi.spyOn(api, "pickerPreferences");
+  api.setPickerPreferences = vi.fn(() => save.promise);
+  render(<SettingsApp api={api} initialPage="look" />);
+  fireEvent.click(await screen.findByRole("radio", { name: "Dark" }));
+  await waitFor(() => expect(api.setPickerPreferences).toHaveBeenCalledOnce());
+  act(state.hide);
+  read.mockClear();
+  await act(async () => {
+    state.preferenceEvents.forEach((changed) => changed(42));
+    window.dispatchEvent(new Event("focus"));
+    save.reject(new Error("write failed"));
+  });
+  expect(read).not.toHaveBeenCalled();
+});
+
+test.each(["native", "sidebar"])("a granted paste guide waiting for a save cannot dismiss About opened from %s", async (from) => {
+  system("macos");
+  const { api, state, commit } = fakeApi();
+  const save = deferred<void>();
+  api.setPickerPreferences = vi.fn(async (patch) => { await save.promise; return commit(patch); });
+  render(<SettingsApp api={api} initialPage="paste" />);
+  await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
+  fireEvent.click(screen.getByRole("switch", { name: /menu bar/i }));
+  await waitFor(() => expect(api.setPickerPreferences).toHaveBeenCalledOnce());
+  state.permission = { ...state.permission, granted: true };
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(state.finished).toBe(0);
+  if (from === "native") act(() => state.present("about"));
+  else fireEvent.click(screen.getByRole("option", { name: "About Ibis" }));
+  await screen.findByRole("main", { name: "About Ibis" });
+  await act(async () => save.resolve());
+  expect(state.finished).toBe(0);
+});
+
+test("a Paste request is acknowledged after its anchor has rendered", async () => {
+  system("macos");
+  const { api, state } = fakeApi();
+  const permission = deferred<PastePermission>();
+  api.pastePermission = () => permission.promise;
+  const bounds = HTMLElement.prototype.getBoundingClientRect;
+  const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return this.id === "paste" ? new DOMRect(0, 230, 100, 40) : bounds.call(this);
+  });
+  onTestFinished(() => { rect.mockRestore(); });
+  const acknowledged: { guide: boolean; scroll: number | undefined }[] = [];
+  api.settingsShown = vi.fn(async (revision) => {
+    if (revision !== null && state.snapshot().opening?.page === "paste") {
+      acknowledged.push({ guide: document.querySelector("#paste .ui-paste-guide") !== null, scroll: document.querySelector("main")?.scrollTop });
+    }
+    return state.snapshot();
+  });
+  render(<SettingsApp api={api} initialPage="about" />);
+  await act(async () => state.hide());
+  await act(async () => state.present("paste"));
+  expect(acknowledged).toEqual([]);
+  await act(async () => permission.resolve(state.permission));
+  await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
+  expect(acknowledged).toEqual([{ guide: true, scroll: 230 }]);
+});
+
+test("permission is read afresh on reopening and a late grant from the old opening is dropped", async () => {
+  system("macos");
+  const { api, state } = fakeApi();
+  const first = deferred<PastePermission>();
+  const read = vi.spyOn(api, "pastePermission").mockReturnValueOnce(first.promise);
+  render(<SettingsApp api={api} initialPage="general" />);
+  await waitFor(() => expect(read).toHaveBeenCalledOnce());
+  await act(async () => {
+    state.hide();
+    window.dispatchEvent(new Event("focus"));
+  });
+  expect(read).toHaveBeenCalledOnce();
+  act(() => state.present("general"));
+  await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
+  await act(async () => first.resolve({ ...state.permission, granted: true }));
+  expect(screen.getByRole("heading", { name: "Allow Ibis to paste for you" })).toBeTruthy();
+});
+
+const CHOICE_FAILED = "Ibis could not save this choice; the saved value is shown.";
+
+test("a size failure is shown only to the opening that chose that revision", async () => {
+  system("macos");
+  const { api, state } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const large = await screen.findByRole("radio", { name: "Large" });
+  await waitFor(() => expect(large).toHaveProperty("disabled", false));
+  fireEvent.click(large);
+  expect(api.setWindowSize).toHaveBeenCalledWith("large");
+  await act(async () => state.hide());
+  await act(async () => state.present("look"));
+  await act(async () => state.windowSaved!(false, 1));
+  expect(screen.queryByText(CHOICE_FAILED)).toBeNull();
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Large" })).toHaveProperty("disabled", false));
+  fireEvent.click(screen.getByRole("radio", { name: "Large" }));
+  await act(async () => state.windowSaved!(false, 2));
+  expect(await screen.findByText(CHOICE_FAILED)).toBeTruthy();
+});
+
+const restorePreview: RestorePreview = {
+  ticket: 19, made_on: "macos", made_by: "0.2.8", notes: [],
+  changes: [{ setting: "paste", from: "on", to: "off" }],
+};
+
+test("a hide and reopen in the same React batch cancels an unconfirmed restore", async () => {
+  system("macos");
+  const { api, state } = fakeApi({ granted: true });
+  vi.mocked(api.chooseSettingsBackup).mockResolvedValue(restorePreview);
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.click(screen.getByRole("button", { name: "Details…" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Restore…" }));
+  await screen.findByRole("button", { name: "Restore and Restart" });
+  await act(async () => {
+    state.hide();
+    state.present("general");
+  });
+  expect(api.cancelSettingsRestore).toHaveBeenCalledWith(restorePreview.ticket);
+  expect(screen.queryByRole("button", { name: "Restore and Restart" })).toBeNull();
+});
+
+test("a restore preview that arrives after hide is cancelled without reaching the next opening", async () => {
+  system("macos");
+  const { api, state } = fakeApi({ granted: true });
+  const preview = deferred<RestorePreview>();
+  vi.mocked(api.chooseSettingsBackup).mockReturnValue(preview.promise);
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.click(screen.getByRole("button", { name: "Details…" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Restore…" }));
+  await act(async () => {
+    state.hide();
+    state.present("general");
+    preview.resolve(restorePreview);
+  });
+  expect(api.cancelSettingsRestore).toHaveBeenCalledWith(restorePreview.ticket);
+  expect(screen.queryByRole("button", { name: "Restore and Restart" })).toBeNull();
+});
+
+test("a late update result does not finish or report a check in the next opening", async () => {
+  system("macos");
+  const { api, state } = fakeApi({ granted: true });
+  const first = deferred<CheckResult>();
+  const next = deferred<CheckResult>();
+  api.checkForUpdates = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(next.promise);
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Check for Updates" }));
+  await act(async () => state.hide());
+  await act(async () => state.present("about"));
+  fireEvent.click(await screen.findByRole("button", { name: "Check for Updates" }));
+  await act(async () => first.resolve("failed"));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("button", { name: /checking/i })).toBeTruthy();
+  await act(async () => next.resolve("newest"));
+  expect(screen.getByRole("button", { name: "Check for Updates" })).toBeTruthy();
+});
+
+test("an automatic-update event cannot settle a newer opening's save", async () => {
+  system("macos");
+  const { api, state } = fakeApi();
+  const first = deferred<null>();
+  const next = deferred<null>();
+  const nativeSave = api.setUpdateChecks;
+  api.setUpdateChecks = vi.fn()
+    .mockReturnValueOnce(first.promise)
+    .mockImplementationOnce(async (on) => { await next.promise; return nativeSave(on); });
+  const name = "Check for updates automatically";
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.click(await screen.findByRole("switch", { name }));
+  await waitFor(() => expect(api.setUpdateChecks).toHaveBeenCalledOnce());
+  await act(async () => { state.hide(); state.present("about"); });
+  const automatic = await screen.findByRole("switch", { name });
+  fireEvent.click(automatic);
+  await act(async () => {
+    state.automatic.forEach((changed) => changed(true));
+    first.reject(new Error("first write failed"));
+  });
+  expect(api.setUpdateChecks).toHaveBeenCalledTimes(2);
+  expect(automatic).toHaveProperty("disabled", true);
+  expect(screen.queryByText(CHOICE_FAILED)).toBeNull();
+  await act(async () => next.resolve(null));
+  expect(automatic).toHaveProperty("checked", false);
 });

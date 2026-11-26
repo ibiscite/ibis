@@ -19,7 +19,8 @@ export type ReadPermission = PastePermission & { unreadable?: boolean };
 /** Whether Ibis may paste, read live while the guide waits (#1292). Coming
  * back to the window reads it at once, so the answer is never stale. */
 export function usePastePermission(api: Pick<SettingsApi, "pastePermission">, active: boolean, poll = true) {
-  const [permission, setPermission] = useState<ReadPermission | null>(null);
+  // Undefined until the first reply. Failure can still show the page.
+  const [permission, setPermission] = useState<ReadPermission | null>();
   const [visible, setVisible] = useState(!document.hidden);
   useEffect(() => {
     const changed = () => setVisible(!document.hidden);
@@ -29,17 +30,17 @@ export function usePastePermission(api: Pick<SettingsApi, "pastePermission">, ac
   // Poll only while waiting for the switch; focus covers later changes.
   const waiting = poll && permission?.needed === true && !permission.granted;
   useEffect(() => {
-    if (!active || !visible) return;
+    if (!active) return;
     let live = true;
     let request = 0;
     const read = () => {
-      if (document.hidden) return;
       const current = ++request;
       void api.pastePermission().then((next) => { if (live && current === request) setPermission(next); })
-        .catch(() => { if (live && current === request) setPermission((old) => old && { ...old, granted: false, unreadable: true }); });
+        .catch(() => { if (live && current === request) setPermission((old) => old ? { ...old, granted: false, unreadable: true } : null); });
     };
+    // The page may be getting ready for its first reveal. Poll only on screen.
     void read();
-    const timer = waiting ? window.setInterval(read, RECHECK_MS) : undefined;
+    const timer = visible && waiting ? window.setInterval(read, RECHECK_MS) : undefined;
     window.addEventListener("focus", read);
     return () => { live = false; window.clearInterval(timer); window.removeEventListener("focus", read); };
   }, [api, active, visible, waiting]);

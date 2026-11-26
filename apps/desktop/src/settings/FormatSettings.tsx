@@ -9,10 +9,9 @@ import { rowDetails } from "./rows";
 import { Status } from "../ui/Status";
 import { listening } from "../nativeEvents";
 
-/** App choices and writings come from the engine's settings snapshot, read
- * while `active`. A late read or forget never replaces a more recent snapshot
- * or a reopened page. */
-export function useFormatSettings(api: SettingsApi, active = true) {
+/** App choices and writings come from the engine's settings snapshot. A late
+ * read never replaces a more recent one. */
+export function useFormatSettings(api: Pick<SettingsApi, "formatSettings" | "onSettingsChanged" | "forgetAppFormat" | "openSettingsFile">) {
   const [view, setView] = useState<FormatSettingsView | null>(null);
   // Why the file could not be read: the engine's Problem, as the picker gets it.
   const [problem, setProblem] = useState<unknown>(null);
@@ -23,23 +22,19 @@ export function useFormatSettings(api: SettingsApi, active = true) {
   const openRequest = useRef(0);
   const refresh = useRef<(() => Promise<void>) | null>(null);
   useEffect(() => {
-    // A hidden Settings keeps no app or writing names, and hears no changes.
-    if (!active) { setView(null); setProblem(null); setForgetFailed(false); setOpenFailed(false); }
-    if (!api.formatSettings || !active) return () => { openRequest.current += 1; };
-    setBusy(false);
-    let alive = true;
+    if (!api.formatSettings) return;
     const read = () => {
       const ticket = ++request.current;
       return api.formatSettings!().then((next) => {
-        if (!alive || ticket !== request.current) return;
+        if (ticket !== request.current) return;
         setView(next); setProblem(null);
-      }, (reason: unknown) => { if (alive && ticket === request.current) setProblem(reason ?? new Error("settings unread")); });
+      }, (reason: unknown) => { if (ticket === request.current) setProblem(reason ?? new Error("settings unread")); });
     };
     refresh.current = read;
     const stop = listening(api.onSettingsChanged, read, { ready: read, failed: read });
     window.addEventListener("focus", read);
-    return () => { alive = false; openRequest.current += 1; refresh.current = null; request.current += 1; window.removeEventListener("focus", read); stop(); };
-  }, [api, active]);
+    return () => { refresh.current = null; request.current += 1; window.removeEventListener("focus", read); stop(); };
+  }, [api]);
   const forget = (id: string) => {
     if (!api.forgetAppFormat || !api.formatSettings || busy) return;
     const read = refresh.current;

@@ -568,8 +568,12 @@ pub(crate) fn set_editor_endpoint(on: bool, app: AppHandle) -> EndpointStatus {
             .err()
             .map(|_| EndpointProblem::NotSaved)
     };
-    state.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).1 = problem;
-    status(&app)
+    // A Settings switch reports its own refusal. The live status retains
+    // problems with a configured endpoint from startup or a file edit.
+    EndpointStatus {
+        problem,
+        ..status(&app)
+    }
 }
 
 /// Replace a live-file endpoint under the same native lock as Settings. A

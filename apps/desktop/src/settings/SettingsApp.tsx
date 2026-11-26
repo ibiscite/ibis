@@ -7,12 +7,12 @@ import { AttachmentText } from "./AttachmentText";
 import { ProposedChanges } from "./ProposedChanges";
 import { CliCommandRow } from "./CliCommand";
 import { StatusMark } from "../ui/StatusMark";
-import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PageIcon } from "../icons";
 import { DEFAULT_PREFERENCES, type CheckResult, type LoginItem, type LoginItemProblem, type PickerPreferences, type ShortcutStatus, type WindowSize } from "../bindings";
 import { type MessageId, useInterfaceMessages, problemText } from "../i18n";
 import { type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
-import { PreferencePatchQueue } from "../preferencePatchQueue";
+import { PreferencePatchQueue, SaveQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
 import { NoticeSlot } from "../ui/NoticeSlot";
 import { useLayer } from "../ui/layers";
@@ -22,7 +22,7 @@ import { Button } from "../ui/Button";
 import { AboutDelight, AboutLine } from "../ui/Delights";
 import { localMoment } from "../ui/localMoment";
 import { useAltHeld } from "../ui/useAltHeld";
-import type { DelightFact, DelightView, Page as AskedPage } from "../bindings";
+import type { DelightFact, DelightView, SettingsPresentation } from "../bindings";
 import { ShortcutsPage } from "./ShortcutsPage";
 import { Group, Note, Row, Section } from "../ui/Layout";
 import { ShortcutSetting } from "../ui/ShortcutSetting";
@@ -36,6 +36,7 @@ import { AiApps } from "./AiApps";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import { BackupRows } from "./BackupRows";
 import type { SettingsApi } from "./api";
+import { Opening, RequestScope } from "./opening";
 import { listening } from "../nativeEvents";
 import { useFlash } from "../ui/timers";
 import "../ui/SettingsLayout.css";
@@ -57,40 +58,87 @@ export function pageOf(name: string | null): { page: Page; focus: "paste" | null
   return { page: PAGES.includes(name as Page) ? name as Page : "general", focus: null };
 }
 
-/** The Settings window: a sidebar of pages, each a stack of titled groups of
- * rows (docs/design/settings.md). Every change applies at once. */
-/** How far below a page's top a scrolled-to group lands: under the title, which stays put. */
 class WindowSizeSaveError extends Error {
   constructor(readonly retryTicket: number | null) { super("Window size could not be saved"); }
 }
+/** How far below a page's top a scrolled-to group lands: under the title, which stays put. */
 const underTitle = (page: HTMLElement) => page.querySelector<HTMLElement>(".ui-settings-page-title")?.offsetHeight ?? 0;
 
-export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPage: string | null }) {
+type PageRequest = { revision: number; page: string; scope: RequestScope };
+type Visit = { opening: Opening; request: PageRequest };
+const pageRequest = (revision: number, page: string): PageRequest => ({ revision, page, scope: new RequestScope() });
+
+/** The kept window owns lifecycle events and saves. The opening owns its tree. */
+export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPage?: string | null }) {
+  const [saves] = useState(() => new SaveQueue());
+  // A canvas or demo can supply its own opening instead of asking native code.
+  const [visit, setVisit] = useState<Visit | null>(() => initialPage === undefined ? null : {
+    opening: new Opening(0, api), request: pageRequest(0, initialPage ?? "general"),
+  });
+  const current = useRef(visit);
+  const revision = useRef(visit?.request.revision ?? -1);
+  const presented = useCallback((next: SettingsPresentation) => {
+    if (next.revision <= revision.current) return;
+    revision.current = next.revision;
+    const before = current.current;
+    before?.request.scope.end();
+    if (before && next.opening?.id !== before.opening.id) before.opening.end();
+    const showing = next.opening && {
+      opening: before?.opening.id === next.opening.id ? before.opening : new Opening(next.opening.id, api),
+      request: pageRequest(next.revision, next.opening.page),
+    };
+    current.current = showing;
+    setVisit(showing);
+  }, [api]);
+
+  useEffect(() => {
+    const before = current.current;
+    // Effect replay (StrictMode) starts a fresh scope for the same initial page.
+    if (before?.opening.signal.aborted) {
+      const fresh = { opening: new Opening(before.opening.id, api), request: pageRequest(before.request.revision, before.request.page) };
+      current.current = fresh;
+      setVisit(fresh);
+    }
+    const startup = new RequestScope();
+    const read = api.settingsShown;
+    const stop = listening(api.onPresentation, presented, { ready: () => {
+      if (read && initialPage === undefined) void startup.run(() => read(null)).then(presented, () => undefined);
+    } });
+    const close = listening(api.onCloseRequested, () => saves.finish());
+    return () => {
+      startup.end(); stop(); close();
+      current.current?.request.scope.end();
+      current.current?.opening.end();
+    };
+  }, [api, initialPage, presented, saves]);
+
+  return visit && <SettingsContents key={visit.opening.id} {...visit} saves={saves} writer={api} presented={presented} />;
+}
+
+type Writer = Pick<SettingsApi, "savePickerPreferences" | "pickerPreferencesSaved" | "setShortcut" | "setLoginItem" | "setUpdateChecks">;
+
+function SettingsContents({ opening, request, saves, writer, presented }: Visit & {
+  saves: SaveQueue; writer: Writer; presented: (next: SettingsPresentation) => void;
+}) {
+  const { api } = opening;
   const { text } = useInterfaceMessages();
   const platform = currentPlatform();
-  const start = pageOf(initialPage);
+  const start = pageOf(request.page);
   const [page, setPage] = useState<Page>(start.page);
   const [agentRefresh, setAgentRefresh] = useState(0);
-  /** macOS keeps Settings, hidden, between openings. Hidden, it holds no page
-   * content and reads nothing; the next opening builds the page afresh. */
-  const [hidden, setHidden] = useState(false);
-  /** The opening of a kept window; a reply that lands in a later one says nothing. */
-  const opening = useRef(0);
-  const hiddenNow = useRef(hidden);
-  hiddenNow.current = hidden;
-  /** The page asked for, reported once it is on screen (`settings_shown`). */
-  const [request, setRequest] = useState<{ page: AskedPage; count: number }>({ page: (initialPage ?? "general") as AskedPage, count: 0 });
+  const [applied, setApplied] = useState(request);
+  const [rendered, setRendered] = useState<PageRequest | null>(null);
   const [focus, setFocus] = useState<"top" | "paste" | null>(start.focus ?? "top");
   const pageRef = useRef<HTMLElement>(null);
   useScrollEdges(pageRef);
   const [preference, dispatchPreference] = useReducer(preferenceState, initialPreferences);
   const preferences = preference.value;
-  const formatSettings = useFormatSettings(api, !hidden);
+  const formatSettings = useFormatSettings(api);
   const [login, setLogin] = useState<LoginItem | null>(null);
   const [updates, setUpdates] = useState<boolean | null>(null);
   const latestLogin = useRef<LoginItem | null>(null);
   const latestUpdates = useRef<boolean | null>(null);
-  const updateWrite = useRef<{ on: boolean; resolve: () => void; reject: () => void } | null>(null);
+  const updateBusy = useRef(false);
   const [version, setVersion] = useState("");
   const [readProblems, setReadProblems] = useState<ReadonlySet<string>>(() => new Set());
   const readProblem = useCallback((id: string, failed: boolean) => setReadProblems((current) => {
@@ -107,7 +155,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const windowSaveWaiter = useRef<{ revision: number; resolve: () => void; reject: () => void } | null>(null);
   const cause = useRef<string | null>(null);
   const edits = useRef(0);
-  const live = useRef(true);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -129,7 +176,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   // A row found by search is marked for 2 s.
   const [highlighted, highlight, clearHighlight] = useFlash<string>(2000);
   const highlightOperation = useRef(0);
-  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   const [shortcutProblem, setShortcutProblem] = useState<ShortcutProblem | null>(null);
   const [shortcutUndo, setShortcutUndo] = useState<string | null>(null);
@@ -148,18 +194,15 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [versionCopyFailed, setVersionCopyFailed] = useState(false);
   const [checkResult, setCheckResult] = useState<CheckResult | null>(null);
   const [checking, setChecking] = useState(false);
-  const manualCheck = useRef(0);
   const checkRunning = useRef(false);
   /** About's Check for Updates; the tray and menu bar check natively (updater/setting.rs). */
   const checkNow = useCallback(() => {
     if (checkRunning.current) return;
     checkRunning.current = true;
-    const operation = ++manualCheck.current;
     setCheckResult(null);
     setChecking(true);
-    const finished = (result: CheckResult) => { if (live.current && operation === manualCheck.current) setCheckResult(result); };
-    void api.checkForUpdates().then(finished, () => finished("failed"))
-      .finally(() => { checkRunning.current = false; if (live.current) setChecking(false); });
+    void api.checkForUpdates().then(setCheckResult, () => setCheckResult("failed"))
+      .finally(() => { checkRunning.current = false; setChecking(false); });
   }, [api]);
   const versionCopy = useRef(0);
   // Feedback belongs to this page presentation, independently of delight preferences.
@@ -205,21 +248,19 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     return () => { active = false; window.clearTimeout(timer); window.removeEventListener("focus", focusRead); clickAbout.current = () => {}; };
   }, [page, api.delightView, preferences?.small_surprises]);
   useEffect(() => { if (about?.fun === false) setDip(0); }, [about?.fun]);
-  const updateIntent = useRef<boolean | null>(null);
   /** The guide stays to confirm a permission given while it was open. */
   const [guided, setGuided] = useState(false);
-  const [detour, setDetour] = useState(initialPage === "paste");
+  const [detour, setDetour] = useState(start.focus === "paste");
   const [returnFailed, setReturnFailed] = useState(false);
   const [focused, setFocused] = useState(true);
   const settingUndo = useSettingUndo(!focused, searchRef);
   const clearSettingUndo = useCallback(() => { windowUndoRevision.current = null; settingUndo.clear(); }, [settingUndo.clear]);
   const queue = useMemo(() => new PreferencePatchQueue({
     read: async () => ({ preferences: await api.pickerPreferences() }),
-    submit: (patch) => api.savePickerPreferences(patch),
-    saved: (receipt) => api.pickerPreferencesSaved(receipt),
-  }, { restoreOnFailure: true }), [api]);
+    submit: writer.savePickerPreferences,
+    saved: writer.pickerPreferencesSaved,
+  }, { restoreOnFailure: true, signal: opening.signal }, saves), [api, writer, opening, saves]);
   useEffect(() => queue.subscribe((event) => {
-    if (!live.current) return;
     if (event.type === "error") {
       if (event.source === "read") dispatchPreference({ type: "read-failed" });
     } else if (event.type === "invalidated") {
@@ -231,24 +272,27 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     } else if (event.type === "saving") {
       const operation = edits.current;
       const row = cause.current;
-      void event.promise.catch((reason: unknown) => {
-        if (live.current && operation === edits.current) {
+      void opening.run(() => event.promise).catch((reason: unknown) => {
+        if (operation === edits.current) {
           dispatchPreference({ type: "refused", saved: queue.savedPreferences,
             problem: { row, message: problemText(reason, text("settings-choice-failed"), text) } });
         }
       });
     }
-  }), [queue, clearSettingUndo, text]);
+  }), [queue, opening, clearSettingUndo, text]);
   useAppearance(preferences);
   // A Mac settings window is named after its page (settings_window.rs applies it there).
-  useEffect(() => { document.title = text(`settings-${page}`); }, [page, text]);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    document.title = text(`settings-${page}`);
+    return () => { document.title = ""; };
+  }, [page, text]);
+  useLayoutEffect(() => {
     const root = document.documentElement;
     root.dataset.largerText = String(preferences?.larger_text ?? DEFAULT_PREFERENCES.larger_text);
     return () => { delete root.dataset.largerText; };
   }, [preferences?.larger_text]);
   // Shortcuts reads it too, to name what Enter does; only General waits for a grant.
-  const permission = usePastePermission(api, !hidden && (page === "general" || page === "shortcuts" || Boolean(query.trim())), page === "general" && preferences?.paste === true);
+  const permission = usePastePermission(api, page === "general" || page === "shortcuts" || Boolean(query.trim()), page === "general" && preferences?.paste === true);
   const enterPastes = permission?.pastes === true && (!permission.needed || permission.granted) && preferences?.paste === true;
 
   useEffect(() => {
@@ -258,126 +302,100 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     return () => { window.removeEventListener("focus", focus); window.removeEventListener("blur", blur); };
   }, []);
   useEffect(() => {
-    if (!detour || !focused || !preferences?.paste || !permission?.granted) return;
-    let live = true;
-    const opened = opening.current;
-    const current = () => live && opened === opening.current;
+    if (request !== rendered || !detour || !focused || !preferences?.paste || !permission?.granted) return;
+    const attempt = new RequestScope();
     setReturnFailed(false);
-    // Finish queued preferences before leaving Settings, as on a normal close.
-    void queue.finishSaving().then(async () => {
-      const finished = await api.finishPasteGuide();
-      if (finished && current()) setDetour(false);
-    }).catch(() => { if (current()) setReturnFailed(true); });
-    return () => { live = false; };
-  }, [api, queue, detour, focused, permission, preferences?.paste]);
+    void attempt.run(async () => {
+      await saves.finish();
+      return attempt.run(() => request.scope.run(() => api.finishPasteGuide(request.revision)));
+    }).then((finished) => { if (finished) setDetour(false); }, () => setReturnFailed(true));
+    return () => attempt.end();
+  }, [api, saves, request, rendered, detour, focused, permission?.granted, preferences?.paste]);
 
-  /** Every opening has a page, and ordinary Settings opens on General at the top. */
-  const go = useCallback((name: AskedPage) => {
-    setRevealTarget(null); clearHighlight(); setQuery(""); const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top");
-    setRequest((asked) => ({ page: name, count: asked.count + 1 }));
-  }, [clearHighlight]);
-  // Once the page asked for is on screen, a hidden Settings may show; a request
-  // sent before this page listened arrives here instead.
-  useEffect(() => {
-    if (hidden || !api.settingsShown) return;
-    let current = true;
-    void api.settingsShown(request.page).then((latest) => { if (current && latest !== request.page) go(latest); }, () => undefined);
-    return () => { current = false; };
-  }, [api, request, hidden, go]);
+  // Re-presenting a visible window changes its page in place.
+  useLayoutEffect(() => {
+    if (request === applied) return;
+    setApplied(request);
+    const next = pageOf(request.page);
+    setRevealTarget(null); clearHighlight(); setQuery(""); setDip(0); setReturnFailed(false);
+    setDetour(next.focus === "paste"); setPage(next.page); setFocus(next.focus ?? "top");
+  }, [request, applied, clearHighlight]);
+
+  const readUpdates = useCallback(() => {
+    if (updateBusy.current) return;
+    const read = ++updateReads.current;
+    void api.updateChecks().then((next) => {
+      if (read !== updateReads.current) return;
+      if (latestUpdates.current !== null && latestUpdates.current !== next) clearSettingUndo();
+      latestUpdates.current = next; setUpdates(next); readProblem("automatic", false);
+    }, () => { if (read === updateReads.current) readProblem("automatic", true); });
+  }, [api, clearSettingUndo, readProblem]);
+
+  const readShortcut = useCallback(() => {
+    if (shortcutBusy.current) return;
+    const read = ++shortcutReads.current;
+    void api.shortcutStatus().then((next) => {
+      if (read !== shortcutReads.current) return;
+      if (latestShortcut.current?.shortcut !== next.shortcut) clearShortcutUndo();
+      latestShortcut.current = next;
+      setShortcut(next);
+      setShortcutProblem((problem) => problem?.id === "shortcuts-read-failed" ? null : problem);
+    }, () => { if (read === shortcutReads.current) setShortcutProblem({ id: "shortcuts-read-failed" }); });
+  }, [api, clearShortcutUndo]);
 
   useEffect(() => {
-    let active = true;
-    const readShortcut = () => {
-      if (shortcutBusy.current) return;
-      const request = ++shortcutReads.current;
-      api.shortcutStatus().then((next) => {
-        if (active && request === shortcutReads.current) {
-          if (latestShortcut.current?.shortcut !== next.shortcut) clearShortcutUndo();
-          latestShortcut.current = next;
-          setShortcut(next);
-          setShortcutProblem((problem) => problem?.id === "shortcuts-read-failed" ? null : problem);
-        }
-      }).catch(() => {
-        if (active && request === shortcutReads.current) setShortcutProblem({ id: "shortcuts-read-failed" });
-      });
-    };
     const readAll = (withPreferences: boolean | Event = true) => {
-      if (withPreferences !== false) void queue.load(() => active);
+      if (withPreferences !== false) void queue.load();
       if (!loginBusy.current) {
         const loginRequest = ++loginReads.current;
-        api.loginItem().then((next) => { if (active && loginRequest === loginReads.current) { if (latestLogin.current && latestLogin.current.enabled !== next.enabled) clearSettingUndo(); latestLogin.current = next; setLogin(next); readProblem("login", false); } })
-          .catch(() => { if (active && loginRequest === loginReads.current) readProblem("login", true); });
+        void api.loginItem().then((next) => { if (loginRequest === loginReads.current) { if (latestLogin.current && latestLogin.current.enabled !== next.enabled) clearSettingUndo(); latestLogin.current = next; setLogin(next); readProblem("login", false); } })
+          .catch(() => { if (loginRequest === loginReads.current) readProblem("login", true); });
       }
-      if (updateWrite.current) return;
-      const updateRequest = ++updateReads.current;
-      api.updateChecks().then((next) => {
-        if (active && updateRequest === updateReads.current) { if (latestUpdates.current !== null && latestUpdates.current !== next) clearSettingUndo(); latestUpdates.current = next; setUpdates(next); readProblem("automatic", false); }
-      }).catch(() => {
-        if (active && updateRequest === updateReads.current) readProblem("automatic", true);
-      });
     };
     const preferenceEvents = listening(api.onPreferencesChanged, (revision, fields) => {
-      void queue.refresh(revision, () => active, fields);
-    }, { ready: () => void queue.load(() => active), failed: () => dispatchPreference({ type: "read-failed" }) });
+      void queue.refresh(revision, undefined, fields);
+    }, { ready: () => void queue.load(), failed: () => dispatchPreference({ type: "read-failed" }) });
     readAll(false);
-    api.version().then((next) => { if (active) setVersion(next); }).catch(() => undefined);
+    void api.version().then(setVersion, () => undefined);
     // Changes made in the picker or the menu bar while Settings was open.
     window.addEventListener("focus", readAll);
     window.addEventListener("focus", readShortcut);
-    const shortcuts = listening(api.onShortcutStatus, (next) => {
-      shortcutReads.current += 1;
-      latestShortcut.current = next; setShortcut(next); clearShortcutUndo();
-    }, { ready: readShortcut, failed: () => { setShortcutProblem({ id: "shortcuts-read-failed" }); readShortcut(); } });
-    // Each opening starts from what is saved now.
-    const page = listening(api.onPage, (name) => { go(name); setHidden(false); readAll(); readShortcut(); });
-    /** A kept window was hidden: it holds nothing from this opening, and no
-     * reply from it shows in the next. */
-    const leave = () => {
-      opening.current += 1; edits.current += 1; manualCheck.current += 1; updateIntent.current = null;
-      dispatchPreference({ type: "opened" });
-      clearSettingUndo(); clearShortcutUndo(); setProblemRow(null); setShortcutProblem(null); setCheckResult(null); setReturnFailed(false); setGuided(false);
-      setHidden(true); go("general");
-    };
-    const automatic = listening(api.onUpdateChecks, (next) => {
-      updateReads.current += 1;
-      if (!updateWrite.current) clearSettingUndo();
-      latestUpdates.current = next;
-      setUpdates(next);
-      const pending = updateWrite.current;
-      updateWrite.current = null;
-      if (pending) { if (pending.on === next) pending.resolve(); else pending.reject(); }
-      if (updateIntent.current !== null) {
-        setProblemRow(updateIntent.current === next ? null : { id: "automatic", message: "settings-choice-failed" });
-        if (updateIntent.current === next) updateIntent.current = null;
-      }
-      setUpdatesSaving(false);
-    });
-    // Saves finish before a closing window is destroyed. A kept one goes on
-    // running while hidden; it opens next on General, so leave it there now.
-    const close = listening(api.onCloseRequested, async (kept) => {
-      if (kept) leave();
-      await queue.finishSaving();
-    });
+    window.addEventListener("focus", readUpdates);
+    const shortcuts = listening(api.onShortcutStatus, readShortcut, { ready: readShortcut, failed: readShortcut });
+    const automatic = listening(api.onUpdateChecks, readUpdates, { ready: readUpdates, failed: readUpdates });
+    // An older opening can still finish saving. Read the resulting durable
+    // values ourselves once those writes drain.
+    if (saves.busy) void opening.run(() => saves.drain()).then(() => { readAll(); readShortcut(); readUpdates(); });
     return () => {
-      active = false;
-      updateWrite.current?.reject(); updateWrite.current = null;
       window.removeEventListener("focus", readAll);
       window.removeEventListener("focus", readShortcut);
-      for (const stop of [preferenceEvents, shortcuts, page, automatic, close]) stop();
+      window.removeEventListener("focus", readUpdates);
+      for (const stop of [preferenceEvents, shortcuts, automatic]) stop();
     };
-  }, [api, queue, readProblem, clearShortcutUndo, clearSettingUndo, go]);
-  useEffect(() => {
+  }, [api, queue, readProblem, clearSettingUndo, readShortcut, readUpdates, opening, saves]);
+  const preferencesReady = preferences !== null || preference.status === "unknown" && preference.message !== null;
+  useLayoutEffect(() => {
     const scroller = pageRef.current;
-    if (!focus || !scroller) return;
+    if (!focus || !scroller || request !== applied) return;
     if (focus === "paste") {
-      // Wait for both reads before looking for the group. Move only the page,
-      // never the document containing the sidebar and native title bar.
-      if (!preferences || !permission) return;
-      const paste = document.getElementById("paste");
-      scroller.scrollTop = paste ? scroller.scrollTop + paste.getBoundingClientRect().top - scroller.getBoundingClientRect().top - underTitle(scroller) : 0;
+      if (!preferencesReady || permission === undefined) return;
+      const paste = scroller.querySelector("#paste");
+      if (!paste) return;
+      scroller.scrollTop += paste.getBoundingClientRect().top - scroller.getBoundingClientRect().top - underTitle(scroller);
     } else scroller.scrollTop = 0;
     setFocus(null);
-  }, [focus, preferences, permission]);
+  }, [focus, request, applied, preferencesReady, permission]);
+  const acknowledging = useRef<PageRequest | null>(null);
+  useLayoutEffect(() => {
+    if (focus || request !== applied || !preferencesReady || acknowledging.current === request) return;
+    acknowledging.current = request;
+    const shown = api.settingsShown;
+    if (!shown) { setRendered(request); return; }
+    void request.scope.run(() => shown(request.revision)).then((latest) => {
+      presented(latest);
+      setRendered(request);
+    }, () => undefined);
+  }, [api, request, applied, focus, preferencesReady, presented]);
 
   useEffect(() => {
     const find = (event: KeyboardEvent) => {
@@ -399,7 +417,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     cause.current = ROWS.find((row) => row.preference && Object.hasOwn(next, row.preference))?.id ?? null;
     setProblemRow(null);
     dispatchPreference({ type: "change", value: { ...preferences, ...next } });
-    return queue.change(next);
+    return opening.run(() => queue.change(next));
   };
   const changeShortcut = (next: string | null, restoring = false, ticket = shortcutUndoTicket.current): Promise<void> => {
     if (shortcutBusy.current || ticket !== shortcutUndoTicket.current) return Promise.resolve();
@@ -407,23 +425,21 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     const previous = shortcut?.shortcut;
     if (!restoring) { clearShortcutUndo(); clearSettingUndo(); }
     const request = ++shortcutReads.current;
-    const opened = opening.current;
     setShortcutSaving(true);
     setShortcutProblem(null);
-    return queue.enqueue(() => api.setShortcut(next))
+    return opening.run(() => saves.enqueue(() => writer.setShortcut(next)))
       .then((status) => {
-        if (!live.current) return;
         if (request === shortcutReads.current) { latestShortcut.current = status; setShortcut(status); }
         if (restoring) clearShortcutUndo();
-        if (next === null && previous && opened === opening.current && latestShortcut.current?.shortcut === status.shortcut) {
+        if (next === null && previous && latestShortcut.current?.shortcut === status.shortcut) {
           shortcutUndoTicket.current += 1; setShortcutUndo(previous);
         }
       })
       .catch((refusal: unknown) => {
-        if (opened === opening.current) setShortcutProblem(shortcutRefusalMessage(refusal));
+        setShortcutProblem(shortcutRefusalMessage(refusal));
         if (restoring) throw refusal;
       })
-      .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); });
+      .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); readShortcut(); });
   };
 
   const configureShortcut = () => {
@@ -431,52 +447,49 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     shortcutBusy.current = true;
     setShortcutSaving(true);
     setShortcutProblem(null);
-    const opened = opening.current;
-    void api.configureShortcuts().catch(() => { if (opened === opening.current) setShortcutProblem({ id: "shortcuts-configure-failed" }); })
-      .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); });
+    void api.configureShortcuts().catch(() => setShortcutProblem({ id: "shortcuts-configure-failed" }))
+      .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); readShortcut(); });
   };
   const changeLogin = async (on: boolean, restoring = false) => {
     if (loginBusy.current) throw new Error("Login change pending");
     if (!restoring) clearSettingUndo();
     setProblemRow(null); readProblem("login", false); loginBusy.current = true;
     const request = ++loginReads.current;
-    const opened = opening.current;
     setLoginSaving(true);
     try {
-      const next = await queue.enqueue(() => api.setLoginItem(on));
-      if (!live.current || request !== loginReads.current) throw new Error("Login change superseded");
+      const next = await opening.run(() => saves.enqueue(() => writer.setLoginItem(on)));
+      if (request !== loginReads.current) throw new Error("Login change superseded");
       latestLogin.current = next; setLogin(next);
       if (next.enabled !== on || next.problem) throw new Error("Login change refused");
     } catch (error) {
-      if (live.current && request === loginReads.current && opened === opening.current) setProblemRow({ id: "login", message: "settings-choice-failed" });
+      if (request === loginReads.current) setProblemRow({ id: "login", message: "settings-choice-failed" });
       throw error;
     } finally {
       loginBusy.current = false;
-      if (live.current && request === loginReads.current) setLoginSaving(false);
+      if (request === loginReads.current) setLoginSaving(false);
     }
   };
   const changeUpdates = async (on: boolean, restoring = false) => {
-    if (updateWrite.current) throw new Error("Update change pending");
+    if (updateBusy.current) throw new Error("Update change pending");
     if (!restoring) clearSettingUndo();
-    setProblemRow(null); updateIntent.current = on; setUpdatesSaving(true);
-    const operation = ++updateReads.current;
-    const opened = opening.current;
-    let refuse = () => {};
-    const applied = new Promise<void>((resolve, reject) => { refuse = () => reject(new Error("Update change refused")); updateWrite.current = { on, resolve, reject: refuse }; });
-    try { await Promise.all([api.setUpdateChecks(on), applied]); }
+    setProblemRow(null); updateBusy.current = true; setUpdatesSaving(true);
+    updateReads.current += 1;
+    try {
+      await opening.run(() => saves.enqueue(() => writer.setUpdateChecks(on)));
+      latestUpdates.current = on; setUpdates(on);
+    }
     catch (error) {
-      if (live.current && operation === updateReads.current) {
-        refuse(); updateWrite.current = null;
-        if (opened === opening.current) setProblemRow({ id: "automatic", message: "settings-choice-failed" });
-      }
+      setProblemRow({ id: "automatic", message: "settings-choice-failed" });
       throw error;
-    } finally { if (live.current) setUpdatesSaving(false); }
+    } finally {
+      updateBusy.current = false; setUpdatesSaving(false); readUpdates();
+    }
   };
   const feedback = (id: string) => ({ highlighted: highlighted === id, problem: readProblems.has(id) ? text("settings-read-failed")
     : preference.status === "refused" && preference.problem.row === id ? preference.problem.message
     : problemRow?.id === id ? text(problemRow.message) : undefined });
   const checkSaid = checkResult === "newest" ? "about-check-newest" : checkResult === "not_run" ? "about-check-busy" : null;
-  const selectPage = (next: Page) => { setRevealTarget(null); clearHighlight(); setDetour(false); setPage(next); setFocus("top"); setDip(0); };
+  const selectPage = (next: Page) => { request.scope.end(); setRevealTarget(null); clearHighlight(); setDetour(false); setPage(next); setFocus("top"); setDip(0); };
   const reveal = (row: SearchRow) => {
     selectPage(row.page); setFocus(null); setQuery(""); highlight(row.id === "about-ibis" && query.trim().toLowerCase() === "thoth" ? "about-name" : row.id);
     if (row.id === "about-ibis" && query.trim().toLowerCase() !== "thoth") setDip(dip + 1);
@@ -485,13 +498,14 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   };
   // Look reads on showing, so a size dragged meanwhile appears as Custom.
   const readWindowSize = useCallback((request: number) => api.windowSize().then((size) => {
-    if (live.current && request === windowSizes.current) { if (latestWindowSize.current !== null && latestWindowSize.current !== size) clearSettingUndo(); latestWindowSize.current = size; setWindowSize(size); readProblem("window-size", size === null); }
-  }, () => { if (live.current && request === windowSizes.current) readProblem("window-size", true); }), [api, readProblem, clearSettingUndo]);
+    if (request === windowSizes.current) { if (latestWindowSize.current !== null && latestWindowSize.current !== size) clearSettingUndo(); latestWindowSize.current = size; setWindowSize(size); readProblem("window-size", size === null); }
+  }, () => { if (request === windowSizes.current) readProblem("window-size", true); }), [api, readProblem, clearSettingUndo]);
   useEffect(() => {
     if (focused && page === "look") void readWindowSize(++windowSizes.current);
   }, [focused, page, readWindowSize]);
   useEffect(() => {
     const stop = listening(api.onWindowSaved, (saved, revision) => {
+      if (windowSaved.current && revision <= windowSaved.current.revision) return;
       windowSaved.current = { revision, saved };
       if (windowUndoRevision.current !== null && revision > windowUndoRevision.current) clearSettingUndo();
       const pending = windowSaveWaiter.current;
@@ -499,44 +513,44 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         windowSaveWaiter.current = null;
         if (saved && revision === pending.revision) pending.resolve(); else pending.reject();
       }
-      if (live.current && !saved && !hiddenNow.current) setProblemRow({ id: "window-size", message: "settings-choice-failed" });
     });
     return () => { windowSaveWaiter.current?.reject(); windowSaveWaiter.current = null; stop(); };
   }, [api, clearSettingUndo]);
-  const chooseWindowSize = async (size: WindowSize, undo: number | null = null, waitForSave = false, restoring = false): Promise<number> => {
+  const chooseWindowSize = async (size: WindowSize, undo: number | null = null, rollback = false, restoring = false): Promise<number> => {
     if (!restoring) clearSettingUndo();
     else windowUndoRevision.current = null;
     const request = ++windowSizes.current;
-    const opened = opening.current;
     windowSaveWaiter.current?.reject(); windowSaveWaiter.current = null;
     const previous = latestWindowSize.current;
     let revision: number | undefined;
     setProblemRow(null); latestWindowSize.current = size; setWindowSize(size);
     try {
-      revision = undo === null ? await api.setWindowSize(size) : await api.setWindowSize("custom", undo);
-      if (!live.current || request !== windowSizes.current) throw new Error("Window choice superseded");
-      if (waitForSave) {
-        if (windowSaved.current && windowSaved.current.revision >= revision) {
-          if (windowSaved.current.revision !== revision || !windowSaved.current.saved) throw new Error("Window choice not saved");
-        } else {
-          await new Promise<void>((resolve, reject) => { windowSaveWaiter.current = { revision: revision!, resolve, reject: () => reject(new Error("Window choice not saved")) }; });
-        }
+      const ticket = undo === null ? await api.setWindowSize(size) : await api.setWindowSize("custom", undo);
+      revision = ticket;
+      if (request !== windowSizes.current) throw new Error("Window choice superseded");
+      const observed = windowSaved.current;
+      if (observed && observed.revision >= ticket) {
+        if (observed.revision !== ticket || !observed.saved) throw new Error("Window choice not saved");
+      } else {
+        await opening.run(() => new Promise<void>((resolve, reject) => {
+          windowSaveWaiter.current = { revision: ticket, resolve, reject: () => reject(new Error("Window choice not saved")) };
+        }));
       }
-      return revision;
+      return ticket;
     } catch (error) {
       let retryTicket: number | null = null;
-      if (live.current && request === windowSizes.current) {
-        if (waitForSave && revision !== undefined) {
+      if (request === windowSizes.current) {
+        if (rollback && revision !== undefined) {
           // A reset that did not save returns to its native snapshot, including
           // Custom dimensions. The ticket refuses any later geometry choice.
           try {
             retryTicket = await api.setWindowSize("custom", revision);
-            if (live.current && request === windowSizes.current) { latestWindowSize.current = previous; setWindowSize(previous); }
+            if (request === windowSizes.current) { latestWindowSize.current = previous; setWindowSize(previous); }
           } catch { void readWindowSize(request); }
         } else void readWindowSize(request);
-        if (live.current && request === windowSizes.current && opened === opening.current) setProblemRow({ id: "window-size", message: "settings-choice-failed" });
+        if (request === windowSizes.current) setProblemRow({ id: "window-size", message: "settings-choice-failed" });
       }
-      if (waitForSave) throw new WindowSizeSaveError(retryTicket);
+      if (rollback) throw new WindowSizeSaveError(retryTicket);
       throw error;
     }
   };
@@ -546,9 +560,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     setVersionCopyFailed(false);
     // Native, through the clipboard owner: a copy here retires older pending ones.
     void api.copyVersion(altHeld && Boolean(about?.build)).then(() => {
-      if (!live.current || operation !== versionCopy.current) return;
+      if (operation !== versionCopy.current) return;
       flashVersionCopied(true);
-    }, () => { if (live.current && operation === versionCopy.current) setVersionCopyFailed(true); });
+    }, () => { if (operation === versionCopy.current) setVersionCopyFailed(true); });
   };
   const availableRows = settingsRows(enterPastes).filter((row) => (row.id !== "menu-bar" || platform === "macos")
     && (row.id !== "attachment-text" || Boolean(api.attachmentTextLibraries && api.setAttachmentText && api.attachmentTextOutsideLibrary && api.setAttachmentTextOutsideLibrary))
@@ -622,7 +636,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       </nav>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
         <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "ui-settings-page-title"}>{text(`settings-${page}`)}</h1>
-        {!hidden && <>
         {/* One cause, one sentence: a file that cannot be read says so in the engine's words, on every page. */}
         {formatSettings.problem !== null ? <SettingsFileProblem settings={formatSettings} />
           : preference.status === "unknown" && preference.message && <Note problem role="alert">{text(preference.message)}</Note>}
@@ -678,7 +691,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             <p className="ui-about-free">{text("about-free")}</p>
           </>
         )}
-        </>}
       </main>
       {/* At the window's foot (ui/SettingsLayout.css), and after the page in Tab order too. */}
       <NoticeSlot>

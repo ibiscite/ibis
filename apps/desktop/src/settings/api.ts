@@ -69,17 +69,15 @@ export const settingsApi = {
       throw error;
     }
   },
-  /** The window size writer's outcome; a refused write is the only news here. */
+  /** The window size writer's outcome, by the revision returned by the write. */
   onWindowSaved: (handler: (saved: boolean, revision: number) => void) => events.onWindowSaved(({ saved, revision }) => handler(saved, revision)),
-  onPage: events.onSettingsPage,
+  onPresentation: events.onSettingsPresentation,
   onUpdateChecks: events.onUpdateChecks,
-  /** Settings is going away. macOS keeps the window and has already hidden it
-   * (`kept`); its page resets for the next opening. Elsewhere the window is
-   * destroyed once the handler resolves. On macOS no close listener may exist:
-   * Tauri's would destroy the window. */
-  onCloseRequested: (handler: (kept: boolean) => Promise<void>): Promise<Stop> => currentPlatform() === "macos"
-    ? events.onSettingsHidden(() => void handler(true))
-    : getCurrentWindow().onCloseRequested(() => handler(false)),
+  /** Tauri destroys the window once this handler resolves. On macOS, the
+   * kept window gets a presentation event instead. */
+  onCloseRequested: (handler: () => Promise<void>): Promise<Stop> => currentPlatform() === "macos"
+    ? Promise.resolve(() => {})
+    : getCurrentWindow().onCloseRequested(handler),
 };
 
 type Optional = "settingsShown" | "waitingProposals" | "applyProposal" | "rejectProposal" | "rejectAppProposals" | "attachmentTextLibraries" | "setAttachmentText" | "attachmentTextOutsideLibrary" | "setAttachmentTextOutsideLibrary" | "onLibraryChanged" | "agentApps" | "connectAgentApp" | "disconnectAgentApp" | "cliStatus" | "setCliInstalled" | "copyCliProfile" | "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint" | "onEditorEndpoint" | "formatSettings" | "forgetAppFormat" | "openSettingsFile";

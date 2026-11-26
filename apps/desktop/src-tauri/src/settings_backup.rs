@@ -14,6 +14,7 @@ use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::preferences::SettingsFile;
+use crate::settings_window::Presentations;
 
 /// One setting a restore changes. Values are as the settings file writes
 /// them, as text; `None` is the default. A bibliography is its file name only.
@@ -73,6 +74,12 @@ impl PendingRestore {
             && pending.0 == ticket
         {
             pending.0 = pending.0.saturating_add(1);
+            pending.1 = None;
+        }
+    }
+
+    pub(crate) fn clear(&self) {
+        if let Ok(mut pending) = self.0.lock() {
             pending.1 = None;
         }
     }
@@ -193,9 +200,17 @@ pub(crate) async fn back_up_settings(window: WebviewWindow) -> Result<Option<Str
 /// `None` when cancelled. Nothing changes yet.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Option<RestorePreview>, BackupProblem> {
+pub(crate) async fn choose_settings_backup(
+    window: WebviewWindow,
+    opening: u64,
+) -> Result<Option<RestorePreview>, BackupProblem> {
     let app = window.app_handle().clone();
-    let ticket = app.state::<PendingRestore>().begin().ok_or(BackupProblem::Changed)?;
+    let presentations = app.state::<Presentations>();
+    let pending = app.state::<PendingRestore>();
+    let Some(ticket) = presentations.with_opening(opening, || pending.begin()) else {
+        return Ok(None);
+    };
+    let ticket = ticket.ok_or(BackupProblem::Changed)?;
     let dialog = app
         .dialog()
         .file()
@@ -209,7 +224,7 @@ pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Opti
     let path = chosen.into_path().map_err(|_| BackupProblem::Unreadable)?;
     let settings = app.state::<SettingsFile>().path.clone();
     let (backup, plan) = backup::prepare(settings, path).map_err(|error| backup::problem(&error))?;
-    if !app.state::<PendingRestore>().offer(ticket, plan.clone()) {
+    if presentations.with_opening(opening, || pending.offer(ticket, plan.clone())) != Some(true) {
         return Ok(None);
     }
     Ok(Some(preview(ticket, &backup, &plan)))
@@ -219,10 +234,12 @@ pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Opti
 /// from the restored settings. The replaced settings become `settings.json.bak`.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn restore_settings_backup(app: AppHandle, ticket: u32) -> Result<(), BackupProblem> {
+pub(crate) async fn restore_settings_backup(app: AppHandle, ticket: u32, opening: u64) -> Result<(), BackupProblem> {
+    let pending = app.state::<PendingRestore>();
     let plan = app
-        .state::<PendingRestore>()
-        .take(ticket)
+        .state::<Presentations>()
+        .with_opening(opening, || pending.take(ticket))
+        .flatten()
         .ok_or(BackupProblem::Changed)?;
     let file = app.state::<SettingsFile>().inner().clone();
     // The locked read, write and flush run off the interface thread and are

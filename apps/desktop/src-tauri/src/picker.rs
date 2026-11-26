@@ -211,7 +211,7 @@ pub(crate) fn show_picker(app: &AppHandle) {
 pub(crate) fn show_picker_focused(app: &AppHandle, focus: bool) {
     crate::updater::picker_activity(app);
     crate::notice::retire(app);
-    crate::settings_window::picker_opened();
+    crate::settings_window::picker_opened(app);
     // Accept once, before dispatch/capture. A later request cannot donate its
     // ticket to this show between a separate advance and current() read.
     let owner = app.state::<PickerGeneration>().advance();
@@ -1020,6 +1020,8 @@ mod tests {
         let app = tauri::test::mock_builder()
             .manage(PickerGeneration(AtomicU64::new(41)))
             .manage(ChooserOpen::default())
+            .manage(crate::settings_window::Presentations::default())
+            .manage(crate::settings_backup::PendingRestore::default())
             .manage(Pinned(AtomicBool::new(pinned)))
             .manage(HideUi {
                 visible: AtomicBool::new(true),
@@ -1067,12 +1069,13 @@ mod tests {
         let app = picker_and_settings(false)?;
         let handle = app.handle();
         let heard = Arc::new(Mutex::new(Vec::new()));
-        for name in ["settings:hidden", "settings:page"] {
-            let heard = heard.clone();
-            app.listen_any(name, move |event| {
-                heard.lock().unwrap().push(format!("{name} {}", event.payload()));
-            });
-        }
+        let listener = heard.clone();
+        app.listen_any("settings:presentation", move |event| {
+            listener
+                .lock()
+                .unwrap()
+                .push(serde_json::from_str::<serde_json::Value>(event.payload()).unwrap());
+        });
         for page in [None, Some(Page::About), Some(Page::Paste), None, None] {
             present(handle, page, app.state::<PickerGeneration>().advance());
             dismiss_as(handle, Close::Hide)?;
@@ -1082,20 +1085,23 @@ mod tests {
         assert_eq!(windows.len(), 2, "the picker and one Settings: {:?}", windows.keys());
         assert!(windows.contains_key(LABEL));
         let heard = heard.lock().unwrap();
-        let hidden = heard.iter().filter(|said| said.starts_with("settings:hidden")).count();
-        assert_eq!(hidden, 5, "each close resets the page for the next opening");
-        let pages: Vec<_> = heard.iter().filter(|said| said.starts_with("settings:page")).collect();
-        assert_eq!(
-            pages,
-            [
-                "settings:page \"about\"",
-                "settings:page \"paste\"",
-                "settings:page \"general\"",
-                "settings:page \"general\"",
-                "settings:page \"shortcuts\"",
-            ],
-            "the first opening builds the window on its page; every later one names it"
-        );
+        assert_eq!(heard.len(), 11);
+        for (index, page) in ["general", "about", "paste", "general", "general", "shortcuts"]
+            .into_iter()
+            .enumerate()
+        {
+            let revision = 2 * index + 1;
+            assert_eq!(
+                heard[2 * index],
+                serde_json::json!({ "revision": revision, "opening": { "id": revision, "page": page } })
+            );
+            if index < 5 {
+                assert_eq!(
+                    heard[2 * index + 1],
+                    serde_json::json!({ "revision": revision + 1, "opening": null })
+                );
+            }
+        }
         Ok(())
     }
 

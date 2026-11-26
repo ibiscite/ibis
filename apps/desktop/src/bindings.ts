@@ -238,16 +238,13 @@ export const commands = {
 	rowContext: (added: boolean) => __TAURI_INVOKE<RowAction | null>("row_context", { added }),
 	/** Whether update checks run on their own; `None` when this build has no updates. */
 	updateChecks: () => __TAURI_INVOKE<boolean | null>("update_checks"),
-	/**
-	 * Turn automatic checks on or off from Settings. The saved answer arrives
-	 * as the `update:automatic` event; changes are queued in click order.
-	 */
-	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
+	/** Turn automatic checks on or off from Settings and answer this specific write. */
+	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<null>("set_update_checks", { enabled }),
 	/**
 	 * Settings' Check for Updates, in About: the result shows beside the button.
 	 * An update found still opens the offer.
 	 */
-	checkForUpdates: () => __TAURI_INVOKE<CheckResult>("check_for_updates"),
+	checkForUpdates: (opening: number) => __TAURI_INVOKE<CheckResult>("check_for_updates", { opening }),
 	openAboutLink: (link: AboutLink) => __TAURI_INVOKE<void>("open_about_link", { link }),
 	/** Whether an automatic check found an update that has not been presented. */
 	updateAvailable: () => __TAURI_INVOKE<boolean>("update_available"),
@@ -262,26 +259,24 @@ export const commands = {
 	 * Close the paste guide after both grants; a fresh external activation opens
 	 * the picker again. Granting permission never captures a target or retries Enter.
 	 */
-	finishPasteGuide: () => __TAURI_INVOKE<boolean>("finish_paste_guide"),
+	finishPasteGuide: (revision: number) => __TAURI_INVOKE<boolean>("finish_paste_guide", { revision }),
 	/**
-	 * The page reports the page it now shows (`page`, as asked for) and hears the
-	 * latest one asked for. A hidden Settings waiting for that page shows now, so
-	 * it never shows an earlier page first; a page that loaded after the request
-	 * was sent learns it here.
+	 * Read the current presentation, acknowledging `revision` once its page has
+	 * rendered. The event listener is installed before the first read.
 	 */
-	settingsShown: (page: Page) => __TAURI_INVOKE<Page>("settings_shown", { page }),
+	settingsShown: (revision: number | null) => __TAURI_INVOKE<SettingsPresentation>("settings_shown", { revision }),
 	/** Ask where to save a backup and write it there. `None` when cancelled. */
 	backUpSettings: () => __TAURI_INVOKE<string | null>("back_up_settings"),
 	/**
 	 * Ask for a backup, check it whole and say what restoring it would change.
 	 * `None` when cancelled. Nothing changes yet.
 	 */
-	chooseSettingsBackup: () => __TAURI_INVOKE<RestorePreview | null>("choose_settings_backup"),
+	chooseSettingsBackup: (opening: number) => __TAURI_INVOKE<RestorePreview | null>("choose_settings_backup", { opening }),
 	/**
 	 * Restore the previewed backup, then restart so every part of Ibis starts
 	 * from the restored settings. The replaced settings become `settings.json.bak`.
 	 */
-	restoreSettingsBackup: (ticket: number) => __TAURI_INVOKE<null>("restore_settings_backup", { ticket }),
+	restoreSettingsBackup: (ticket: number, opening: number) => __TAURI_INVOKE<null>("restore_settings_backup", { ticket, opening }),
 	/** Forget the previewed restore. */
 	cancelSettingsRestore: (ticket: number) => __TAURI_INVOKE<null>("cancel_settings_restore", { ticket }),
 	/** Whether Ibis may paste now. Read each time: the person can change it at any moment. */
@@ -1339,6 +1334,20 @@ export type SessionReferencesView = {
 	/** The listed references that are in the open library. */
 	rows: SearchResult[];
 	undo: UndoView | null;
+};
+
+export type SettingsOpening = {
+	id: number;
+	page: Page;
+};
+
+/**
+ * Every page request and close advances the revision. An already open window
+ * keeps its opening id when a request brings it forward on another page.
+ */
+export type SettingsPresentation = {
+	opening: SettingsOpening | null;
+	revision: number;
 };
 
 /** Whether the global shortcut is working, shown in the interface. */

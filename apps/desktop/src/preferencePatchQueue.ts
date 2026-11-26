@@ -11,7 +11,39 @@ type Event =
   | { type: "saving"; promise: Promise<void> }
   | { type: "error"; source: "read" | "save" };
 
-/** One queue per window. The settings owner keeps durable state and applies
+/** Writes outlive a view of Settings. Only queued work lives here. */
+export class SaveQueue {
+  private pending = 0;
+  private saving = Promise.resolve();
+
+  get busy() { return this.pending !== 0; }
+
+  enqueue<T>(action: () => Promise<T>): Promise<T> {
+    this.pending += 1;
+    const operation = this.saving.then(action).finally(() => { this.pending -= 1; });
+    this.saving = operation.then(() => undefined, () => undefined);
+    return operation;
+  }
+
+  settled(): Promise<void> { return this.saving; }
+
+  async drain(): Promise<void> {
+    while (this.busy) await this.saving;
+  }
+
+  /** Finish before closing without trapping the person behind a stuck write. */
+  async finish(loading?: Promise<void>): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const drain = async () => { await loading; await this.drain(); };
+    await Promise.race([
+      drain(),
+      new Promise<void>((resolve) => { timer = setTimeout(resolve, 2_000); }),
+    ]);
+    clearTimeout(timer);
+  }
+}
+
+/** One view of preferences. The settings owner keeps durable state and applies
  * choices in the order they were made (decision 0040): each choice is
  * submitted when the person makes it, with only its own fields. A choice that
  * fails to save is never sent again later, when it could land over a newer
@@ -36,8 +68,6 @@ export class PreferencePatchQueue {
   private notifications = 0;
   private foreignNotifications = 0;
   private ownNotifications = new Map<number, { completed: boolean; notified: boolean }>();
-  private pending = 0;
-  private saving: Promise<unknown> = Promise.resolve();
   private loading: Promise<void> = Promise.resolve();
 
   constructor(
@@ -53,10 +83,24 @@ export class PreferencePatchQueue {
       readAfterWrites?: boolean;
       /** Settings records its own notifications, for rollback after a failed save. */
       restoreOnFailure?: boolean;
+      /** The view is discarded when this opening ends. Its writes keep running. */
+      signal?: AbortSignal;
     } = {},
+    private saves = new SaveQueue(),
   ) {}
 
+  private get active() { return !this.policy.signal?.aborted; }
+
+  private clearView = () => {
+    this.durable = null;
+    this.patch = {};
+    this.ownNotifications.clear();
+    this.listeners.clear();
+  };
+
   subscribe(listener: (event: Event) => void): () => void {
+    if (!this.active) return () => {};
+    this.policy.signal?.addEventListener("abort", this.clearView, { once: true });
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
   }
@@ -66,15 +110,6 @@ export class PreferencePatchQueue {
 
   private emit(event: Event) {
     for (const listener of this.listeners) listener(event);
-  }
-
-  /** Also serializes Settings' shortcut writes with its preference writes. */
-  enqueue<T>(action: () => Promise<T>): Promise<T> {
-    this.pending += 1;
-    const operation = this.saving.catch(() => undefined).then(action)
-      .finally(() => { this.pending -= 1; });
-    this.saving = operation;
-    return operation;
   }
 
   change(change: Patch): Promise<void> {
@@ -90,7 +125,7 @@ export class PreferencePatchQueue {
     // never replaced with defaults: the owner refuses it.
     const receipt = this.api.submit(change);
     void receipt.catch(() => undefined);
-    const save = this.enqueue(async () => {
+    const save = this.saves.enqueue(async () => {
       let saved: PickerSave | undefined;
       let issued: number | undefined;
       const own = { completed: false, notified: false };
@@ -98,15 +133,17 @@ export class PreferencePatchQueue {
         issued = await receipt;
         // Settings has versioned notifications and needs authoritative rollback.
         // The picker uses its existing reload path and retains no notice records.
-        if (this.policy.restoreOnFailure) this.ownNotifications.set(issued, own);
+        if (this.active && this.policy.restoreOnFailure) this.ownNotifications.set(issued, own);
         const foreign = this.foreignNotifications;
         saved = await this.api.saved(issued);
+        if (!this.active) return;
         if (foreign === this.foreignNotifications) this.durable = saved.preferences;
         this.acknowledged += 1;
         this.acknowledge(fields, revision);
       } catch (error) {
         // Not saved. Settings shows what is saved; the picker keeps the choice
         // applied, unsaved, and never sends it again.
+        if (!this.active) throw error;
         if (this.policy.restoreOnFailure) this.acknowledge(fields, revision);
         else {
           for (const field of fields) {
@@ -127,10 +164,9 @@ export class PreferencePatchQueue {
       }
     }).catch((error: unknown) => {
       this.emit({ type: "error", source: "save" });
-      if (this.policy.restoreOnFailure && this.pending === 0 && revision === this.revision) void this.read(() => true, true);
+      if (this.policy.restoreOnFailure && !this.saves.busy && revision === this.revision) void this.read(() => true, true);
       throw error;
     });
-    this.saving = save;
     // Subscribers may show progress/failure; the queue always handles rejection.
     void save.catch(() => undefined);
     this.emit({ type: "saving", promise: save });
@@ -166,6 +202,7 @@ export class PreferencePatchQueue {
   /** Notifications invalidate old rendering replies; self-notifications retain
    * rollback acknowledgements. Refresh waits for actual completion, not closing. */
   async refresh(revision: number, active: () => boolean = () => true, fields?: readonly string[]): Promise<void> {
+    if (!this.active) return;
     const own = this.ownNotifications.get(revision);
     if (own) {
       own.notified = true;
@@ -183,25 +220,22 @@ export class PreferencePatchQueue {
     }
     const notification = ++this.notifications;
     this.reads += 1;
-    await this.drainWrites();
+    await this.saves.drain();
     if (active() && notification === this.notifications) await this.load(active);
   }
 
-  private async drainWrites(): Promise<void> {
-    while (this.pending) await this.saving.catch(() => undefined);
-  }
-
   private read(active: () => boolean, restore: boolean): Promise<void> {
+    if (!this.active || !active()) return Promise.resolve();
     const request = ++this.reads;
     const acknowledged = this.acknowledged;
     const revision = this.revision;
     const loadedBefore = this.loaded;
-    const idle = this.pending === 0;
-    const current = () => active() && request === this.reads
+    const idle = !this.saves.busy;
+    const current = () => this.active && active() && request === this.reads
       && (!loadedBefore || revision === this.revision)
-      && (this.policy.readAfterWrites || idle && this.pending === 0);
+      && (this.policy.readAfterWrites || !loadedBefore || idle && !this.saves.busy);
     const read = this.policy.readAfterWrites
-      ? this.saving.catch(() => undefined).then(() => this.api.read())
+      ? this.saves.settled().then(() => this.api.read())
       : this.api.read();
     this.loading = read.then((value): Promise<void> | void => {
       if (!current()) return;
@@ -229,16 +263,7 @@ export class PreferencePatchQueue {
 
   /** Drain choices, including ones queued while closing, without trapping a
    * person behind a stuck native command. Picker also waits for its first read. */
-  async finishSaving(): Promise<void> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const drain = async () => {
-      if (this.policy.readAfterWrites) await this.loading;
-      await this.drainWrites();
-    };
-    await Promise.race([
-      drain().catch(() => undefined),
-      new Promise<void>((resolve) => { timer = setTimeout(resolve, 2_000); }),
-    ]);
-    clearTimeout(timer);
+  finishSaving(): Promise<void> {
+    return this.saves.finish(this.policy.readAfterWrites ? this.loading : undefined);
   }
 }

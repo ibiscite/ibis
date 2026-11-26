@@ -134,7 +134,7 @@ pub(crate) fn start(app: &AppHandle, saved: Option<bool>, can_save: bool) {
         std::thread::sleep(FIRST_CHECK);
         loop {
             if setting::automatic(&app) {
-                tauri::async_runtime::block_on(check(&app, false));
+                tauri::async_runtime::block_on(check(&app, CheckRequest::Automatic));
             }
             std::thread::sleep(CHECK_EVERY);
         }
@@ -212,15 +212,38 @@ async fn find_update(client: &Updater, download_timeout: Duration) -> tauri_plug
     }))
 }
 
-pub(super) async fn check(app: &AppHandle, asked: bool) -> CheckResult {
-    offer::check(app, asked, async {
+#[derive(Clone, Copy)]
+enum CheckRequest {
+    Automatic,
+    Menu,
+    Settings(u64),
+}
+
+impl CheckRequest {
+    fn explicit(self) -> bool {
+        !matches!(self, Self::Automatic)
+    }
+
+    fn current<R: tauri::Runtime>(self, app: &AppHandle<R>) -> bool {
+        match self {
+            Self::Settings(id) => app
+                .state::<crate::settings_window::Presentations>()
+                .with_opening(id, || ())
+                .is_some(),
+            _ => true,
+        }
+    }
+}
+
+async fn check(app: &AppHandle, request: CheckRequest) -> CheckResult {
+    offer::check(app, request, async {
         let found = match updater(app, CHECK_TIMEOUT) {
             Ok(updater) => find_update(&updater, DOWNLOAD_TIMEOUT)
                 .await
                 .map_err(|e| failure_kind(&e)),
             Err(e) => Err(failure_kind(&e)),
         };
-        if !asked {
+        if !request.explicit() {
             application_message(&automatic_outcome(&found));
         }
         found.map(|update| update.map(|update| offer::Candidate::new(app, update)))

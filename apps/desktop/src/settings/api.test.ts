@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
+import type { SettingsPresentation } from "../bindings";
 import { settingsApi } from "./api";
 
 const native = vi.hoisted(() => ({
@@ -27,21 +28,22 @@ afterEach(() => {
 
 test("macOS keeps Settings: no close listener exists, and the page hears that it was hidden", async () => {
   document.documentElement.dataset.system = "macos";
-  const heard: boolean[] = [];
-  const stop = await settingsApi.onCloseRequested(async (kept) => { heard.push(kept); });
+  const heard: SettingsPresentation[] = [];
+  await settingsApi.onCloseRequested(async () => { throw new Error("a kept window has no close handler"); });
+  const stop = await settingsApi.onPresentation((presentation) => heard.push(presentation));
   expect(native.closeRequested).toHaveLength(0);
-  for (const handler of native.listeners.get("settings:hidden") ?? []) handler({ payload: null });
-  expect(heard).toEqual([true]);
+  const hidden = { revision: 2, opening: null };
+  for (const handler of native.listeners.get("settings:presentation") ?? []) handler({ payload: hidden });
+  expect(heard).toEqual([hidden]);
   stop();
-  expect(native.listeners.get("settings:hidden")?.size).toBe(0);
+  expect(native.listeners.get("settings:presentation")?.size).toBe(0);
 });
 
 test.each(["windows", "linux"])("%s closes Settings once the page has saved", async (system) => {
   document.documentElement.dataset.system = system;
-  const heard: boolean[] = [];
-  await settingsApi.onCloseRequested(async (kept) => { heard.push(kept); });
-  expect(native.listeners.has("settings:hidden")).toBe(false);
+  const finish = vi.fn(async () => {});
+  await settingsApi.onCloseRequested(finish);
   expect(native.closeRequested).toHaveLength(1);
   await native.closeRequested[0]!({});
-  expect(heard).toEqual([false]);
+  expect(finish).toHaveBeenCalledOnce();
 });

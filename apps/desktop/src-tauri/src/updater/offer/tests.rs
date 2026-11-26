@@ -131,6 +131,7 @@ impl OfferUi for tauri::test::MockRuntime {
 fn app(automatic: bool) -> tauri::Result<tauri::App<tauri::test::MockRuntime>> {
     let app = tauri::test::mock_builder()
         .manage(Updates::default())
+        .manage(crate::settings_window::Presentations::default())
         .manage(ChooserOpen::default())
         .manage(crate::picker::PickerGeneration::default())
         .manage(NativePicker::default())
@@ -306,7 +307,7 @@ fn typing_during_a_check_and_old_idle_after_new_activity_never_present() -> taur
     let picker = app.state::<NativePicker>();
     picker.visible.store(true, Ordering::SeqCst);
     picker.focused.store(true, Ordering::SeqCst);
-    tauri::async_runtime::block_on(check(app.handle(), false, async {
+    tauri::async_runtime::block_on(check(app.handle(), CheckRequest::Automatic, async {
         let updates = app.state::<Updates>();
         let mut input = updates.input.lock().unwrap_or_else(|e| panic!("{e}"));
         let old = input.activity().unwrap_or_else(|| panic!("old ticket"));
@@ -355,7 +356,43 @@ fn candidate(app: &AppHandle<tauri::test::MockRuntime>, version: &str, metadata:
 }
 
 fn check_result(app: &AppHandle<tauri::test::MockRuntime>, asked: bool, found: Found) {
-    tauri::async_runtime::block_on(check(app, asked, std::future::ready(found)));
+    let request = if asked {
+        CheckRequest::Menu
+    } else {
+        CheckRequest::Automatic
+    };
+    tauri::async_runtime::block_on(check(app, request, std::future::ready(found)));
+}
+
+#[test]
+fn a_late_settings_check_cannot_show_an_update_offer_or_focus_the_picker() -> tauri::Result<()> {
+    use crate::settings_window::{Page, Presentations};
+    let app = app(true)?;
+    let visits = app.state::<Presentations>();
+    let first = visits.ask(Page::About);
+    assert!(visits.claim(first.revision));
+    let request = CheckRequest::Settings(first.opening_id().unwrap());
+    let result = tauri::async_runtime::block_on(check(app.handle(), request, async {
+        visits.close();
+        let next = visits.ask(Page::About);
+        assert!(visits.claim(next.revision));
+        Ok(Some(candidate(app.handle(), "9.0.0", "obsolete metadata")))
+    }));
+    assert_eq!(result, CheckResult::NotRun);
+
+    // Also exercise a result already handed off to the native presentation.
+    let busy = app.state::<Updates>().begin().unwrap();
+    present(
+        app.handle(),
+        candidate(app.handle(), "9.0.0", "queued metadata"),
+        request,
+        busy,
+    );
+    let picker = app.state::<NativePicker>();
+    assert!(picker.offers.lock().unwrap().is_empty());
+    assert_eq!(picker.shows.load(Ordering::SeqCst), 0);
+    assert!(!app.state::<Updates>().offer_available.load(Ordering::SeqCst));
+    Ok(())
 }
 
 #[test]
@@ -582,7 +619,7 @@ fn picker_hidden_during_refresh_stays_hidden_and_drops_the_fresh_candidate() -> 
     let picker = app.state::<NativePicker>();
     picker.visible.store(true, Ordering::SeqCst);
     picker.focused.store(true, Ordering::SeqCst);
-    tauri::async_runtime::block_on(check(app.handle(), false, async {
+    tauri::async_runtime::block_on(check(app.handle(), CheckRequest::Automatic, async {
         picker.visible.store(false, Ordering::SeqCst);
         picker.focused.store(false, Ordering::SeqCst);
         Ok(Some(candidate(app.handle(), "9.0.0", "unused signature")))
@@ -610,7 +647,7 @@ fn disabling_automatic_checks_keeps_the_signal_but_requires_an_explicit_refresh(
     assert_eq!(picker.refreshes.load(Ordering::SeqCst), 0);
     assert!(app.state::<Updates>().offer_available.load(Ordering::SeqCst));
     // An automatic task scheduled before opt-out also must not poll its feed.
-    tauri::async_runtime::block_on(check(app.handle(), false, async {
+    tauri::async_runtime::block_on(check(app.handle(), CheckRequest::Automatic, async {
         panic!("disabled automatic checks must not fetch");
     }));
     check_result(
