@@ -14,7 +14,7 @@ function row(status: CommandStatus, extra = {}, onChanged?: () => void) {
 
 test("install and remove update the row, and a fresh visit reads the saved result", async () => {
   const first = row(missing);
-  fireEvent.click(await screen.findByRole("button", { name: "Install" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Install the ibis command" }));
   await screen.findByText("ibis 1.2.3 — matches this app");
   expect(first.api.setCliInstalled).toHaveBeenCalledWith(true);
   first.unmount();

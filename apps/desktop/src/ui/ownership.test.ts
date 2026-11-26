@@ -49,10 +49,12 @@ function styleRules(css: string): { selector: string; line: number; body: string
           if (text[end] === "{") depth++;
           else if (text[end] === "}") depth--;
         }
-        if (/^@(media|supports|container|layer|scope|document)\b/.test(prelude)) walk(index + 1, end - 1);
+        if (/^@(media|supports|container|layer|scope|document|starting-style)\b/.test(prelude)) walk(index + 1, end - 1);
         else if (!prelude.startsWith("@")) {
           const at = start + text.slice(start, index).search(/\S/);
           found.push({ selector: prelude.replace(/\s+/g, " "), line: lineAt(text, at), body: text.slice(index + 1, end - 1) });
+          // Nested rules count on their own, so nesting cannot hide a selector.
+          if (text.slice(index + 1, end - 1).includes("{")) walk(index + 1, end - 1);
         }
         index = end - 1;
         start = end;

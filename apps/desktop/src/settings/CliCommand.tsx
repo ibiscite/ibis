@@ -42,7 +42,7 @@ export function CliCommandRow({ api, highlighted, onChanged }: { api: Api; highl
     <Row id="cli-command" {...rowDetails("cli-command", text)} description={description} highlighted={highlighted} pending={!status && !failed} problem={failed ? text("command-failed") : undefined}
       note={status?.used_path && status.state !== "foreign" && <code dir="ltr">{status.used_path}</code>}>
       <Buttons>
-        {status?.installable && <Button isDisabled={busy} onPress={() => change(true)}>{text("command-install-button")}</Button>}
+        {status?.installable && <Button isDisabled={busy} aria-label={text("command-install")} onPress={() => change(true)}>{text("command-install-button")}</Button>}
         {status?.removable && <Button isDisabled={busy} onPress={() => change(false)}>{text("command-remove")}</Button>}
       </Buttons>
     </Row>

@@ -30,7 +30,7 @@
    is divided from it the same way. `:nth-child(of S)` is avoided: Chromium
    leaves the pseudo-element unpainted when rows mount. A highlighted or echoing
    row's fill is its own edge. */
-.ui-group .ui-row:not(:first-child)::before { content: ""; position: absolute; inset-block-start: 0; inset-inline: var(--row-pad); border-top: var(--border-width) solid var(--separator); }
+.ui-group .ui-row:not(:first-child)::before, .ui-details-body > .ui-row:first-child::before { content: ""; position: absolute; inset-block-start: 0; inset-inline: var(--row-pad); border-top: var(--border-width) solid var(--separator); }
 .ui-row:is([data-highlighted], [data-echo])::before, .ui-row:is([data-highlighted], [data-echo]) + .ui-row::before { display: none; }
 .ui-row { transition: background-color var(--dur-1) ease-out; }
 .ui-row[data-highlighted] { background: var(--highlight); }

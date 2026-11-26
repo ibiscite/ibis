@@ -21,6 +21,6 @@ export function Details({ label, reveal, children }: { label: string; reveal?: {
         <span className="ui-details-mark" aria-hidden="true"><Icon name="back" /></span>
       </AriaButton>
     </div>
-    <div ref={content} id={id} hidden={!open}>{children}</div>
+    <div ref={content} id={id} className="ui-details-body" hidden={!open}>{children}</div>
   </Group></Section>;
 }
