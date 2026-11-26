@@ -266,7 +266,7 @@ fn proposals(
         .libraries
         .into_iter()
         // Only libraries that can take a proposal, by kind, never by file name.
-        .filter(|library| engine.proposal_target(&library.id).is_ok())
+        .filter(|library| engine.proposal_target(&library.id).is_ok_and(|target| target.is_some()))
         .map(|library| json!({"library": library.id, "kind": "bibtex", "references": library.objects}))
         .collect();
     Ok(json!({"proposals": mine, "libraries": libraries, "provenance": PROVENANCE}))

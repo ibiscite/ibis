@@ -190,8 +190,10 @@ pub enum WriteProblem {
     UnknownLibrary,
     /// The reference is not in an open library.
     UnknownReference,
-    /// Ibis has no safe way to write this kind of library.
+    /// Ibis cannot add references to this kind of library.
     LibraryKind,
+    /// Ibis cannot edit the reference in its source library.
+    LibraryKindEdit,
     /// A reference with this DOI is in the library already.
     AlreadyInLibrary,
     /// The library is not open in Ibis.
@@ -264,7 +266,9 @@ impl WriteProblem {
                 R::ChooseLibrary
             }
             Self::UnknownReference | Self::AlreadyInLibrary => R::SearchReferences,
-            Self::Damaged | Self::Repeated | Self::NotLiteral | Self::Unreadable => R::ReviewLibrary,
+            Self::LibraryKindEdit | Self::Damaged | Self::Repeated | Self::NotLiteral | Self::Unreadable => {
+                R::ReviewLibrary
+            }
         };
         let field = field.filter(|_| matches!(self, Self::Invalid | Self::NotLiteral));
         let mut info = RecoveryInfo::new(&self.message_id(field.is_some()), recovery);
@@ -308,9 +312,11 @@ impl WriteError {
             WriteProblem::UnknownProposal | WriteProblem::UnknownLibrary | WriteProblem::UnknownReference => {
                 ErrorCode::NotFound
             }
-            WriteProblem::Decided | WriteProblem::Invalid | WriteProblem::NoTarget | WriteProblem::LibraryKind => {
-                ErrorCode::BadInput
-            }
+            WriteProblem::Decided
+            | WriteProblem::Invalid
+            | WriteProblem::NoTarget
+            | WriteProblem::LibraryKind
+            | WriteProblem::LibraryKindEdit => ErrorCode::BadInput,
             _ => ErrorCode::SourceUnavailable,
         }
     }
@@ -345,20 +351,22 @@ impl Engine {
     /// Record what an agent proposes. No library changes.
     pub fn propose(&self, store: &Proposals, source: Source, request: ProposeRequest) -> Result<Proposal, WriteError> {
         let snapshot = self.snapshot().map_err(|_| WriteProblem::UnknownReference)?;
-        let library = match &request {
+        let (library, unsupported) = match &request {
             ProposeRequest::Add {
                 library: Some(library), ..
-            } => library.clone(),
+            } => (library.clone(), WriteProblem::LibraryKind),
             ProposeRequest::Add { library: None, .. } => {
                 let open = self.libraries().map_err(|_| WriteProblem::NoTarget)?.libraries;
                 match open.as_slice() {
-                    [only] => only.id.clone(),
+                    [only] => (only.id.clone(), WriteProblem::LibraryKind),
                     _ => return Err(WriteProblem::NoTarget.into()),
                 }
             }
-            ProposeRequest::Fields { item, .. } | ProposeRequest::Tags { item, .. } => item.library.clone(),
+            ProposeRequest::Fields { item, .. } | ProposeRequest::Tags { item, .. } => {
+                (item.library.clone(), WriteProblem::LibraryKindEdit)
+            }
         };
-        let target = self.proposal_target(&library)?;
+        let target = self.proposal_target(&library)?.ok_or(unsupported)?;
         let record = match &request {
             ProposeRequest::Add { .. } => None,
             ProposeRequest::Fields { item, .. } | ProposeRequest::Tags { item, .. } => {
@@ -491,7 +499,8 @@ impl Engine {
         Ok(Applied { proposal, backup })
     }
 
-    pub(crate) fn proposal_target(&self, library: &LibraryId) -> Result<Target, WriteError> {
+    /// Find the target for an open library, if its source supports proposals.
+    pub(crate) fn proposal_target(&self, library: &LibraryId) -> Result<Option<Target>, WriteError> {
         let info = self
             .libraries()
             .map_err(|_| WriteProblem::UnknownLibrary)?
@@ -499,13 +508,15 @@ impl Engine {
             .into_iter()
             .find(|info| &info.id == library)
             .ok_or(WriteProblem::UnknownLibrary)?;
-        let path = self.proposal_path(library).ok_or(WriteProblem::LibraryKind)?;
+        let Some(path) = self.proposal_path(library) else {
+            return Ok(None);
+        };
         let resolved = std::fs::canonicalize(&path).map_err(|_| WriteProblem::Unreadable)?;
-        Ok(Target {
+        Ok(Some(Target {
             library: info.id,
             path,
             resolved,
-        })
+        }))
     }
 }
 

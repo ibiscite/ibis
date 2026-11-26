@@ -155,6 +155,44 @@ fn an_added_reference_is_appended_with_a_new_key_and_every_other_byte_kept() {
 }
 
 #[test]
+fn a_non_bib_library_has_different_recovery_for_adds_and_edits() {
+    use ibis_core::contract::Recovery;
+
+    let fixture = fixture();
+    let path = fixture.bib.with_file_name("lantern.json");
+    fs::write(
+        &path,
+        r#"[{"id":"lantern","citation-key":"lantern","type":"book","title":"Invented lanterns"}]"#,
+    )
+    .unwrap();
+    fixture.engine.open_file(&path, &Cancellation::default()).unwrap();
+    let reference = item(&fixture, "lantern");
+
+    let add = ProposeRequest::Add {
+        library: Some(reference.library.clone()),
+        fields: paper(),
+    };
+    let change = ProposeRequest::Fields {
+        item: reference.clone(),
+        fields: object(json!({"title": "Invented lanterns, revised"})),
+    };
+    let tags = ProposeRequest::Tags {
+        item: reference,
+        add: vec!["lighting".into()],
+        remove: vec![],
+    };
+    for (request, code, recovery) in [
+        (add, "library-kind", Recovery::ChooseLibrary),
+        (change, "library-kind-edit", Recovery::ReviewLibrary),
+        (tags, "library-kind-edit", Recovery::ReviewLibrary),
+    ] {
+        let error = fixture.engine.propose(&fixture.store, source(), request).unwrap_err();
+        assert_eq!(error.problem().info.recovery(), recovery);
+        assert_eq!(error.problem().code, code);
+    }
+}
+
+#[test]
 fn a_field_change_edits_only_that_entry_in_the_names_it_uses() {
     let fixture = fixture();
     let fields =
