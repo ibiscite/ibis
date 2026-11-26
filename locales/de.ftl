@@ -239,6 +239,35 @@ app-proposal-tags =
        *[both] Die Tags { $add } zu „{ $label }“ hinzufügen und die Tags { $remove } entfernen.
     }
 
+# Why a proposed library change was not recorded, shown or applied. $field
+# names a field or tag as the proposal did; $count and $kib are numbers.
+refusal-unknown-proposal = Kein Vorschlag hat diese ID.
+    .cli = `ibis proposals list` zeigt sie an.
+refusal-proposal-unreadable = Die Datei dieses Vorschlags kann nicht gelesen werden; lehnen Sie ihn ab.
+    .agent = Schlagen Sie die Änderung danach erneut vor.
+refusal-not-saved = Der Vorschlag konnte nicht neben den Einstellungen von Ibis gespeichert werden.
+refusal-too-many = Es warten bereits { $count } Vorschläge.
+    .cli = Die Person kann sie in Ibis prüfen oder ablehnen.
+    .agent = Die Person kann sie in Ibis prüfen oder ablehnen.
+refusal-too-large = Ein Vorschlag umfasst höchstens { $kib } KiB.
+refusal-decided = Dieser Vorschlag wurde bereits übernommen oder abgelehnt.
+refusal-invalid = Ein Feld in diesem Vorschlag kann nicht verwendet werden.
+refusal-invalid-field = `{ $field }` kann in einem Vorschlag nicht verwendet werden.
+refusal-no-target = Mehrere Bibliotheken sind geöffnet: Nennen Sie die, zu der hinzugefügt werden soll.
+refusal-unknown-reference = Die Referenz ist in keiner geöffneten Bibliothek; suchen Sie erneut.
+refusal-library-kind = Ibis kann vorerst nur Änderungen an .bib-Dateien vorschlagen.
+refusal-already-in-library = Eine Referenz mit dieser DOI ist bereits in der Bibliothek.
+refusal-not-open = Die Bibliothek ist in Ibis nicht geöffnet.
+refusal-changed = Die Referenz hat sich seit dem Vorschlag geändert; nichts wurde geschrieben.
+refusal-key-taken = Ein anderer Eintrag verwendet jetzt diesen Zitierschlüssel; nichts wurde geschrieben.
+refusal-damaged = Ein Eintrag in der Datei kann nicht gelesen werden, daher lässt Ibis die Datei unverändert.
+refusal-repeated = Zwei Einträge in der Datei haben diesen Zitierschlüssel.
+refusal-not-literal = Ein Feld verwendet ein @string-Makro oder verbindet Werte, daher bearbeitet Ibis es nicht.
+refusal-not-literal-field = `{ $field }` verwendet ein @string-Makro oder verbindet Werte, daher bearbeitet Ibis es nicht.
+refusal-unreadable = Die Bibliotheksdatei kann nicht als Text gelesen werden.
+refusal-backup-failed = Eine Sicherung der Datei konnte nicht geschrieben werden; nichts wurde geändert.
+refusal-not-written = Die Datei konnte nicht geschrieben werden; nichts wurde geändert.
+
 app-update-question-title = Automatisch nach Updates suchen?
 app-update-question = Ibis kann einige Male am Tag auf GitHub nach einer neueren Version suchen. Dabei fragt es GitHub nach einer kleinen Datei; GitHub sieht Ihre IP-Adresse und die Ibis-Version. Nichts aus Ihrer Bibliothek wird gesendet, und Updates werden nur installiert, wenn Sie zustimmen.
 app-update-check-automatically = Automatisch suchen

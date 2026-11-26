@@ -71,7 +71,8 @@ pub(super) fn full_list() -> Value {
 }
 
 fn refused(error: &WriteError) -> Refusal {
-    Refusal::bad(ToolProblem::Proposal, &[("reason", &error.sentence())])
+    let reason = crate::catalogue::problem(&error.problem(), crate::catalogue::Audience::Agent);
+    Refusal::bad(ToolProblem::Proposal, &[("reason", &reason)])
 }
 
 fn fields_input() -> Value {

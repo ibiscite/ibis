@@ -33,7 +33,7 @@ pub use store::{MAX_BACKUPS, MAX_KEPT, MAX_PENDING, MAX_PROPOSAL_BYTES, Proposal
 use crate::request::{ItemSelector, ShowRequest};
 use crate::{Cancellation, Engine};
 use ibis_core::citable::CitableFields;
-use ibis_core::contract::{Fingerprint, ItemRef, LibraryId, LibraryObject};
+use ibis_core::contract::{Fingerprint, ItemRef, LibraryId, LibraryObject, Problem, RecoveryInfo};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -210,8 +210,7 @@ pub enum WriteProblem {
     NotWritten,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{}", self.sentence())]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteError {
     pub problem: WriteProblem,
     /// The field or tag the problem is about, as the proposal named it.
@@ -224,6 +223,23 @@ impl From<WriteProblem> for WriteError {
     }
 }
 
+impl WriteProblem {
+    /// The catalogue message, naming the field when the proposal named one.
+    pub fn message_id(self, named: bool) -> String {
+        let id = crate::catalogue::id("refusal", self);
+        if named && matches!(self, Self::Invalid | Self::NotLiteral) {
+            format!("{id}-field")
+        } else {
+            id
+        }
+    }
+
+    /// What happened and what to do, as data each front end words.
+    pub fn problem(self) -> Problem {
+        WriteError::from(self).problem()
+    }
+}
+
 impl WriteError {
     fn about(problem: WriteProblem, field: &str) -> Self {
         Self {
@@ -232,36 +248,46 @@ impl WriteError {
         }
     }
 
-    /// What happened and what to do, in words for a person or an agent.
-    pub fn sentence(&self) -> String {
-        let field = self.field.as_deref().unwrap_or("a field");
+    /// What happened and what to do, as data each front end words.
+    pub fn problem(&self) -> Problem {
+        use ibis_core::contract::Recovery as R;
+        // No catch-all: a new problem cannot compile without its recovery.
+        let recovery = match self.problem {
+            WriteProblem::UnknownProposal
+            | WriteProblem::ProposalUnreadable
+            | WriteProblem::NotSaved
+            | WriteProblem::BackupFailed
+            | WriteProblem::NotWritten => R::Retry,
+            WriteProblem::TooMany => R::ReviewSettings,
+            WriteProblem::Decided => R::Close,
+            WriteProblem::TooLarge | WriteProblem::Invalid | WriteProblem::Changed | WriteProblem::KeyTaken => {
+                R::EditInput
+            }
+            WriteProblem::NoTarget | WriteProblem::LibraryKind | WriteProblem::NotOpen => R::ChooseLibrary,
+            WriteProblem::UnknownReference | WriteProblem::AlreadyInLibrary => R::SearchReferences,
+            WriteProblem::Damaged | WriteProblem::Repeated | WriteProblem::NotLiteral | WriteProblem::Unreadable => {
+                R::ReviewLibrary
+            }
+        };
+        let field = self
+            .field
+            .as_deref()
+            .filter(|_| matches!(self.problem, WriteProblem::Invalid | WriteProblem::NotLiteral));
+        let mut info = RecoveryInfo::new(&self.problem.message_id(field.is_some()), recovery);
+        if let Some(field) = field {
+            info = info.argument("field", field);
+        }
         match self.problem {
-            WriteProblem::UnknownProposal => "No proposal has this id; `ibis proposals list` shows them.".into(),
-            WriteProblem::ProposalUnreadable => {
-                "This proposal's file cannot be read; reject it and propose again.".into()
-            }
-            WriteProblem::NotSaved => "The proposal could not be saved beside Ibis's settings.".into(),
-            WriteProblem::TooMany => {
-                format!("{MAX_PENDING} proposals are waiting already; the person can review or reject them in Ibis.")
-            }
-            WriteProblem::TooLarge => format!("A proposal holds at most {} KiB.", MAX_PROPOSAL_BYTES / 1024),
-            WriteProblem::Decided => "This proposal was applied or rejected already.".into(),
-            WriteProblem::Invalid => format!("`{field}` cannot be used in a proposal."),
-            WriteProblem::NoTarget => "Several libraries are open: name the one to add to.".into(),
-            WriteProblem::UnknownReference => "The reference is not in an open library; search again.".into(),
-            WriteProblem::LibraryKind => "Ibis can propose changes to .bib files only, for now.".into(),
-            WriteProblem::AlreadyInLibrary => "A reference with this DOI is in the library already.".into(),
-            WriteProblem::NotOpen => "The library is not open in Ibis.".into(),
-            WriteProblem::Changed => "The reference changed since this was proposed; nothing was written.".into(),
-            WriteProblem::KeyTaken => "Another entry now uses this citation key; nothing was written.".into(),
-            WriteProblem::Damaged => "Some entry in the file cannot be read, so Ibis leaves the file alone.".into(),
-            WriteProblem::Repeated => "Two entries in the file have this citation key.".into(),
-            WriteProblem::NotLiteral => {
-                format!("`{field}` uses a @string macro or joins values, so Ibis does not edit it.")
-            }
-            WriteProblem::Unreadable => "The library file cannot be read as text.".into(),
-            WriteProblem::BackupFailed => "A backup of the file could not be written; nothing was changed.".into(),
-            WriteProblem::NotWritten => "The file could not be written; nothing was changed.".into(),
+            WriteProblem::TooMany => info = info.argument("count", MAX_PENDING.to_string()),
+            WriteProblem::TooLarge => info = info.argument("kib", (MAX_PROPOSAL_BYTES / 1024).to_string()),
+            _ => {}
+        }
+        Problem {
+            code: serde_json::to_value(self.problem)
+                .ok()
+                .and_then(|code| code.as_str().map(str::to_owned))
+                .unwrap_or_default(),
+            info,
         }
     }
 }

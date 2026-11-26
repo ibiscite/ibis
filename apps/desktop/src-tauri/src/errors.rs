@@ -151,7 +151,7 @@ impl From<crate::destination::AppChoiceError> for CommandError {
         use crate::destination::AppChoiceError as A;
         let (code, id) = match error {
             A::NotSaved { problem } => return Self::Presented(problem),
-            A::DeliveryNotSaved => ("delivery_not_saved", "app-command-delivery-not-saved"),
+            A::DeliveryNotSaved => ("delivery-not-saved", "app-command-delivery-not-saved"),
         };
         Self::Presented(Problem {
             code: code.into(),
@@ -211,6 +211,18 @@ pub(crate) fn every_problem() -> Vec<Problem> {
             .into_iter()
             .map(|operation| operation.failure().problem()),
     );
+
+    // Proposal refusals reach Settings as problems too, with and without a field.
+    for refusal in every::<ibis_engine::write::WriteProblem>() {
+        problems.push(refusal.problem());
+        problems.push(
+            ibis_engine::write::WriteError {
+                problem: refusal,
+                field: Some(String::new()),
+            }
+            .problem(),
+        );
+    }
 
     let session = [
         Session::SharedCitationKey { key: String::new() },
@@ -415,6 +427,15 @@ mod tests {
     fn every_problem_has_a_code_words_and_one_recovery() {
         for problem in super::every_problem() {
             assert!(!problem.code.is_empty(), "{problem:?} has no code");
+            // One case for every code, as the engine's own serde names are.
+            assert!(
+                problem
+                    .code
+                    .split('-')
+                    .all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())),
+                "{} is not kebab-case",
+                problem.code
+            );
             let id = &problem.info.message.id;
             assert!(
                 ibis_engine::catalogue::text(id, None, &[]).is_some_and(|text| !text.is_empty()),

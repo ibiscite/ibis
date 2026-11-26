@@ -246,6 +246,35 @@ app-proposal-tags =
        *[both] Add the tags { $add } and remove the tags { $remove } on “{ $label }”.
     }
 
+# Why a proposed library change was not recorded, shown or applied. $field
+# names a field or tag as the proposal did; $count and $kib are numbers.
+refusal-unknown-proposal = No proposal has this id.
+    .cli = `ibis proposals list` shows them.
+refusal-proposal-unreadable = This proposal’s file cannot be read; reject it.
+    .agent = Then propose the change again.
+refusal-not-saved = The proposal could not be saved beside Ibis’s settings.
+refusal-too-many = { $count } proposals are waiting already.
+    .cli = The person can review or reject them in Ibis.
+    .agent = The person can review or reject them in Ibis.
+refusal-too-large = A proposal holds at most { $kib } KiB.
+refusal-decided = This proposal was applied or rejected already.
+refusal-invalid = A field in this proposal cannot be used.
+refusal-invalid-field = `{ $field }` cannot be used in a proposal.
+refusal-no-target = Several libraries are open: name the one to add to.
+refusal-unknown-reference = The reference is not in an open library; search again.
+refusal-library-kind = Ibis can propose changes to .bib files only, for now.
+refusal-already-in-library = A reference with this DOI is in the library already.
+refusal-not-open = The library is not open in Ibis.
+refusal-changed = The reference changed since this was proposed; nothing was written.
+refusal-key-taken = Another entry now uses this citation key; nothing was written.
+refusal-damaged = Some entry in the file cannot be read, so Ibis leaves the file alone.
+refusal-repeated = Two entries in the file have this citation key.
+refusal-not-literal = A field uses a @string macro or joins values, so Ibis does not edit it.
+refusal-not-literal-field = `{ $field }` uses a @string macro or joins values, so Ibis does not edit it.
+refusal-unreadable = The library file cannot be read as text.
+refusal-backup-failed = A backup of the file could not be written; nothing was changed.
+refusal-not-written = The file could not be written; nothing was changed.
+
 # The updater's dialogs. $version and $current are version numbers.
 app-update-question-title = Check for updates automatically?
 app-update-question = Ibis can check GitHub for a newer version a few times a day. It asks GitHub for one small file; GitHub sees your IP address and the Ibis version. Nothing from your library is sent, and updates install only when you agree.

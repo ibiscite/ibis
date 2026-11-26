@@ -47,10 +47,10 @@ test("Apply sends only the displayed id and retains its backup receipt on focus"
   expect(screen.getByRole("status").textContent).toContain("Applied; backup kept as");
 });
 
-test("an engine refusal appears verbatim and keeps Reject available", async () => {
-  const sentence = "The reference changed since this was proposed; nothing was written.";
-  page([bib], { applyProposal: vi.fn(async () => ({ status: "refused", sentence })) });
+test("an engine refusal appears in the catalogue's words and keeps Reject available", async () => {
+  const problem = { code: "changed", message: { id: "refusal-changed", args: {} }, recovery: { action: "edit-input" }, focus: "request" } as const;
+  page([bib], { applyProposal: vi.fn(async (): Promise<ProposalResult> => ({ status: "refused", problem })) });
   fireEvent.click(await screen.findByRole("button", { name: /^Apply/ }));
-  expect(await screen.findByRole("alert")).toHaveProperty("textContent", sentence);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The reference changed since this was proposed; nothing was written.");
   expect(screen.getByRole("button", { name: /^Reject (?!all)/ })).toBeTruthy();
 });

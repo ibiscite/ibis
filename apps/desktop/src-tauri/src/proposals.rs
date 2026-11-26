@@ -1,4 +1,5 @@
 //! Settings confirms engine proposals by id; no file or library path crosses IPC.
+use ibis_core::contract::Problem;
 use ibis_engine::write::{Proposals, WriteError, WriteProblem};
 use serde::Serialize;
 use tauri::Manager;
@@ -13,7 +14,7 @@ pub(crate) struct WaitingProposal {
     lines: Vec<String>,
     before: Option<String>,
     after: Option<String>,
-    refusal: Option<String>,
+    refusal: Option<Problem>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
@@ -21,7 +22,7 @@ pub(crate) struct WaitingProposal {
 pub(crate) enum ProposalResult {
     Applied { backup: String },
     Rejected,
-    Refused { sentence: String },
+    Refused { problem: Problem },
 }
 
 // Acquire before scheduling blocking work, including reads after a reopen.
@@ -54,7 +55,7 @@ fn waiting(store: &Proposals) -> Result<Vec<WaitingProposal>, crate::errors::Nat
             lines: preview.lines,
             before: preview.before,
             after: preview.after,
-            refusal: preview.refusal.map(|problem| WriteError::from(problem).sentence()),
+            refusal: preview.refusal.map(WriteProblem::problem),
         })
         .collect())
 }
@@ -89,7 +90,7 @@ fn apply(store: &Proposals, engine: Option<&ibis_engine::Engine>, id: &str) -> P
                 .into_owned(),
         },
         Err(error) => ProposalResult::Refused {
-            sentence: error.sentence(),
+            problem: error.problem(),
         },
     }
 }
@@ -117,7 +118,7 @@ pub(crate) async fn reject_app_proposals(
             match store.get(&id).and_then(|proposal| store.reject_from(&proposal.source)) {
                 Ok(_) => ProposalResult::Rejected,
                 Err(error) => ProposalResult::Refused {
-                    sentence: error.sentence(),
+                    problem: error.problem(),
                 },
             },
         )
@@ -129,7 +130,7 @@ fn reject(store: &Proposals, id: &str) -> ProposalResult {
     match store.reject(id) {
         Ok(_) => ProposalResult::Rejected,
         Err(error) => ProposalResult::Refused {
-            sentence: error.sentence(),
+            problem: error.problem(),
         },
     }
 }
@@ -196,7 +197,7 @@ mod tests {
         assert_eq!(
             reject(&store, &proposal.id),
             ProposalResult::Refused {
-                sentence: WriteError::from(WriteProblem::Decided).sentence()
+                problem: WriteProblem::Decided.problem()
             }
         );
     }

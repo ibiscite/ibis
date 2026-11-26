@@ -164,7 +164,7 @@ export function citationKeys(): string[] {
 export function prepared(args: unknown): Prepared {
   const { ticket, contentHash } = args as { ticket: string; contentHash: string };
   const found = receipts.get(ticket);
-  if (!found || found.preview.content_hash !== contentHash) throw { code: "snapshot_changed" };
+  if (!found || found.preview.content_hash !== contentHash) throw { code: "snapshot-changed" };
   return found;
 }
 
@@ -352,6 +352,6 @@ export function removeFromCitation(token: HTMLElement | null) {
 
 /** A native delivery refusal; its worker never rejects across IPC. */
 export const changedDelivery = { outcome: "refused", problem: {
-  code: "snapshot_changed", message: { id: "picker-snapshot-changed", args: {} },
+  code: "snapshot-changed", message: { id: "picker-snapshot-changed", args: {} },
   recovery: { action: "select-references" }, focus: "results",
 } } satisfies import("../bindings").DeliveryOutcome;

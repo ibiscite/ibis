@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { commands, ProposalResult, WaitingProposal } from "../bindings";
-import { useInterfaceMessages } from "../i18n";
+import { problemText, useInterfaceMessages } from "../i18n";
 import { Button } from "../ui/Button";
 import { Buttons, Group, Note, Row, Section } from "../ui/Layout";
 import { useSettingsRequests } from "./useSettingsRequests";
@@ -68,7 +68,8 @@ export function ProposedChanges({ api, highlighted }: { api: Api; highlighted: s
       {proposals?.map((proposal) => {
         const id = `proposal-${proposal.id}`;
         const applied = proposal.result?.status === "applied";
-        const refusal = proposal.error ?? (proposal.result?.status === "refused" ? proposal.result.sentence : proposal.refusal);
+        const problem = proposal.result?.status === "refused" ? proposal.result.problem : proposal.refusal;
+        const refusal = proposal.error ?? (problem && problemText(problem, text("proposals-failed"), text, "settings"));
         const preview = proposal.before || proposal.after
           ? [...(proposal.before?.split("\n").map((line) => `- ${line}`) ?? []), ...(proposal.after?.split("\n").map((line) => `+ ${line}`) ?? [])].join("\n")
           : proposal.lines.join("\n");

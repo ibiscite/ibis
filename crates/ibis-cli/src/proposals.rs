@@ -77,7 +77,12 @@ fn failure(error: WriteError) -> Failure {
         WriteProblem::Decided => ErrorCode::BadInput,
         _ => ErrorCode::SourceUnavailable,
     };
-    Failure::new(code, error.sentence())
+    Failure::new(code, cli(&error.problem()))
+}
+
+/// A refusal in the command line's words.
+fn cli(problem: &ibis_core::contract::Problem) -> String {
+    ibis_engine::catalogue::problem(problem, ibis_engine::catalogue::Audience::Cli)
 }
 
 fn status(status: Status) -> &'static str {
@@ -119,10 +124,7 @@ fn shown(preview: &Preview) -> String {
     }
     match preview.refusal {
         Some(WriteProblem::Decided) => {}
-        Some(problem) => text.push_str(&format!(
-            "\nThis cannot be applied now: {}\n",
-            WriteError { problem, field: None }.sentence()
-        )),
+        Some(problem) => text.push_str(&format!("\nThis cannot be applied now: {}\n", cli(&problem.problem()))),
         None => text.push_str("\nApply or reject it in the Ibis app.\n"),
     }
     text

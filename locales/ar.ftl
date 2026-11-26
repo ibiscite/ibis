@@ -239,6 +239,35 @@ app-proposal-tags =
        *[both] إضافة الوسوم { $add } إلى «{ $label }» وإزالة الوسوم { $remove } منه.
     }
 
+# Why a proposed library change was not recorded, shown or applied. $field
+# names a field or tag as the proposal did; $count and $kib are numbers.
+refusal-unknown-proposal = لا يحمل أي اقتراح هذا المعرّف.
+    .cli = يعرضها الأمر `ibis proposals list`.
+refusal-proposal-unreadable = تعذّرت قراءة ملف هذا الاقتراح؛ ارفضه.
+    .agent = ثم اقترح التغيير مرة أخرى.
+refusal-not-saved = تعذّر حفظ الاقتراح بجوار إعدادات Ibis.
+refusal-too-many = عدد الاقتراحات المنتظرة بلغ { $count } بالفعل.
+    .cli = يمكن للشخص مراجعتها أو رفضها في Ibis.
+    .agent = يمكن للشخص مراجعتها أو رفضها في Ibis.
+refusal-too-large = لا يتجاوز حجم الاقتراح { $kib } كيلوبايت.
+refusal-decided = طُبّق هذا الاقتراح أو رُفض بالفعل.
+refusal-invalid = لا يمكن استخدام أحد الحقول في هذا الاقتراح.
+refusal-invalid-field = لا يمكن استخدام `{ $field }` في اقتراح.
+refusal-no-target = عدة مكتبات مفتوحة: سمِّ المكتبة التي تُضاف إليها.
+refusal-unknown-reference = المرجع ليس في مكتبة مفتوحة؛ ابحث مرة أخرى.
+refusal-library-kind = يستطيع Ibis حاليًا اقتراح تغييرات على ملفات ‎.bib فقط.
+refusal-already-in-library = في المكتبة مرجع بهذا المعرّف DOI بالفعل.
+refusal-not-open = المكتبة ليست مفتوحة في Ibis.
+refusal-changed = تغيّر المرجع منذ اقتراح هذا التغيير؛ لم يُكتب شيء.
+refusal-key-taken = يستخدم مُدخل آخر مفتاح الاستشهاد هذا الآن؛ لم يُكتب شيء.
+refusal-damaged = تعذّرت قراءة أحد المُدخلات في الملف، لذا يترك Ibis الملف كما هو.
+refusal-repeated = يحمل مُدخلان في الملف مفتاح الاستشهاد هذا.
+refusal-not-literal = يستخدم أحد الحقول ماكرو @string أو يجمع قيمًا، لذا لا يعدّله Ibis.
+refusal-not-literal-field = يستخدم `{ $field }` ماكرو @string أو يجمع قيمًا، لذا لا يعدّله Ibis.
+refusal-unreadable = تعذّرت قراءة ملف المكتبة نصًّا.
+refusal-backup-failed = تعذّرت كتابة نسخة احتياطية من الملف؛ لم يتغيّر شيء.
+refusal-not-written = تعذّرت كتابة الملف؛ لم يتغيّر شيء.
+
 app-update-question-title = التحقق من التحديثات تلقائيًا؟
 app-update-question = يستطيع Ibis التحقق من GitHub بحثًا عن إصدار أحدث بضع مرات في اليوم. يطلب من GitHub ملفًا صغيرًا واحدًا؛ ويرى GitHub عنوان IP الخاص بك وإصدار Ibis. لا يُرسل شيء من مكتبتك، ولا تُثبَّت التحديثات إلا بموافقتك.
 app-update-check-automatically = التحقق تلقائيًا

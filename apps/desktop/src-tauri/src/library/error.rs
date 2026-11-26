@@ -68,11 +68,11 @@ impl CommandError {
             Self::Refused(error) => return error.problem(),
             Self::Presented(problem) => return problem.clone(),
             Self::SnapshotChanged => (
-                "snapshot_changed",
+                "snapshot-changed",
                 RecoveryInfo::new("app-command-snapshot-changed", R::SelectReferences),
             ),
             Self::LibraryLoading => (
-                "library_loading",
+                "library-loading",
                 RecoveryInfo::new(
                     "app-command-library-loading",
                     R::None {
