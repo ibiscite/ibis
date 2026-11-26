@@ -28,7 +28,7 @@ struct Span {
     text: String,
 }
 
-pub(crate) fn refused(input: &Prepared) -> CitationResult {
+pub(crate) fn refused(input: &Prepared, error: CitationError) -> CitationResult {
     CitationResult::new(
         String::new(),
         None,
@@ -38,10 +38,7 @@ pub(crate) fn refused(input: &Prepared) -> CitationResult {
             .outcomes
             .iter()
             .map(|outcome| match outcome {
-                ItemOutcome::Rendered { item } => ItemOutcome::Refused {
-                    item: *item,
-                    error: CitationError::UnsupportedForm,
-                },
+                ItemOutcome::Rendered { item } => ItemOutcome::Refused { item: *item, error },
                 refused => *refused,
             })
             .collect(),
@@ -67,7 +64,7 @@ pub(crate) fn result(
         unprinted_locators,
     } = output
     else {
-        return Ok(refused(input));
+        return Ok(refused(input, CitationError::UnsupportedForm));
     };
     let candidates = input
         .outcomes
@@ -75,7 +72,7 @@ pub(crate) fn result(
         .filter(|outcome| matches!(outcome, ItemOutcome::Rendered { .. }))
         .count();
     if candidates == 0 || coverage != (0..candidates).collect::<Vec<_>>() {
-        return Ok(refused(input));
+        return Ok(refused(input, CitationError::UnsupportedForm));
     }
     if text.trim().is_empty() || [&text, &html, &rtf].into_iter().any(|text| unsupported_controls(text)) {
         return Err(FormatError::Runtime);
@@ -181,6 +178,9 @@ pub(crate) fn result(
             }
         })
         .collect();
+    if input.missing_details {
+        return Ok(refused(input, CitationError::MissingDetails));
+    }
     Ok(CitationResult::new(
         text,
         Some(html),

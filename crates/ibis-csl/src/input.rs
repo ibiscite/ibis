@@ -159,6 +159,8 @@ pub(crate) struct Prepared {
     pub losses: Vec<Loss>,
     pub notices: Vec<Notice>,
     pub warnings: Vec<CitationWarning>,
+    /// Candidates lack details: prove output support before refusing their metadata.
+    pub missing_details: bool,
     pub empty: bool,
 }
 
@@ -241,6 +243,7 @@ pub(crate) fn warm(style: &str, locale: Option<&str>) -> Result<Prepared, Format
         losses: vec![],
         notices: vec![],
         warnings: vec![],
+        missing_details: false,
         empty: false,
     })
 }
@@ -289,7 +292,7 @@ pub(crate) fn prepare_resolved(
                 .all(|pick| entry(pick.form.unwrap_or(request.form)))
         };
     let checked = citation::check(snapshot, None, request, |pick| ItemSupport {
-        details: true,
+        details: false,
         locator: true,
         form: !refuses_form(
             style,
@@ -300,6 +303,9 @@ pub(crate) fn prepare_resolved(
         ),
     })
     .map_err(FormatError::Citation)?;
+    // Keep sparse records out of a useful preview. With no detailed candidate,
+    // the processor must decide output support before missing-details can win.
+    let missing_details = !checked.iter().any(|checked| checked.is_ok_and(citation::has_details));
     let mut items = Vec::new();
     let mut cites = Vec::new();
     let mut ids = BTreeMap::<ItemRef, String>::new();
@@ -324,6 +330,7 @@ pub(crate) fn prepare_resolved(
                 continue;
             }
         };
+        let has_details = citation::has_details(record);
         warnings.extend(record.warnings.iter().map(|code| CitationWarning {
             item: index,
             code: *code,
@@ -427,6 +434,13 @@ pub(crate) fn prepare_resolved(
             });
             continue;
         }
+        if !has_details && !missing_details {
+            outcomes.push(ItemOutcome::Refused {
+                item: index,
+                error: CitationError::MissingDetails,
+            });
+            continue;
+        }
         let id = if let Some(id) = ids.get(&pick.item) {
             id.clone()
         } else {
@@ -525,6 +539,7 @@ pub(crate) fn prepare_resolved(
         losses,
         notices,
         warnings,
+        missing_details,
         empty: cites.is_empty(),
     })
 }

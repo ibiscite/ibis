@@ -77,7 +77,10 @@ impl Session {
         control: &Control,
     ) -> Result<ibis_core::contract::CitationResult, FormatError> {
         if prepared.empty {
-            return Ok(output::refused(prepared));
+            return Ok(output::refused(
+                prepared,
+                ibis_core::contract::CitationError::UnsupportedForm,
+            ));
         }
         install_interrupt(&self.runtime, control);
         let json = self
@@ -253,6 +256,7 @@ mod tests {
                     losses: vec![],
                     notices: vec![],
                     warnings: vec![],
+                    missing_details: false,
                     empty: false,
                 };
                 assert!(matches!(
