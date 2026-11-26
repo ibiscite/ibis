@@ -174,3 +174,8 @@ from CI, as [testing](../testing.md) says.
   Settings included.** Icons, window insets and control chrome stay at their
   native size, as with macOS text sizes. The description in Appearance says
   exactly that.
+- **Ibis keeps its own System, Light and Dark choice**, a deliberate
+  departure from Apple's advice to follow the system only.
+- **Settings keeps its sidebar with search**, a native pattern (System
+  Settings) that suits six pages and long lists better than a toolbar of
+  panes.
