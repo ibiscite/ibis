@@ -2143,7 +2143,7 @@ dependencies = [
 
 [[package]]
 name = "ibis"
-version = "0.3.12"
+version = "0.3.13"
 dependencies = [
  "clap",
  "console",
@@ -2165,7 +2165,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-core"
-version = "0.3.12"
+version = "0.3.13"
 dependencies = [
  "memchr",
  "nix",
@@ -2182,7 +2182,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-csl"
-version = "0.3.12"
+version = "0.3.13"
 dependencies = [
  "ibis-core",
  "icu_casemap",
@@ -2199,7 +2199,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-desktop"
-version = "0.3.12"
+version = "0.3.13"
 dependencies = [
  "auto-launch",
  "block2",
@@ -2242,7 +2242,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-desktop-macros"
-version = "0.3.12"
+version = "0.3.13"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2251,7 +2251,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-engine"
-version = "0.3.12"
+version = "0.3.13"
 dependencies = [
  "fluent-bundle",
  "ibis-core",
@@ -2276,7 +2276,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-fuzz"
-version = "0.3.12"
+version = "0.3.13"
 dependencies = [
  "ibis",
  "ibis-core",
@@ -2288,7 +2288,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-native"
-version = "0.3.12"
+version = "0.3.13"
 dependencies = [
  "block2",
  "ibis-core",
@@ -2307,7 +2307,7 @@ dependencies = [
 
 [[package]]
 name = "ibis-sources"
-version = "0.3.12"
+version = "0.3.13"
 dependencies = [
  "biblatex",
  "flate2",
