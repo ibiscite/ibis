@@ -859,6 +859,12 @@ citation-details-page-placeholder = Seite hinzufügen
 citation-details-page-hint = Eine Seite, ein Bereich oder mehrere, wie gedruckt
 citation-details-form = Anzeigen als
 citation-details-examples-unavailable = Keine Beispiele verfügbar
+# Why a citation form is left out of the Show as menu.
+citation-details-unavailable-entries = Literaturangaben haben keine Namensformen. Wählen Sie einen anderen Stil.
+citation-details-unavailable-keys-only = „Nur Schlüssel“ hat keine Namensformen. Wählen Sie eine andere Ausgabe.
+citation-details-unavailable-textcite = Nicht mit \textcite
+citation-details-unavailable-cited-alone = Nur, wenn allein zitiert
+citation-details-unavailable-output = Nicht in dieser Ausgabe
 citation-details-edit = { $reference } bearbeiten
 citation-details-details = Zitationsdetails für { $reference }
 operation-failures-recent-history = Letzte Zitationen nicht vergessen. Bitte erneut versuchen.
@@ -1202,6 +1208,13 @@ picker-project-lines =
 picker-project-reading = { $name } wird gelesen
 picker-project-damaged = { $name } konnte nicht vollständig gelesen werden, daher gilt nichts als fehlend.
 picker-project-failed = { $name } konnte nicht gelesen werden.
+# Why a project bibliography could not be read, after picker-project-failed.
+picker-project-problem-unavailable = Die Datei ist nicht vorhanden oder noch nicht auf diesem Computer.
+picker-project-problem-not-a-file = Es ist keine Datei.
+picker-project-problem-too-large = Die Datei ist größer als 64 MiB.
+picker-project-problem-not-utf8 = Die Datei ist kein UTF-8-Text.
+picker-project-problem-changing = Die Datei ändert sich noch.
+picker-project-problem-not-bibtex = Es muss eine BibTeX- oder BibLaTeX-Datei sein.
 picker-project-checking = Abgleich mit { $name }
 picker-project-check-lines =
     { $count ->

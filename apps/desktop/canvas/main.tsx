@@ -221,9 +221,9 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       if (receipt && !isStyle(receipt.output)) return { current_form, forms: [
         { form: "normal", example: `[@${receipt.key}]`, reason: null },
         { form: "narrative", example: `@${receipt.key}`, reason: null },
-        { form: "author-only", example: null, reason: "Not in this output" },
+        { form: "author-only", example: null, reason: "output" },
         { form: "year-only", example: `[-@${receipt.key}]`, reason: null },
-        { form: "full", example: null, reason: "Not in this output" },
+        { form: "full", example: null, reason: "output" },
       ] } satisfies FormDetails;
       return { current_form, forms: [
         { form: "normal", example: "(Aster, 2026)", reason: null },

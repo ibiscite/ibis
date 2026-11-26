@@ -99,7 +99,10 @@ fn line(proposal: &Proposal) -> String {
         proposal.id,
         status(proposal.status),
         proposal.target.name(),
-        ibis_engine::write::summary(proposal)
+        ibis_engine::catalogue::message(
+            &ibis_engine::write::summary(proposal),
+            ibis_engine::catalogue::Audience::Cli
+        )
     )
 }
 
@@ -111,7 +114,7 @@ fn shown(preview: &Preview) -> String {
         status(proposal.status),
         proposal.source.client,
         preview.library,
-        preview.summary
+        ibis_engine::catalogue::message(&preview.summary, ibis_engine::catalogue::Audience::Cli)
     );
     for line in &preview.lines {
         text.push_str(&format!("  {line}\n"));

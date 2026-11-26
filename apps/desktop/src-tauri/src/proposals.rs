@@ -9,7 +9,7 @@ pub(crate) struct WaitingProposal {
     id: String,
     source_app: String,
     library: String,
-    summary: String,
+    summary: ibis_core::contract::Message,
     created_ms: u64,
     lines: Vec<String>,
     before: Option<String>,

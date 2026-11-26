@@ -80,6 +80,6 @@ export function bibliographyDetail({ name, state, reason, damaged_lines: lines }
   const where = lines.length ? ` ${say("picker-project-check-lines", { count: lines.length, lines: lines.join(", ") })}` : "";
   if (state === "reading") return say("picker-project-reading", { name: file });
   if (state === "damaged") return say("picker-project-damaged", { name: file }) + where;
-  if (state === "failed") return `${say("picker-project-failed", { name: file })} ${reason ?? ""}${where}`.trim();
+  if (state === "failed") return `${say("picker-project-failed", { name: file })} ${reason ? say(`picker-project-problem-${reason}`) : ""}${where}`.trim();
   return say("picker-project-checking", { name: file });
 }

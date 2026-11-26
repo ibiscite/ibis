@@ -613,8 +613,12 @@ export type FormDetails = {
 export type FormOption = {
 	example: string | null;
 	form: CitationForm;
-	reason: string | null;
+	/** Why this form is left out; absent when it can be chosen. */
+	reason: FormUnavailable | null;
 };
+
+/** Why a citation form cannot be chosen. Each front end words it. */
+export type FormUnavailable = "entries" | "keys-only" | "textcite" | "cited-alone" | "output";
 
 /** The format a citation for one app uses, and why. */
 export type FormatChoice = {
@@ -1062,6 +1066,9 @@ export type ProjectMark = {
 	state: ProjectKeyState;
 };
 
+/** Why a read could not be used. */
+export type ProjectProblem = "not-a-file" | "too-large" | "not-utf8" | "changing" | "unavailable" | "not-bibtex";
+
 /** State of the current bibliography read. */
 export type ProjectState = "reading" | "ready" | "damaged" | "failed";
 
@@ -1071,8 +1078,8 @@ export type ProjectStatus = {
 	damaged_lines: number[];
 	generation: number;
 	name: string;
-	/** Why the newest read failed, as a sentence ending in a full stop. */
-	reason: string | null;
+	/** Why the newest read failed. Each front end words it. */
+	reason: ProjectProblem | null;
 	/**
 	 * Counts reads that changed an answer, which can happen with the status
 	 * otherwise the same, as when an entry is added to a healthy file.
@@ -1396,7 +1403,7 @@ export type WaitingProposal = {
 	lines: string[];
 	refusal: Problem | null;
 	source_app: string;
-	summary: string;
+	summary: Message;
 };
 
 /** Safe source diagnostics contain a location and fixed code, never payloads. */

@@ -33,7 +33,7 @@ pub use store::{MAX_BACKUPS, MAX_KEPT, MAX_PENDING, MAX_PROPOSAL_BYTES, Proposal
 use crate::request::{ItemSelector, ShowRequest};
 use crate::{Cancellation, Engine};
 use ibis_core::citable::CitableFields;
-use ibis_core::contract::{Fingerprint, ItemRef, LibraryId, LibraryObject, Problem, RecoveryInfo};
+use ibis_core::contract::{Fingerprint, ItemRef, LibraryId, LibraryObject, Message, Problem, RecoveryInfo};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -143,7 +143,7 @@ pub struct Preview {
     /// The library's file name, or Zotero's library.
     pub library: String,
     /// One sentence on what applying does.
-    pub summary: String,
+    pub summary: Message,
     /// The change field by field.
     pub lines: Vec<String>,
     /// The entry as the file holds it now.
@@ -566,18 +566,25 @@ fn preview(proposal: Proposal, text: Result<&str, &WriteError>) -> Preview {
     preview
 }
 
-/// One sentence on what applying a proposal does, naming no file, in the
-/// language this process speaks (English for the command line and MCP).
-pub fn summary(proposal: &Proposal) -> String {
-    let say = |id: &str, args: &[(&str, &str)]| crate::catalogue::text(id, None, args).unwrap_or_default();
+/// One sentence on what applying a proposal does, naming no file, for each
+/// front end to word in its own language.
+pub fn summary(proposal: &Proposal) -> Message {
+    let message = |id: &str, args: &[(&str, &str)]| Message {
+        id: id.into(),
+        args: args
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+            .collect(),
+        context: None,
+    };
     match &proposal.change {
         Change::Add { key, fields } => {
             let title = fields.get("title").map(display).unwrap_or_default();
-            say("app-proposal-add", &[("title", &title), ("key", key)])
+            message("app-proposal-add", &[("title", &title), ("key", key)])
         }
         Change::Fields { label, fields, .. } => {
             let names: Vec<&str> = fields.keys().map(String::as_str).collect();
-            say(
+            message(
                 "app-proposal-fields",
                 &[("fields", &names.join(", ")), ("label", label)],
             )
@@ -588,7 +595,7 @@ pub fn summary(proposal: &Proposal) -> String {
                 (true, false) => "remove",
                 _ => "both",
             };
-            say(
+            message(
                 "app-proposal-tags",
                 &[
                     ("state", state),

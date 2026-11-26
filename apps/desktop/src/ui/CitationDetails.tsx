@@ -60,7 +60,11 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
   const offered = FORMS.filter((option) => !answer || choice(option.value) && !choice(option.value)?.reason);
   // Each reason once, with the forms it leaves out.
   const reasons = new Map<string, string[]>();
-  for (const option of FORMS) { const reason = choice(option.value)?.reason; if (reason) reasons.set(reason, [...reasons.get(reason) ?? [], option.label]); }
+  for (const option of FORMS) {
+    const code = choice(option.value)?.reason;
+    const reason = code && say(`citation-details-unavailable-${code}`);
+    if (reason) reasons.set(reason, [...reasons.get(reason) ?? [], option.label]);
+  }
   const names = new Intl.ListFormat(interfaceLocale(), { type: "conjunction" });
   const note = choices === "failed" ? say("citation-details-examples-unavailable")
     : [...reasons].map(([reason, forms]) => `${names.format(forms)}: ${reason}`).join(" · ") || undefined;

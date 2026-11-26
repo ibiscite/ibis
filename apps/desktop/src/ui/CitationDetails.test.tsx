@@ -1,15 +1,15 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
-import type { Locator, CitationForm } from "../bindings";
+import type { Locator, CitationForm, FormUnavailable } from "../bindings";
 import { CitationDetails } from "./CitationDetails";
 
 afterEach(cleanup);
 
-const answer = (forms: Partial<Record<CitationForm, string | { reason: string }>>, current: CitationForm | null = "normal") => ({ current_form: current,
+const answer = (forms: Partial<Record<CitationForm, string | { reason: FormUnavailable }>>, current: CitationForm | null = "normal") => ({ current_form: current,
   forms: (["normal", "narrative", "author-only", "year-only", "full"] as const).map((form) => {
     const value = forms[form];
-    return { form, example: typeof value === "string" ? value : null, reason: typeof value === "object" ? value.reason : value === undefined ? "Not in this output." : null };
+    return { form, example: typeof value === "string" ? value : null, reason: typeof value === "object" ? value.reason : value === undefined ? "output" as const : null };
   }) });
 const examples = { normal: "(Example, 2026)", narrative: "Example (2026)", "year-only": "(2026)" };
 

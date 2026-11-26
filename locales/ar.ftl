@@ -863,6 +863,12 @@ citation-details-page-placeholder = أضف صفحة
 citation-details-page-hint = صفحة أو نطاق أو عدة صفحات، كما هي مطبوعة
 citation-details-form = طريقة العرض
 citation-details-examples-unavailable = الأمثلة غير متاحة
+# Why a citation form is left out of the Show as menu.
+citation-details-unavailable-entries = لا صيغ للأسماء في مُدخلات قائمة المراجع. اختر نمطًا آخر.
+citation-details-unavailable-keys-only = لا صيغ للأسماء في «المفاتيح فقط». اختر مخرجًا آخر.
+citation-details-unavailable-textcite = ليس مع ‎\textcite
+citation-details-unavailable-cited-alone = فقط عند الاستشهاد به وحده
+citation-details-unavailable-output = غير متاح في هذا المخرج
 citation-details-edit = تعديل { $reference }
 citation-details-details = تفاصيل استشهاد { $reference }
 operation-failures-recent-history = تعذّر نسيان الاستشهادات الأخيرة. حاول مرة أخرى.
@@ -1234,6 +1240,13 @@ picker-project-lines =
 picker-project-reading = جارٍ قراءة { $name }
 picker-project-damaged = تعذّرت قراءة { $name } كاملًا، لذا لا يُعدّ أي مرجع مفقودًا.
 picker-project-failed = تعذّرت قراءة { $name }.
+# Why a project bibliography could not be read, after picker-project-failed.
+picker-project-problem-unavailable = الملف غير موجود، أو ليس على هذا الحاسوب بعد.
+picker-project-problem-not-a-file = هذا ليس ملفًا.
+picker-project-problem-too-large = حجم الملف أكبر من 64 ميبيبايت.
+picker-project-problem-not-utf8 = الملف ليس نصًّا بترميز UTF-8.
+picker-project-problem-changing = الملف ما زال يتغيّر.
+picker-project-problem-not-bibtex = يجب أن يكون ملف BibTeX أو BibLaTeX.
 picker-project-checking = جارٍ المطابقة مع { $name }
 picker-project-check-lines =
     { $count ->

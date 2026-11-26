@@ -532,6 +532,132 @@ mod tests {
         }
     }
 
+    /// Words come only from the catalogue (decision 0064): no type the web view
+    /// or the engine's contract carries holds a sentence for a person to read.
+    /// A refusal is a `Problem`, a reason a closed code, and each front end
+    /// words it. A string field named like words is either data, listed with
+    /// why, or a known offender that may only leave the list.
+    #[test]
+    fn no_contract_type_carries_words_for_a_person() {
+        use serde_json::Value;
+        const DATA: &[(&str, &str)] = &[
+            // The person's own library, the citation Ibis wrote, or a name.
+            ("Annotation.page_label", "the page label the PDF prints"),
+            ("Annotation.text", "the highlighted text from the PDF"),
+            ("Attachment.title", "the attachment's own title"),
+            ("CitationResult.text", "the citation as written"),
+            ("ClosestMatch.title", "the reference's title"),
+            ("Copied.text", "the citation as written"),
+            ("DisplayRun.text", "a run of the citation as written"),
+            ("LocatorInput.text", "the locator as the person typed it"),
+            ("Note.text", "the reference's own note"),
+            ("NoticeMessage.text", "one line of the citation that was copied"),
+            ("Preview.text", "the citation as written"),
+            ("ReceiptSummary.text", "the citation that was copied"),
+            ("SearchQuery.text", "what the person typed"),
+            ("SearchResult.title", "the reference's title"),
+            ("SessionBibliography.text", "the bibliography as written"),
+            ("TextRun.text", "a run of the citation as written"),
+            (
+                "WaitingProposal.lines",
+                "the proposed fields and tags, as `name: value`",
+            ),
+        ];
+        const OFFENDERS: &[(&str, &str)] = &[
+            ("LibraryStatus.error", "the status owner (0064 step 3)"),
+            ("LibraryStatus.note", "the status owner (0064 step 3)"),
+            ("LibraryStatus.settings_notice", "the status owner (0064 step 3)"),
+            ("ReadingNotice.why", "the status owner (0064 step 3)"),
+            ("ShortcutStatus.error", "the status owner (0064 step 3)"),
+            ("Preview.problem", "a copy of `failure`; the picker can word that"),
+            ("Preview.project_refusal", "a project conflict as a Problem"),
+            ("AgentApp.detail", "agent apps' states and steps as codes"),
+        ];
+        const WORDS: &[&str] = &[
+            "body",
+            "caption",
+            "description",
+            "detail",
+            "error",
+            "explanation",
+            "hint",
+            "label",
+            "lines",
+            "message",
+            "note",
+            "notes",
+            "notice",
+            "problem",
+            "reason",
+            "refusal",
+            "sentence",
+            "summary",
+            "text",
+            "title",
+            "why",
+            "words",
+        ];
+        fn is_text(schema: &Value) -> bool {
+            if schema.get("enum").is_some() || schema.get("const").is_some() {
+                return false;
+            }
+            let kinds: Vec<&str> = match &schema["type"] {
+                Value::String(kind) => vec![kind],
+                Value::Array(kinds) => kinds.iter().filter_map(Value::as_str).collect(),
+                _ => Vec::new(),
+            };
+            if kinds.contains(&"string") {
+                return true;
+            }
+            if kinds.contains(&"array") {
+                return is_text(&schema["items"]);
+            }
+            ["anyOf", "oneOf"].iter().any(|keyword| {
+                schema[keyword]
+                    .as_array()
+                    .is_some_and(|variants| variants.iter().any(is_text))
+            })
+        }
+        fn walk(name: &str, schema: &Value, found: &mut BTreeSet<String>) {
+            if let Some(properties) = schema["properties"].as_object() {
+                for (field, value) in properties {
+                    if field.split('_').any(|word| WORDS.contains(&word)) && is_text(value) {
+                        found.insert(format!("{name}.{field}"));
+                    }
+                }
+            }
+            for keyword in ["oneOf", "anyOf", "allOf"] {
+                for variant in schema[keyword].as_array().into_iter().flatten() {
+                    walk(name, variant, found);
+                }
+            }
+        }
+        let contract = super::contract();
+        let engine: Value = serde_json::from_str(include_str!("../../../../fixtures/engine-contract.schema.json"))
+            .unwrap_or_else(|e| panic!("engine contract: {e}"));
+        let mut found = BTreeSet::new();
+        for definitions in [&contract["output"], &contract["input"], &engine["$defs"]] {
+            for (name, schema) in definitions.as_object().into_iter().flatten() {
+                walk(name, schema, &mut found);
+            }
+        }
+        let listed: BTreeSet<String> = DATA
+            .iter()
+            .chain(OFFENDERS)
+            .map(|(field, _)| (*field).to_owned())
+            .collect();
+        let new: Vec<_> = found.difference(&listed).collect();
+        assert!(
+            new.is_empty(),
+            "words for a person in a contract type; send a Problem, a Message or a closed code instead: {new:?}"
+        );
+        let gone: Vec<_> = listed.difference(&found).collect();
+        assert!(
+            gone.is_empty(),
+            "no longer in any contract type; take them off the list: {gone:?}"
+        );
+    }
+
     /// Run by `node scripts/gen.mjs`, which writes `src/bindings.ts` from it.
     #[test]
     #[ignore = "writes the desktop contract for gen.mjs"]

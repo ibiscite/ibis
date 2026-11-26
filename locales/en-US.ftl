@@ -871,6 +871,12 @@ citation-details-page-placeholder = Add page
 citation-details-page-hint = A page, a range or several, as printed
 citation-details-form = Show as
 citation-details-examples-unavailable = Examples are unavailable
+# Why a citation form is left out of the Show as menu.
+citation-details-unavailable-entries = Reference entries have no name forms. Choose another style.
+citation-details-unavailable-keys-only = Keys only has no name forms. Choose another output.
+citation-details-unavailable-textcite = Not with \textcite
+citation-details-unavailable-cited-alone = Only when cited alone
+citation-details-unavailable-output = Not in this output
 citation-details-edit = Edit { $reference }
 citation-details-details = Citation details for { $reference }
 operation-failures-recent-history = Recent citations could not be forgotten. Try again.
@@ -1217,6 +1223,13 @@ picker-project-lines =
 picker-project-reading = Reading { $name }
 picker-project-damaged = Couldn’t read all of { $name }, so nothing is called missing.
 picker-project-failed = Couldn’t read { $name }.
+# Why a project bibliography could not be read, after picker-project-failed.
+picker-project-problem-unavailable = It is not there, or not on this computer yet.
+picker-project-problem-not-a-file = It is not a file.
+picker-project-problem-too-large = It is larger than 64 MiB.
+picker-project-problem-not-utf8 = It is not UTF-8 text.
+picker-project-problem-changing = It is still changing.
+picker-project-problem-not-bibtex = It must be a BibTeX or BibLaTeX file.
 picker-project-checking = Checking against { $name }
 picker-project-check-lines =
     { $count ->

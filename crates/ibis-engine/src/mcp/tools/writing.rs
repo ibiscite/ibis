@@ -175,7 +175,7 @@ fn proposed(engine: &Engine, writing: &Writing<'_>, request: ProposeRequest) -> 
     let mut answer = json!({
         "proposal": proposal.id,
         "status": proposal.status,
-        "summary": crate::write::summary(&proposal),
+        "summary": crate::catalogue::message(&crate::write::summary(&proposal), crate::catalogue::Audience::Agent),
         "next": NOT_YET,
         "provenance": PROVENANCE,
     });
@@ -257,7 +257,7 @@ fn proposals(
             json!({
                 "proposal": proposal.id,
                 "status": proposal.status,
-                "summary": crate::write::summary(&proposal),
+                "summary": crate::catalogue::message(&crate::write::summary(&proposal), crate::catalogue::Audience::Agent),
             })
         })
         .collect();

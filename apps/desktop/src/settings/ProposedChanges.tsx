@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { commands, ProposalResult, WaitingProposal } from "../bindings";
-import { problemText, useInterfaceMessages } from "../i18n";
+import { type MessageId, problemText, useInterfaceMessages } from "../i18n";
 import { Button } from "../ui/Button";
 import { Buttons, Group, Note, Row, Section } from "../ui/Layout";
 import { useSettingsRequests } from "./useSettingsRequests";
@@ -74,7 +74,7 @@ export function ProposedChanges({ api, highlighted }: { api: Api; highlighted: s
           ? [...(proposal.before?.split("\n").map((line) => `- ${line}`) ?? []), ...(proposal.after?.split("\n").map((line) => `+ ${line}`) ?? [])].join("\n")
           : proposal.lines.join("\n");
         return <Row key={proposal.id} id={id} label={text("proposals-from", { app: proposal.source_app, library: proposal.library })}
-          description={<>{proposal.summary} · {new Date(proposal.created_ms).toLocaleString(locale)}</>} highlighted={highlighted === "proposed-changes"}>
+          description={<>{text(proposal.summary.id as MessageId, proposal.summary.args)} · {new Date(proposal.created_ms).toLocaleString(locale)}</>} highlighted={highlighted === "proposed-changes"}>
           {!applied && <Buttons>
             <Button aria-labelledby={`${id}-apply ${id}`} isDisabled={busy} onPress={() => change(proposal, "apply")}><span id={`${id}-apply`}>{text("proposals-apply")}</span></Button>
             <Button aria-labelledby={`${id}-reject ${id}`} isDisabled={busy} onPress={() => change(proposal, "reject")}><span id={`${id}-reject`}>{text("proposals-reject")}</span></Button>
