@@ -146,3 +146,6 @@ the anchor older links use.
 
 ## 0061 A folder of PDFs is a library, and one `resolve`
 [0061](decisions/0061-a-folder-of-pdfs-and-one-resolve.md): a folder of PDFs opens as a library whose records Ibis keeps in `ibis-references.bib` beside them, read from each PDF's own metadata and DOI in the child and appended only when the person keeps them; reads never write; a record with no title, author or editor is not cited, from any source; `resolve` finds an identifier, text or file in the library, then online only after asking.
+
+## 0063 Form follows the job
+[0063](decisions/0063-form-follows-function.md): a citation can be typed whole in the search field (locators and `;`, parsed by the engine for every front end); a format is chosen and remembered only in the picker, so Settings › Citations goes; an empty search shows what was cited since Ibis opened, replacing the sheet; every status and problem has one home, the list's heading line, with at most one fix.
