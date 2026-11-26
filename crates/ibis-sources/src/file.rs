@@ -531,6 +531,11 @@ pub(crate) fn attachment_path(
     } else {
         let mut path = plain_disk(base);
         for part in location.components() {
+            // A folder's entries read `./name.pdf`; `.` names nothing, and the
+            // Windows local-file checks refuse it as a component.
+            if part == std::path::Component::CurDir {
+                continue;
+            }
             // Windows resolves `..` by name before the file system sees it;
             // the local-file checks refuse ambiguous parent components.
             #[cfg(windows)]
@@ -869,6 +874,22 @@ mod subprocess_watchdog;
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_folder_entry_resolves_without_a_dot_component() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir(directory.path().join("older")).unwrap();
+        std::fs::write(directory.path().join("older/tides.pdf"), b"%PDF").unwrap();
+        let path = attachment_path(directory.path(), Path::new("./older/tides.pdf"), false)
+            .unwrap()
+            .unwrap();
+        assert!(
+            !path.components().any(|part| part == std::path::Component::CurDir),
+            "{path:?}"
+        );
+        assert!(!path.to_string_lossy().contains("/./") && !path.to_string_lossy().contains("\\.\\"));
+        assert!(path.ends_with("older/tides.pdf"));
+    }
 
     #[test]
     fn attachment_files_stay_inside_the_library_folder_unless_allowed() {
