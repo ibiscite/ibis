@@ -263,6 +263,13 @@ export const commands = {
 	 * the picker again. Granting permission never captures a target or retries Enter.
 	 */
 	finishPasteGuide: () => __TAURI_INVOKE<boolean>("finish_paste_guide"),
+	/**
+	 * The page reports the page it now shows (`page`, as asked for) and hears the
+	 * latest one asked for. A hidden Settings waiting for that page shows now, so
+	 * it never shows an earlier page first; a page that loaded after the request
+	 * was sent learns it here.
+	 */
+	settingsShown: (page: Page) => __TAURI_INVOKE<Page>("settings_shown", { page }),
 	/** Ask where to save a backup and write it there. `None` when cancelled. */
 	backUpSettings: () => __TAURI_INVOKE<string | null>("back_up_settings"),
 	/**

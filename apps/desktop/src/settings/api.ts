@@ -40,6 +40,7 @@ export const settingsApi = {
   openPastePermission: commands.openPastePermission,
   dragPasteApp: async (): Promise<void> => { await commands.dragPasteApp(); },
   finishPasteGuide: commands.finishPasteGuide,
+  settingsShown: commands.settingsShown,
   shortcutStatus: commands.shortcutStatus,
   setShortcut: commands.setShortcut,
   configureShortcuts: commands.configureShortcuts,
@@ -81,5 +82,5 @@ export const settingsApi = {
     : getCurrentWindow().onCloseRequested(() => handler(false)),
 };
 
-type Optional = "waitingProposals" | "applyProposal" | "rejectProposal" | "rejectAppProposals" | "attachmentTextLibraries" | "setAttachmentText" | "attachmentTextOutsideLibrary" | "setAttachmentTextOutsideLibrary" | "onLibraryChanged" | "agentApps" | "connectAgentApp" | "disconnectAgentApp" | "cliStatus" | "setCliInstalled" | "copyCliProfile" | "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint" | "onEditorEndpoint" | "formatSettings" | "forgetAppFormat" | "openSettingsFile";
+type Optional = "settingsShown" | "waitingProposals" | "applyProposal" | "rejectProposal" | "rejectAppProposals" | "attachmentTextLibraries" | "setAttachmentText" | "attachmentTextOutsideLibrary" | "setAttachmentTextOutsideLibrary" | "onLibraryChanged" | "agentApps" | "connectAgentApp" | "disconnectAgentApp" | "cliStatus" | "setCliInstalled" | "copyCliProfile" | "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint" | "onEditorEndpoint" | "formatSettings" | "forgetAppFormat" | "openSettingsFile";
 export type SettingsApi = Omit<typeof settingsApi, Optional> & Partial<Pick<typeof settingsApi, Optional>>;

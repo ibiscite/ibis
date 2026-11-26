@@ -5,7 +5,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useEffectEvent } from "react";
 import type { NoticeMessage, UpdateProgress } from "./api";
-import type { EndpointStatus, LibraryStatus, PreferenceChange, PickerSnapshot, ShortcutStatus } from "./bindings";
+import type { EndpointStatus, LibraryStatus, Page, PreferenceChange, PickerSnapshot, ShortcutStatus } from "./bindings";
 
 export type Stop = () => void;
 type Handler = (...args: never[]) => unknown;
@@ -50,7 +50,7 @@ export const events = {
   /** The saved automatic update choice, after a change from any menu. */
   onUpdateChecks: on<boolean>("update:automatic"),
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */
-  onSettingsPage: on<string>("settings:page"),
+  onSettingsPage: on<Page>("settings:page"),
   /** macOS hid Settings, which it keeps for the next opening (settings_window::dismiss). */
   onSettingsHidden: on("settings:hidden"),
   onNoticeShow: on<NoticeMessage>("notice:show"),

@@ -10,6 +10,8 @@ type Action =
   | { type: "read"; value: PickerPreferences | null }
   | { type: "saved" | "change"; value: PickerPreferences }
   | { type: "invalidated" | "read-failed" }
+  /** A new opening of Settings: a refusal from the last one is not news here. */
+  | { type: "opened" }
   | { type: "refused"; saved: PickerPreferences | null; problem: Refusal };
 
 export const initialPreferences: PreferenceState = { status: "unknown", value: null, message: null };
@@ -18,6 +20,8 @@ export const initialPreferences: PreferenceState = { status: "unknown", value: n
  * certainty after invalidation; an acknowledgement may still update the view. */
 export function preferenceState(state: PreferenceState, action: Action): PreferenceState {
   switch (action.type) {
+    case "opened":
+      return state.status === "refused" ? { status: "known", value: state.value } : state;
     case "invalidated":
       return { status: "unknown", value: state.value, message: state.status === "unknown" ? state.message : null };
     case "read-failed":

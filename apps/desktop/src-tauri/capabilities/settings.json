@@ -37,6 +37,7 @@
     "allow-open-paste-permission",
     "allow-drag-paste-app",
     "allow-finish-paste-guide",
+    "allow-settings-shown",
     "allow-shortcut-status",
     "allow-set-shortcut",
     "allow-configure-shortcuts",

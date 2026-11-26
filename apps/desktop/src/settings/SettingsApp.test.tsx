@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
-import type { PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
+import type { Page, PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
 import { bindingKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { SettingsApp } from "./SettingsApp";
@@ -29,7 +29,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     finished: 0,
     windowSaved: undefined as ((saved: boolean, revision: number) => void) | undefined,
     windowRevision: 0,
-    pages: [] as ((page: string) => void)[],
+    pages: [] as ((page: Page) => void)[],
     closes: [] as (() => Promise<void>)[],
     /** macOS hid the kept window. */
     hides: [] as (() => Promise<void>)[],
@@ -442,3 +442,109 @@ function shortcutFailure(code: string) {
   return { code, message: { id: `shortcuts-refusal-${code}`, args: {} },
     recovery: { action: code === "unavailable" ? "open-ibis" : code === "not-saved" ? "retry" : "choose-shortcut" }, focus: "recovery-action" };
 }
+
+/** The platform a test runs as, as the Settings page reads it. */
+function system(name: string) {
+  document.documentElement.dataset.system = name;
+  onTestFinished(() => { delete document.documentElement.dataset.system; });
+}
+
+test("a hidden Settings shows once the page asked for is on it, and catches up with a request it missed", async () => {
+  system("macos");
+  const { api, state } = fakeApi({ granted: true });
+  let latest: Page = "about"; // asked for while the page was still loading
+  const shown: string[] = [];
+  api.settingsShown = vi.fn(async (page: Page) => { shown.push(`${page}: ${document.getElementById("settings-page-title")?.textContent}`); return latest; });
+  render(<SettingsApp api={api} initialPage="general" />);
+  await screen.findByRole("main", { name: "About Ibis" });
+  await waitFor(() => expect(shown).toEqual(["general: General", "about: About Ibis"]));
+  await act(async () => state.hides.at(-1)!());
+  expect(shown).toHaveLength(2);
+  expect(screen.queryByRole("button", { name: /^Version/ })).toBeNull();
+  latest = "shortcuts";
+  await act(async () => state.pages.at(-1)!("shortcuts"));
+  await waitFor(() => expect(shown.at(-1)).toBe("shortcuts: Shortcuts"));
+  expect(shown).toHaveLength(3);
+});
+
+test("a shortcut save that completes after reopening cannot bring back the old Undo", async () => {
+  system("macos");
+  const { api, state } = fakeApi({ granted: true });
+  state.shortcut.shortcut = "Alt+Shift+K";
+  const nativeSet = api.setShortcut;
+  const finish = deferred<void>();
+  api.setShortcut = vi.fn(async (next) => { await finish.promise; return nativeSet(next); });
+  render(<SettingsApp api={api} initialPage="shortcuts" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Use Default for Open Ibis" }));
+  await waitFor(() => expect(api.setShortcut).toHaveBeenCalledWith(null));
+  act(() => { void state.hides.at(-1)!(); });
+  act(() => { state.pages.at(-1)!("shortcuts"); });
+  await act(async () => { finish.resolve(); });
+  expect(state.shortcut.shortcut).toBe(DEFAULT_PICKER_SHORTCUT);
+  expect(screen.queryByRole("button", { name: "Undo Restore Default Shortcut" })).toBeNull();
+});
+
+test("a save refused before close does not leave its error on a reopened page", async () => {
+  system("macos");
+  const { api, state } = fakeApi({ granted: true }, { appearance: "system" });
+  api.setPickerPreferences = vi.fn().mockRejectedValueOnce(new Error("write failed"));
+  render(<SettingsApp api={api} initialPage="look" />);
+  fireEvent.click(await screen.findByRole("radio", { name: "Dark" }));
+  const refusal = "Ibis could not save this choice; the saved value is shown.";
+  await screen.findByText(refusal);
+  await act(async () => state.hides.at(-1)!());
+  await act(async () => state.pages.at(-1)!("look"));
+  expect(screen.queryByText(refusal)).toBeNull();
+});
+
+test.each(["windows", "linux"])("%s re-presenting visible General preserves an unconfirmed restore", async (name) => {
+  system(name);
+  const { api, state } = fakeApi({ granted: true });
+  api.chooseSettingsBackup = vi.fn(async () => ({
+    ticket: 19, made_on: "windows" as const, made_by: "0.2.8", notes: [],
+    changes: [{ setting: "paste", from: "on", to: "off" }],
+  }));
+  await act(async () => { render(<SettingsApp api={api} initialPage="general" />); });
+  fireEvent.click(screen.getByRole("button", { name: "Details…" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Restore…" }));
+  await screen.findByRole("button", { name: "Restore and Restart" });
+  await act(async () => state.pages.at(-1)!("general"));
+  expect(api.cancelSettingsRestore).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Restore and Restart" })).not.toBeNull();
+});
+
+test("writings changes do not reload the format snapshot while Settings is hidden", async () => {
+  system("macos");
+  const { api, state } = fakeApi({ granted: true });
+  let writingsChanged = () => {};
+  api.onSettingsChanged = async (listener) => { writingsChanged = listener; return () => { writingsChanged = () => {}; }; };
+  api.formatSettings = vi.fn(async () => ({ apps: [], writings: [{ id: "example", name: "Example draft", bibliography: "example.bib", output: "pandoc" }], unknown: null }));
+  render(<SettingsApp api={api} initialPage="citations" />);
+  await screen.findByText("Example draft");
+  await act(async () => state.hides.at(-1)!());
+  vi.mocked(api.formatSettings).mockClear();
+  await act(async () => writingsChanged());
+  expect(api.formatSettings).not.toHaveBeenCalled();
+});
+
+test("a completed paste guide cannot disarm the next guide while its reply is in flight", async () => {
+  system("macos");
+  const { api, state } = fakeApi({ granted: true });
+  const first = deferred<boolean>();
+  api.finishPasteGuide = vi.fn()
+    .mockImplementationOnce(() => first.promise)
+    .mockImplementation(async () => state.permission.granted);
+  render(<SettingsApp api={api} initialPage="paste" />);
+  await waitFor(() => expect(api.finishPasteGuide).toHaveBeenCalledTimes(1));
+
+  state.permission = { ...state.permission, granted: false };
+  await act(async () => { await state.hides.at(-1)!(); window.dispatchEvent(new Event("focus")); });
+  await act(async () => { state.pages.at(-1)!("paste"); });
+  await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
+  await act(async () => { first.resolve(true); });
+
+  const calls = vi.mocked(api.finishPasteGuide).mock.calls.length;
+  state.permission = { ...state.permission, granted: true };
+  await act(async () => { window.dispatchEvent(new Event("focus")); });
+  expect(api.finishPasteGuide).toHaveBeenCalledTimes(calls + 1);
+});

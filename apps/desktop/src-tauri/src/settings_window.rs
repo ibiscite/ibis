@@ -3,6 +3,7 @@
 //! made once and hidden on close (`close_decision`); `dismiss` is the only way
 //! it goes away.
 
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
@@ -139,6 +140,28 @@ pub(crate) async fn open_settings(app: AppHandle, page: Option<Page>, presentati
     show(&app, page, presentation);
 }
 
+/// The page reports the page it now shows (`page`, as asked for) and hears the
+/// latest one asked for. A hidden Settings waiting for that page shows now, so
+/// it never shows an earlier page first; a page that loaded after the request
+/// was sent learns it here.
+#[tauri::command]
+#[ibis_desktop_macros::command]
+pub(crate) async fn settings_shown(app: AppHandle, page: Page) -> Page {
+    let (latest, show) = REQUEST.rendered(page);
+    if show {
+        let handle = app.clone();
+        report(
+            app.run_on_main_thread(move || {
+                if let Some(window) = handle.get_webview_window(LABEL) {
+                    bring_forward(&window);
+                }
+            }),
+            NativeIssue::Window,
+        );
+    }
+    latest
+}
+
 /// Close the paste guide after both grants; a fresh external activation opens
 /// the picker again. Granting permission never captures a target or retries Enter.
 #[tauri::command]
@@ -207,6 +230,7 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
         yield_to_window(app, presentation, Takeover::Covered);
         return;
     }
+    REQUEST.ask(page.unwrap_or(Page::General), false);
     let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
     let frame = R::settings_frame(app);
     let (size, min) = frame
@@ -277,15 +301,49 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
 }
 
 /// Every presentation has a page; ordinary Settings opens on General at the top.
+/// A window on screen changes page in place. A hidden one (closed on macOS,
+/// still loading, minimised) shows once its page reports it (`settings_shown`).
 fn present_existing<R: Runtime>(window: &tauri::WebviewWindow<R>, page: Option<Page>) {
+    let page = page.unwrap_or(Page::General);
+    let waits = !window.is_visible().unwrap_or(false);
     FIRST_SHOW.supersede();
-    report(
-        window.emit_to(LABEL, "settings:page", page.unwrap_or(Page::General)),
-        NativeIssue::Window,
-    );
+    REQUEST.ask(page, waits);
+    report(window.emit_to(LABEL, "settings:page", page), NativeIssue::Window);
+    if !waits {
+        bring_forward(window);
+    }
+}
+
+fn bring_forward<R: Runtime>(window: &tauri::WebviewWindow<R>) {
     report(window.unminimize(), NativeIssue::Unminimize);
     report(window.show(), NativeIssue::Show);
     report(window.set_focus(), NativeIssue::Focus);
+}
+
+/// The page Settings was last asked for, and whether a hidden Settings waits
+/// for that page to be on it before it shows.
+struct Request(Mutex<(Page, bool)>);
+
+static REQUEST: Request = Request(Mutex::new((Page::General, false)));
+
+impl Request {
+    fn ask(&self, page: Page, waits: bool) {
+        *self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = (page, waits);
+    }
+    /// A picker opened or Settings closed: nothing waits to show any more.
+    fn withdraw(&self) {
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).1 = false;
+    }
+    /// The page shows `page`: the latest request, and whether Settings shows
+    /// now (once, and only for the page last asked for).
+    fn rendered(&self, page: Page) -> (Page, bool) {
+        let mut request = self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let show = request.1 && request.0 == page;
+        if show {
+            request.1 = false;
+        }
+        (request.0, show)
+    }
 }
 
 /// Settings' first showing waits for its page. It belongs to the opening
@@ -312,6 +370,7 @@ impl FirstShow {
 /// keyboard from it when its page arrives.
 pub(crate) fn picker_opened() {
     FIRST_SHOW.supersede();
+    REQUEST.withdraw();
 }
 
 /// How Settings goes away when it is closed.
@@ -344,7 +403,10 @@ pub(crate) fn dismiss_as<R: Runtime>(app: &AppHandle<R>, close: Close) -> tauri:
         // The page keeps running while hidden, so its queued saves finish by
         // themselves; it only resets for the next opening.
         Close::Hide => hide_then(
-            &FIRST_SHOW,
+            || {
+                FIRST_SHOW.supersede();
+                REQUEST.withdraw();
+            },
             || window.hide(),
             || {
                 report(window.emit_to(LABEL, "settings:hidden", ()), NativeIssue::Window);
@@ -356,9 +418,10 @@ pub(crate) fn dismiss_as<R: Runtime>(app: &AppHandle<R>, close: Close) -> tauri:
     }
 }
 
-/// A Settings window still loading must not show itself once it was closed.
-fn hide_then<E>(first: &FirstShow, hide: impl FnOnce() -> Result<(), E>, hidden: impl FnOnce()) -> Result<(), E> {
-    first.supersede();
+/// A Settings window still loading or waiting for its page must not show
+/// itself once it was closed.
+fn hide_then<E>(withdraw: impl FnOnce(), hide: impl FnOnce() -> Result<(), E>, hidden: impl FnOnce()) -> Result<(), E> {
+    withdraw();
     hide()?;
     hidden();
     Ok(())
@@ -424,17 +487,39 @@ mod tests {
         let first = FirstShow(AtomicBool::new(false));
         let mut hidden = false;
         first.begin(); // closed before its page loaded
-        assert_eq!(hide_then(&first, || Ok::<_, ()>(()), || hidden = true), Ok(()));
+        assert_eq!(
+            hide_then(|| first.supersede(), || Ok::<_, ()>(()), || hidden = true),
+            Ok(())
+        );
         assert!(hidden, "the app leaves the Dock once Settings is hidden");
         assert!(!first.claim(), "the page that loads later keeps it hidden");
         let mut hidden = false;
         first.begin();
         assert_eq!(
-            hide_then(&first, || Err("hide failed"), || hidden = true),
+            hide_then(|| first.supersede(), || Err("hide failed"), || hidden = true),
             Err("hide failed")
         );
         assert!(!hidden, "a window still on screen keeps the app in the Dock");
         assert!(!first.claim());
+    }
+
+    #[test]
+    fn a_hidden_settings_shows_only_once_the_page_last_asked_for_is_on_it() {
+        let request = Request(Mutex::new((Page::General, false)));
+        request.ask(Page::About, true);
+        request.ask(Page::Shortcuts, true); // asked again before the page caught up
+        assert_eq!(
+            request.rendered(Page::About),
+            (Page::Shortcuts, false),
+            "never an earlier page"
+        );
+        assert_eq!(request.rendered(Page::Shortcuts), (Page::Shortcuts, true));
+        assert_eq!(request.rendered(Page::Shortcuts), (Page::Shortcuts, false), "and once");
+        request.ask(Page::General, true);
+        request.withdraw(); // the picker opened, or Settings closed, meanwhile
+        assert_eq!(request.rendered(Page::General), (Page::General, false));
+        request.ask(Page::Paste, false); // on screen already: it changes page in place
+        assert_eq!(request.rendered(Page::Paste), (Page::Paste, false));
     }
 
     #[test]

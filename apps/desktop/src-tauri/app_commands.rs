@@ -80,6 +80,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "update_picker_activity",
     "open_settings",
     "finish_paste_guide",
+    "settings_shown",
     "back_up_settings",
     "choose_settings_backup",
     "restore_settings_backup",

@@ -9,9 +9,10 @@ import { rowDetails } from "./rows";
 import { Status } from "../ui/Status";
 import { listening } from "../nativeEvents";
 
-/** App choices and writings come from the engine's settings snapshot. A late
- * read or forget never replaces a more recent snapshot or a reopened page. */
-export function useFormatSettings(api: SettingsApi) {
+/** App choices and writings come from the engine's settings snapshot, read
+ * while `active`. A late read or forget never replaces a more recent snapshot
+ * or a reopened page. */
+export function useFormatSettings(api: SettingsApi, active = true) {
   const [view, setView] = useState<FormatSettingsView | null>(null);
   // Why the file could not be read: the engine's Problem, as the picker gets it.
   const [problem, setProblem] = useState<unknown>(null);
@@ -22,7 +23,9 @@ export function useFormatSettings(api: SettingsApi) {
   const openRequest = useRef(0);
   const refresh = useRef<(() => Promise<void>) | null>(null);
   useEffect(() => {
-    if (!api.formatSettings) return () => { openRequest.current += 1; };
+    // A hidden Settings keeps no app or writing names, and hears no changes.
+    if (!active) { setView(null); setProblem(null); setForgetFailed(false); setOpenFailed(false); }
+    if (!api.formatSettings || !active) return () => { openRequest.current += 1; };
     setBusy(false);
     let alive = true;
     const read = () => {
@@ -36,7 +39,7 @@ export function useFormatSettings(api: SettingsApi) {
     const stop = listening(api.onSettingsChanged, read, { ready: read, failed: read });
     window.addEventListener("focus", read);
     return () => { alive = false; openRequest.current += 1; refresh.current = null; request.current += 1; window.removeEventListener("focus", read); stop(); };
-  }, [api]);
+  }, [api, active]);
   const forget = (id: string) => {
     if (!api.forgetAppFormat || !api.formatSettings || busy) return;
     const read = refresh.current;
