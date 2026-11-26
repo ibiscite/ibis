@@ -34,13 +34,18 @@ def options(**changes):
     return argparse.Namespace(**{**vars(OPTIONS), **changes})
 
 
+def field(build):
+    """The delimited build field ibis_core::VERSION is read from."""
+    return f"\nIbis-Build: {build}\n".encode()
+
+
 def elf(build=BUILD, machine=62):
-    return b"\x7fELF" + b"\0" * 14 + struct.pack("<H", machine) + b"\0" * 44 + build.encode()
+    return b"\x7fELF" + b"\0" * 14 + struct.pack("<H", machine) + b"\0" * 44 + field(build)
 
 
 def pe(build=BUILD, machine=0x8664):
     head = b"MZ" + b"\0" * 58 + struct.pack("<I", 64)
-    return head + b"PE\0\0" + struct.pack("<H", machine) + b"\0" * 18 + build.encode()
+    return head + b"PE\0\0" + struct.pack("<H", machine) + b"\0" * 18 + field(build)
 
 
 def version_resource(version):
@@ -67,7 +72,7 @@ def app_files(prefix, programs, notices=NOTICES):
 
 
 def linux_app(prefix="./usr", build=BUILD):
-    return app_files(f"{prefix}/lib/Ibis Nightly", {f"{prefix}/bin/ibis-nightly": elf(build), f"{prefix}/bin/ibis": elf(build)})
+    return app_files(f"{prefix}/lib/Ibis Nightly", {f"{prefix}/bin/ibis-nightly": elf(build), f"{prefix}/lib/Ibis Nightly/binaries/ibis": elf(build)})
 
 
 def deb_bytes(files, version=VERSION):
@@ -113,7 +118,7 @@ class Packages(unittest.TestCase):
             (self.notices / name).write_bytes(data)
         self.digests = verify.load_notices(self.notices)
         # Invented programs never start; the real ones do in Preview.
-        original = verify.runs_here
+        original = self.native_runs_here = verify.runs_here
         verify.runs_here = lambda data: False
         self.addCleanup(setattr, verify, "runs_here", original)
 
@@ -199,12 +204,13 @@ class Packages(unittest.TestCase):
     def test_a_program_of_another_system_or_a_longer_version_fails(self):
         # A Linux program as the Intel macOS command line.
         self.assertFails(self.write("ibis-macOS-Intel.tar.gz", cli_tar()), "is a ELF program, not Mach-O", "x86_64-apple-darwin")
-        # A numbered release's version is read where it is delimited; a nightly's names its commit.
-        self.assertTrue(verify.embeds(b"x\r\nUser-Agent: Ibis/0.4.1\r\nZotero", "0.4.1"))
-        self.assertFalse(verify.embeds(b"User-Agent: Ibis/0.4.10\r\n and 0.4.1 elsewhere", "0.4.1"))
-        self.assertTrue(verify.embeds(b"chosen_in0.4.1-nightly.1+abc12342026-11-25", "0.4.1-nightly.1+abc1234"))
-        self.assertFalse(verify.embeds(b"0.4.1-nightly.1+abc9999", "0.4.1-nightly.1+abc1234"))
-        self.assertFalse(verify.embeds(b"10.4.1-nightly.1+abc1234", "0.4.1-nightly.1+abc1234"))
+        # The build is read from its one delimited field, wherever it sits.
+        self.assertTrue(verify.embeds(b"fe200f1b2394\nIbis-Build: 0.4.1\nZotero", "0.4.1"))
+        self.assertFalse(verify.embeds(b"\nIbis-Build: 0.4.10\n and 0.4.1 elsewhere", "0.4.1"))
+        self.assertTrue(verify.embeds(b"1b2394\nIbis-Build: 0.4.1-nightly.1+abc1234\n", "0.4.1-nightly.1+abc1234"))
+        self.assertFalse(verify.embeds(b"\nIbis-Build: 0.4.1-nightly.1+abc9999\n", "0.4.1-nightly.1+abc1234"))
+        self.assertFalse(verify.embeds(b"\nIbis-Build: 10.4.1-nightly.1+abc1234\n", "0.4.1-nightly.1+abc1234"))
+        self.assertFalse(verify.embeds(b"x0.4.1-nightly.1+abc1234", "0.4.1-nightly.1+abc1234"))
 
     def test_debian_and_rpm_packages_state_the_version(self):
         self.check(self.write("Ibis-Linux.deb", deb_bytes(linux_app())))
@@ -212,6 +218,9 @@ class Packages(unittest.TestCase):
         self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(linux_app(), version="0.4.0")), "says version '0.4.0'")
         self.assertFails(self.write("Ibis-Linux.rpm", rpm_bytes(linux_app(), version="0.4.0")), "says version '0.4.0'")
         self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(linux_app(build="0.4.0"))), "the app does not embed version")
+        # Only the command line Settings installs counts; a current copy elsewhere cannot stand in.
+        elsewhere = linux_app() | {"./usr/lib/Ibis Nightly/binaries/ibis": elf("0.4.0"), "./usr/bin/ibis": elf()}
+        self.assertFails(self.write("Ibis-Linux.deb", deb_bytes(elsewhere)), "bundled command-line does not embed")
         no_program = {k: v for k, v in linux_app().items() if "/bin/ibis-nightly" not in k}
         self.assertFails(self.write("Ibis-Linux.rpm", rpm_bytes(no_program)), "0 app programs")
 
@@ -317,19 +326,31 @@ class Packages(unittest.TestCase):
         for name, data in NOTICES.items():
             (app / "Resources/notices" / name).write_bytes(data)
         program = self.dir / "main.c"
-        program.write_text(f'const char *version = "{BUILD}";\nint main(void) {{ return version[0] == 0; }}\n')
+        program.write_text(f'#include <stdio.h>\nconst char *version = "\\nIbis-Build: {BUILD}\\n";\n'
+                           f'int main(void) {{ puts("ibis {BUILD}"); return version[0] == 0; }}\n')
         subprocess.run(["cc", "-arch", "arm64", "-o", str(app / "MacOS/ibis-desktop"), str(program)], check=True)
+        shutil.copy(app / "MacOS/ibis-desktop", app / "MacOS/ibis")
         info = {"CFBundleShortVersionString": VERSION, "CFBundleIdentifier": "com.example.invented",
                 "CFBundleExecutable": "ibis-desktop", "CFBundlePackageType": "APPL"}
         (app / "Info.plist").write_bytes(plistlib.dumps(info))
         subprocess.run(["codesign", "-s", "-", str(app.parent)], check=True, capture_output=True)
         image = self.dir / "Ibis-macOS-Apple-silicon.dmg"
         subprocess.run(["hdiutil", "create", "-quiet", "-fs", "HFS+", "-srcfolder", str(source), "-format", "UDZO", str(image)], check=True)
-        # One image (each takes seconds), checked three ways.
+        # One image (each takes seconds), checked three ways. The command line
+        # runs from the read-only mount, as on the Apple silicon runner.
         target = "aarch64-apple-darwin"
+        verify.runs_here = self.native_runs_here
         self.check(image, target, options(identifier="com.example.invented"))
         self.assertFails(image, "names 'com.example.invented', not com.example.other", target, options(identifier="com.example.other"))
         self.assertFails(image, "signed by .*, not the pinned certificate", target, options(signing_leaf="0" * 40))
+        # A stale command line beside a current app fails the whole package.
+        program.write_text('const char *version = "\\nIbis-Build: 0.4.0\\n";\nint main(void) { return version[0] == 0; }\n')
+        subprocess.run(["cc", "-arch", "arm64", "-o", str(app / "MacOS/ibis"), str(program)], check=True)
+        subprocess.run(["codesign", "-f", "-s", "-", str(app.parent)], check=True, capture_output=True)
+        stale = self.dir / "stale" / image.name
+        stale.parent.mkdir()
+        subprocess.run(["hdiutil", "create", "-quiet", "-fs", "HFS+", "-srcfolder", str(source), "-format", "UDZO", str(stale)], check=True)
+        self.assertFails(stale, "bundled command-line does not embed", target, options(identifier="com.example.invented"))
 
 
 if __name__ == "__main__":

@@ -354,14 +354,11 @@ def executable_format(data):
 
 
 def embeds(data, build):
-    """The program was built as BUILD. A nightly's build names its commit
-    (`0.4.1-nightly.N+abc1234`), which nothing else matches. A numbered
-    release's version alone could be part of a longer one (0.4.1 in 0.4.10),
-    so it is found in the one place it is delimited: Ibis's HTTP User-Agent,
-    `User-Agent: Ibis/0.4.1\r\n`, which every Ibis program carries."""
-    if "+" in build:
-        return re.search(rb"(?<![0-9.])" + re.escape(build.encode()), data) is not None
-    return f"User-Agent: Ibis/{build}\r\n".encode() in data
+    """The program was built as BUILD: it holds the delimited field
+    `\\nIbis-Build: BUILD\\n` that ibis_core::VERSION is read from, so a
+    longer build (0.4.10, or 10.4.1-nightly.N+abc1234) never passes for a
+    shorter one, wherever the linker puts it."""
+    return f"\nIbis-Build: {build}\n".encode() in data
 
 
 def runs_here(data):
@@ -422,7 +419,9 @@ class Check:
         """Start a command line this computer can run and require its version."""
         if not runs_here(binary.read_bytes()):
             return  # Cross-built (Intel on Apple silicon): checked from its header only.
-        binary.chmod(0o755)
+        # A disk image mounts read-only; its programs already carry the bit.
+        if not os.access(binary, os.X_OK):
+            binary.chmod(0o755)
         try:
             out = subprocess.run([str(binary), "--version"], capture_output=True, text=True, timeout=30)
         except (OSError, subprocess.SubprocessError) as error:
@@ -431,12 +430,19 @@ class Check:
         self.require(out.returncode == 0 and self.options.build in out.stdout.split(),
                      f"the {what} did not report {self.options.build} (exit {out.returncode}: {(out.stdout + out.stderr).strip()[:120]!r})")
 
-    def bundled_command_line(self, root):
-        """The command line an app package carries runs and reports its version,
-        which proves the version of a package (the AppImage) whose format
-        records none."""
-        binary = self.executable([full for rel, full in files(root) if Path(rel).name in CLI_NAMES], "bundled command-line")
-        if binary is not None:
+    def bundled_command_line(self, root, where=None, run=True):
+        """The command line an app package carries, at WHERE (relative to
+        ROOT), the one place the app runs it from: built for this processor
+        as this build, and run where this computer can. It proves the version
+        of a package (the AppImage) whose format records none. Without WHERE,
+        the package's one program named as the command line."""
+        tree = list(files(root))
+        if where is None:
+            candidates = [full for rel, full in tree if Path(rel).name in CLI_NAMES]
+        else:
+            candidates = [full for rel, full in tree if rel == where]
+        binary = self.executable(candidates, "bundled command-line")
+        if binary is not None and run:
             self.reports_version(binary, "bundled command line")
 
     def command_line(self, root):
@@ -460,6 +466,8 @@ class Check:
             self.require(info.get("CFBundleIdentifier") == options.identifier,
                          f"Info.plist names {info.get('CFBundleIdentifier')!r}, not {options.identifier}")
         self.executable([app / "Contents/MacOS" / str(info.get("CFBundleExecutable", "?"))], "app")
+        # Beside the app's executable, where Settings installs it from.
+        self.bundled_command_line(root, (app / "Contents/MacOS/ibis").relative_to(root).as_posix())
         if shutil.which("codesign") is None:
             self.problems.append("codesign is needed to check a macOS app")
             return
@@ -482,6 +490,12 @@ class Check:
                          and not rel.startswith("$")], "app")
 
 
+def linux_cli(product):
+    """Where a Linux app package installs the command line Settings uses: its
+    resource folder's `binaries/ibis` (cli_install.rs)."""
+    return f"usr/lib/{product}/binaries/ibis"
+
+
 def check_package(path, notices, options, target):
     check = Check(notices, options, target)
     mounts = []
@@ -501,12 +515,12 @@ def check_package(path, notices, options, target):
                 elif name.endswith((".deb", ".rpm")):
                     check.require(meta.get("Version") == options.version, f"the package says version {meta.get('Version')!r}")
                     check.linux_app(root)
-                    check.bundled_command_line(root)
+                    check.bundled_command_line(root, linux_cli(options.product))
                 elif name.endswith(".AppImage"):
                     # Its bundler rewrites the bundled command line, which then
                     # does not start on its own; header and embedded version only.
                     check.linux_app(root)
-                    check.executable([full for rel, full in files(root) if Path(rel).name in CLI_NAMES], "bundled command-line")
+                    check.bundled_command_line(root, linux_cli(options.product), run=False)
                 elif name.endswith("-setup.exe"):
                     check.require(meta.get("ProductVersion") == options.version,
                                   f"the setup executable says version {meta.get('ProductVersion')!r}")
