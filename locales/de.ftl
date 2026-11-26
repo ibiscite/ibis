@@ -860,7 +860,7 @@ citation-details-page-hint = Eine Seite, ein Bereich oder mehrere, wie gedruckt
 citation-details-form = Anzeigen als
 citation-details-examples-unavailable = Keine Beispiele verfügbar
 # Why a citation form is left out of the Show as menu.
-citation-details-unavailable-entries = Literaturangaben haben keine Namensformen. Wählen Sie einen anderen Stil.
+citation-details-unavailable-entries = Einträge im Literaturverzeichnis haben keine Namensformen. Wählen Sie einen anderen Stil.
 citation-details-unavailable-keys-only = „Nur Schlüssel“ hat keine Namensformen. Wählen Sie eine andere Ausgabe.
 citation-details-unavailable-textcite = Nicht mit \textcite
 citation-details-unavailable-cited-alone = Nur, wenn allein zitiert

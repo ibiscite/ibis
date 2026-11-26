@@ -532,8 +532,9 @@ mod tests {
         }
     }
 
-    /// Words come only from the catalogue (decision 0064): no type the web view
-    /// or the engine's contract carries holds a sentence for a person to read.
+    /// Words come only from the catalogue (decision 0064): no type the web view,
+    /// the engine's contract or the command line's JSON carries holds a
+    /// sentence for a person to read. MCP's text is its own front end's words.
     /// A refusal is a `Problem`, a reason a closed code, and each front end
     /// words it. A string field named like words is either data, listed with
     /// why, or a known offender that may only leave the list.
@@ -562,13 +563,19 @@ mod tests {
                 "WaitingProposal.lines",
                 "the proposed fields and tags, as `name: value`",
             ),
+            ("cli:ProposalPreview.lines", "the proposed fields and tags"),
         ];
         const OFFENDERS: &[(&str, &str)] = &[
             ("LibraryStatus.error", "the status owner (0064 step 3)"),
             ("LibraryStatus.note", "the status owner (0064 step 3)"),
             ("LibraryStatus.settings_notice", "the status owner (0064 step 3)"),
             ("ReadingNotice.why", "the status owner (0064 step 3)"),
-            ("ShortcutStatus.error", "the status owner (0064 step 3)"),
+            (
+                "ShortcutStatus.error",
+                "a closed code, with Settings › Shortcuts' rewrite",
+            ),
+            ("cli:AgentChange.detail", "agent apps' outcomes as codes"),
+            ("cli:ProjectAssessment.message", "a project conflict as a Problem"),
             ("Preview.problem", "a copy of `failure`; the picker can word that"),
             ("Preview.project_refusal", "a project conflict as a Problem"),
             ("AgentApp.detail", "agent apps' states and steps as codes"),
@@ -640,6 +647,23 @@ mod tests {
             for (name, schema) in definitions.as_object().into_iter().flatten() {
                 walk(name, schema, &mut found);
             }
+        }
+        // Engine types only the command line serialises, by their own labels.
+        for (name, schema) in [
+            (
+                "cli:AgentChange",
+                schemars::schema_for!(ibis_engine::agent_apps::Change),
+            ),
+            (
+                "cli:ProjectAssessment",
+                schemars::schema_for!(ibis_engine::ProjectAssessment),
+            ),
+            (
+                "cli:ProposalPreview",
+                schemars::schema_for!(ibis_engine::write::Preview),
+            ),
+        ] {
+            walk(name, &schema.to_value(), &mut found);
         }
         let listed: BTreeSet<String> = DATA
             .iter()
