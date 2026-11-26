@@ -39,54 +39,59 @@ pub enum Found {
 
 /// Every marker and marker problem in `text`, in order. Linear in `text`:
 /// a pathological text stops with one [`ScanProblem::TooLong`].
-pub fn markers(text: &str) -> Vec<Found> {
-    let stop = || false;
-    let mut work = Work::new(text.len().max(MAX_MARKER_BYTES), &stop);
-    read(text, &mut work)
+pub fn markers(text: &str) -> impl Iterator<Item = Found> + '_ {
+    let mut work = Work::new(text.len().max(MAX_MARKER_BYTES), &|| false);
+    let mut at = 0;
+    std::iter::from_fn(move || next(text, &mut at, &mut work))
 }
 
 /// [`markers`] on one allowance shared with the caller's other reading, so a
 /// whole document is linear in its length and stops when cancelled.
-pub(crate) fn read(text: &str, work: &mut Work<'_>) -> Vec<Found> {
-    let work = &mut *work;
-    let mut found = Vec::new();
+pub(crate) fn read<'a>(text: &'a str, work: &'a mut Work<'_>) -> impl Iterator<Item = Found> + 'a {
     let mut at = 0;
-    while let Some(c) = text[at..].chars().next() {
+    std::iter::from_fn(move || next(text, &mut at, work))
+}
+
+/// Read only the next marker, so callers can stop at their own count bound
+/// without allocating the rest of a paragraph's markers.
+fn next(text: &str, at: &mut usize, work: &mut Work<'_>) -> Option<Found> {
+    while let Some(c) = text[*at..].chars().next() {
         let read = match c {
             '\\' => {
                 // An escaped character is literal text.
-                at += 1 + text[at + 1..].chars().next().map_or(0, char::len_utf8);
+                *at += 1 + text[*at + 1..].chars().next().map_or(0, char::len_utf8);
                 continue;
             }
-            '[' => bracket(text, at, work),
-            '@' if pandoc_key_start(&text[..at]) => narrative(text, at, work).map(Found::Marker),
+            '[' => bracket(text, *at, work),
+            '@' if pandoc_key_start(&text[..*at]) => narrative(text, *at, work).map(Found::Marker),
             _ => None,
         };
         if work.check().is_err() {
-            found.push(Found::Problem(MarkerProblem {
+            let problem = Found::Problem(MarkerProblem {
                 kind: ScanProblem::TooLong,
-                start: at,
+                start: *at,
                 end: text.len(),
-            }));
-            break;
+            });
+            *at = text.len();
+            return Some(problem);
         }
         match read {
             Some(Found::Problem(problem)) if problem.kind == ScanProblem::Unclosed => {
                 // Nothing after an unclosed marker can be placed with certainty.
-                found.push(Found::Problem(problem));
-                break;
+                *at = text.len();
+                return Some(Found::Problem(problem));
             }
             Some(read) => {
-                at = match &read {
+                *at = match &read {
                     Found::Marker(marker) => marker.end,
                     Found::Problem(problem) => problem.end,
                 };
-                found.push(read);
+                return Some(read);
             }
-            None => at += c.len_utf8(),
+            None => *at += c.len_utf8(),
         }
     }
-    found
+    None
 }
 
 /// At most [`MAX_MARKER_BYTES`] of `text` from `start`, on a character boundary.
@@ -276,7 +281,7 @@ mod tests {
     use crate::contract::LocatorTerm;
 
     fn read(text: &str) -> Vec<Found> {
-        markers(text)
+        markers(text).collect()
     }
     fn only(text: &str) -> Marker {
         match read(text).as_slice() {
@@ -370,5 +375,18 @@ mod tests {
         assert_eq!(kinds("[@a, {here}]"), [Some(ScanProblem::Locator)]);
         assert_eq!(kinds("[@a, p. 3 and on"), [Some(ScanProblem::Unclosed)]);
         assert_eq!(kinds(&"[".repeat(200_000)), [Some(ScanProblem::TooLong)]);
+    }
+
+    #[test]
+    fn marker_reading_waits_for_the_consumer_before_allocating_the_next_marker() {
+        let text = format!("[@a] [@{}]", "b".repeat(512));
+        let cancelled = std::cell::Cell::new(false);
+        let stop = || cancelled.get();
+        let mut work = Work::new(text.len(), &stop);
+        let mut stream = super::read(&text, &mut work);
+        assert!(matches!(stream.next(), Some(Found::Marker(marker)) if marker.cites[0].key == "a"));
+        cancelled.set(true);
+        assert!(matches!(stream.next(), Some(Found::Problem(problem)) if problem.kind == ScanProblem::TooLong));
+        assert_eq!(stream.next(), None);
     }
 }

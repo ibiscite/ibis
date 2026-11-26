@@ -330,6 +330,7 @@ fn osascript(script: &str, arguments: &[&str], deadline: Instant, max_stdout: u6
             time,
             stdout: max_stdout,
             stderr: Some(MAX_DIAGNOSTICS),
+            memory: None,
         },
     )
     .map_err(|error| match error {

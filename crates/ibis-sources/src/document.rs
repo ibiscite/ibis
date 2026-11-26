@@ -5,9 +5,11 @@
 //! shared runner, with no path or environment. Only the child parses: its
 //! readers exist only where the `documents` feature is on, which only the
 //! command line enables. Answers are untrusted and checked here again.
+//! The shared runner enforces the parser memory ceiling as well as the
+//! deadline; Office marker and reference counts are bounded inside the child.
 
 use crate::zotero_local::closed::{ClosedError, with_local_file};
-use ibis_core::contract::{MAX_TEXT_BYTES, Manuscript, TextKind};
+use ibis_core::contract::{Cite, DisplayRun, DocumentEntry, MAX_TEXT_BYTES, Manuscript, ScanProblem, TextKind};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -25,8 +27,11 @@ pub const DEADLINE: Duration = Duration::from_secs(30);
 pub const MAX_CITATIONS: usize = 100_000;
 const MAX_KEY_BYTES: usize = 64 * 1024;
 #[cfg(feature = "documents")]
-const MAX_COMMAND_BYTES: u64 = 4096;
-const MAX_ANSWER_BYTES: u64 = 4 * MAX_TEXT_BYTES as u64;
+const MAX_COMMAND_BYTES: u64 = MAX_OFFICE_BYTES;
+/// The largest office file read.
+pub const MAX_OFFICE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_ANSWER_BYTES: u64 = 2 * MAX_OFFICE_BYTES + 4 * MAX_TEXT_BYTES as u64;
+const MAX_SHOWN_BYTES: usize = 4 * 80 + 3;
 
 /// Why a document was not read: fixed reasons, never its text or path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -48,6 +53,98 @@ pub enum Refusal {
     Damaged,
     /// The document reader could not be started.
     Unavailable,
+    /// Entry names that leave the archive's folder, repeated names, or a
+    /// document type declaration.
+    Unsafe,
+    /// The replacements do not fit the document as the child read it again.
+    Mismatch,
+}
+
+/// An office document's kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Kind {
+    Docx,
+    Odt,
+}
+
+impl Kind {
+    /// The kind a file's extension names.
+    pub fn of(path: &Path) -> Option<Self> {
+        let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+        match extension.as_str() {
+            "docx" => Some(Self::Docx),
+            "odt" => Some(Self::Odt),
+            _ => None,
+        }
+    }
+}
+
+/// Where a paragraph is. Only the body, tables included, is formatted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Part {
+    Body,
+    /// A footnote or endnote.
+    Note,
+    /// A header or footer.
+    Header,
+    Comment,
+    /// A text box, frame or shape.
+    TextBox,
+    /// Text the document does not show, such as tracked deletions.
+    Hidden,
+}
+
+/// Where a marker is, as a person finds it: the part's paragraphs counted
+/// from 1, the character in it from 1, and the marker as written, shortened.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct OfficePlace {
+    pub part: Part,
+    pub paragraph: usize,
+    pub column: usize,
+    pub text: String,
+}
+
+/// One body citation of an office document.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct OfficeCited {
+    pub place: OfficePlace,
+    pub narrative: bool,
+    pub cites: Vec<Cite>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum OfficeIssue {
+    /// Text that starts a citation but is not one.
+    Marker { problem: ScanProblem },
+    /// A second `[bibliography]` paragraph.
+    SecondBibliography,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct OfficeProblem {
+    pub place: OfficePlace,
+    pub issue: OfficeIssue,
+}
+
+/// What the child read of an office document.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfficeScan {
+    pub kind: Kind,
+    /// The body's citations, in document order.
+    pub citations: Vec<OfficeCited>,
+    /// What stops formatting, in document order.
+    pub problems: Vec<OfficeProblem>,
+    /// Markers left as they are, outside the body.
+    pub left: Vec<OfficePlace>,
+    /// A `[bibliography]` paragraph will hold the reference list.
+    pub placed: bool,
 }
 
 /// The bytes of the document at `path`, at most `max` of them.
@@ -85,12 +182,24 @@ pub fn read_text(path: &Path, max: u64, cancelled: Arc<dyn Fn() -> bool + Send +
 pub enum Command {
     /// Read the citations of a manuscript of this kind.
     Scan { kind: TextKind },
+    /// Read an office document's citations.
+    ScanOffice,
+    /// Write the office document again with each body citation, in order,
+    /// replaced and the reference list placed.
+    WriteOffice {
+        citations: Vec<Vec<DisplayRun>>,
+        entries: Vec<DocumentEntry>,
+        hanging_indent: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Answer {
     Scanned(Manuscript),
+    Office(OfficeScan),
+    /// The new document's length; its bytes follow the answer's line.
+    Written(u64),
     Refused(Refusal),
 }
 
@@ -132,6 +241,32 @@ fn checked(manuscript: Manuscript, text: &str) -> Result<Manuscript, Refusal> {
     Ok(manuscript)
 }
 
+/// An office answer within every bound.
+fn checked_office(scan: OfficeScan) -> Result<OfficeScan, Refusal> {
+    let references: usize = scan.citations.iter().map(|cited| cited.cites.len()).sum();
+    if scan.citations.len() > MAX_CITATIONS
+        || references > MAX_CITATIONS
+        || scan.problems.len() + scan.left.len() > MAX_CITATIONS
+    {
+        return Err(Refusal::TooLarge);
+    }
+    let place = |place: &OfficePlace| place.paragraph >= 1 && place.column >= 1 && place.text.len() <= MAX_SHOWN_BYTES;
+    let sound = scan.citations.iter().all(|cited| {
+        place(&cited.place)
+            && cited.place.part == Part::Body
+            && !cited.cites.is_empty()
+            && cited
+                .cites
+                .iter()
+                .all(|cite| !cite.key.is_empty() && cite.key.len() <= MAX_KEY_BYTES)
+    }) && scan.problems.iter().all(|problem| place(&problem.place))
+        && scan.left.iter().all(place);
+    if !sound {
+        return Err(Refusal::Damaged);
+    }
+    Ok(scan)
+}
+
 /// Reads documents through `ibis __document` (decisions 0055, 0056, 0060).
 #[derive(Clone)]
 pub struct DocumentReader {
@@ -171,19 +306,63 @@ impl DocumentReader {
         if text.len() > MAX_TEXT_BYTES {
             return Err(Refusal::TooLarge);
         }
-        let command = Command::Scan { kind };
+        match self.ask(&Command::Scan { kind }, text.as_bytes(), cancelled)? {
+            (Answer::Scanned(manuscript), rest) if rest.is_empty() => checked(manuscript, text),
+            _ => Err(Refusal::Damaged),
+        }
+    }
+
+    /// The citations of an office document's bytes.
+    pub fn scan_office(&self, document: &[u8], cancelled: &dyn Fn() -> bool) -> Result<OfficeScan, Refusal> {
+        match self.ask(&Command::ScanOffice, document, cancelled)? {
+            (Answer::Office(scan), rest) if rest.is_empty() => checked_office(scan),
+            _ => Err(Refusal::Damaged),
+        }
+    }
+
+    /// The office document again, with each body citation, in order, replaced
+    /// by `citations` and the reference list placed.
+    pub fn write_office(
+        &self,
+        document: &[u8],
+        citations: Vec<Vec<DisplayRun>>,
+        entries: Vec<DocumentEntry>,
+        hanging_indent: bool,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<Vec<u8>, Refusal> {
+        let command = Command::WriteOffice {
+            citations,
+            entries,
+            hanging_indent,
+        };
+        match self.ask(&command, document, cancelled)? {
+            (Answer::Written(length), rest) if rest.len() as u64 == length => Ok(rest),
+            _ => Err(Refusal::Damaged),
+        }
+    }
+
+    /// One request, in the child or (tests only) here, and its answer.
+    fn ask(
+        &self,
+        command: &Command,
+        document: &[u8],
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<(Answer, Vec<u8>), Refusal> {
+        if document.len() as u64 > MAX_OFFICE_BYTES {
+            return Err(Refusal::TooLarge);
+        }
         let answer = match &self.how {
-            How::Child(program) => self.exchange(program, &command, text.as_bytes(), cancelled)?,
+            How::Child(program) => self.exchange(program, command, document, cancelled)?,
             #[cfg(feature = "documents")]
-            How::InProcess => child::answer(&command, text.as_bytes(), cancelled),
+            How::InProcess => child::answer(command, document, cancelled),
         };
         match answer {
-            Answer::Scanned(manuscript) => checked(manuscript, text),
             // These refusals belong to the parent, never the child.
-            Answer::Refused(Refusal::Missing | Refusal::NotLocal | Refusal::Unavailable | Refusal::NotText) => {
+            (Answer::Refused(Refusal::Missing | Refusal::NotLocal | Refusal::Unavailable | Refusal::NotText), _) => {
                 Err(Refusal::Damaged)
             }
-            Answer::Refused(refusal) => Err(refusal),
+            (Answer::Refused(refusal), _) => Err(refusal),
+            answer => Ok(answer),
         }
     }
 
@@ -193,7 +372,7 @@ impl DocumentReader {
         command: &Command,
         document: &[u8],
         cancelled: &dyn Fn() -> bool,
-    ) -> Result<Answer, Refusal> {
+    ) -> Result<(Answer, Vec<u8>), Refusal> {
         let framed = frame(command, document)?;
         let mut process = std::process::Command::new(program);
         process.arg(CHILD_ARGUMENT);
@@ -204,6 +383,7 @@ impl DocumentReader {
                 time: DEADLINE,
                 stdout: MAX_ANSWER_BYTES,
                 stderr: None,
+                memory: Some(crate::child::MAX_MEMORY_BYTES),
             },
             cancelled,
         )
@@ -216,13 +396,24 @@ impl DocumentReader {
         if !output.status.success() {
             return Err(Refusal::Damaged);
         }
-        serde_json::from_slice(&output.stdout).map_err(|_| Refusal::Damaged)
+        split(output.stdout)
     }
 }
+
+/// An answer line, then the bytes after it.
+fn split(mut bytes: Vec<u8>) -> Result<(Answer, Vec<u8>), Refusal> {
+    let line = bytes.iter().position(|byte| *byte == b'\n').ok_or(Refusal::Damaged)?;
+    let answer = serde_json::from_slice(&bytes[..line]).map_err(|_| Refusal::Damaged)?;
+    Ok((answer, bytes.split_off(line + 1)))
+}
+
+#[cfg(feature = "documents")]
+mod office;
 
 /// The child's side: only where the `documents` feature is on.
 #[cfg(feature = "documents")]
 pub mod child {
+    use super::office;
     use super::*;
     use std::io::Write;
 
@@ -245,29 +436,47 @@ pub mod child {
             return 2;
         };
         let mut document = Vec::new();
-        if input
-            .take(MAX_TEXT_BYTES as u64 + 1)
-            .read_to_end(&mut document)
-            .is_err()
-        {
+        if input.take(MAX_OFFICE_BYTES + 1).read_to_end(&mut document).is_err() {
             return 2;
         }
-        let answer = answer(&command, &document, &|| false);
-        match serde_json::to_writer(&mut output, &answer) {
-            Ok(()) if output.flush().is_ok() => 0,
-            _ => 70,
+        let (answer, bytes) = answer(&command, &document, &|| false);
+        let written = serde_json::to_writer(&mut output, &answer)
+            .map_err(std::io::Error::from)
+            .and_then(|()| output.write_all(b"\n"))
+            .and_then(|()| output.write_all(&bytes))
+            .and_then(|()| output.flush());
+        match written {
+            Ok(()) => 0,
+            Err(_) => 70,
         }
     }
 
     /// The answer to one request, from the document's bytes.
-    pub(super) fn answer(command: &Command, document: &[u8], stop: &dyn Fn() -> bool) -> Answer {
-        if document.len() > MAX_TEXT_BYTES {
-            return Answer::Refused(Refusal::TooLarge);
+    pub(super) fn answer(command: &Command, document: &[u8], stop: &dyn Fn() -> bool) -> (Answer, Vec<u8>) {
+        let refused = |refusal| (Answer::Refused(refusal), Vec::new());
+        if document.len() as u64 > MAX_OFFICE_BYTES {
+            return refused(Refusal::TooLarge);
         }
         match command {
+            Command::Scan { .. } if document.len() > MAX_TEXT_BYTES => refused(Refusal::TooLarge),
             Command::Scan { kind } => match std::str::from_utf8(document) {
-                Ok(text) => Answer::Scanned(ibis_core::syntax::manuscript::scan(*kind, text, stop)),
-                Err(_) => Answer::Refused(Refusal::Damaged),
+                Ok(text) => (
+                    Answer::Scanned(ibis_core::syntax::manuscript::scan(*kind, text, stop)),
+                    Vec::new(),
+                ),
+                Err(_) => refused(Refusal::Damaged),
+            },
+            Command::ScanOffice => match office::scan(document) {
+                Ok(scan) => (Answer::Office(scan), Vec::new()),
+                Err(refusal) => refused(refusal),
+            },
+            Command::WriteOffice {
+                citations,
+                entries,
+                hanging_indent,
+            } => match office::write(document, citations, entries, *hanging_indent) {
+                Ok(bytes) => (Answer::Written(bytes.len() as u64), bytes),
+                Err(refusal) => refused(refusal),
             },
         }
     }
@@ -371,7 +580,7 @@ mod tests {
         let request = frame(&Command::Scan { kind: TextKind::Latex }, b"\\cite{vale2024}").unwrap();
         let mut answer = Vec::new();
         assert_eq!(child::serve(&request[..], &mut answer), 0);
-        let Answer::Scanned(manuscript) = serde_json::from_slice(&answer).unwrap() else {
+        let (Answer::Scanned(manuscript), _) = split(answer).unwrap() else {
             panic!()
         };
         assert_eq!(manuscript.citations[0].cites[0].key, "vale2024");

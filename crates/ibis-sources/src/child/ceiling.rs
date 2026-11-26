@@ -1,4 +1,4 @@
-//! The PDF reader child's memory ceiling, enforced from the parent.
+//! A parser child's memory ceiling, enforced from the parent.
 //!
 //! - Windows: the child starts suspended, joins a Job Object whose process
 //!   memory limit fails any commit past the ceiling, and only then runs. The
@@ -8,9 +8,8 @@
 //!   are not enforced), so the parent reads the child's physical footprint,
 //!   resident and compressed memory, every few milliseconds and stops it past
 //!   the ceiling.
-//! - Linux: the child's own 3 GiB address-space limit stays the hard bound;
-//!   the parent reads the child's resident size as on macOS, so a child
-//!   stopped for memory is reported as one.
+//! - Linux: the parent reads the child's resident size as on macOS. The PDF
+//!   extractor also retains its own 3 GiB address-space backstop.
 
 use std::io;
 use std::process::{Child, Command};
@@ -18,9 +17,9 @@ use std::process::{Child, Command};
 #[cfg(windows)]
 use crate::child::windows;
 
-pub(super) struct Ceiling {
+pub(crate) struct Ceiling {
     #[cfg(not(windows))]
-    limit: u64,
+    limit: Option<u64>,
     #[cfg(windows)]
     job: windows::Job,
     hit: std::cell::Cell<bool>,
@@ -28,7 +27,7 @@ pub(super) struct Ceiling {
 
 impl Ceiling {
     /// Before the child is spawned.
-    pub(super) fn prepare(command: &mut Command) {
+    pub(crate) fn prepare(command: &mut Command) {
         #[cfg(windows)]
         windows::suspended(command);
         #[cfg(not(windows))]
@@ -36,20 +35,20 @@ impl Ceiling {
     }
 
     /// Bound the just-spawned child before it runs any of the file.
-    pub(super) fn start(child: &Child, limit: u64) -> io::Result<Self> {
+    pub(crate) fn start(child: &Child, limit: Option<u64>) -> io::Result<Self> {
         #[cfg(not(windows))]
         let _ = child;
         Ok(Self {
             #[cfg(not(windows))]
             limit,
             #[cfg(windows)]
-            job: windows::Job::start(child, Some(limit))?,
+            job: windows::Job::start(child, limit)?,
             hit: std::cell::Cell::new(false),
         })
     }
 
     /// Whether the child has passed the ceiling; once true, it stays so.
-    pub(super) fn exceeded(&self, child: &Child) -> bool {
+    pub(crate) fn exceeded(&self, child: &Child) -> bool {
         if !self.hit.get() {
             #[cfg(windows)]
             let hit = {
@@ -57,7 +56,9 @@ impl Ceiling {
                 self.job.memory_limit_hit()
             };
             #[cfg(not(windows))]
-            let hit = footprint(child.id()).is_some_and(|used| used > self.limit);
+            let hit = self
+                .limit
+                .is_some_and(|limit| footprint(child.id()).is_some_and(|used| used > limit));
             self.hit.set(hit);
         }
         self.hit.get()
@@ -65,7 +66,7 @@ impl Ceiling {
 
     /// Once the child has been reaped: whether it passed the ceiling. Unix
     /// keeps only what was seen while it ran, since its pid may be reused.
-    pub(super) fn was_exceeded(&self) -> bool {
+    pub(crate) fn was_exceeded(&self) -> bool {
         #[cfg(windows)]
         if !self.hit.get() {
             self.hit.set(self.job.memory_limit_hit());

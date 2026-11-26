@@ -1,3 +1,4 @@
+use crate::output::Formatted;
 use crate::{FormatError, Limits, input::Prepared, runtime::Session};
 use ibis_core::contract::CitationResult;
 use std::collections::VecDeque;
@@ -47,7 +48,7 @@ impl CancellationToken {
 
 pub struct FormatTask {
     cancellation: CancellationToken,
-    receiver: Option<mpsc::Receiver<Result<CitationResult, FormatError>>>,
+    receiver: Option<mpsc::Receiver<Result<Formatted, FormatError>>>,
 }
 impl FormatTask {
     pub fn cancel(&self) {
@@ -56,7 +57,19 @@ impl FormatTask {
     pub fn cancellation(&self) -> CancellationToken {
         self.cancellation.clone()
     }
-    pub fn wait(mut self) -> Result<CitationResult, FormatError> {
+    pub fn wait(self) -> Result<CitationResult, FormatError> {
+        match self.formatted()? {
+            Formatted::Citation(result) => Ok(*result),
+            Formatted::Document(_) => Err(FormatError::Runtime),
+        }
+    }
+    pub fn wait_document(self) -> Result<crate::DocumentAnswer, FormatError> {
+        match self.formatted()? {
+            Formatted::Document(answer) => Ok(answer),
+            Formatted::Citation(_) => Err(FormatError::Runtime),
+        }
+    }
+    pub(crate) fn formatted(mut self) -> Result<Formatted, FormatError> {
         self.receiver
             .take()
             .ok_or(FormatError::Runtime)?
@@ -74,7 +87,7 @@ pub(crate) struct Job {
     prepared: Prepared,
     cancellation: CancellationToken,
     deadline: Instant,
-    reply: mpsc::Sender<Result<CitationResult, FormatError>>,
+    reply: mpsc::Sender<Result<Formatted, FormatError>>,
 }
 #[derive(Default)]
 struct State {
@@ -85,7 +98,7 @@ struct State {
 }
 struct Active {
     cancelled: Arc<AtomicBool>,
-    reply: mpsc::Sender<Result<CitationResult, FormatError>>,
+    reply: mpsc::Sender<Result<Formatted, FormatError>>,
 }
 #[derive(Default)]
 struct Shared {
@@ -250,7 +263,7 @@ fn worker(shared: &Shared, limits: &Limits) {
         };
         let result = match control.error() {
             Some(error) => Err(error),
-            None if job.prepared.empty => Ok(crate::output::refused(&job.prepared)),
+            None if job.prepared.empty => Ok(crate::output::refused_formatted(&job.prepared)),
             None => {
                 #[cfg(test)]
                 if let Some((entered, release)) = shared.format_gate.lock().ok().and_then(|mut gate| gate.take()) {
@@ -278,7 +291,7 @@ mod tests {
     fn prepared(count: usize, bibliography: bool) -> Prepared {
         let items:Vec<_>=(0..count).map(|index|json!({"id":format!("ibis-{index}"),"type":"book","title":format!("Synthetic {index}"),"author":[{"family":format!("Invented{index}"),"given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"})).collect();
         let cites: Vec<_> = (0..count).map(|index| json!({"id":format!("ibis-{index}")})).collect();
-        Prepared {json:json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(),xml:crate::catalog::resolve("apa").unwrap().xml.clone(),language:"en-US".into(),outcomes:(0..count).map(|item|ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![Notice::YearSuffixWithheld],warnings:vec![],empty:false}
+        Prepared {json:json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(),xml:crate::catalog::resolve("apa").unwrap().xml.clone(),language:"en-US".into(),outcomes:(0..count).map(|item|ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![Notice::YearSuffixWithheld],warnings:vec![],empty:false,document:false}
     }
     fn hold_next_format(service: &Service) -> (mpsc::Receiver<()>, mpsc::Sender<()>) {
         let (entered, running) = mpsc::channel();
@@ -302,7 +315,7 @@ mod tests {
             .unwrap()
             .recv_timeout(std::time::Duration::from_secs(1));
         release.send(()).unwrap();
-        assert_eq!(cancelled.unwrap(), Err(FormatError::Cancelled));
+        assert!(matches!(cancelled.unwrap(), Err(FormatError::Cancelled)));
         assert!(
             service
                 .submit(prepared(1, false))
@@ -312,5 +325,41 @@ mod tests {
                 .copy_content(1)
                 .is_some()
         );
+    }
+
+    #[test]
+    fn queued_and_running_document_tasks_cancel_before_the_worker_is_released() {
+        let document = || {
+            let mut prepared = prepared(1, false);
+            let mut body: serde_json::Value = serde_json::from_str(&prepared.json).unwrap();
+            body["clusters"] = json!([[0]]);
+            prepared.json = body.to_string();
+            prepared.document = true;
+            prepared
+        };
+        let service = Service::new(Limits::default()).unwrap();
+        let (running, release) = hold_next_format(&service);
+        let active = service.submit(document()).unwrap();
+        running.recv_timeout(TEST_GATE_LIMIT).unwrap();
+        let queued = service.submit(document()).unwrap();
+        let active_cancel = active.cancellation();
+        let queued_cancel = queued.cancellation();
+        std::thread::scope(|scope| {
+            let (send, answers) = mpsc::channel();
+            let other = send.clone();
+            scope.spawn(move || send.send(active.wait_document()).unwrap());
+            scope.spawn(move || other.send(queued.wait_document()).unwrap());
+            active_cancel.cancel();
+            queued_cancel.cancel();
+            let first = answers.recv_timeout(std::time::Duration::from_secs(1));
+            let second = answers.recv_timeout(std::time::Duration::from_secs(1));
+            release.send(()).unwrap();
+            assert_eq!(first.unwrap(), Err(FormatError::Cancelled));
+            assert_eq!(second.unwrap(), Err(FormatError::Cancelled));
+        });
+        assert!(matches!(
+            service.submit(document()).unwrap().wait_document().unwrap(),
+            crate::DocumentAnswer::Formatted(_)
+        ));
     }
 }

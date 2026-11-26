@@ -2160,6 +2160,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "unicode-segmentation",
+ "zip",
 ]
 
 [[package]]
@@ -2308,6 +2309,7 @@ name = "ibis-sources"
 version = "0.3.12"
 dependencies = [
  "biblatex",
+ "flate2",
  "getrandom 0.4.3",
  "ibis-core",
  "insta",
@@ -2326,6 +2328,7 @@ dependencies = [
  "windows-sys 0.61.2",
  "winsafe",
  "xattr",
+ "zip",
 ]
 
 [[package]]
@@ -7129,6 +7132,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
 dependencies = [
  "crc32fast",
+ "flate2",
  "indexmap 2.14.2",
  "memchr",
  "nix",

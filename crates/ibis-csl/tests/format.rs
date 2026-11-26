@@ -45,6 +45,83 @@ fn sample() -> (Snapshot, CitationRequest) {
 }
 
 #[test]
+fn document_citations_require_processor_evidence_of_a_locator() {
+    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (snapshot, mut request) = sample();
+    request.output = OutputSpec::Csl { style: "nature".into() };
+    request.items[0].locator = Some(Locator {
+        term: LocatorTerm::Page,
+        value: "1".into(),
+    });
+    let formatter = Formatter::new().unwrap();
+    let output = ibis_csl::ResolvedOutput::new("nature", None).unwrap();
+    let answer = formatter
+        .submit_document(&snapshot, &request, &output, &[vec![0]])
+        .unwrap()
+        .wait_document()
+        .unwrap();
+    assert_eq!(answer, ibis_csl::DocumentAnswer::UnprintedLocators(vec![0]));
+}
+
+#[test]
+fn document_bibliographies_validate_editor_lists_as_well_as_authors() {
+    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let snapshot = library(&[json!({
+        "type": "chapter", "title": "Invented Lanterns", "container-title": "Invented Volume",
+        "author": [{"family": "Vale", "given": "Avery"}],
+        "editor": [{"family": "Fen", "given": "Robin"}, {"literal": "others"}],
+        "issued": {"date-parts": [[2024]]}, "page": "1-20", "publisher": "Imaginary Press"
+    })]);
+    let request = selection(&snapshot, "apa", false);
+    let formatter = Formatter::new().unwrap();
+    let output = ibis_csl::ResolvedOutput::new("apa", None).unwrap();
+    assert_eq!(
+        formatter
+            .submit_document(&snapshot, &request, &output, &[vec![0]])
+            .unwrap()
+            .wait_document()
+            .unwrap(),
+        ibis_csl::DocumentAnswer::Refused(vec![(0, CitationError::UnsupportedForm)])
+    );
+}
+
+#[test]
+fn document_narrative_authors_allow_complete_bibliography_editor_lists() {
+    let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let snapshot = library(&[json!({
+        "type": "chapter", "title": "Invented Lanterns", "container-title": "Invented Volume",
+        "author": [{"family": "Vale", "given": "Avery"}],
+        "editor": [{"family": "Fen", "given": "Robin"}, {"family": "Reed", "given": "Alex"}],
+        "issued": {"date-parts": [[2024]]}, "page": "1-20", "publisher": "Imaginary Press"
+    })]);
+    let mut request = selection(&snapshot, "apa", false);
+    request.form = CitationForm::Narrative;
+    let output = ibis_csl::ResolvedOutput::new("apa", None).unwrap();
+    let answer = Formatter::new()
+        .unwrap()
+        .submit_document(&snapshot, &request, &output, &[vec![0]])
+        .unwrap()
+        .wait_document()
+        .unwrap();
+    let ibis_csl::DocumentAnswer::Formatted(formatted) = answer else {
+        panic!("{answer:?}")
+    };
+    assert_eq!(
+        formatted.citations[0]
+            .iter()
+            .map(|run| run.text.as_str())
+            .collect::<String>(),
+        "Vale (2024)"
+    );
+    let entry: String = formatted.entries[0]
+        .content
+        .iter()
+        .map(|run| run.text.as_str())
+        .collect();
+    assert!(entry.contains("R. Fen & A. Reed"), "{entry}");
+}
+
+#[test]
 fn failed_startup_warmup_leaves_the_first_citation_available() {
     let _guard = FORMAT_TESTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let formatter = Formatter::new().unwrap();

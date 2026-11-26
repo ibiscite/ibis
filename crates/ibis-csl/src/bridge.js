@@ -282,7 +282,110 @@
   };
   const oneLine = (text) => text.replace(/\s*\n\s*/g, " ").trim();
   const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").join("\\par\n") : text}\n}`;
+  // One document's citations as one sequence (`ibis format`): its own
+  // engine and unchanged style, so numbering, year letters and first and
+  // subsequent citations follow the document's order. A narrative citation is
+  // the author, then the rest with the author suppressed, as `cluster` writes it.
+  const document = (request, source) => {
+    if (!items.open(request)) return JSON.stringify({ status: "refused" });
+    engines.clear();
+    const engine = new CSL.Engine({ retrieveLocale: __ibisLocaleXml, retrieveItem: (id) => activeItems.get(id), uppercase_subtitles: request.sentence_titles }, source, request.locale ?? undefined, request.locale !== null);
+    engine.opt.development_extensions.throw_on_empty = true;
+    try {
+      const citations = [];
+      const add = (citationItems) => {
+        citations.push({ citationID: `ibis-${citations.length}`, citationItems, properties: { noteIndex: 0 } });
+        return citations.length - 1;
+      };
+      const groups = request.clusters.map((indices) => {
+        const cites = indices.map((index) => request.cites[index]);
+        if (cites.some((cite) => !cite)) throw unverified;
+        if (!(cites.length === 1 && cites[0].narrative)) return { cites, parts: [add(cites)] };
+        const { narrative, prefix, suffix, locator, label, ...cite } = cites[0];
+        return {
+          cites,
+          parts: [
+            add([{ ...cite, prefix, "author-only": true, "suppress-author": false }]),
+            add([{ ...cite, suffix, locator, label, "suppress-author": true, "author-only": false }]),
+          ],
+        };
+      });
+      const results = engine.rebuildProcessorState(citations, "html", []);
+      if (engine.tmp.citation_errors.length) throw unverified;
+      const written = new Map(results.map(([id, , text]) => [id, text]));
+      const out = groups.map(({ cites, parts }) => {
+        const owned = new Set(cites.flatMap((cite) => [cite.prefix, cite.suffix]).filter(Boolean));
+        const html = parts.map((index) => {
+          const text = written.get(citations[index].citationID);
+          if (typeof text !== "string") throw unverified;
+          return text;
+        }).join(" ");
+        return writeAffixes(engine, "html", html, (request.affixes ?? []).filter((affix) => owned.has(affix.placeholder)));
+      });
+      // A citation number, year, affix or another cite's page cannot prove
+      // that a locator printed. Preview each cite at this same document
+      // position with a different locator of the same shape, comparing only
+      // the processor text that cite owns, as on the selection path below.
+      const unprinted_locators = [];
+      engine.setOutputFormat("text");
+      for (const [groupIndex, { parts }] of groups.entries()) {
+        for (const part of parts) {
+          const list = citations[part].citationItems;
+          if (!list.some((cite) => cite.locator !== undefined)) continue;
+          const indices = new Map();
+          list.forEach((cite, index) => {
+            if (!indices.has(cite.id)) indices.set(cite.id, []);
+            indices.get(cite.id).push(index);
+          });
+          const before = citations.slice(0, part).map((cite) => [cite.citationID, 0]);
+          const after = citations.slice(part + 1).map((cite) => [cite.citationID, 0]);
+          const owned = (list) => {
+            const capture = { engine, format: "text", area: "citation", seen: new Map(), roots: new WeakMap(), parts: [], indices, occurrences: new Map() };
+            observation = capture;
+            try {
+              engine.previewCitationCluster({ citationItems: list.map((cite) => ({ ...cite })), properties: { noteIndex: 0 } }, before, after, "text");
+              if (engine.tmp.citation_errors.length) throw unverified;
+              return ownedText(engine, capture, list.length);
+            } finally {
+              observation = null;
+            }
+          };
+          const original = owned(list);
+          list.forEach((cite, index) => {
+            if (cite.locator === undefined) return;
+            const { locator, label, ...bare } = cite;
+            const other = shiftedLocator(locator);
+            const changed = other === locator ? bare : { ...cite, locator: other };
+            const altered = owned(list.map((cite, at) => at === index ? changed : cite));
+            if (original[index] === altered[index]) unprinted_locators.push(request.clusters[groupIndex][index]);
+          });
+        }
+      }
+      engine.setOutputFormat("html");
+      engine.output.checkNestedBrace = undefined;
+      const bibliography = engine.makeBibliography();
+      if (bibliography && bibliography[0].bibliography_errors.length) throw unverified;
+      return JSON.stringify({
+        status: "rendered",
+        citations: out,
+        entries: bibliography ? bibliography[1] : [],
+        hanging_indent: Boolean(bibliography && bibliography[0].hangingindent),
+        unprinted_locators,
+      });
+    } catch (error) {
+      // A citation the style prints as nothing refuses the document, like any
+      // citation Ibis cannot verify. Resource limits still surface as themselves.
+      const refused = error === unverified || error instanceof TypeError
+        || (error?.name === "Error" && error.message === "citation formatting failed");
+      if (!refused) throw error;
+      return JSON.stringify({ status: "refused" });
+    } finally {
+      observation = null;
+      items.close();
+    }
+  };
   globalThis.__ibisFormat = (request, source) => {
+    if (request.clusters) return document(request, source);
     const converted = items.open(request);
     if (!converted) return JSON.stringify({ status: "refused" });
     const key = JSON.stringify([request.style, request.locale, request.keep_order, request.sentence_titles]);
