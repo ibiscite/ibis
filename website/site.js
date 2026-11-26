@@ -69,7 +69,9 @@ const textEntry = target => target?.closest?.('input, textarea, select, [content
 function keyboardHelp() {
   const dialog = document.querySelector(".keyboard-help"), button = document.querySelector(".keyboard-help-open");
   if (!dialog || !button) return;
-  button.hidden = false;
+  // The ? key needs a keyboard: offer the button only with a fine hover pointer; the key itself always works.
+  const fine = matchMedia("(hover: hover) and (pointer: fine)"), offer = () => { button.hidden = !fine.matches; };
+  fine.addEventListener("change", offer); offer();
   button.addEventListener("click", () => dialog.showModal());
   dialog.querySelector("button").addEventListener("click", () => dialog.close());
   document.addEventListener("keydown", event => {
@@ -187,7 +189,7 @@ function navigation() {
     pending = false;
     const visible = target => { const box = target.getBoundingClientRect(); return box.top < window.innerHeight && box.bottom > 0; };
     const bottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
-    const current = pinned && visible(pinned) ? pinned : bottom ? targets.at(-1) : targets.filter(target => target.getBoundingClientRect().top <= window.innerHeight * .25).at(-1) || targets[0];
+    const current = pinned && visible(pinned) ? pinned : bottom ? targets.at(-1) : targets.filter(target => target.getBoundingClientRect().top <= window.innerHeight * .25).at(-1);
     links.forEach((link, index) => { if (targets[index] === current) {
       if (!link.hasAttribute("aria-current")) {
         link.setAttribute("aria-current", "location");

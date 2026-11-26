@@ -1,8 +1,8 @@
 /* The tokens set a scheme for app windows; here the page's theme decides. */
-[data-app-tokens] { color-scheme: inherit; }
+[data-app-tokens] { color-scheme: inherit; --website-ring: var(--ring); }
 /* App pictures read the generated scope of the canonical desktop tokens.
    Only geometry without a token lives here (docs/design/ C7/C10). */
-.picker-panel { container: picker / inline-size; display: flex; flex-direction: column; width: 100%; max-width: 45rem; height: auto; padding: 0; overflow: hidden; border-radius: var(--r-win); background: var(--surface); color: var(--text); box-shadow: var(--shadow-card); font: var(--type-body-size)/var(--type-body-line) var(--font); }
+.picker-panel { container: picker / inline-size; display: flex; flex-direction: column; width: 100%; max-width: var(--website-measure); height: auto; padding: 0; overflow: hidden; border-radius: var(--r-win); background: var(--surface); color: var(--text); box-shadow: var(--shadow-card); font: var(--type-body-size)/var(--type-body-line) var(--font); }
 .picker-search { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-height: calc(calc(var(--field-h) + 2 * var(--inset)) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); }
 /* Leave room for the filled format control beside the query on a phone. */
 .picker-field { display: flex; align-items: center; gap: var(--space-1); flex: 1; min-width: min(100%, calc(var(--row-pad) + var(--tile) + var(--row-gap) + 4rem)); }
@@ -45,12 +45,12 @@
 .is-selected .sub { color: var(--selected-text-secondary); }
 .ref-year { flex: none; font-size: var(--type-body-size); font-variant-numeric: tabular-nums; }
 .picker-shelf { flex: none; display: flex; align-items: center; gap: var(--row-gap); margin: 0 var(--inset); height: var(--space-10); padding-inline: var(--row-pad); background: var(--fill-control); border-radius: var(--r-control); }
-.picker-citation { flex: 0 1 auto; min-width: 0; display: grid; grid-template-columns: minmax(0, var(--tile)) minmax(1ch, 1fr); align-items: center; gap: var(--row-gap); font: .8125rem/var(--type-body-line) var(--mono); }
+.picker-citation { flex: 0 1 auto; min-width: 0; display: grid; grid-template-columns: minmax(0, var(--tile)) minmax(1ch, 1fr); align-items: center; gap: var(--row-gap); font: var(--type-body-size)/var(--type-body-line) var(--mono); }
 .picker-shelf[data-copied] .picker-citation { grid-template-columns: minmax(0, var(--tile)) minmax(1ch, 1fr) minmax(0, var(--tile)); }
 .picker-beak { min-width: 0; height: var(--space-5); background: var(--scarlet); mask: url("assets/ibis-quote-beak.svg") center / contain no-repeat; }
 .picker-beak-end { rotate: 180deg; }
 .picker-beak:dir(rtl) { scale: -1 1; }
-.picker-shelf code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; padding: 0; border-radius: 0; font: .8125rem/var(--type-body-line) var(--mono); color: var(--text); }
+.picker-shelf code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; padding: 0; border-radius: 0; font: var(--type-body-size)/var(--type-body-line) var(--mono); color: var(--text); }
 .picker-foot { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: max(var(--touch-target), calc(var(--key) + 2 * var(--space-1) + 2 * var(--inset))); padding: var(--inset); padding-inline-start: calc(var(--inset) + var(--row-pad)); color: var(--text-secondary); font-size: var(--type-label-size); }
 .picker-foot :is(button, .picker-static-control) { position: relative; min-height: calc(var(--key) + 2 * var(--space-1)); }
 .picker-actions { flex: none; display: flex; justify-content: flex-end; align-items: center; gap: var(--space-2); margin-inline-start: auto; }

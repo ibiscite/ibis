@@ -180,9 +180,11 @@ A page's label, its `@key` and its address agree: the key is the label's main wo
 only the home button's label; all three systems stay visible on Get.
 
 `content/status.json` is the only status list, including nightly work. Check
-release notes before moving items: RIS/CSV and the official CSL styles have
-shipped; prefix, suffix and Keep My Order shipped in 0.3.2. An empty nightly
-feature inventory is stated plainly rather than repeating shipped work.
+the published releases (`gh release list`) and their notes before moving items:
+"current" is what the latest published release holds, and a version that was
+never published reached people in the next one that was. List only what the
+user docs describe; say "with the ibis command" when the app lacks it. An empty
+nightly feature inventory is stated plainly rather than repeating shipped work.
 
 `content/terminal.txt` contains real plain-output CLI transcripts using
 `fixtures/website/sample.bib`. Successful output is stdout; refusals are stderr.

@@ -23,7 +23,7 @@
         <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.AppImage"><strong>AppImage</strong><span>Most distributions, 64-bit</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/><path class="tray" d="M3.5 14.5h9" pathLength="1"/></svg></a></li>
           <li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.deb"><strong>Debian or Ubuntu</strong><span>.deb package, 64-bit</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/><path class="tray" d="M3.5 14.5h9" pathLength="1"/></svg></a></li></ul>
         <ol class="install"><li>Allow the AppImage to run as a program, then open it. Some systems need <a href="https://github.com/ibiscite/ibis/blob/main/docs/compatibility.md">FUSE support</a>.</li>
-          <li>On Wayland, open Ibis from your app launcher; its shortcut isn’t available there yet. Ibis Nightly lets you <a href="https://github.com/ibiscite/ibis/blob/main/docs/compatibility.md#bind-a-system-shortcut">set one in your desktop’s settings</a>.</li></ol>
+          <li>On Wayland, your desktop asks once to let Ibis use its shortcut, and it may offer a different one. If it doesn’t, Ibis shows how to <a href="https://github.com/ibiscite/ibis/blob/main/docs/compatibility.md#bind-a-system-shortcut">set one in your desktop’s settings</a>.</li></ol>
       </div>
       <p class="small">Files come from GitHub. <a href="https://github.com/ibiscite/ibis/releases/latest">Release notes</a> · <a href="https://github.com/ibiscite/ibis/releases/tag/nightly">Ibis Nightly</a>, with newer unfinished work, installs as a separate app.</p>
     </div>
@@ -34,7 +34,7 @@
     <div class="text"><h2 id="setup-h">Two steps to your first citation</h2>
       <p class="lede">No account needed. Ibis works with the library you already have.</p>
       <ol class="setup">
-        <li><h3>Choose your library</h3><p>Choose Zotero, open or closed. To read it while it is open, turn on “Allow other applications on this computer to communicate with Zotero” in Zotero’s Settings → Advanced. Or choose a <code>.bib</code> file; <a href="https://github.com/ibiscite/ibis#use-with-zotero">Better BibTeX can keep one up to date</a>.</p></li>
+        <li><h3>Choose your library</h3><p>Choose Zotero, open or closed. To read it while it is open, turn on “Allow other applications on this computer to communicate with Zotero” in Zotero’s Settings → Advanced. Or choose a library file (BibTeX, CSL-JSON, RIS or CSV); <a href="https://github.com/ibiscite/ibis#use-with-zotero">Better BibTeX can keep a <code>.bib</code> up to date</a>.</p></li>
         <li><h3>Press your shortcut</h3><p>By default it’s <kbd data-accelerator="{{picker-shortcut}}">{{shortcut-mac}}</kbd> on macOS, and <kbd data-accelerator="{{picker-shortcut}}">{{shortcut-other}}</kbd> on Windows and Linux X11, if it is available. Type a few words, choose with the arrow keys and press Enter, just like in <a class="key" href="/#try">@try</a>. On macOS and Windows, Ibis then pastes into the app you came from (a Mac asks you to allow it once); on Linux it copies, and you paste.</p></li>
       </ol>
       <p class="small">Ibis reads your library without changing it. Searching and copying work offline after setup; update checks are opt-in. <a href="https://github.com/ibiscite/ibis/blob/main/PRIVACY.md">App privacy</a> · <a href="https://github.com/ibiscite/ibis#install">Full installation guide</a>.</p>

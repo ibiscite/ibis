@@ -336,7 +336,11 @@
 /* The website's reading rhythm; page composition stays in website/style.css. */
 :root {
   --font-reading: "Iowan Old Style", Charter, "Palatino Linotype", Cambria, Georgia, serif;
-  --type-reading-size: 1rem; --type-heading-size: 1.25rem;
+  /* One type scale for every website rule; the app pictures keep the app's --type-* steps. */
+  --website-type-label: .8125rem; --website-type-small: .9375rem; --website-type-body: 1.1rem;
+  --website-type-lede: 1.375rem; --website-type-title: clamp(2.0625rem, 3.6vw, 3rem);
+  --website-type-h2: clamp(1.75rem, 3.1vw, 2.625rem); --website-type-h1: clamp(2.625rem, 5.2vw, 4.5rem);
+  --website-measure: 45rem;
   --website-margin: 17rem; --website-gap: clamp(2rem, 4.5vw, 4rem);
   --website-pad: clamp(1.25rem, 3.5vw, 3.5rem);
   --website-paragraph-gap: 1.1rem; --website-block-gap: 1.25rem;

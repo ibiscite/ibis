@@ -14,38 +14,61 @@
     },
     {
       "text": "Several references together",
-      "note": "Combine references, add page ranges and use narrative or author-omitted forms"
+      "note": "Combine references, add a page, chapter or any other locator, and use narrative or author-omitted forms"
     },
     {
       "text": "Prefix, suffix and Keep My Order",
-      "note": "New in 0.3.2: “see” before a reference, “emphasis added” after it"
+      "note": "“see” before a reference, “emphasis added” after it; type “see” and a page straight into the search"
     },
     {
       "text": "A format for each app",
       "note": "Remembered formats, Change Last Citation and selected text as search"
     },
     {
+      "text": "Projects",
+      "note": "A project keeps its own format and can check its keys against the project’s own .bib"
+    },
+    {
       "text": "Cited Since Opening",
       "note": "Copy or save the references you cited as a bibliography"
+    },
+    {
+      "text": "Zotero document markers for LibreOffice",
+      "note": "Markers for the Zotero RTF/ODF Scan add-on, for references from Zotero"
+    },
+    {
+      "text": "A live Appearance picture in Settings",
+      "note": "See your accent and theme as you change them"
+    },
+    {
+      "text": "The app in German and Arabic",
+      "note": "New in 0.3.13, beside English: Arabic mirrors the window, and citations keep their style’s language"
+    },
+    {
+      "text": "Your PDFs, for AI apps",
+      "note": "New in 0.3.13: AI apps can read and search a reference’s PDF text, only in the libraries you allow in Settings"
+    },
+    {
+      "text": "A folder of PDFs as a library",
+      "note": "New in 0.3.13, with the ibis command: each PDF’s own details are kept in a .bib inside the folder"
+    },
+    {
+      "text": "EndNote 21",
+      "note": "New in 0.3.13, with the ibis command: an open library on macOS, or an XML export on any system"
+    },
+    {
+      "text": "A pack of references to send",
+      "note": "New in 0.3.13, with the ibis command: a reading list, a .bib file and, if you like, the PDFs"
     }
   ],
   "nightly": [
     {
-      "text": "Every locator type",
-      "note": "Chapter, section, line and more, not just pages."
-    },
-    {
-      "text": "Zotero document markers for LibreOffice",
-      "note": "Markers for the Zotero RTF/ODF Scan add-on, for references from Zotero."
-    },
-    {
-      "text": "A live Appearance picture in Settings",
-      "note": "See your accent and theme as you change them."
+      "text": "Nothing beyond the current release yet."
     }
   ],
   "planned": [
     {
-      "text": "Complete citation forms and optional projects."
+      "text": "Complete citation forms, with real style previews."
     },
     {
       "text": "Search Zotero highlights and notes, with the page they came from."
@@ -65,7 +88,7 @@
       "text": "No ibid. or automatic numbering across a document."
     },
     {
-      "text": "No searching inside PDFs."
+      "text": "No searching inside PDFs from the picker."
     }
   ]
 }

@@ -150,11 +150,13 @@ test("the picker shortcut opens and focuses home from every inner page, and leav
 });
 
 test("question mark opens keyboard help outside text entry and ignores held keys or composition", () => {
-  const { ctx } = context(), events = {}, button = control(), close = control(), dialog = { ...control(), opened: 0,
+  const { ctx, media } = context(), events = {}, button = control(), close = control(), dialog = { ...control(), opened: 0,
     querySelector: () => close, showModal() { this.opened++; }, close() { this.closed = true; } };
   ctx.document.querySelector = selector => selector === ".keyboard-help" ? dialog : button;
   ctx.document.addEventListener = (name, fn) => { events[name] = fn; };
   ctx.keyboardHelp();
+  assert.equal(button.hidden, true, "a touch screen gets no Keyboard shortcuts button");
+  media.matches = true; media.change(); assert.equal(button.hidden, false);
   const press = extra => ({ key: "?", target: { closest: () => null }, preventDefault() { this.prevented = true; }, ...extra });
   for (const extra of [{ target: { closest: () => ({}) } }, { repeat: true }, { isComposing: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
     const event = press(extra); events.keydown(event); assert.ok(!event.prevented);
@@ -411,7 +413,7 @@ test("assistant tabs select only the requested setup and keep inactive controls 
   tabs[1].handlers.keydown({ key: "ArrowRight", preventDefault() {} }); check(0);
 });
 
-test("home navigation keeps one current section at the top, on clicks and through scrolling", () => {
+test("home navigation marks no section above Try it, then one current section on clicks and through scrolling", () => {
   const { ctx } = context(), bar = { ...control(), scrollLeft: 0, clientWidth: 300, scrollWidth: 300 };
   const sections = ["try", "where", "why"].map((id, i) => ({ id, top: 1000 + i * 1000,
     getBoundingClientRect() { return { top: this.top, bottom: this.top + 900 }; } }));
@@ -425,7 +427,8 @@ test("home navigation keeps one current section at the top, on clicks and throug
   ctx.document.querySelectorAll = () => links;
   ctx.document.querySelector = selector => selector === ".index nav ul" ? bar : sections.find(section => `#${section.id}` === selector);
   const check = i => assert.deepEqual(links.map(link => link.attrs["aria-current"]), sections.map((_, n) => n === i ? "location" : undefined));
-  ctx.navigation(); check(0);
+  ctx.navigation(); check(-1);
+  sections[0].top = 100; window.handlers.scroll(); check(0);
   sections[0].top = -800; sections[1].top = 200; window.scrollY = 1800;
   window.handlers.scroll(); check(1);
   sections[2].top = 500;
@@ -712,8 +715,9 @@ test("all routes fit the requested viewports in both themes and directions; visi
             (node.tagName !== "PRE" && /auto|scroll/.test(css.overflowX) && node.scrollWidth > node.clientWidth + 1);
         }).map(node => `${node.tagName}.${node.className}`)), [], `${path}: no unexpected nested scrollers at ${width}×${height} ${direction}`);
         const missing = path.startsWith("/missing/");
-        assert.equal(await page.locator('.index nav a[aria-current]').count(), missing ? 0 : 1);
-        if (!missing) assert.equal(await page.locator('.index nav a[aria-current]').evaluate(node => {
+        // Home's top sits above its first section, so nothing there is current yet.
+        assert.equal(await page.locator('.index nav a[aria-current]').count(), missing || path === "/" ? 0 : 1);
+        if (!missing && path !== "/") assert.equal(await page.locator('.index nav a[aria-current]').evaluate(node => {
           const chip = node.getBoundingClientRect(), bar = node.closest("ul").getBoundingClientRect();
           return chip.left >= bar.left - 1 && chip.right <= bar.right + 1;
         }), true, `${path} current key is in view`);
@@ -737,8 +741,12 @@ test("all routes fit the requested viewports in both themes and directions; visi
         await page.keyboard.press("Escape");
         assert.equal(await page.getByRole("dialog").isVisible(), false);
         const helpButton = page.getByRole("button", { name: "Keyboard shortcuts ?", exact: true });
-        await helpButton.click(); await page.keyboard.press("Escape");
-        assert.equal(await helpButton.evaluate(node => node === document.activeElement), true, "Escape returns focus to the help button");
+        // A touch phone has no ? key to advertise, so the footer offers the button only with a fine pointer.
+        if (width === 375) assert.equal(await helpButton.count(), 0, "no keyboard help button on a touch phone");
+        else {
+          await helpButton.click(); await page.keyboard.press("Escape");
+          assert.equal(await helpButton.evaluate(node => node === document.activeElement), true, "Escape returns focus to the help button");
+        }
         if (missing) {
           assert.equal(await page.getByRole("heading", { name: "Page not found" }).isVisible(), true);
           if (width >= 992) assert.equal(await page.locator("h1").evaluate(node => {
