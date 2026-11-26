@@ -1,5 +1,30 @@
 use super::*;
 
+#[test]
+fn a_kept_folder_returns_its_original_entries_without_offering_proposals() {
+    use crate::{SourceCapability, load_file, original_entry, reload_file};
+    use ibis_core::contract::LibraryObject;
+
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join(LIBRARY_FILE);
+    let text = "@book{atlas,\n  title = {An Invented Atlas},\n  file = {:./atlas.pdf:application/pdf},\n}\n";
+    std::fs::write(&path, text).unwrap();
+    for loaded in [load_file(&path).unwrap(), reload_file(&path).unwrap()] {
+        let item = loaded
+            .snapshot
+            .objects()
+            .iter()
+            .find(|item| matches!(item.object, LibraryObject::Record(_)))
+            .unwrap();
+        assert_eq!(
+            original_entry(&path, item.object.id(), "atlas", &item.fingerprints.cite),
+            Ok(text.to_owned())
+        );
+        assert!(loaded.capabilities.contains(&SourceCapability::OriginalEntries));
+        assert!(!loaded.capabilities.contains(&SourceCapability::Proposals));
+    }
+}
+
 fn folder(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("ibis-folder-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);

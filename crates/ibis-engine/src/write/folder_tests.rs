@@ -1,6 +1,24 @@
 use super::*;
 use ibis_core::contract::Fingerprint;
 
+#[test]
+fn folder_identity_follows_the_directory_and_detects_its_replacement() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("Papers");
+    let moved = root.path().join("Moved");
+    std::fs::create_dir(&path).unwrap();
+    let identity = FolderIdentity::of(&path).unwrap();
+    std::fs::write(path.join("atlas.pdf"), b"%PDF-1.7\n").unwrap();
+    assert_eq!(FolderIdentity::of(&path).as_ref(), Some(&identity));
+    std::fs::rename(&path, &moved).unwrap();
+    assert_eq!(FolderIdentity::of(&moved).as_ref(), Some(&identity));
+    std::fs::create_dir(&path).unwrap();
+    assert_ne!(FolderIdentity::of(&path), Some(identity));
+    assert_eq!(FolderIdentity::of(&path.join("missing")), None);
+    assert_eq!(FolderIdentity::of(&moved.join("atlas.pdf")), None);
+    assert!(!path.join(LIBRARY_FILE).exists());
+}
+
 fn details() -> PdfDetails {
     PdfDetails {
         revision: Fingerprint::of_bytes(b"invented"),

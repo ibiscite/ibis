@@ -158,7 +158,8 @@ fn state(path: &Path) -> Result<Option<String>, WriteError> {
 }
 
 /// A folder as the file system knows it, not by its name: a real folder,
-/// never a link, with its device and inode where the system has them.
+/// never a link, with its device and inode on Unix or volume serial and file
+/// index on Windows. If identity is unavailable, keeping must refuse.
 #[derive(Debug, PartialEq, Eq)]
 struct FolderIdentity(u64, u64);
 impl FolderIdentity {
@@ -172,9 +173,38 @@ impl FolderIdentity {
             use std::os::unix::fs::MetadataExt;
             Some(Self(metadata.dev(), metadata.ino()))
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
         {
-            Some(Self(0, 0))
+            use winsafe::{HFILE, co};
+
+            // The safe binding takes UTF-8; never open a truncated or lossy path.
+            let path = path.to_str().filter(|path| !path.contains('\0'))?;
+            let (handle, _) = HFILE::CreateFile(
+                path,
+                co::GENERIC::default(),
+                Some(co::FILE_SHARE::READ | co::FILE_SHARE::WRITE | co::FILE_SHARE::DELETE),
+                None,
+                co::DISPOSITION::OPEN_EXISTING,
+                co::FILE_ATTRIBUTE::NORMAL,
+                Some(co::FILE_FLAG::BACKUP_SEMANTICS | co::FILE_FLAG::OPEN_REPARSE_POINT),
+                None,
+                None,
+            )
+            .ok()?;
+            let info = handle.GetFileInformationByHandle().ok()?;
+            // Check the opened object too: the name could have changed since
+            // symlink_metadata. A zero index cannot prove a folder's identity.
+            if !info.dwFileAttributes.has(co::FILE_ATTRIBUTE::DIRECTORY)
+                || info.dwFileAttributes.has(co::FILE_ATTRIBUTE::REPARSE_POINT)
+                || info.nFileIndex() == 0
+            {
+                return None;
+            }
+            Some(Self(u64::from(info.dwVolumeSerialNumber), info.nFileIndex()))
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            None
         }
     }
 }

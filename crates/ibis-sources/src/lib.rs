@@ -240,6 +240,7 @@ impl SourceCapability {
         Self::BibliographicRecords,
         Self::NativeCitationKeys,
         Self::AttachmentText,
+        Self::OriginalEntries,
     ];
     const ZOTERO: &'static [Self] = &[
         Self::BibliographicRecords,
