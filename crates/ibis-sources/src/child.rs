@@ -283,7 +283,8 @@ impl Tree {
         let status = self.child.wait().map_err(|_| ChildError::Failed)?;
         self.reaped = true;
         let exceeded = self.ceiling.as_ref().is_some_and(ceiling::Ceiling::was_exceeded);
-        drop(self.ceiling.take());
+        // Ends the Windows job; elsewhere the ceiling holds nothing to close.
+        self.ceiling = None;
         if exceeded {
             Err(ChildError::TooLarge)
         } else {

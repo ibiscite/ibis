@@ -14,6 +14,8 @@ const MAX_READ_BYTES: u64 = 256 * 1024 * 1024;
 
 pub struct Archive<'a> {
     zip: ZipArchive<Cursor<&'a [u8]>>,
+    /// Every entry's name, in archive order, as checked at open.
+    names: Vec<String>,
     read: u64,
 }
 
@@ -29,10 +31,11 @@ impl<'a> Archive<'a> {
         if zip.len() > MAX_ENTRIES {
             return Err(Refusal::TooLarge);
         }
-        let mut names = BTreeSet::new();
+        let mut names = Vec::with_capacity(zip.len());
+        let mut seen = BTreeSet::new();
         for index in 0..zip.len() {
             let entry = zip.by_index_raw(index).map_err(|_| Refusal::Damaged)?;
-            let name = entry.name().to_owned();
+            let name = entry.name().map_err(|_| Refusal::Unsafe)?.into_owned();
             // Names that could leave a folder, or two entries with one name,
             // never come from Word or LibreOffice; the copy would carry them.
             let plain = !name.is_empty()
@@ -40,7 +43,7 @@ impl<'a> Archive<'a> {
                 && !name.contains(['\\', '\0', ':'])
                 && name.split('/').all(|part| part != ".." && part != ".")
                 && entry.enclosed_name().is_some();
-            if !plain || !names.insert(name.to_lowercase()) {
+            if !plain || !seen.insert(name.to_lowercase()) {
                 return Err(Refusal::Unsafe);
             }
             if entry.encrypted() {
@@ -52,12 +55,13 @@ impl<'a> Archive<'a> {
             ) {
                 return Err(Refusal::Damaged);
             }
+            names.push(name);
         }
-        Ok(Self { zip, read: 0 })
+        Ok(Self { zip, names, read: 0 })
     }
 
     pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.zip.file_names()
+        self.names.iter().map(String::as_str)
     }
 
     pub fn has(&self, name: &str) -> bool {
@@ -93,8 +97,9 @@ impl<'a> Archive<'a> {
         }
         let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
         for index in 0..self.zip.len() {
+            let current = self.names[index].as_str();
             let entry = self.zip.by_index_raw(index).map_err(|_| Refusal::Damaged)?;
-            match replaced.iter().find(|(name, _)| *name == entry.name()) {
+            match replaced.iter().find(|(name, _)| *name == current) {
                 Some((name, text)) => {
                     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
                     drop(entry);

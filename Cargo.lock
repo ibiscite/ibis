@@ -962,7 +962,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.9",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -2160,7 +2160,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "unicode-segmentation",
- "zip 8.6.0",
+ "zip",
 ]
 
 [[package]]
@@ -2270,7 +2270,7 @@ dependencies = [
  "toml 1.1.8+spec-1.1.0",
  "unic-langid",
  "unicode-normalization",
- "zip 9.0.5",
+ "zip",
 ]
 
 [[package]]
@@ -2328,7 +2328,7 @@ dependencies = [
  "windows-sys 0.61.2",
  "winsafe",
  "xattr",
- "zip 8.6.0",
+ "zip",
 ]
 
 [[package]]
@@ -7127,24 +7127,12 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "8.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
-dependencies = [
- "crc32fast",
- "flate2",
- "indexmap 2.14.2",
- "memchr",
- "typed-path",
-]
-
-[[package]]
-name = "zip"
 version = "9.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
 dependencies = [
  "crc32fast",
+ "flate2",
  "indexmap 2.14.2",
  "memchr",
  "nix",
