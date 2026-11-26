@@ -6,7 +6,6 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, mpsc};
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -170,17 +169,13 @@ impl Endpoint {
         let build = Build::here();
         let deadline = Instant::now() + START_TIMEOUT;
         let mut pause = Duration::from_millis(10);
-        let mut launch: Option<Child> = None;
+        let mut launch: Option<native::Process> = None;
         let mut starter = None;
         loop {
             match self.open(mode, build) {
                 Ok(connection) => {
-                    if let Some(mut child) = launch.take() {
-                        // MCP can outlive the daemon it started. Reap that child
-                        // when it drains or exits, even if MCP is waiting on stdin.
-                        let _ = std::thread::Builder::new()
-                            .name("ibis-daemon-reap".into())
-                            .spawn(move || child.wait());
+                    if let Some(child) = launch.take() {
+                        child.reap();
                     }
                     return Ok(connection);
                 }
@@ -203,11 +198,11 @@ impl Endpoint {
                 }
             } else if self.0.lock("engine")?.is_some() {
                 if let Some(child) = launch.as_mut() {
-                    if child.try_wait()?.is_some() {
+                    if child.has_exited()? {
                         return Err(io::ErrorKind::ConnectionRefused.into());
                     }
                 } else {
-                    launch = Some(spawn()?);
+                    launch = Some(native::Process::spawn(&std::env::current_exe()?)?);
                 }
             }
             std::thread::sleep(pause);
@@ -227,17 +222,6 @@ fn unavailable(error: &io::Error) -> bool {
             | io::ErrorKind::WouldBlock
             | io::ErrorKind::TimedOut
     )
-}
-
-fn spawn() -> io::Result<Child> {
-    let mut command = Command::new(std::env::current_exe()?);
-    command
-        .arg("daemon")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    native::detach(&mut command);
-    command.spawn()
 }
 
 /// A handshaken daemon connection with the same framing as `ibis serve`.

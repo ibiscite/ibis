@@ -1,4 +1,4 @@
-//! Overlapped local named pipes. Only this module handles Win32 capabilities.
+//! Overlapped local named pipes and detached daemon launch.
 #![allow(unsafe_code)]
 
 use ibis_core::atomic_file::open_private;
@@ -6,10 +6,9 @@ use ibis_core::contract::Fingerprint;
 use std::fs::{self, File, TryLockError};
 use std::future::{Future, poll_fn};
 use std::io;
+use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
-use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::ptr;
 use std::sync::{Arc, OnceLock};
 use std::task::Poll;
@@ -18,7 +17,10 @@ use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient, NamedPipeS
 use tokio::runtime::{Builder, Runtime};
 use tokio::sync::watch;
 use windows_sys::Win32::{
-    Foundation::{ERROR_BROKEN_PIPE, ERROR_NO_DATA, ERROR_PIPE_BUSY, ERROR_PIPE_NOT_CONNECTED, HANDLE, LocalFree},
+    Foundation::{
+        ERROR_BROKEN_PIPE, ERROR_NO_DATA, ERROR_PIPE_BUSY, ERROR_PIPE_NOT_CONNECTED, HANDLE, LocalFree, WAIT_OBJECT_0,
+        WAIT_TIMEOUT,
+    },
     Security::{
         Authorization::{
             ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
@@ -29,8 +31,9 @@ use windows_sys::Win32::{
     System::{
         Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
         Threading::{
-            CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS, GetCurrentProcess, OpenProcess, OpenProcessToken,
-            PROCESS_QUERY_LIMITED_INFORMATION,
+            CREATE_NEW_PROCESS_GROUP, CreateProcessW, DETACHED_PROCESS, GetCurrentProcess, OpenProcess,
+            OpenProcessToken, PROCESS_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
+            WaitForSingleObject,
         },
     },
 };
@@ -382,8 +385,61 @@ impl io::Write for Stream {
     }
 }
 
-pub(super) fn detach(command: &mut Command) {
-    command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+pub(super) struct Process(OwnedHandle);
+
+impl Process {
+    pub(super) fn spawn(program: &Path) -> io::Result<Self> {
+        // The current executable path is absolute and cannot contain a quote.
+        let path = program.as_os_str().encode_wide();
+        let application: Vec<u16> = path.clone().chain([0]).collect();
+        let mut command: Vec<u16> = "\""
+            .encode_utf16()
+            .chain(path)
+            .chain("\" daemon\0".encode_utf16())
+            .collect();
+        let startup = STARTUPINFOW {
+            cb: size_of::<STARTUPINFOW>() as u32,
+            ..Default::default()
+        };
+        let mut process = PROCESS_INFORMATION::default();
+        // Command redirects the three standard streams but still inherits other
+        // handles, including the client's original captured stdout and stderr.
+        // Disable inheritance so those streams reach EOF when the client exits.
+        // SAFETY: both strings are NUL-terminated and command/process are writable.
+        check(unsafe {
+            CreateProcessW(
+                application.as_ptr(),
+                command.as_mut_ptr(),
+                ptr::null(),
+                ptr::null(),
+                0,
+                DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                ptr::null(),
+                ptr::null(),
+                &startup,
+                &mut process,
+            )
+        })?;
+        // SAFETY: CreateProcessW returned ownership of two distinct handles.
+        unsafe {
+            let _thread = OwnedHandle::from_raw_handle(process.hThread);
+            Ok(Self(OwnedHandle::from_raw_handle(process.hProcess)))
+        }
+    }
+
+    pub(super) fn has_exited(&self) -> io::Result<bool> {
+        // SAFETY: the owned process handle stays live throughout the wait.
+        match unsafe { WaitForSingleObject(self.0.as_raw_handle(), 0) } {
+            WAIT_OBJECT_0 => Ok(true),
+            WAIT_TIMEOUT => Ok(false),
+            _ => Err(io::Error::last_os_error()),
+        }
+    }
+
+    pub(super) fn reap(self) {
+        // Windows releases the process object after exit and the last handle closes.
+        drop(self);
+    }
 }
 
 #[cfg(test)]

@@ -10,7 +10,7 @@ use std::os::fd::{AsFd, AsRawFd};
 use std::os::unix::fs::{DirBuilderExt, FileTypeExt, MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 #[derive(Clone)]
@@ -211,8 +211,30 @@ impl io::Write for Stream {
     }
 }
 
-pub(super) fn detach(command: &mut Command) {
-    ibis_sources::adapter::detach(command);
+pub(super) struct Process(Child);
+
+impl Process {
+    pub(super) fn spawn(program: &Path) -> io::Result<Self> {
+        let mut command = Command::new(program);
+        command
+            .arg("daemon")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        ibis_sources::adapter::detach(&mut command);
+        command.spawn().map(Self)
+    }
+
+    pub(super) fn has_exited(&mut self) -> io::Result<bool> {
+        Ok(self.0.try_wait()?.is_some())
+    }
+
+    pub(super) fn reap(mut self) {
+        // MCP can outlive the daemon it started, even while waiting on stdin.
+        let _ = std::thread::Builder::new()
+            .name("ibis-daemon-reap".into())
+            .spawn(move || self.0.wait());
+    }
 }
 
 #[cfg(test)]
