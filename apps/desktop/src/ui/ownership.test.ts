@@ -28,10 +28,14 @@ const isPart = (name: string) => name.startsWith("src/ui/");
 // Values, not parts: the tokens.
 const values = new Set(["src/tokens.css"]);
 
-/** Every style rule's selector list, inside @media, @supports, @container and @layer, never @keyframes. */
-function selectorLists(css: string): string[] {
-  const text = css.replace(/\/\*[^]*?\*\//g, "");
-  const found: string[] = [];
+/** Comments blanked to spaces, so offsets and line numbers still point into the file. */
+const uncomment = (css: string) => css.replace(/\/\*[^]*?\*\//g, (comment) => comment.replace(/[^\n]/g, " "));
+const lineAt = (text: string, offset: number) => text.slice(0, offset).split("\n").length;
+
+/** Every style rule (selector list, line, declarations), inside @media, @supports, @container and @layer, never @keyframes. */
+function styleRules(css: string): { selector: string; line: number; body: string }[] {
+  const text = uncomment(css);
+  const found: { selector: string; line: number; body: string }[] = [];
   const walk = (from: number, to: number) => {
     let start = from;
     for (let index = from; index < to; index++) {
@@ -46,7 +50,10 @@ function selectorLists(css: string): string[] {
           else if (text[end] === "}") depth--;
         }
         if (/^@(media|supports|container|layer|scope|document)\b/.test(prelude)) walk(index + 1, end - 1);
-        else if (!prelude.startsWith("@")) found.push(prelude.replace(/\s+/g, " "));
+        else if (!prelude.startsWith("@")) {
+          const at = start + text.slice(start, index).search(/\S/);
+          found.push({ selector: prelude.replace(/\s+/g, " "), line: lineAt(text, at), body: text.slice(index + 1, end - 1) });
+        }
         index = end - 1;
         start = end;
       }
@@ -55,6 +62,8 @@ function selectorLists(css: string): string[] {
   walk(0, text.length);
   return found;
 }
+/** Every style rule's selector list. */
+const selectorLists = (css: string): string[] => styleRules(css).map(({ selector }) => selector);
 
 /** Splits at top-level commas, outside brackets, parentheses and strings. */
 function splitList(text: string): string[] {
@@ -156,7 +165,8 @@ const rendered = new Set(list("src/ui/", /\.tsx?$/).filter((name) => !/\.(test|f
   .flatMap((name) => read(name).replace(/\/\*[^]*?\*\/|\/\/[^\n]*/g, "").match(/[A-Za-z_][\w-]*/g) ?? []));
 
 const styled = [...list("src/", /\.css$/), ...list("canvas/", /\.css$/)]
-  .map((name) => [name, selectorLists(read(name)).flatMap(splitList).map((selector) => [selector, parseSelector(selector)] as const)] as const);
+  .map((name) => [name, styleRules(read(name)).flatMap(({ selector, line, body }) => splitList(selector)
+    .map((one) => [one, parseSelector(one), line, body] as const))] as const);
 
 /** Each part class and the ui/ stylesheets that style it. */
 const partClasses = new Map<string, Set<string>>();
@@ -282,4 +292,165 @@ test("the guard reads the element a selector styles", () => {
   expect(partClasses.has("picker-content")).toBe(false);
   expect(selectorLists("/* .x { } */ @keyframes k { from { opacity: 0 } } @media (a) { @container (b) { .y, .z { color: red } } } .w { }"))
     .toEqual([".y, .z", ".w"]);
+});
+
+// Ratchets of decision 0062 (docs/decisions/0062-closed-parts-owned-space-fitted-layers.md,
+// sections 1 and 2, "Ratchets"): a part is closed, so each count below may only go down. Lower
+// the ceiling in the change that lowers the count; the failure lists every offender by line.
+
+/** Every class and id a selector names anywhere: subject, context and the arguments of
+ * :is(), :where(), :has(), :not() and :nth-child(… of …). Strings and attribute values are skipped. */
+function mentions(selector: string): { classes: string[]; ids: string[] } {
+  const text = selector.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, "\"\"").replace(/\[[^\]]*\]/g, "[]");
+  const words = (sigil: string) => [...text.matchAll(new RegExp(`\\${sigil}(-?(?:[A-Za-z_]|\\\\.)(?:[\\w-]|\\\\.)*)`, "g"))]
+    .map(([, word]) => word!.replace(/\\(.)/g, "$1"));
+  return { classes: words("."), ids: words("#") };
+}
+
+/** A part is a ui/ file's name. It owns the classes `ui-<name>` and `<name>` in kebab case, and
+ * these prefixes where its names follow no one rule. A class belongs to the part whose prefix it
+ * equals or continues after a "-", the longest prefix winning (ui-status-mark is StatusMark's). */
+const extraPrefixes: Record<string, string[]> = {
+  ChoiceList: ["choice"], CitationDetails: ["citation"], CitationShelf: ["shelf", "preview-text"],
+  CopiedNotice: ["notice-window"], CopyReceipt: ["copy-check-reveal"], Delights: ["ui-about", "ui-quiet-status"], Display: ["display", "csl"],
+  EmptyState: ["empty", "opening", "opened-mark"], Footer: ["footer", "library-bar", "bar", "enter-hints", "more", "delivery-bar"],
+  Foundation: ["ui-list-heading"], Frame: ["ui-line", "ui-notice-line", "ui-heading-slot", "ui-drawer-slot"],
+  HeldKeys: ["ui-key-mark"], IbisMark: ["eyeshade"], Inspector: ["inspector"], KeyCaps: ["key-cap", "key-hint"], KeysSheet: ["keys"],
+  Layout: ["ui-row", "ui-note", "ui-choice", "ui-section", "ui-group", "ui-details", "ui-buttons"], LibraryStatus: ["library-status", "library-name", "library-action-error", "library-inline-action", "library-announcement",
+    "library-glyph", "library-words", "library-source", "library-state", "library-separator", "library-age", "status-dot"],
+  Menu: ["menu"], NoticeSlot: ["notice-band"], Option: ["result", "tile-button", "type-icon"], PictureChoice: ["ui-picture", "ui-picker-picture"],
+  PopupButton: ["popup-indicator"], Progress: ["update"], Reader: ["reader", "invented"], SearchBar: ["search", "pin-button", "query-input"],
+  Segmented: ["ui-segment"], SettingsLayout: ["settings", "ui-settings-page"], ShortcutTable: ["ui-shortcut-filter", "ui-settings-keys", "keys-binding"],
+  SideNavigation: ["ui-side"], SourceAction: ["source"], ViewFrame: ["ui-view"],
+};
+/** Components named for no part, and the part they draw; any other component is the part it is named for (features/reader/Reader.tsx is Reader). */
+const drawsPart: Record<string, string> = { "src/ui/Details.tsx": "Layout", "src/ui/ShortcutSetting.tsx": "ShortcutTable", "src/ui/UndoNotice.tsx": "NoticeSlot",
+  "src/features/picker/PickerFooter.tsx": "Footer", "src/LibraryStatusLine.tsx": "LibraryStatus" };
+/** Classes any element may carry: states of the element itself, and the one utility (Foundation's visually-hidden). */
+const anyPart = new Set(["showing", "leaving", "visually-hidden"]);
+const kebab = (name: string) => name.replace(/(?<=[a-z0-9])(?=[A-Z])/g, "-").toLowerCase();
+const partNames = [...new Set(list("src/ui/", /^[A-Z]\w*\.(css|tsx)$/).map((name) => name.slice("src/ui/".length).replace(/\.\w+$/, "")))]
+  .filter((name) => !(`src/ui/${name}.tsx` in drawsPart));
+const prefixes = new Map(partNames.map((part) => [part, [`ui-${kebab(part)}`, kebab(part), ...extraPrefixes[part] ?? []]]));
+/** The parts a class belongs to: one, or none for a screen's or a library's class. */
+function ownerOf(word: string): string[] {
+  const stem = word.replace(/-+$/, "");
+  let best = 0, owners: string[] = [];
+  for (const [part, list] of prefixes) for (const prefix of list) {
+    if (stem !== prefix && !stem.startsWith(`${prefix}-`)) continue;
+    if (prefix.length > best) [best, owners] = [prefix.length, [part]];
+    else if (prefix.length === best && !owners.includes(part)) owners.push(part);
+  }
+  return owners;
+}
+const partSheets = styled.filter(([name]) => /^src\/ui\/[^/]+\.css$/.test(name));
+const appStyled = styled.filter(([name]) => name.startsWith("src/"));
+const at = (name: string, line: number) => `${name.slice("src/".length)}:${line}`;
+const ratchet = (what: string, offenders: string[]) => `${what} may only go down (decision 0062). Lower the ceiling when it falls. `
+  + `${offenders.length} found:\n${offenders.join("\n")}`;
+
+/** A ui/ selector that names a class not its sheet's own, or reaches the part from a :root, html or body context to set more than knobs. */
+function crossPart(): string[] {
+  return partSheets.flatMap(([name, selectors]) => {
+    const part = name.slice("src/ui/".length, -".css".length);
+    return selectors.flatMap(([selector, , line, body]) => {
+      const foreign = [...new Set(mentions(selector).classes)].filter((word) => !anyPart.has(word) && !ownerOf(word).includes(part))
+        .map((word) => `.${word} (${ownerOf(word).join(", ") || "no part"})`);
+      if (/^(:root|html|body)\b[^\s>+~]*\s*[\s>+~]\s*\S/.test(selector) && /(^|;)\s*(?!--)[a-z-]+\s*:/.test(body)) foreign.push(`${selector.split(/[\s>+~]/)[0]} context sets more than custom properties`);
+      return foreign.length ? [`${at(name, line)} › ${selector} › ${foreign.join(", ")}`] : [];
+    });
+  });
+}
+
+const CROSS_PART_CEILING = 177;
+test(`ui/ sheets select only their own part: ${CROSS_PART_CEILING} selectors at most reach another`, () => {
+  const found = crossPart();
+  expect(found.length, ratchet("Selectors in a ui/ sheet that name another part's class (style it through that part's knobs or props)", found))
+    .toBeLessThanOrEqual(CROSS_PART_CEILING);
+});
+
+const ID_SELECTOR_CEILING = 23;
+test(`ID selectors in the app's stylesheets stay at or under ${ID_SELECTOR_CEILING}`, () => {
+  const found = appStyled.flatMap(([name, selectors]) => selectors.filter(([selector]) => mentions(selector).ids.length).map(([selector, , line]) => `${at(name, line)} › ${selector}`));
+  expect(found.length, ratchet("ID selectors (a part is reached through its knobs, never by id)", found)).toBeLessThanOrEqual(ID_SELECTOR_CEILING);
+});
+
+const BUTTON_ELSEWHERE_CEILING = 40;
+test(`.ui-button is selected outside ui/Button.css at most ${BUTTON_ELSEWHERE_CEILING} times`, () => {
+  const found = appStyled.filter(([name]) => name !== "src/ui/Button.css").flatMap(([name, selectors]) => selectors
+    .filter(([selector]) => mentions(selector).classes.includes("ui-button")).map(([selector, , line]) => `${at(name, line)} › ${selector}`));
+  expect(found.length, ratchet("Selectors naming .ui-button outside ui/Button.css (Button owns every state fill; use its variants or knobs)", found))
+    .toBeLessThanOrEqual(BUTTON_ELSEWHERE_CEILING);
+});
+
+/** Each className-style attribute or property and the class words in its string and template literals, with its line. */
+function renderedClasses(source: string): { line: number; words: string[] }[] {
+  const text = source.replace(/\/\*[^]*?\*\/|(^|\s)\/\/[^\n]*/g, (comment) => comment.replace(/[^\n]/g, " "));
+  const literals = (code: string): string[] => [...code.matchAll(/"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|`((?:\\.|[^`\\])*)`/g)]
+    .map(([, double, single, template]) => template === undefined ? double ?? single ?? ""
+      : template.replace(/\$\{([^{}]*)\}/g, (_, inner: string) => ` ${literals(inner).join(" ")} `));
+  const found: { line: number; words: string[] }[] = [];
+  for (const match of text.matchAll(/\b\w*(?:className|ClassName)\s*\??([=:])(?!=)\s*/g)) {
+    let end = match.index! + match[0].length;
+    const first = text[end];
+    if (first === "{") {
+      for (let depth = 1, index = end + 1; index < text.length; index++) {
+        if (text[index] === "{") depth++;
+        else if (text[index] === "}" && !--depth) { end = index + 1; break; }
+      }
+    } else if (first === "\"" || first === "'" || first === "`") end = text.indexOf(first, end + 1) + 1;
+    else if (match[1] === ":") end = text.slice(end).search(/[,;}\n]/) + end;
+    else continue;
+    const words = literals(text.slice(match.index! + match[0].length, end)).flatMap((value) => value.split(/\s+/))
+      .filter((word) => /^-?[A-Za-z_][\w-]*$/.test(word));
+    if (words.length) found.push({ line: text.slice(0, match.index!).split("\n").length, words });
+  }
+  return found;
+}
+const componentFiles = [...new Set([...list("src/ui/", /^[A-Z]\w*\.tsx$/), ...list("src/features/", /\.tsx$/).filter((name) => !/\.(test|fixture)\.tsx$/.test(name)),
+  ...Object.keys(drawsPart)])];
+const partOf = (name: string) => drawsPart[name] ?? name.slice(name.lastIndexOf("/") + 1, -".tsx".length);
+
+/** "file:line › class (part)" for each className a ui/ component or a feature renders from another part. */
+function borrowed(): string[] {
+  return componentFiles.flatMap((name) => {
+    const part = partOf(name);
+    return renderedClasses(read(name)).flatMap(({ line, words }) => {
+      const foreign = [...new Set(words)].filter((word) => !anyPart.has(word) && ownerOf(word).length && !ownerOf(word).includes(part))
+        .map((word) => `${word} (${ownerOf(word).join(", ")})`);
+      return foreign.length ? [`${at(name, line)} › ${foreign.join(", ")}`] : [];
+    });
+  });
+}
+
+const BORROWED_CLASS_CEILING = 72;
+test(`components render another part's class names at most ${BORROWED_CLASS_CEILING} times`, () => {
+  const found = borrowed();
+  expect(found.length, ratchet("className attributes in ui/ and features/ that render another part's classes (compose that part instead)", found))
+    .toBeLessThanOrEqual(BORROWED_CLASS_CEILING);
+});
+
+// Chromium leaves ::before and ::after unpainted on rows that mount after the sheet when a
+// selector filters with :nth-child(… of …); count with a class on the row instead.
+const nthOf = (selector: string) => /:nth-(?:last-)?child\([^()]*\bof\b/i.test(selector);
+test("no stylesheet filters :nth-child() or :nth-last-child() with `of`", () => {
+  expect(styled.flatMap(([name, selectors]) => selectors.filter(([selector]) => nthOf(selector)).map(([selector, , line]) => `${name}:${line} › ${selector}`))).toEqual([]);
+  expect([".a:nth-child(2 of .x)", "li:nth-last-child(n + 2 of :not([hidden]))", "tr:nth-child(n + 3) > *", ".a:nth-of-type(2)"].map(nthOf)).toEqual([true, true, false, false]);
+});
+
+test("the ratchets read every place a class or id is named, and each part's map", () => {
+  expect(mentions(".a:is(.b, #c .d):where(.e):not(.f):has(> .g) [data-x=\".h #i\"] li:nth-child(2 of .j)"))
+    .toEqual({ classes: ["a", "b", "d", "e", "f", "g", "j"], ids: ["c"] });
+  expect([ownerOf("ui-status-mark"), ownerOf("ui-drawer-slot"), ownerOf("citation-token-handle"), ownerOf("citation-locator"),
+    ownerOf("toolbar-menu-control"), ownerOf("menu-item"), ownerOf("ui-palette-row"), ownerOf("ui-buttons"), ownerOf("result-"), ownerOf("picker-content")])
+    .toEqual([["StatusMark"], ["Frame"], ["CitationToken"], ["CitationDetails"], ["ToolbarMenu"], ["Menu"], ["Palette"], ["Layout"], ["Option"], []]);
+  expect(renderedClasses("<a className=\"ui-row result-tile\" /><b className={`x ${on ? \"tile-button\" : \"\"} result-${kind}`} />\n<i className={cx('menu-item')} />\n// className=\"shelf\"\nconst p = { className: \"ui-band\" }; type T = { className?: string };"))
+    .toEqual([{ line: 1, words: ["ui-row", "result-tile"] }, { line: 1, words: ["x", "tile-button", "result-"] }, { line: 2, words: ["menu-item"] }, { line: 4, words: ["ui-band"] }]);
+  // Every extra prefix names something in its part's own sheet or component, and no class has two owners.
+  const named = new Map(partNames.map((part) => [part, new Set([...partSheets.filter(([name]) => name === `src/ui/${part}.css`)
+    .flatMap(([, selectors]) => selectors.flatMap(([selector]) => mentions(selector).classes)),
+    ...componentFiles.filter((name) => partOf(name) === part).flatMap((name) => renderedClasses(read(name)).flatMap(({ words }) => words))])]));
+  expect(Object.entries(extraPrefixes).flatMap(([part, list]) => list.filter((prefix) => ![...named.get(part) ?? []].some((word) => ownerOf(word).includes(part) && (word === prefix || word.startsWith(`${prefix}-`))))
+    .map((prefix) => `${part}: ${prefix}`))).toEqual([]);
+  expect([...new Set([...named.values()].flatMap((words) => [...words]))].filter((word) => ownerOf(word).length > 1)).toEqual([]);
 });

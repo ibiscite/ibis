@@ -72,6 +72,13 @@ a shared part.
   size, gap, title and detail type, trailing gap and wrap rule. Compact and
   Comfortable switch a recipe's tokens at the frame. They never add
   selectors.
+- **The reference is the current macOS.** Each recipe's values are measured
+  from the same Mac's own controls in the current macOS: System Settings for
+  settings rows and the sidebar, Spotlight for the launcher row, the system's
+  menus and popovers for menu rows. They follow Apple's Human Interface
+  Guidelines and are written down beside the tokens with the macOS version
+  they were measured on. Keep it plain: no decoration the system does not
+  draw. Other systems keep this design; the maintainer adapts them later.
 - **One primitive for each concept.** One `Row` with fixed slots (lead,
   label, detail, trailing) under every recipe. Settings declares rows as data
   that `Row` renders, and pages do not hand-place JSX rows. There is one
