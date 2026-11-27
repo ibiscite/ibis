@@ -226,11 +226,18 @@ fn csl(fields: &[(&str, String)]) -> Result<(BTreeMap<String, Value>, bool), Rec
         (None, lost) => dropped |= lost,
     }
 
-    let (accessed, lost) = date(&[], &all(&["Y2"]))?;
-    if let Some(accessed) = accessed {
-        csl.insert("accessed".into(), accessed);
+    if group == Group::Web {
+        let dates: Vec<_> = all(&["Y2"]).into_iter().map(without_access_time).collect();
+        match date(&[], &dates) {
+            Ok((accessed, lost)) => {
+                if let Some(accessed) = accessed {
+                    csl.insert("accessed".into(), accessed);
+                }
+                dropped |= lost;
+            }
+            Err(_) => dropped = true,
+        }
     }
-    dropped |= lost;
 
     let containers = one(&["T2", "JF"])?;
     match group {
@@ -324,6 +331,31 @@ fn same_end(first: &str, written: &str, end: &str) -> bool {
 fn text(csl: &mut BTreeMap<String, Value>, field: &str, value: Option<&str>) {
     if let Some(value) = value {
         csl.insert(field.to_owned(), Value::String(value.to_owned()));
+    }
+}
+
+/// Zotero can put the access time after the final slash. CSL needs the date.
+fn without_access_time(value: &str) -> &str {
+    let Some((date, time)) = value.rsplit_once('/') else {
+        return value;
+    };
+    if date.split('/').count() != 3 {
+        return value;
+    }
+    let mut fields = time.split(':');
+    let valid = |part: &str, limit| {
+        !part.is_empty()
+            && part.len() <= 2
+            && part.bytes().all(|byte| byte.is_ascii_digit())
+            && part.parse::<u8>().is_ok_and(|number| number <= limit)
+    };
+    let hour = fields.next().is_some_and(|part| valid(part, 23));
+    let minute = fields.next().is_some_and(|part| valid(part, 59));
+    let second = fields.next().is_none_or(|part| valid(part, 59));
+    if hour && minute && second && fields.next().is_none() {
+        date
+    } else {
+        value
     }
 }
 
