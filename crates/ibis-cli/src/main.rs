@@ -44,6 +44,15 @@ fn main() -> std::process::ExitCode {
         Ok(termination) => termination,
         Err(_) => return std::process::ExitCode::from(70),
     };
+    #[cfg(target_os = "macos")]
+    if arguments.len() == 2 && arguments[1] == "__picker_endpoint" {
+        let status = match ibis::daemon::picker_endpoint() {
+            Ok(()) => 0,
+            Err(error) if error.kind() == std::io::ErrorKind::Unsupported => 6,
+            Err(_) => 5,
+        };
+        termination.exit(status);
+    }
     if arguments.len() == 2 && arguments[1] == "daemon" {
         let status = ibis::run_daemon();
         #[cfg(unix)]

@@ -40,13 +40,13 @@ impl RequestId {
     }
 }
 
-pub struct Request<'a> {
+pub struct Request<'a, M = Method> {
     pub id: Option<RequestId>,
-    pub method: Method,
+    pub method: M,
     pub params: &'a Value,
 }
-pub enum Message<'a> {
-    Request(Request<'a>),
+pub enum Message<'a, M = Method> {
+    Request(Request<'a, M>),
     Cancel(RequestId),
     Reply(Value),
     Ignore,
@@ -54,6 +54,10 @@ pub enum Message<'a> {
 
 /// Borrowing avoids taking recursive ownership of values rejected at this boundary.
 pub fn parse_message(message: &Value) -> Message<'_> {
+    parse_message_for(message, |name| Method::parse(name).ok())
+}
+
+pub fn parse_message_for<M>(message: &Value, parse: impl FnOnce(&str) -> Option<M>) -> Message<'_, M> {
     if protocol::validate_shape(message).is_err() {
         return Message::Reply(invalid_request(None));
     }
@@ -90,10 +94,10 @@ pub fn parse_message(message: &Value) -> Message<'_> {
             .and_then(RequestId::parse)
             .map_or(Message::Ignore, Message::Cancel);
     }
-    match Method::parse(method) {
-        Ok(method) => Message::Request(Request { id, method, params }),
-        Err(_) if id.is_none() => Message::Ignore,
-        Err(_) => Message::Reply(failure(id.as_ref(), EngineError::new(ErrorCode::Usage))),
+    match parse(method) {
+        Some(method) => Message::Request(Request { id, method, params }),
+        None if id.is_none() => Message::Ignore,
+        None => Message::Reply(failure(id.as_ref(), EngineError::new(ErrorCode::Usage))),
     }
 }
 

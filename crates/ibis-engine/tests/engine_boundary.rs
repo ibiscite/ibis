@@ -16,7 +16,7 @@ use serde_json::Value;
 /// `[build-dependencies]` are not part of what ships, so they are not read.
 ///
 /// Shared capabilities belong in engine methods; clients use core contract types.
-const LAYERS: [(&str, &[&str]); 9] = [
+const LAYERS: [(&str, &[&str]); 10] = [
     ("crates/ibis-core", &[]),
     ("crates/ibis-csl", &["ibis-core"]),
     ("crates/ibis-sources", &["ibis-core"]),
@@ -25,9 +25,17 @@ const LAYERS: [(&str, &[&str]); 9] = [
     ("crates/ibis-cli", &["ibis-core", "ibis-engine", "ibis-sources"]),
     // Native paste for any front end; the host supplies the paste setting.
     ("crates/ibis-native", &["ibis-core"]),
+    // The macOS C ABI and clipboard writer link no engine or library code.
+    ("crates/ibis-native-ffi", &["ibis-core", "ibis-native"]),
     (
         "apps/desktop/src-tauri",
-        &["ibis-core", "ibis-desktop-macros", "ibis-engine", "ibis-native"],
+        &[
+            "ibis-core",
+            "ibis-desktop-macros",
+            "ibis-engine",
+            "ibis-native",
+            "ibis-native-ffi",
+        ],
     ),
     // Records each command's types for the generated bindings; ships nothing else.
     ("apps/desktop/src-tauri/macros", &[]),

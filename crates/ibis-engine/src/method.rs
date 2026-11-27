@@ -336,6 +336,41 @@ rows! {
     }
 }
 
+// These methods require a handshaken picker connection. In particular, the
+// delivery reply is held open through the native write and its acknowledgment.
+// They do not become CLI commands or public stdio methods.
+macro_rules! picker_rows {
+    ($($variant:ident $name:literal: $params:ty => $result:ty;)*) => {
+        #[derive(Clone, Copy)]
+        pub enum PickerMethod { $($variant,)* }
+
+        impl PickerMethod {
+            pub fn parse(name: &str) -> Option<Self> {
+                match name {
+                    $($name => Some(Self::$variant),)*
+                    _ => None,
+                }
+            }
+
+            pub fn schemas() -> Value {
+                serde_json::json!([$({
+                    "method": $name,
+                    "params": schema_for!($params),
+                    "result": schema_for!($result),
+                }),*])
+            }
+        }
+    };
+}
+
+use crate::picker::*;
+picker_rows! {
+    Open "picker/open": PickerOpenRequest => PickerOpenResult;
+    Search "picker/search": PickerSearchRequest => PickerSearchResult;
+    Preview "picker/preview": PickerPreviewRequest => PickerPreviewResult;
+    Deliver "picker/deliver": PickerDeliverRequest => PickerDeliverResult;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -335,6 +335,12 @@ jobs:
         if: runner.os == 'Linux'
         run: node scripts/gen.mjs --check
 
+      - name: Build and test the native Mac picker
+        if: runner.os == 'macOS'
+        run: |
+          bash scripts/native-macos.sh build
+          bash scripts/native-macos.sh test
+
       - name: Paste into Notepad (Windows)
         if: runner.os == 'Windows'
         run: cargo test -p ibis-desktop --locked one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture

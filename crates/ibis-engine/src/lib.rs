@@ -3,6 +3,7 @@ pub mod agent_apps;
 pub mod discovery;
 mod method;
 mod sync;
+pub use method::PickerMethod;
 pub use method::{Method, Needs, Network, Row, Selection, methods};
 
 pub mod cayw;
@@ -51,6 +52,7 @@ pub mod recents;
 
 pub mod citations;
 pub mod library;
+pub mod picker;
 
 /// Library changes agents propose and the person confirms (decision 0055).
 pub mod write;

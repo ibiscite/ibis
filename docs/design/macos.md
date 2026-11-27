@@ -14,6 +14,11 @@ On the Mac, Ibis is becoming a native AppKit/SwiftUI app
 than measuring and copying them. The Tauri shell stays on the Mac until the
 native one reaches parity, and on Windows and Linux after that.
 
+The [native repo build](../../native/macos/README.md) uses a system search
+field, list, pop-up buttons and disclosure for citation details. The title
+and byline always occupy the same two lines. The menu bar offers the picker,
+the current shortcut, a library file chooser and the paste permission action.
+
 ## What the interface does
 
 - **The picker is a launcher.** Keep the field, results and delivery in that

@@ -969,6 +969,16 @@ pub(super) fn writer_lock(path: &Path) -> Result<WriterLock, SettingsError> {
     Ok(WriterLock { file, _local: local })
 }
 
+/// Keep the current primary settings stable against Ibis writes while a
+/// native client publishes an already checked citation.
+pub(crate) fn with_paste_consent<T>(path: &Path, use_consent: impl FnOnce(bool) -> T) -> Result<T, SettingsError> {
+    let _writer = writer_lock(path)?;
+    let loaded = load(path);
+    Ok(use_consent(
+        loaded.cites().is_ok_and(|settings| settings.portable.paste()),
+    ))
+}
+
 thread_local! {
     static HOLDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }

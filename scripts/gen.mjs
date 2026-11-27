@@ -5,12 +5,13 @@
 //   node scripts/gen.mjs --headless # engine, MCP and CLI only; no desktop build or writes
 // Each crate writes its own files from an ignored test into one temporary
 // folder; this script places them, and turns the desktop's contract into
-// TypeScript.
+// TypeScript and the picker's method schemas into Swift.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { swiftBindings } from "./gen-swift.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -36,6 +37,7 @@ export function derived(folder, read = (path) => readFileSync(join(root, path), 
     "fixtures/mcp-tools.json": made("mcp-tools.json"),
     "fixtures/cli-schema.json": made("cli-schema.json"),
     "fixtures/cli-surface.json": surface,
+    "native/macos/Sources/IbisNative/EngineContract.swift": swiftBindings(JSON.parse(made("picker-schema.json"))),
     "docs/cli.md": section(cli, "<!-- gen:errors -->", "<!-- /gen:errors -->", `\n| Exit | Error code |\n| --- | --- |\n${errors}\n`),
     ...(headless ? {} : { "apps/desktop/src/bindings.ts": bindings(JSON.parse(made("desktop-contract.json"))) }),
   };

@@ -43,6 +43,8 @@ pnpm -C apps/desktop tauri dev
 node website/build.mjs
 ```
 
+On macOS, see [the native picker](native/macos/README.md) for its repo build and tests.
+
 Native builds need Xcode Command Line Tools on macOS, or MSVC build tools and
 WebView2 on Windows. Debian/Ubuntu needs `build-essential pkg-config
 libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev

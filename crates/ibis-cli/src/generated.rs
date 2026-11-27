@@ -191,6 +191,11 @@ fn write_generated() {
     let schema: serde_json::Value = serde_json::from_slice(&schema).unwrap_or_else(|e| panic!("{e}"));
     let schema = serde_json::to_string_pretty(&schema).unwrap_or_else(|e| panic!("{e}")) + "\n";
     std::fs::write(directory.join("cli-schema.json"), schema).unwrap_or_else(|e| panic!("{e}"));
+    std::fs::write(
+        directory.join("picker-schema.json"),
+        ibis_engine::PickerMethod::schemas().to_string(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
     // Export the runtime's code-to-exit mapping rather than parsing Rust in gen.mjs.
     let errors: Vec<_> = ibis_core::contract::ErrorCode::ALL
         .into_iter()

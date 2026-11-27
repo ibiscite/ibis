@@ -33,7 +33,9 @@ pub fn config_dir() -> Option<PathBuf> {
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
     };
-    if cfg!(target_os = "macos") {
+    if let Some(config) = var("IBIS_CONFIG_DIR").filter(|path| path.is_absolute()) {
+        Some(config)
+    } else if cfg!(target_os = "macos") {
         var("HOME").map(|home| home.join("Library/Application Support"))
     } else if cfg!(windows) {
         var("APPDATA")

@@ -176,6 +176,8 @@ pub(super) struct Host {
     scopes: Mutex<Vec<(Selection, Engine)>>,
     settings: Mutex<BTreeMap<PathBuf, Profile>>,
     adapter_open: Mutex<()>,
+    #[cfg(target_os = "macos")]
+    pub(crate) picker_history: std::sync::OnceLock<crate::daemon::picker::History>,
 }
 
 struct Profile {
@@ -198,6 +200,8 @@ impl Host {
             scopes: Mutex::default(),
             settings: Mutex::default(),
             adapter_open: Mutex::default(),
+            #[cfg(target_os = "macos")]
+            picker_history: std::sync::OnceLock::new(),
         };
         for nightly in [false, true] {
             if let Ok((_, path)) = settings_backup::profile_file(nightly)

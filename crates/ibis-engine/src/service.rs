@@ -341,7 +341,7 @@ pub(crate) struct Shared {
     pub(crate) citations: crate::citations::Registry,
     state: RwLock<Arc<State>>,
     /// Serializes publications without blocking readers during index building.
-    publication: Mutex<()>,
+    pub(crate) publication: Mutex<()>,
     subscribers: Mutex<BTreeMap<u64, mpsc::SyncSender<LibraryChange>>>,
     next_subscription: AtomicU64,
     sources: Mutex<sources::Registry>,
