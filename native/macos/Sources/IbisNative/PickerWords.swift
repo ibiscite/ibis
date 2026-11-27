@@ -3,6 +3,20 @@ import Foundation
 
 enum PickerWord {
     case about
+    case actionWordsChoose
+    case actionWordsDetails
+    case actionWordsFocus
+    case actionWordsFormat
+    case actionWordsOrder
+    case actionWordsPeek
+    case actionWordsRemove
+    case actionWordsSettings
+    case actionWordsSource
+    case actionWordsText
+    case actionsCitation
+    case actionsIbis
+    case actionsLibrary
+    case actionsTitle
     case activeToken
     case add
     case addShort
@@ -12,10 +26,12 @@ enum PickerWord {
     case appearance
     case appearanceSettings
     case automaticPaste
+    case backFromActions
     case before
     case beforeExample
     case best
     case busy
+    case changeFormat
     case changed
     case choose
     case chooseHint
@@ -39,6 +55,7 @@ enum PickerWord {
     case details
     case disconnected
     case draft
+    case editPage
     case emptyLibrary
     case emptyLibraryHint
     case findLibrary
@@ -47,6 +64,7 @@ enum PickerWord {
     case formatValue
     case formatting
     case generalSettings
+    case goToCitation
     case invalidFrame
     case keepOrder
     case largerText
@@ -58,6 +76,8 @@ enum PickerWord {
     case missingShortcut
     case more
     case newerEngine
+    case noActions
+    case noDate
     case noEngine
     case noLibrarySelected
     case noMatches
@@ -92,8 +112,10 @@ enum PickerWord {
     case restoreShortcut
     case resultHint
     case returnKey
+    case runAction
     case scopeLabel
     case search
+    case searchActions
     case settings
     case settingsReadFailed
     case settingsSaveFailed
@@ -133,6 +155,20 @@ enum PickerWords {
     private static let words: [Language: [PickerWord: String]] = [
         .ar: [
             .about: "حول Ibis",
+            .actionWordsChoose: "مكتبة ملف bib zotero فتح تبديل تغيير",
+            .actionWordsDetails: "تعديل صفحة موضع تفاصيل استشهاد",
+            .actionWordsFocus: "تركيز رمز مرجع استشهاد",
+            .actionWordsFormat: "نمط إخراج apa pandoc latex صيغة مشاركة تصدير bibtex doi json",
+            .actionWordsOrder: "ترتيب فرز تسلسل",
+            .actionWordsPeek: "تفاصيل معاينة لمحة معلومات",
+            .actionWordsRemove: "إزالة حذف رمز مرجع استشهاد",
+            .actionWordsSettings: "إعدادات تفضيلات خيارات ضبط",
+            .actionWordsSource: "فتح ملف مجلد zotero إظهار عرض مكتبة",
+            .actionWordsText: "تكبير النص أو تصغيره",
+            .actionsCitation: "هذا الاستشهاد",
+            .actionsIbis: "Ibis",
+            .actionsLibrary: "هذه المكتبة",
+            .actionsTitle: "الإجراءات",
             .activeToken: "تحرير الاستشهاد: {IBIS_VALUE}",
             .add: "إضافة إلى الاستشهاد",
             .addShort: "إضافة",
@@ -142,10 +178,12 @@ enum PickerWords {
             .appearance: "المظهر",
             .appearanceSettings: "المظهر",
             .automaticPaste: "اللصق في التطبيق الذي جئت منه",
+            .backFromActions: "رجوع",
             .before: "نص قبله",
             .beforeExample: "انظر",
             .best: "أفضل التطابقات",
             .busy: "هناك عملية تسليم أخرى في Ibis.",
+            .changeFormat: "تغيير التنسيق…",
             .changed: "تغيّر الاستشهاد. راجعه قبل المحاولة مجددًا.",
             .choose: "اختيار المكتبة…",
             .chooseHint: "اختر ملف BibTeX أو CSL JSON أو RIS أو CSV للبحث فيه.",
@@ -169,6 +207,7 @@ enum PickerWords {
             .details: "تفاصيل الاستشهاد",
             .disconnected: "توقّف محرك Ibis. حاول مجددًا.",
             .draft: "مسودة الاستشهاد",
+            .editPage: "تعديل الصفحة أو الموضع",
             .emptyLibrary: "اكتب للعثور على مرجع",
             .emptyLibraryHint: "ابحث بالعنوان أو المؤلف أو السنة أو المفتاح.",
             .findLibrary: "البحث عن {IBIS_VALUE}…",
@@ -177,6 +216,7 @@ enum PickerWords {
             .formatValue: "التنسيق، {IBIS_VALUE}",
             .formatting: "جارٍ التنسيق…",
             .generalSettings: "عام",
+            .goToCitation: "الانتقال إلى الاستشهاد",
             .invalidFrame: "أرسل محرك Ibis ردًا غير صالح.",
             .keepOrder: "الإبقاء على ترتيبي",
             .largerText: "نص أكبر",
@@ -188,6 +228,8 @@ enum PickerWords {
             .missingShortcut: "اختصار Ibis Native غير متاح.",
             .more: "المزيد",
             .newerEngine: "يعمل إصدار أحدث من محرك Ibis. ابنِ التطبيق الأصلي بالإصدار الأحدث.",
+            .noActions: "لا توجد إجراءات مطابقة",
+            .noDate: "بلا تاريخ",
             .noEngine: "تعذّر على Ibis تشغيل محركه المحلي.",
             .noLibrarySelected: "لم تُختر أي مكتبة",
             .noMatches: "لا مراجع مطابقة",
@@ -222,8 +264,10 @@ enum PickerWords {
             .restoreShortcut: "استخدام الافتراضي",
             .resultHint: "اكتب عنوانًا أو مؤلفًا أو سنةً أو مفتاحًا.",
             .returnKey: "مفتاح الإدخال",
+            .runAction: "تنفيذ",
             .scopeLabel: "المكتبة: {IBIS_VALUE}",
             .search: "البحث في المراجع",
+            .searchActions: "ابحث في الإجراءات",
             .settings: "الإعدادات…",
             .settingsReadFailed: "تعذّر على Ibis قراءة إعداداتك؛ أعد فتح الإعدادات للمحاولة مرة أخرى.",
             .settingsSaveFailed: "تعذّر على Ibis حفظ هذا الخيار؛ تظهر القيمة المحفوظة.",
@@ -250,6 +294,20 @@ enum PickerWords {
         ],
         .de: [
             .about: "Über Ibis",
+            .actionWordsChoose: "bibliothek datei bib zotero öffnen wechseln ändern",
+            .actionWordsDetails: "bearbeiten seite fundstelle details zitation",
+            .actionWordsFocus: "fokus token referenz zitation",
+            .actionWordsFormat: "stil ausgabe apa pandoc latex syntax teilen exportieren bibtex doi json",
+            .actionWordsOrder: "reihenfolge sortieren abfolge",
+            .actionWordsPeek: "details vorschau kurzansicht info",
+            .actionWordsRemove: "entfernen löschen token referenz zitation",
+            .actionWordsSettings: "einstellungen optionen konfigurieren",
+            .actionWordsSource: "öffnen datei ordner zotero anzeigen bibliothek",
+            .actionWordsText: "Text vergrößern oder verkleinern",
+            .actionsCitation: "Diese Zitation",
+            .actionsIbis: "Ibis",
+            .actionsLibrary: "Diese Bibliothek",
+            .actionsTitle: "Aktionen",
             .activeToken: "Zitat bearbeiten: {IBIS_VALUE}",
             .add: "Zur Zitation hinzufügen",
             .addShort: "Hinzufügen",
@@ -259,10 +317,12 @@ enum PickerWords {
             .appearance: "Erscheinungsbild",
             .appearanceSettings: "Erscheinungsbild",
             .automaticPaste: "In die vorherige App einfügen",
+            .backFromActions: "Zurück",
             .before: "Text davor",
             .beforeExample: "siehe",
             .best: "Beste Treffer",
             .busy: "Ibis fügt gerade ein anderes Zitat ein.",
+            .changeFormat: "Format ändern…",
             .changed: "Das Zitat hat sich geändert. Prüfen Sie es vor dem nächsten Versuch.",
             .choose: "Bibliothek wählen…",
             .chooseHint: "Wählen Sie eine BibTeX-, CSL-JSON-, RIS- oder CSV-Datei zum Durchsuchen.",
@@ -286,6 +346,7 @@ enum PickerWords {
             .details: "Zitationsdetails",
             .disconnected: "Die Ibis-Engine wurde beendet. Versuchen Sie es erneut.",
             .draft: "Zitatentwurf",
+            .editPage: "Seite oder Fundstelle bearbeiten",
             .emptyLibrary: "Tippen, um eine Referenz zu finden",
             .emptyLibraryHint: "Suchen Sie nach Titel, Autor, Jahr oder Schlüssel.",
             .findLibrary: "{IBIS_VALUE} suchen…",
@@ -294,6 +355,7 @@ enum PickerWords {
             .formatValue: "Format, {IBIS_VALUE}",
             .formatting: "Wird formatiert…",
             .generalSettings: "Allgemein",
+            .goToCitation: "Zur Zitation wechseln",
             .invalidFrame: "Die Ibis-Engine hat eine ungültige Antwort gesendet.",
             .keepOrder: "Meine Reihenfolge beibehalten",
             .largerText: "Größerer Text",
@@ -305,6 +367,8 @@ enum PickerWords {
             .missingShortcut: "Das Tastenkürzel von Ibis Native ist nicht verfügbar.",
             .more: "Mehr",
             .newerEngine: "Eine neuere Ibis-Engine läuft. Bauen Sie die native App mit der neueren Version.",
+            .noActions: "Keine passenden Aktionen",
+            .noDate: "Ohne Datum",
             .noEngine: "Ibis konnte seine lokale Engine nicht starten.",
             .noLibrarySelected: "Keine Bibliothek gewählt",
             .noMatches: "Keine passenden Referenzen",
@@ -339,8 +403,10 @@ enum PickerWords {
             .restoreShortcut: "Standard verwenden",
             .resultHint: "Geben Sie einen Titel, Autor, ein Jahr oder einen Schlüssel ein.",
             .returnKey: "Eingabetaste",
+            .runAction: "Ausführen",
             .scopeLabel: "Bibliothek: {IBIS_VALUE}",
             .search: "Referenzen suchen",
+            .searchActions: "Aktionen suchen",
             .settings: "Einstellungen…",
             .settingsReadFailed: "Ibis konnte Ihre Einstellungen nicht lesen; öffnen Sie die Einstellungen erneut, um es noch einmal zu versuchen.",
             .settingsSaveFailed: "Ibis konnte diese Wahl nicht speichern; der gespeicherte Wert wird angezeigt.",
@@ -367,6 +433,20 @@ enum PickerWords {
         ],
         .enUS: [
             .about: "About Ibis",
+            .actionWordsChoose: "library file bib zotero open switch change",
+            .actionWordsDetails: "edit page locator details citation",
+            .actionWordsFocus: "focus token reference citation",
+            .actionWordsFormat: "style output apa pandoc latex syntax share export bibtex doi json",
+            .actionWordsOrder: "order sort sequence",
+            .actionWordsPeek: "details preview quick look info",
+            .actionWordsRemove: "remove delete token reference citation",
+            .actionWordsSettings: "preferences options configure",
+            .actionWordsSource: "open file folder zotero show library",
+            .actionWordsText: "Make text larger or smaller",
+            .actionsCitation: "This citation",
+            .actionsIbis: "Ibis",
+            .actionsLibrary: "This library",
+            .actionsTitle: "Actions",
             .activeToken: "Editing citation: {IBIS_VALUE}",
             .add: "Add to Citation",
             .addShort: "Add",
@@ -376,10 +456,12 @@ enum PickerWords {
             .appearance: "Appearance",
             .appearanceSettings: "Appearance",
             .automaticPaste: "Paste into the app you came from",
+            .backFromActions: "Back",
             .before: "Text before",
             .beforeExample: "see",
             .best: "Best matches",
             .busy: "Another Ibis delivery is in progress.",
+            .changeFormat: "Change Format…",
             .changed: "The citation changed. Review it before trying again.",
             .choose: "Choose Library…",
             .chooseHint: "Choose a BibTeX, CSL JSON, RIS or CSV file to search.",
@@ -403,6 +485,7 @@ enum PickerWords {
             .details: "Citation details",
             .disconnected: "The Ibis engine stopped. Try again.",
             .draft: "Citation draft",
+            .editPage: "Edit Page or Locator",
             .emptyLibrary: "Type to find a reference",
             .emptyLibraryHint: "Search by title, author, year or key.",
             .findLibrary: "Find {IBIS_VALUE}…",
@@ -411,6 +494,7 @@ enum PickerWords {
             .formatValue: "Format, {IBIS_VALUE}",
             .formatting: "Formatting…",
             .generalSettings: "General",
+            .goToCitation: "Go to Citation",
             .invalidFrame: "The Ibis engine sent an invalid response.",
             .keepOrder: "Keep My Order",
             .largerText: "Larger text",
@@ -422,6 +506,8 @@ enum PickerWords {
             .missingShortcut: "The Ibis Native shortcut is unavailable.",
             .more: "More",
             .newerEngine: "A newer Ibis engine is running. Build the native app with the newer Ibis.",
+            .noActions: "No matching actions",
+            .noDate: "No date",
             .noEngine: "Ibis could not start its local engine.",
             .noLibrarySelected: "No library chosen",
             .noMatches: "No matching references",
@@ -456,8 +542,10 @@ enum PickerWords {
             .restoreShortcut: "Use Default",
             .resultHint: "Type a title, author, year or key.",
             .returnKey: "Return",
+            .runAction: "Run",
             .scopeLabel: "Library: {IBIS_VALUE}",
             .search: "Search references",
+            .searchActions: "Search actions",
             .settings: "Settings…",
             .settingsReadFailed: "Ibis could not read your settings; reopen Settings to try again.",
             .settingsSaveFailed: "Ibis could not save this choice; the saved value is shown.",

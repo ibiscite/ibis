@@ -158,6 +158,13 @@ final class PickerField: NSTextField {
 }
 
 extension NSTextField {
+    func restoreSelection(_ selection: NSRange) {
+        guard let editor = currentEditor() else { return }
+        let length = editor.string.utf16.count
+        let location = min(selection.location, length)
+        editor.selectedRange = NSRange(location: location, length: min(selection.length, length - location))
+    }
+
     func show(_ text: String) {
         if stringValue != text {
             stringValue = text

@@ -57,7 +57,8 @@ final class PickerShelf: NSView {
         tokens.first { $0.button === window?.firstResponder }?.id
     }
     var locatorHasFocus: Bool { locator.hasFocus }
-    func focusLocator() { locator.focus() }
+    var locatorSelection: NSRange? { locator.selection }
+    func focusLocator(restoring selection: NSRange? = nil) { locator.focus(restoring: selection) }
 
     func anchor(for id: ItemRef) -> NSView? {
         guard !scroll.isHidden, let button = tokens.first(where: { $0.id == id })?.button else { return nil }
@@ -65,8 +66,8 @@ final class PickerShelf: NSView {
         return button
     }
 
-    func focus(_ id: ItemRef? = nil) -> Bool {
-        guard let id = id ?? tokens.last?.id, let anchor = anchor(for: id),
+    func focus(_ id: ItemRef) -> Bool {
+        guard let anchor = anchor(for: id),
               window?.makeFirstResponder(anchor) == true else { return false }
         return true
     }
@@ -79,26 +80,27 @@ final class PickerShelf: NSView {
         hasDraft || width < m.pt(640)
     }
 
-    func configure(model: PickerModel, metrics m: PickerMetrics, width: CGFloat) {
+    func configure(model: PickerModel, actionsOpen: Bool, metrics m: PickerMetrics, width: CGFloat) {
         let stacked = twoRows(hasDraft: model.hasDraft, metrics: m, width: width)
         for button in [membership, more] { button.metrics = m }
 
         let label = model.deliveryTitle
         action.setAccessibilityLabel(label)
-        action.isEnabled = model.canDeliver
+        action.isEnabled = model.canDeliver && !actionsOpen
         action.toolTip = label
-        action.setAccessibilityHelp(PickerWords.text(.returnKey))
+        action.setAccessibilityHelp(actionsOpen ? nil : PickerWords.text(.returnKey))
         let title = NSMutableAttributedString(string: label, attributes: [.font: m.font(13, .medium)])
         title.append(NSAttributedString(string: "  ↩", attributes: [
             .font: m.font(12),
-            .foregroundColor: action.isEnabled ? NSColor.secondaryLabelColor : NSColor.disabledControlTextColor,
+            .foregroundColor: actionsOpen ? NSColor.clear
+                : (action.isEnabled ? NSColor.secondaryLabelColor : NSColor.disabledControlTextColor),
         ]))
         action.attributedTitle = title
         let membershipTitle = PickerWords.text(model.isSelectionStaged ? .remove : .add)
         membership.text = PickerWords.text(model.isSelectionStaged ? .removeShort : .addShort)
         membership.setAccessibilityLabel(membershipTitle)
         membership.toolTip = membershipTitle
-        membership.isEnabled = model.canChangeSelectionMembership
+        membership.isEnabled = model.canChangeSelectionMembership && !actionsOpen
         draftLabel.isHidden = !model.hasDraft
         draftLabel.font = m.font(12, .medium)
 
@@ -294,9 +296,12 @@ private final class ShelfLocator: NSView {
         return value.currentEditor() === first || value === first
     }
 
-    func focus() {
+    var selection: NSRange? { value.currentEditor()?.selectedRange }
+
+    func focus(restoring selection: NSRange?) {
         guard value.isEnabled else { return }
         window?.makeFirstResponder(value)
+        if let selection { value.restoreSelection(selection) }
     }
 
     func configure(model: PickerModel, metrics m: PickerMetrics) -> CGFloat {

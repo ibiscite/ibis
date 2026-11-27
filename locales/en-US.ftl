@@ -2122,6 +2122,7 @@ picker-native-add-short = Add
 picker-native-remove-short = Remove
 picker-native-citation-draft = Citation draft
 picker-native-locator-type = Locator type
+picker-native-edit-page = Edit Page or Locator
 picker-native-return = Return
 picker-native-type-citation = Type a Citation
 picker-native-open-source = Open Source

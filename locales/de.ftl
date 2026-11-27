@@ -2103,6 +2103,7 @@ picker-native-add-short = Hinzufügen
 picker-native-remove-short = Entfernen
 picker-native-citation-draft = Zitatentwurf
 picker-native-locator-type = Art der Fundstelle
+picker-native-edit-page = Seite oder Fundstelle bearbeiten
 picker-native-return = Eingabetaste
 picker-native-type-citation = Zitat eingeben
 picker-native-open-source = Quelle öffnen

@@ -20,6 +20,8 @@ final class EngineClientTests: XCTestCase {
         let opened = try await picker.open(opening)
         XCTAssertEqual(opened.library?.name, fixture.library.lastPathComponent)
         XCTAssertEqual(opened.library?.condition, .ready)
+        XCTAssertEqual(opened.formats.first { $0.id == "apa" }?.canKeepOrder, true)
+        XCTAssertEqual(opened.formats.first { $0.id == "pandoc" }?.canKeepOrder, false)
         let reply = try await picker.search(PickerSearchRequest(query: "north", shorthand: false)).result
         let row = try XCTUnwrap(reply.sections.first?.rows.first)
         let preview = try await picker.preview(PickerPreviewRequest(

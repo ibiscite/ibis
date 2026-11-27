@@ -2207,6 +2207,7 @@ picker-native-add-short = إضافة
 picker-native-remove-short = إزالة
 picker-native-citation-draft = مسودة الاستشهاد
 picker-native-locator-type = نوع الموضع
+picker-native-edit-page = تعديل الصفحة أو الموضع
 picker-native-return = مفتاح الإدخال
 picker-native-type-citation = كتابة استشهاد
 picker-native-open-source = فتح المصدر

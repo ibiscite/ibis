@@ -80,6 +80,8 @@ pub struct PickerFormat {
     pub id: String,
     pub name: String,
     pub forms: Vec<CitationForm>,
+    /// A style can use the writer's order instead of its own.
+    pub can_keep_order: bool,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -161,6 +163,7 @@ pub fn open_result(
                 id: entry.id.clone(),
                 name: output_name(entry, language),
                 forms: entry.forms.clone(),
+                can_keep_order: matches!(entry.output, OutputSpec::Csl { .. }),
             })
             .collect(),
         forms: CitationForm::ALL

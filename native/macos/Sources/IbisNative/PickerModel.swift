@@ -102,8 +102,10 @@ final class PickerModel: ObservableObject {
         return citationRows.last?.id
     }
     var libraryReady: Bool { catalog?.library?.condition == .ready }
+    private var chosenFormat: PickerFormat? { catalog?.formats.first { $0.id == format } }
+    var canKeepOrder: Bool { citations.count > 1 && chosenFormat?.canKeepOrder == true }
     var forms: [PickerForm] {
-        guard let catalog, let choice = catalog.formats.first(where: { $0.id == format }) else { return [] }
+        guard let catalog, let choice = chosenFormat else { return [] }
         return catalog.forms.filter { choice.forms.contains($0.form) }
     }
     var deliveryTitle: String {

@@ -10,6 +10,12 @@ struct PickerView: NSViewRepresentable {
 
 @MainActor
 final class PickerCanvas: NSView {
+    private enum ActionsFocus {
+        case search(NSRange)
+        case locator(NSRange?)
+        case responder(NSResponder)
+    }
+
     let search = PickerSearchField()
     private let header = PickerDragView()
     private let bird = NSImageView()
@@ -34,10 +40,12 @@ final class PickerCanvas: NSView {
     private var announcedRevision = 0
     private var announcedQuery = ""
     private var activeMenu: NSMenu?
+    private var actionsFocus: ActionsFocus?
 
     override var isFlipped: Bool { true }
     private var panel: PickerPanel? { window as? PickerPanel }
     var hasOpenPopover: Bool { popover.isOpen }
+    var hasOpenActions: Bool { popover.subject == .actions }
     var locatorHasFocus: Bool { shelf.locatorHasFocus }
     private var metrics: PickerMetrics { PickerMetrics(scale: model.scale, density: model.density) }
 
@@ -78,7 +86,7 @@ final class PickerCanvas: NSView {
         results.restoreSearch = { [weak self] in self?.focusSearch(caretAtEnd: true) }
         shelf.membership.perform = { [weak self] in self?.toggleSelectionMembership() }
         shelf.action.perform = { [weak self] in self?.panel?.submit() }
-        shelf.more.perform = { [weak self] in self?.moreMenu() }
+        shelf.more.perform = { [weak self] in self?.showActions() }
         shelf.edit = { [weak self] id in self?.showDetails(id) }
         shelf.select = { [weak model] id in model?.selectCitation(id) }
         shelf.remove = { [weak self] id in self?.removeToken(id) }
@@ -87,6 +95,11 @@ final class PickerCanvas: NSView {
             return panel?.routeKey(event, view: self) ?? false
         }
         popover.closed = { [weak self] subject, restore in self?.popoverClosed(subject, restore: restore) }
+        popover.actionChosen = { [weak self] action in
+            guard let self, describe(action.command) == action else { return }
+            runCommand(action.command)
+        }
+        popover.actionsTabBack = { [weak self] in self?.focusSearch() }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -137,12 +150,14 @@ final class PickerCanvas: NSView {
         let shelfY = height - shelfHeight
         results.frame = NSRect(x: 0, y: resultsY, width: width, height: max(0, shelfY - resultsY))
         results.configure(sections: model.sections, metrics: m, recent: model.searchReply?.total == nil,
-                          selected: model.selected, cited: Set(model.citations.map { $0.row.id }), numbers: numbers)
+                          selected: model.selected, cited: Set(model.citations.map { $0.row.id }),
+                          numbers: numbers && !hasOpenPopover)
         empty.frame = results.frame
-        empty.configure(state: emptyState, metrics: m)
+        empty.configure(state: emptyState, actionsOpen: hasOpenActions, metrics: m)
         shelf.frame = NSRect(x: 0, y: shelfY, width: width, height: shelfHeight)
-        if !shelf.isHidden { shelf.configure(model: model, metrics: m, width: width) }
+        if !shelf.isHidden { shelf.configure(model: model, actionsOpen: hasOpenActions, metrics: m, width: width) }
         makeKeyLoop()
+        if hasOpenActions { popover.updateActions(availableActions()) }
         popover.refresh(m)
     }
 
@@ -315,8 +330,8 @@ final class PickerCanvas: NSView {
     func move(_ step: Int) { model.move(step, within: results.shown) }
 
     func number(_ index: Int) {
-        guard results.shown.indices.contains(index) else { return }
-        model.select(results.shown[index].id)
+        guard !hasOpenPopover, let reference = results.numberedReference(at: index) else { return }
+        model.select(reference)
     }
 
     func showNumbers(_ show: Bool) {
@@ -329,7 +344,7 @@ final class PickerCanvas: NSView {
         if let row = model.selection { model.toggleCitation(row) }
     }
 
-    func focusTokens() { _ = shelf.focus() }
+    func focusTokens() { if let item = model.citationItem { _ = shelf.focus(item) } }
 
     func tokenKey(_ key: NSEvent.SpecialKey?, shift: Bool) -> Bool {
         guard let token = shelf.focused, let index = shelf.displayed.firstIndex(of: token) else { return false }
@@ -382,13 +397,35 @@ final class PickerCanvas: NSView {
         }
     }
 
-    func closePopover() { popover.close() }
+    func closePopover() {
+        popover.close()
+        actionsFocus = nil
+    }
 
     private func popoverClosed(_ subject: PickerPopover.Subject, restore: Bool) {
+        let focus = actionsFocus
+        if subject == .actions {
+            actionsFocus = nil
+            needsLayout = true
+        }
         guard let panel, panel.pickerIsOpen else { return }
         if restore {
             if !panel.isKeyWindow { panel.makeKey() }
             if case let .citation(item) = subject, shelf.focus(item) { return }
+            if subject == .actions {
+                switch focus {
+                case let .search(selection):
+                    focusSearch()
+                    search.restoreSelection(selection)
+                    return
+                case let .locator(selection):
+                    shelf.focusLocator(restoring: selection)
+                    return
+                case let .responder(responder) where panel.makeFirstResponder(responder):
+                    return
+                default: break
+                }
+            }
             focusSearch()
         } else {
             // AppKit returns key status after closing its transient window.
@@ -408,10 +445,6 @@ final class PickerCanvas: NSView {
         return handled
     }
 
-    func openSource() {
-        if model.libraryReady { panel?.openSource() }
-    }
-
     private func libraryMenu() {
         open(libraryCommands(), at: source)
     }
@@ -423,48 +456,108 @@ final class PickerCanvas: NSView {
             let source = NSMenuItem(title: name, action: nil, keyEquivalent: "")
             source.isEnabled = false
             menu.addItem(source)
-            if model.libraryReady { menu.addItem(command(.openSource) { $0.panel?.openSource() }) }
-            if model.catalog?.library?.condition == .missing {
-                menu.addItem(PickerMenuItem(fixTitle(.locateLibrary)) { [weak self] in self?.panel?.chooseLibrary(locate: true) })
+            for command in [PickerCommand.openSource, .locateLibrary, .reload] where canRun(command) {
+                menu.addItem(menuItem(command))
             }
-            menu.addItem(command(.reload) { $0.model.reload() })
             menu.addItem(.separator())
         }
-        menu.addItem(command(.choose) { $0.panel?.chooseLibrary() })
+        menu.addItem(menuItem(.chooseLibrary))
         return menu
     }
 
-    func moreMenu() {
+    func showActions() {
+        if hasOpenActions { popover.close(restoringFocus: true); return }
         if hasOpenPopover { popover.close(restoringFocus: true) }
-        let menu = NSMenu()
-        let type = command(.typeCitation, key: "t") { $0.model.toggleShorthand(); $0.focusSearch() }
-        type.state = model.shorthand ? .on : .off
-        menu.addItem(type)
-        if !model.isSelectionStaged {
-            menu.addItem(command(.add, key: "\r", modifiers: [.shift], enabled: model.canChangeSelectionMembership) {
-                $0.toggleSelectionMembership()
-            })
+        guard let window else { return }
+        if let editor = search.currentEditor(), editor === window.firstResponder {
+            actionsFocus = .search(editor.selectedRange)
+        } else if shelf.locatorHasFocus {
+            actionsFocus = .locator(shelf.locatorSelection)
+        } else if let responder = window.firstResponder {
+            actionsFocus = .responder(responder)
         }
-        menu.addItem(command(.page, key: "l", enabled: model.citationItem != nil) { $0.focusLocator() })
-        menu.addItem(command(.details, key: "i", enabled: model.citationItem != nil) { $0.showDetails() })
-        menu.addItem(command(.remove, key: "\u{8}", modifiers: [], enabled: model.citationItem != nil) {
-            if let item = $0.model.citationItem { $0.removeToken(item) }
-        })
-        menu.addItem(command(.peek, key: "y", enabled: model.selection != nil) { $0.togglePeek() })
-        let order = command(.keepOrder, enabled: model.citations.count > 1) { $0.model.toggleKeepOrder() }
-        order.state = model.keepOrder ? .on : .off
-        menu.addItem(order)
-        menu.addItem(command(.undo, key: "z", enabled: model.canUndo) { $0.model.undoChange() })
-        menu.addItem(.separator())
-        let library = NSMenuItem(title: PickerWords.text(.library), action: nil, keyEquivalent: "")
-        library.submenu = libraryCommands()
-        menu.addItem(library)
-        menu.addItem(command(.format, key: "f", modifiers: [.shift, .command], enabled: model.libraryReady) { $0.openFormat() })
-        menu.addItem(.separator())
-        menu.addItem(command(.textLarger, key: "+", enabled: model.textPercent < 200) { $0.model.changeSize(10) })
-        menu.addItem(command(.textSmaller, key: "-", enabled: model.textPercent > 100) { $0.model.changeSize(-10) })
-        menu.addItem(command(.settings, key: ",") { $0.panel?.openSettings?() })
-        open(menu, at: shelf.more)
+        popover.showActions(availableActions(), at: shelf.isHidden ? search : shelf.more, metrics: metrics)
+        needsLayout = true
+    }
+
+    func handleActionKey(_ event: NSEvent) -> Bool {
+        popover.updateActions(availableActions())
+        return popover.handleActionKey(event)
+    }
+
+    private func availableActions() -> [PickerAction] {
+        let membershipOwnsRemoval = canRun(.membership) && model.isSelectionStaged && model.selected == model.citationItem
+        return PickerCommand.allCases.compactMap { command in
+            guard canRun(command), command != .remove || !membershipOwnsRemoval else { return nil }
+            return describe(command)
+        }
+    }
+
+    private func canRun(_ command: PickerCommand) -> Bool {
+        switch command {
+        case .format, .typeCitation, .openSource: model.libraryReady
+        case .peek: model.selection != nil
+        case .membership: model.canChangeSelectionMembership
+        case .page, .details, .focusCitation: model.citationItem != nil
+        case .remove: model.hasDraft && model.citationItem != nil
+        case .keepOrder: model.canKeepOrder
+        case .undo: model.canUndo
+        case .locateLibrary: model.catalog?.library?.condition == .missing
+        case .reload: model.catalog?.library != nil && !model.isOpening
+        case .chooseLibrary: !model.isDelivering && panel?.choosingLibrary != true
+        case .largerText: model.textPercent < 200
+        case .smallerText: model.textPercent > 100
+        case .settings: true
+        }
+    }
+
+    private func describe(_ command: PickerCommand) -> PickerAction {
+        switch command {
+        case .typeCitation: command.action(checked: model.shorthand)
+        case .keepOrder: command.action(checked: model.keepOrder)
+        case .locateLibrary: command.action(title: fixTitle(.locateLibrary))
+        case .peek: command.action(reference: model.selected)
+        case .page, .details, .focusCitation: command.action(reference: model.citationItem)
+        case .membership:
+            if let row = model.selection, model.isSelectionStaged {
+                command.action(title: PickerWords.text(.removeToken, row.title ?? PickerWords.text(.untitled)), reference: row.id)
+            } else {
+                command.action(reference: model.selected)
+            }
+        case .remove:
+            if let row = model.citationRows.first(where: { $0.id == model.citationItem }) {
+                command.action(title: PickerWords.text(.removeToken, row.title ?? PickerWords.text(.untitled)), reference: row.id)
+            } else {
+                command.action()
+            }
+        default: command.action()
+        }
+    }
+
+    @discardableResult
+    func runCommand(_ command: PickerCommand, repeating: Bool = false) -> Bool {
+        guard canRun(command) else { return false }
+        if repeating, command != .largerText, command != .smallerText { return true }
+        switch command {
+        case .format: openFormat()
+        case .peek: togglePeek()
+        case .membership: toggleSelectionMembership()
+        case .page: focusLocator()
+        case .details: showDetails()
+        case .focusCitation: focusTokens()
+        case .remove: if let item = model.citationItem { removeToken(item) }
+        case .typeCitation: model.toggleShorthand(); focusSearch()
+        case .keepOrder: model.toggleKeepOrder()
+        case .undo: model.undoChange()
+        case .openSource: panel?.openSource()
+        case .locateLibrary: panel?.chooseLibrary(locate: true)
+        case .chooseLibrary: panel?.chooseLibrary()
+        case .reload: model.reload()
+        case .largerText: model.changeSize(10)
+        case .smallerText: model.changeSize(-10)
+        case .settings: panel?.openSettings?()
+        }
+        return true
     }
 
     private func open(_ menu: NSMenu, at button: NSView) {
@@ -474,13 +567,9 @@ final class PickerCanvas: NSView {
         activeMenu = nil
     }
 
-    private func command(_ word: PickerWord, key: String = "", modifiers: NSEvent.ModifierFlags = [.command],
-                         enabled: Bool = true, action: @escaping (PickerCanvas) -> Void) -> NSMenuItem {
-        let item = PickerMenuItem(PickerWords.text(word), key: key) { [weak self] in
-            if let self { action(self) }
-        }
-        item.keyEquivalentModifierMask = modifiers
-        item.isEnabled = enabled
+    private func menuItem(_ command: PickerCommand) -> NSMenuItem {
+        let item = PickerMenuItem(describe(command).title) { [weak self] in self?.runCommand(command) }
+        item.isEnabled = canRun(command)
         return item
     }
 }
@@ -530,7 +619,7 @@ private final class PickerEmpty: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    func configure(state: State?, metrics m: PickerMetrics) {
+    func configure(state: State?, actionsOpen: Bool, metrics m: PickerMetrics) {
         isHidden = state == nil
         guard let state else { return }
         let content: (title: String, hint: PickerWord, primary: String?, secondary: String?, key: String)
@@ -555,7 +644,8 @@ private final class PickerEmpty: NSView {
         secondary.metrics = m
         primary.text = content.primary ?? ""
         secondary.text = content.secondary ?? ""
-        primary.key = content.key
+        primary.key = actionsOpen ? "" : content.key
+        primary.isEnabled = !actionsOpen
         primary.setAccessibilityLabel(primary.text)
         secondary.setAccessibilityLabel(secondary.text)
         primary.isHidden = content.primary == nil

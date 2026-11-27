@@ -74,13 +74,15 @@ Ibis has no telemetry. The study uses voluntary replies and session notes.
 
 ### Native macOS baseline
 
-Use the last Tauri nightly `0.3.14-nightly.20261126205009` as the reference
-build ([source revision](https://github.com/ibiscite/ibis/tree/3572263ebd72b495dcf1873590f76cc67998d3b8)).
-Run each native candidate with the same invented library, format, destination
-and screen conditions. Compare what happens before the picker appears, what
-keys finish the task and what the writer has to reconstruct after leaving it.
-Use the original nightly's behavior as acceptance evidence and test changes
-to it with the same journeys.
+Use two historical references for the migration. The November 22–23 main
+snapshot at [0ce483b5](https://github.com/ibiscite/ibis/tree/0ce483b59bf5c65ffa906da0de506deef4512572)
+has the first-paste practice, scoped formats, searchable Settings and one
+⌘K action list. The last Tauri nightly `0.3.14-nightly.20261126205009`
+has the later dense-row and per-site format work
+([3572263e](https://github.com/ibiscite/ibis/tree/3572263ebd72b495dcf1873590f76cc67998d3b8)).
+Run each native candidate with the same invented library, format, destination,
+text size and screen conditions. Compare how users recognize a control, what
+it lets them do, and what the app carries forward into the next action.
 
 | Journey | Observable success |
 | --- | --- |
@@ -88,6 +90,60 @@ to it with the same journeys.
 | Browse and act | Return delivers the visible citation. The action list opens on ⌘K, accepts a command name, and closes with Escape while restoring the query, draft and focus. Commands follow the scope of their target, such as a selected result, the draft or the library. |
 | Write in two destinations | Choose a format in each destination. Reopen Ibis in the first and verify that the scope, format and output still agree. Include the one-use format path. |
 | Inspect and deliver | Distinguish two similar results at compact width and larger text. Complete a page-specific citation and verify the exact output or recover from a permission refusal. |
+| Read the picker at a glance | Compare the title, author, year and venue order at both densities. Check that selection, focus and draft membership tell different stories and that the active Return target is visible. The [November gallery](https://github.com/ibiscite/ibis/tree/0ce483b59bf5c65ffa906da0de506deef4512572/apps/desktop/gallery/baselines) includes both picker and Settings examples. |
+| Find and change a setting | Reach a known setting by its task name, see what it changes, and return to the former writing context. Verify that failed saves leave the shown value truthful and that an appearance preview respects its selected theme. |
+
+#### What a highlight promises
+
+The [November Actions implementation](https://github.com/ibiscite/ibis/blob/0ce483b59bf5c65ffa906da0de506deef4512572/apps/desktop/src/ui/Palette.tsx)
+gave the action query, option and Return one shared selection. It also kept
+action scope visible during filtering, marked current toggle values, and showed
+the command's shortcut. The separate reference rows used hover as an aim cue
+while the selected record continued to define the citation. During comparison,
+ask what Return will do *before* pressing it. Check with the pointer parked
+over a row, after arrowing and scrolling, while editing a query that changes
+the first match, and when the list is empty. Open from both Search and Page.
+Compare Back, Escape and Tab, then verify the edited citation is still ready.
+Repeat with VoiceOver and large text near a screen edge, including recognition
+of the action's name, scope, toggle state and shortcut.
+
+#### What a result row helps decide
+
+November 22 Compact reserved the trailing date and kept a short author on the
+title line when there was room. The last nightly used one line for resting
+Compact rows and opened up the highlighted row. Its Comfortable rows still put
+the date at the right and the author and venue below. Native keeps those
+positions in both densities so similar titles can be compared by date and
+selection doesn't shift the surrounding rows. Use near-identical invented
+titles, including a long byline and an undated reference. Compare how many
+whole rows fit and how quickly the date and author resolve the choice.
+[November rows](https://github.com/ibiscite/ibis/blob/0ce483b5/apps/desktop/src/features/picker/ResultList.tsx)
+· [Last-nightly row spacing](https://github.com/ibiscite/ibis/blob/3572263e/apps/desktop/src/ui/Option.css)
+
+The old type slot became a number only while ⌘ was held, and the number
+named a whole record on screen. Compare the visible digits and key targets
+after scrolling past nine hits, with a partial row at each edge. Then repeat
+with an existing draft. Separately, search with an abstract term and a spelling
+variation. The nightly explained those hits in the row. Native currently shows
+the result heading and total, so the individual reason remains an item to test
+when the row can show it.
+[Numbered rows](https://github.com/ibiscite/ibis/blob/3572263e/apps/desktop/src/features/picker/useShownRows.ts)
+· [Match explanations](https://github.com/ibiscite/ibis/blob/3572263e/apps/desktop/src/features/picker/ResultList.tsx#L176)
+
+#### What a Settings search result promises
+
+The nightly indexed available controls by the words people use for the task.
+Choosing a match opened its real page, scrolled the row below the heading and
+highlighted it in context. The row owned its saved value, description and reset.
+Before the saved value arrived, it reserved room without drawing a default
+that might look as if it changed by itself. The paste-permission link opened
+directly at the permission section. On return from macOS Settings, the same
+section reported whether permission was granted. Compare those flows with the
+native General and Appearance panes. Test “paste”, “open Ibis” and “rows” by
+asking the person to find the control, explain its actual state and return to
+the previous place after a refused change.
+[Settings navigation](https://github.com/ibiscite/ibis/blob/3572263e/apps/desktop/src/settings/SettingsApp.tsx)
+· [Settings rows](https://github.com/ibiscite/ibis/blob/3572263e/apps/desktop/src/settings/SettingRows.tsx)
 
 The Tauri nightly's searchable action list and per-site formats are useful
 references for the second and third journeys. Alfred's Universal Actions and

@@ -6,15 +6,19 @@ final class PickerPopover: NSObject, NSPopoverDelegate {
     enum Subject: Equatable {
         case citation(ItemRef)
         case peek(ItemRef)
+        case actions
     }
 
     private let model: PickerModel
     private var popover: NSPopover?
     private var editor: CitationEditor?
+    private var actionList: PickerActionsView?
     private var keyMonitor: Any?
     private(set) var subject: Subject?
     var routeKey: ((NSEvent) -> Bool)?
     var closed: ((Subject, Bool) -> Void)?
+    var actionChosen: ((PickerAction) -> Void)?
+    var actionsTabBack: (() -> Void)?
 
     init(model: PickerModel) {
         self.model = model
@@ -58,8 +62,51 @@ final class PickerPopover: NSObject, NSPopoverDelegate {
         show(.peek(row.id), controller: controller, size: stack.fittingSize, at: anchor)
     }
 
+    func showActions(_ actions: [PickerAction], at anchor: NSView, metrics: PickerMetrics) {
+        close()
+        let controller = PickerActionsView(actions: actions, metrics: metrics)
+        controller.chosen = { [weak self, weak controller] action in
+            guard let self, let controller, actionList === controller else { return }
+            close(restoringFocus: true)
+            actionChosen?(action)
+        }
+        controller.cancelled = { [weak self, weak controller] in
+            guard let self, let controller, actionList === controller else { return }
+            close(restoringFocus: true)
+        }
+        actionList = controller
+        var size = controller.contentSize
+        if let visible = anchor.window?.screen?.visibleFrame {
+            size.width = min(size.width, visible.width - 24)
+            size.height = min(size.height, visible.height - 24)
+        }
+        show(.actions, controller: controller, size: size, at: anchor)
+        controller.view.window?.acceptsMouseMovedEvents = true
+        controller.view.window?.makeFirstResponder(controller.search)
+    }
+
+    func handleActionKey(_ event: NSEvent) -> Bool {
+        guard subject == .actions, let actionList,
+              (actionList.search.currentEditor() as? NSTextInputClient)?.hasMarkedText() != true else { return false }
+        let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        if (flags.isEmpty && key == "\u{1b}") || (flags == [.command] && key == "k") {
+            if !event.isARepeat { close(restoringFocus: true) }
+            return true
+        }
+        if (flags.isEmpty || flags == [.shift]), key == "\t" || key == "\u{19}" {
+            if !event.isARepeat {
+                close(restoringFocus: true)
+                actionsTabBack?()
+            }
+            return true
+        }
+        return actionList.handleKey(event)
+    }
+
     private func show(_ subject: Subject, controller: NSViewController, size: NSSize, at anchor: NSView) {
         let popover = NSPopover()
+        popover.appearance = anchor.effectiveAppearance
         popover.behavior = .transient
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         popover.contentViewController = controller
@@ -73,11 +120,15 @@ final class PickerPopover: NSObject, NSPopoverDelegate {
                 guard let window = popover?.contentViewController?.view.window, window === event.window else {
                     return false
                 }
-                return self?.routeKey?(event) == true
+                guard let self else { return false }
+                if self.subject == .actions { return self.handleActionKey(event) }
+                return self.routeKey?(event) == true
             }
             return handled ? nil : event
         }
     }
+
+    func updateActions(_ actions: [PickerAction]) { actionList?.update(actions) }
 
     func refresh(_ metrics: PickerMetrics) {
         switch subject {
@@ -86,7 +137,7 @@ final class PickerPopover: NSObject, NSPopoverDelegate {
             if let size = editor?.configure(metrics), popover?.contentSize != size { popover?.contentSize = size }
         case let .peek(item):
             if item != model.selected { close() }
-        case nil:
+        case .actions, nil:
             break
         }
     }
@@ -109,6 +160,7 @@ final class PickerPopover: NSObject, NSPopoverDelegate {
         keyMonitor = nil
         popover = nil
         editor = nil
+        actionList = nil
         self.subject = nil
         if case .citation = subject { model.endCitationEdit() }
     }

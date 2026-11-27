@@ -187,6 +187,116 @@ final class PickerTests: XCTestCase {
     }
 
     @MainActor
+    func testSearchingActionsPreservesTheQueryAndDraft() async throws {
+        guard CGSessionCopyCurrentDictionary() != nil else { throw XCTSkip("A WindowServer session is needed.") }
+        _ = NSApplication.shared
+        let fixture = try Fixture()
+        try fixture.identifyDaemon()
+        let model = PickerModel(engine: fixture.client(), file: fixture.library)
+        let panel = PickerPanel(model: model, chooseLibrary: { _ in })
+        panel.summon()
+        defer { panel.dismiss() }
+        try await eventually { model.canDeliver }
+        model.query = "north"
+        try await eventually { model.canDeliver && model.rows.count == 1 }
+        let row = try XCTUnwrap(model.selection)
+        model.toggleCitation(row)
+        model.changeDetails(for: row.id) { $0.locator = "417" }
+        try await eventually { model.canDeliver }
+        let expected = try XCTUnwrap(model.preview)
+        let content = try XCTUnwrap(panel.contentView)
+        let canvas = try XCTUnwrap(descendants(of: content).compactMap { $0 as? PickerCanvas }.first)
+        canvas.focusSearch()
+        panel.searchField?.currentEditor()?.selectedRange = NSRange(location: 2, length: 0)
+        let actionSearchFields = {
+            NSApp.windows.compactMap(\.contentView).flatMap { self.descendants(of: $0) }
+                .compactMap { $0 as? PickerSearchField }
+                .filter { $0.accessibilityLabel() == PickerWords.text(.searchActions) }
+        }
+
+        try send("k", key: UInt16(kVK_ANSI_K), flags: [.command], to: panel)
+        XCTAssertTrue(canvas.hasOpenActions)
+        let previousField = try XCTUnwrap(actionSearchFields().first)
+        try send("\u{1b}", key: UInt16(kVK_Escape), to: panel)
+        XCTAssertFalse(canvas.hasOpenActions)
+        XCTAssertTrue(panel.searchField?.currentEditor() === panel.firstResponder)
+        XCTAssertEqual(panel.searchField?.currentEditor()?.selectedRange, NSRange(location: 2, length: 0))
+
+        try send("k", key: UInt16(kVK_ANSI_K), flags: [.command], to: panel)
+        let field = try XCTUnwrap(actionSearchFields().first { $0 !== previousField })
+        field.change?("invented no action")
+        try send("\r", key: UInt16(kVK_Return), to: panel)
+        guard canvas.hasOpenActions else {
+            XCTFail("Return with no actions must not close the palette.")
+            return
+        }
+        field.change?("locator")
+        try send("\r", key: UInt16(kVK_Return), to: panel)
+        XCTAssertFalse(canvas.hasOpenActions)
+        XCTAssertTrue(canvas.locatorHasFocus)
+        XCTAssertEqual(model.query, "north")
+        XCTAssertEqual(model.citationItem, row.id)
+        XCTAssertEqual(model.details(for: row.id).locator, "417")
+        XCTAssertEqual(model.preview?.ticket, expected.ticket)
+
+        let pageEditor = try XCTUnwrap(panel.firstResponder as? NSTextView)
+        pageEditor.selectedRange = NSRange(location: 1, length: 1)
+        try send("k", key: UInt16(kVK_ANSI_K), flags: [.command], to: panel)
+        try send("\u{1b}", key: UInt16(kVK_Escape), to: panel)
+        XCTAssertTrue(canvas.locatorHasFocus)
+        XCTAssertEqual((panel.firstResponder as? NSTextView)?.selectedRange, NSRange(location: 1, length: 1))
+        try send("k", key: UInt16(kVK_ANSI_K), flags: [.command], to: panel)
+        XCTAssertTrue(canvas.hasOpenActions)
+        try send("\t", key: UInt16(kVK_Tab), to: panel)
+        XCTAssertFalse(canvas.hasOpenActions)
+        XCTAssertTrue(panel.searchField?.currentEditor() === panel.firstResponder)
+        XCTAssertEqual(model.preview?.ticket, expected.ticket)
+    }
+
+    @MainActor
+    func testActionSearchUpdatesTheReturnTargetAfterEditing() throws {
+        guard CGSessionCopyCurrentDictionary() != nil else { throw XCTSkip("A WindowServer session is needed.") }
+        _ = NSApplication.shared
+        let details = PickerAction(command: .details, title: "Citation details", group: "Citation",
+                                   aliases: "", shortcut: "", checked: nil,
+                                   reference: ItemRef(key: "first", library: "invented"))
+        let peek = PickerAction(command: .peek, title: "Peek at Reference", group: "Citation",
+                                aliases: "details", shortcut: "", checked: nil)
+        let actions = PickerActionsView(actions: [details, peek], metrics: PickerMetrics(scale: 1, density: .compact))
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: actions.contentSize), styleMask: .titled,
+                              backing: .buffered, defer: false)
+        window.contentViewController = actions
+        var chosen: PickerCommand?
+        actions.chosen = { chosen = $0.command }
+        let field = actions.search
+        field.stringValue = "detail"
+        field.change?(field.stringValue)
+        let down = try keyEvent("\u{f701}", key: UInt16(kVK_DownArrow), flags: [], to: window)
+        let submit = try keyEvent("\r", key: UInt16(kVK_Return), flags: [], to: window)
+        XCTAssertTrue(actions.handleKey(down))
+        XCTAssertTrue(actions.handleKey(submit))
+        XCTAssertEqual(chosen, .peek)
+
+        field.stringValue = "details"
+        field.change?(field.stringValue)
+        let end = try keyEvent("\u{f72b}", key: UInt16(kVK_End), flags: [], to: window)
+        XCTAssertFalse(actions.handleKey(end), "End belongs to the search field while editing.")
+        XCTAssertTrue(actions.handleKey(submit))
+        XCTAssertEqual(chosen, .details)
+
+        var replacement = details
+        replacement.reference = ItemRef(key: "second", library: "invented")
+        actions.update([replacement, peek])
+        XCTAssertEqual(field.stringValue, "details")
+        chosen = nil
+        XCTAssertTrue(actions.handleKey(submit))
+        XCTAssertNil(chosen, "A refreshed command with a different reference must await a new choice.")
+        XCTAssertTrue(actions.handleKey(down))
+        XCTAssertTrue(actions.handleKey(submit))
+        XCTAssertEqual(chosen, .details)
+    }
+
+    @MainActor
     func testNonactivatingPanelTakesSearchAndArrowKeys() async throws {
         guard CGMainDisplayID() != 0, CGSessionCopyCurrentDictionary() != nil else {
             throw XCTSkip("A WindowServer session is needed to host an AppKit panel.")
@@ -276,6 +386,23 @@ final class PickerTests: XCTestCase {
         XCTAssertTrue(placements.allSatisfy { $0.height == 56 && content.bounds.contains($0) })
         XCTAssertTrue(zip(placements, placements.dropFirst()).allSatisfy { $0.maxX < $1.minX })
         XCTAssertFalse(library.convert(library.bounds, to: content).intersects(placements[0]))
+
+        let canvas = try XCTUnwrap(views.compactMap { $0 as? PickerCanvas }.first)
+        canvas.showNumbers(true)
+        content.layoutSubtreeIfNeeded()
+        let partlyVisible = 3
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: table.rect(ofRow: partlyVisible).midY))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        let firstWhole = partlyVisible + 1
+        let clipped = try XCTUnwrap(table.view(atColumn: 0, row: partlyVisible, makeIfNecessary: true))
+        let numbered = try XCTUnwrap(table.view(atColumn: 0, row: firstWhole, makeIfNecessary: true))
+        XCTAssertNil(clipped.accessibilityHelp())
+        XCTAssertEqual(numbered.accessibilityHelp(), "⌘1")
+        let draft = model.citations.map(\.row.id)
+        try send("1", key: UInt16(kVK_ANSI_1), flags: [.command], to: panel)
+        XCTAssertEqual(model.selected, model.rows[firstWhole].id)
+        XCTAssertEqual(model.citations.map(\.row.id), draft)
+
         model.query = ""
         try await eventually { model.canDeliver }
         try send("\u{1b}", key: 53, to: panel)

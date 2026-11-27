@@ -232,6 +232,7 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     }
 
     func submit(whenReady: Bool = false) {
+        guard canvas?.hasOpenActions != true else { return }
         if whenReady, canvas?.resolveLibraryIfNeeded() == true { return }
         model.deliver(whenReady: whenReady) { [weak self] in self?.dismiss(forDelivery: true) }
     }
@@ -265,6 +266,7 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     }
 
     func routeKey(_ event: NSEvent, view: PickerCanvas) -> Bool {
+        if view.hasOpenActions { return view.handleActionKey(event) }
         let responder = (event.window ?? self).firstResponder
         guard (responder as? NSTextInputClient)?.hasMarkedText() != true else { return false }
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
@@ -277,12 +279,12 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         }
         if key == .carriageReturn || key == .enter {
             if modifiers == [.shift] {
-                if !event.isARepeat { view.toggleSelectionMembership() }
+                view.runCommand(.membership, repeating: event.isARepeat)
                 return true
             }
             if modifiers.isEmpty || modifiers == [.option] {
                 if !event.isARepeat {
-                    if modifiers.contains(.option) { view.toggleSelectionMembership() } else { submit(whenReady: true) }
+                    if modifiers.contains(.option) { view.runCommand(.membership) } else { submit(whenReady: true) }
                 }
                 return true
             }
@@ -302,34 +304,16 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
             }
         }
         if modifiers.isEmpty || modifiers == [.shift], view.tokenKey(key, shift: modifiers.contains(.shift)) { return true }
-        if modifiers == [.command, .shift] {
-            switch character {
-            case "f": view.openFormat(); return true
-            case "o": chooseLibrary(); return true
-            case "+", "=": model.changeSize(10); return true
-            default: break
-            }
+        if modifiers == [.command], character == "k" {
+            if !event.isARepeat { view.showActions() }
+            return true
         }
-        guard modifiers == [.command] else { return false }
-        if let character, let number = Int(character), (1...9).contains(number) {
+        if modifiers == [.command], let character, let number = Int(character), (1...9).contains(number) {
             view.number(number - 1)
             return true
         }
-        if key == .downArrow { view.focusTokens(); return true }
-        switch character {
-        case "t": model.toggleShorthand(); view.focusSearch()
-        case "i": view.showDetails()
-        case "l": view.focusLocator()
-        case "y": view.togglePeek()
-        case "k": if !event.isARepeat { view.moreMenu() }
-        case ",": if !event.isARepeat { openSettings?() }
-        case "o": view.openSource()
-        case "z": if model.canUndo { model.undoChange() } else { return false }
-        case "+", "=": model.changeSize(10)
-        case "-": model.changeSize(-10)
-        default: return false
-        }
-        return true
+        guard let command = PickerCommand.matching(character, modifiers: modifiers) else { return false }
+        return view.runCommand(command, repeating: event.isARepeat)
     }
 }
 

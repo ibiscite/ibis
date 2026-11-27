@@ -73,7 +73,7 @@ private final class PickerRecordCell: NSTableCellView {
         titleLabel.textColor = .labelColor
         byline.font = metrics.font(12)
         date.font = .monospacedDigitSystemFont(ofSize: metrics.pt(12), weight: .regular)
-        date.stringValue = record.year ?? ""
+        date.stringValue = record.year ?? PickerWords.text(.noDate)
         date.alignment = .right
         shortcutLabel.font = metrics.font(11, .medium)
         shortcutLabel.alignment = .center
@@ -102,9 +102,10 @@ private final class PickerRecordCell: NSTableCellView {
     }
 
     func describe(cited: Bool, shortcut: Int?) {
-        shortcutLabel.stringValue = shortcut.map { "⌘\($0)" } ?? ""
+        shortcutLabel.stringValue = shortcut.map(String.init) ?? ""
         shortcutLabel.isHidden = shortcut == nil
         icon.isHidden = shortcut != nil
+        setAccessibilityHelp(shortcut.map { "⌘\($0)" })
         setAccessibilityLabel(([titleLabel.stringValue, record.fullByline, record.kindLabel]
             + (cited ? [PickerWords.text(.cited)] : []) + [record.citationKey].compactMap { $0 }).joined(separator: ", "))
     }
@@ -202,7 +203,11 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
         boundsObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.hover(-1) }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.hover(-1)
+                if self.numbers { self.refreshVisibleRows() }
+            }
         }
     }
 
@@ -215,6 +220,7 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
         scroll.tile()
         column.width = scroll.contentSize.width
         table.sizeLastColumnToFit()
+        if numbers { refreshVisibleRows() }
     }
 
     func configure(sections: [PickerSection], metrics: PickerMetrics, recent: Bool, selected: ItemRef?,
@@ -266,12 +272,33 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
         if indices != table.selectedRowIndexes { table.selectRowIndexes(indices, byExtendingSelection: false) }
         updatingSelection = false
         if let index, wantsScroll || changed { table.scrollRowToVisible(index) }
-        if !cells.isEmpty {
-            let visible = table.rows(in: table.visibleRect)
-            if visible.location != NSNotFound {
-                for row in visible.location..<(visible.location + visible.length) { refresh(row) }
-            }
-        }
+        refreshVisibleRows()
+    }
+
+    private var visibleRows: Range<Int> {
+        let rows = table.rows(in: table.visibleRect)
+        guard rows.location != NSNotFound else { return 0..<0 }
+        return rows.location..<(rows.location + rows.length)
+    }
+
+    private var numberedRows: [Int] {
+        let viewport = table.visibleRect
+        return Array(visibleRows.lazy.filter { index in
+            guard self.record(at: index) != nil else { return false }
+            let row = self.table.rect(ofRow: index)
+            return row.minY >= viewport.minY && row.maxY <= viewport.maxY
+        }.prefix(9))
+    }
+
+    func numberedReference(at position: Int) -> ItemRef? {
+        let rows = numberedRows
+        guard rows.indices.contains(position) else { return nil }
+        return record(at: rows[position])?.id
+    }
+
+    private func refreshVisibleRows() {
+        let numbered = numbers ? numberedRows : []
+        for row in visibleRows { refresh(row, numbered: numbered) }
     }
 
     private func record(at row: Int) -> PickerRow? {
@@ -284,19 +311,16 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
         guard next != hovered else { return }
         let old = hovered
         hovered = next
-        refresh(old)
-        refresh(next)
+        let numbered = numbers ? numberedRows : []
+        refresh(old, numbered: numbered)
+        refresh(next, numbered: numbered)
     }
 
-    private func refresh(_ index: Int) {
+    private func refresh(_ index: Int, numbered: [Int]) {
         guard let row = record(at: index) else { return }
         (table.rowView(atRow: index, makeIfNecessary: false) as? PickerTableRow)?.hovered = index == hovered
-        paint(table.view(atColumn: 0, row: index, makeIfNecessary: false) as? PickerRecordCell, record: row)
-    }
-
-    private func paint(_ cell: PickerRecordCell?, record: PickerRow) {
-        let position = numbers ? shown.prefix(9).firstIndex { $0.id == record.id }.map { $0 + 1 } : nil
-        cell?.describe(cited: cited.contains(record.id), shortcut: position)
+        (table.view(atColumn: 0, row: index, makeIfNecessary: false) as? PickerRecordCell)?
+            .describe(cited: cited.contains(row.id), shortcut: numbered.firstIndex(of: index).map { $0 + 1 })
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { cells.count }
@@ -320,7 +344,8 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
         switch cells[row] {
         case let .record(record):
             let cell = PickerRecordCell(record: record, metrics: metrics)
-            paint(cell, record: record)
+            let position = numbers ? numberedRows.firstIndex(of: row).map { $0 + 1 } : nil
+            cell.describe(cited: cited.contains(record.id), shortcut: position)
             return cell
         case let .section(title):
             return PickerListLabel(title, metrics: metrics, centered: false)

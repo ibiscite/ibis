@@ -34,6 +34,9 @@ where a semicolon completes a reference. Click a citation token or press ⌘I to
 edit Text before, Text after and Show as in a popover. Return runs the delivery
 action shown in the bar. Escape closes the popover, clears the query, then
 hides the picker.
+More (⌘K) searches actions for the current citation, library and app.
+Use the arrow keys and Return to choose an action, or Escape to return
+to the same field and draft.
 
 For automatic paste, use Pasting in Settings (⌘,). The switch saves your
 preference and the form shows whether macOS allows the paste. If access is
@@ -49,8 +52,8 @@ size while you type and remembers edge resizing per display.
 
 The existing nightly sets the functional baseline for the native app
 (maintainer, 2026-11-27). The next Settings work covers launch at login.
-Per-app formats, projects, editor commands and the searchable
-action menu are also nightly capabilities the native picker needs to regain.
+Per-app formats, projects and editor commands are also nightly capabilities
+the native picker needs to regain.
 
 The bundled engine joins a daemon from the same build. If several builds
 use a profile, the newer build wins. Use an absolute `IBIS_CONFIG_DIR` for

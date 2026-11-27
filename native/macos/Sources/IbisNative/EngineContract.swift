@@ -221,9 +221,17 @@ struct PickerForm: Codable, Hashable, Sendable {
 }
 
 struct PickerFormat: Codable, Hashable, Sendable {
+    let canKeepOrder: Bool
     let forms: [CitationForm]
     let id: String
     let name: String
+
+    enum CodingKeys: String, CodingKey {
+        case canKeepOrder = "can_keep_order"
+        case forms = "forms"
+        case id = "id"
+        case name = "name"
+    }
 }
 
 struct PickerFormsRequest: Codable, Hashable, Sendable {
