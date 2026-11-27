@@ -174,7 +174,7 @@ class CiResultTest(unittest.TestCase):
         for name in ["webkit", "installed", "fuzz"]:
             self.assertEqual(jobs[name]["if"], "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'")
             self.assertIn(name, jobs["result"]["needs"])
-        self.assertEqual(jobs["nightly-report"]["needs"], "result")
+        self.assertEqual(jobs["nightly-report"]["needs"], ["result", "installed"])
 
     def test_release_advisories_gate_publication(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/preview.yml").read_text(encoding="utf-8"))

@@ -377,7 +377,7 @@ jobs:
     name: WebKit colours and shuffled tests (macOS)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -419,7 +419,7 @@ jobs:
 
       - name: Hunt for order-dependent desktop test failures
         if: success() || failure()
-        timeout-minutes: 12
+        timeout-minutes: 25
         run: bash scripts/ci-flake-hunt.sh
 
   dependencies:

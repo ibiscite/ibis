@@ -153,9 +153,9 @@ func footprint(_ pid: pid_t, _ kernelBytes: UInt64) -> (Double, String) {
     guard start.keys == end.keys, end.allSatisfy({ pid, now in
         guard let before = start[pid] else { return false }
         return before.ri_proc_start_abstime == now.ri_proc_start_abstime && before.ri_interrupt_wkups <= now.ri_interrupt_wkups
-    }) else { return "\(memory). Idle wake-ups unavailable because the process set changed." }
+    }) else { return "\(memory). Interrupt wake-ups unavailable because the process set changed." }
     let wakeups = end.reduce(UInt64(0)) { $0 + ($1.value.ri_interrupt_wkups - start[$1.key]!.ri_interrupt_wkups) }
-    return memory + String(format: ". %.2f idle wake-ups/s (%@, 1/s budget).", Double(wakeups) / seconds,
+    return memory + String(format: ". %.2f interrupt wake-ups/s while idle (%@, ri_interrupt_wkups; 1/s budget).", Double(wakeups) / seconds,
                            Double(wakeups) <= seconds ? "within" : "over")
 }
 

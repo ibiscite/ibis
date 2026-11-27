@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-if [[ $* == *'--sequence.seed 2 '* ]]; then
-  echo 'FAIL ui/Menu.test.tsx > Menu > keeps the active row in view'
-  exit 1
-fi
-echo 'fixture pass'

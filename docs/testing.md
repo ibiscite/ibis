@@ -163,7 +163,7 @@ or run the first three seeds with `bash scripts/ci-flake-hunt.sh 3`.
 
 The macOS installed job launches the verified nightly with 10,000 generated
 BibTeX references and samples it after four minutes hidden. It sums physical
-footprint across the app and its WebKit helpers and reports idle wake-ups per
+footprint across the app and its WebKit helpers and reports interrupt wake-ups (`ri_interrupt_wkups`) per
 second over the same interval. The step summary and nightly report show both
 against [0032](decisions/0032-release-gates.md)'s 200 MiB and 1 wake-up/s budgets.
 These measurements are report-only. An over-budget or unavailable sample does
