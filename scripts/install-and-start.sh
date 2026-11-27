@@ -28,6 +28,22 @@ journey() {
   bash scripts/ci-native-journey.sh "$python" scripts/smoke-native.py --journey --app "$app" --output "screenshots/journey-$RUNNER_OS" --identifier "$IDENTIFIER"
 }
 
+macos_budget() (
+  [ "${IBIS_NIGHTLY_BUDGET:-0}" = 1 ] || return 0
+  local workspace report
+  report='Unavailable (could not build the macOS measurement helper).'
+  if workspace=$(mktemp -d "$RUNNER_TEMP/ibis-budget.XXXXXX"); then
+    trap 'rm -rf -- "$workspace"' EXIT
+    if swiftc -O scripts/macos-nightly-budget.swift -o "$workspace/measure"; then
+      if ! report=$("$workspace/measure" "$installed" "$workspace") || [ -z "$report" ]; then
+        report='Unavailable (the macOS measurement helper did not produce a sample).'
+      fi
+    fi
+  fi
+  printf '### Installed macOS nightly budget (report only)\n\n%s\n' "$report" >> "$GITHUB_STEP_SUMMARY"
+  printf 'macos-budget=%s\n' "$report" >> "$GITHUB_OUTPUT"
+)
+
 linux() {
   sudo apt-get update
   # Only test tools here; the .deb must bring its own runtime libraries.
@@ -68,9 +84,12 @@ macos() {
   test -f "$app"
   test -x "$app"
   echo "installed at $app"
-  journey
-  show python3 "$stays_up" "$app"
+  local qualification=0
+  journey || qualification=$?
+  if [ "$qualification" = 0 ]; then show python3 "$stays_up" "$app" || qualification=$?; fi
+  macos_budget || echo '::warning::Could not record the report-only macOS budget.'
   rm -rf "$installed"
+  return "$qualification"
 }
 
 windows() {

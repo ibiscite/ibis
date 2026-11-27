@@ -374,10 +374,10 @@ jobs:
 
   # System WebKit rendering is part of daily/manual qualification.
   webkit:
-    name: WebKit colours (macOS)
+    name: WebKit colours and shuffled tests (macOS)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -416,6 +416,11 @@ jobs:
           path: webkit-pictures/*
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Hunt for order-dependent desktop test failures
+        if: success() || failure()
+        timeout-minutes: 25
+        run: bash scripts/ci-flake-hunt.sh
 
   dependencies:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
@@ -588,7 +593,9 @@ jobs:
     name: Installed journey (${{ matrix.os }})
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.os == 'macos-15' && 27 || 20 }}
+    outputs:
+      macos-budget: ${{ steps.install.outputs.macos-budget }}
     permissions:
       contents: read
       attestations: read
@@ -623,9 +630,11 @@ jobs:
           echo "Installed journey uses nightly $sha" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install, exercise and remove the packages
+        id: install
         env:
           IDENTIFIER: com.ibiscite.ibis.nightly
           IBIS_INSTALLED_JOURNEY: '1'
+          IBIS_NIGHTLY_BUDGET: ${{ matrix.os == 'macos-15' && '1' || '0' }}
         run: bash scripts/install-and-start.sh
 
       - name: Keep journey evidence
@@ -689,7 +698,7 @@ jobs:
 
   nightly-report:
     name: Report nightly qualification
-    needs: result
+    needs: [result, installed]
     if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -708,5 +717,6 @@ jobs:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
           RESULT: ${{ needs.result.result }}
+          MACOS_BUDGET: ${{ needs.installed.outputs.macos-budget }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash scripts/ci-nightly-report.sh
