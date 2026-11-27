@@ -118,6 +118,21 @@ fn a_ris_export_reads_as_citations_without_keys() {
     );
 }
 
+// Zotero's RIS translator writes webpages as ELEC and accessDate as Y2.
+#[test]
+fn a_zotero_ris_export_keeps_access_dates_separate_from_publication_dates() {
+    let loaded = ibis_sources::load_file(&fixture("ris/zotero-accessed.ris")).unwrap();
+    assert_eq!(loaded.warnings, []);
+    let fields = citation_fields(&loaded);
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0]["title"], "Invented tidal charts");
+    assert_eq!(fields[0]["accessed"], json!({"date-parts": [[2026, 3, 14]]}));
+    assert!(fields[0].get("issued").is_none());
+    assert_eq!(fields[1]["title"], "Invented tide pools");
+    assert_eq!(fields[1]["issued"], json!({"date-parts": [[2021, 4, 8]]}));
+    assert_eq!(fields[1]["accessed"], json!({"date-parts": [[2026, 3, 15]]}));
+}
+
 #[test]
 fn damaged_ris_records_are_skipped_with_their_lines() {
     let path = fixture("ris/damaged.ris");

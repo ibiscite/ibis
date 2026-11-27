@@ -13,8 +13,9 @@ const unpack = (block, offset, length) => {
   const [at, size] = header.blocks[block];
   return zstdDecompressSync(bundle.subarray(blocksStart + at, blocksStart + at + size)).subarray(offset, offset + length).toString("utf8");
 };
-const styles = new Map(["apa", "chicago-author-date", "harvard-cite-them-right", "ieee", "modern-language-association"].map((style) => {
-  const row = rows.find((row) => row[0] === style);
+const styles = new Map(["apa", "chicago-author-date", "harvard-cite-them-right", "ieee", "modern-language-association", "vancouver"].map((style) => {
+  const canonical = style === "vancouver" ? "nlm-citation-sequence" : style;
+  const row = rows.find((row) => row[0] === canonical);
   return [style, unpack(row[7], row[8], row[9])];
 }));
 const english = header.locales.find((locale) => locale[0] === "en-US");
@@ -61,9 +62,13 @@ CSL.Engine.prototype.updateItems = function (ids, ...args) {
   if (ids.length) registrations++;
   return updateItems.call(this, ids, ...args);
 };
+const numericLabels = new Map([
+  ["ieee", '<text variable="citation-number" prefix="[" suffix="]"/>'],
+  ["vancouver", '<text suffix="." variable="citation-number"/>'],
+]);
 const observed = requests.map((request) => {
   const before = registrations;
-  const output = JSON.parse(__ibisFormat({ ...request, numeric: request.style === "ieee", sentence_titles: request.style === "apa" }, styles.get(request.style)));
+  const output = JSON.parse(__ibisFormat({ ...request, numeric: numericLabels.has(request.style), sentence_titles: request.style === "apa" }, styles.get(request.style)));
   assert.equal(registrations - before, 1, "one item-registration pass per request");
   return output;
 });
@@ -72,7 +77,8 @@ CSL.Engine.prototype.updateItems = updateItems;
 CSL.getCite = unobservedGetCite;
 const expected = pristine.map((request) => {
   let xml = styles.get(request.style).replace(/disambiguate-add-year-suffix="true"/g, 'disambiguate-add-year-suffix="false"');
-  if (request.style === "ieee") xml = xml.replace('<text variable="citation-number" prefix="[" suffix="]"/>', "").replace(' second-field-align="flush"', "");
+  const numberLabel = numericLabels.get(request.style);
+  if (numberLabel) xml = xml.replace(numberLabel, "").replace(' second-field-align="flush"', "");
   const items = new Map(request.items.map((item) => [item.id, item]));
   const engine = new CSL.Engine({ retrieveLocale: __ibisLocaleXml, retrieveItem: (id) => items.get(id), uppercase_subtitles: request.style === "apa" }, xml, request.locale ?? undefined, request.locale !== null);
   engine.opt.development_extensions.throw_on_empty = true;

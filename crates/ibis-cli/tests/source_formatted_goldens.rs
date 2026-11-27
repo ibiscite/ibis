@@ -37,11 +37,11 @@ fn run(engine: Engine, args: Vec<String>, input: Vec<u8>) -> TestResult<Vec<u8>>
     assert!(errors.is_empty());
     Ok(output)
 }
-fn assert_oracle(result: &CitationResult, expected: &Value, context: &str) -> TestResult {
+fn assert_oracle(result: &CitationResult, expected: &Value, count: usize, context: &str) -> TestResult {
     assert_eq!(result.text, expected["text"], "{context} text");
     assert_eq!(result.html.as_deref(), expected["html"].as_str(), "{context} HTML");
     assert_eq!(result.rtf.as_deref(), expected["rtf"].as_str(), "{context} RTF");
-    assert!(result.copy_content(4).is_some(), "{context} lost an item");
+    assert!(result.copy_content(count).is_some(), "{context} lost an item");
     Ok(())
 }
 
@@ -120,7 +120,7 @@ fn source_files_match_pinned_zotero_through_cli_and_framed_stdio() -> TestResult
             let result = engine
                 .cite(&request, &Cancellation::default())
                 .map_err(|error| format!("{error:?}"))?;
-            assert_oracle(&result, case, &context)?;
+            assert_oracle(&result, case, keys.len(), &context)?;
             let mut args = vec!["ibis".into(), "cite".into()];
             args.extend(keys.iter().map(|key| key.as_str().unwrap_or_default().into()));
             args.extend([
@@ -140,7 +140,7 @@ fn source_files_match_pinned_zotero_through_cli_and_framed_stdio() -> TestResult
             assert_eq!(envelope["ibis"], 1);
             assert_eq!(envelope["ok"], true);
             let actual: CitationResult = serde_json::from_value(envelope["data"].clone())?;
-            assert_oracle(&actual, case, &context)?;
+            assert_oracle(&actual, case, keys.len(), &context)?;
             assert_eq!(
                 without_read_times(actual),
                 without_read_times(result.clone()),
@@ -186,10 +186,60 @@ fn source_files_match_pinned_zotero_through_cli_and_framed_stdio() -> TestResult
                     without_read_times(typed.get(index).ok_or("unexpected reply")?.clone()),
                     "{extension} stdio changed the canonical result"
                 );
-                assert_oracle(&result, &cases[index], extension)?;
+                assert_oracle(&result, &cases[index], keys.len(), extension)?;
             }
         }
         assert_eq!(received.len(), cases.len());
+    }
+    Ok(())
+}
+
+#[test]
+fn ris_access_dates_match_pinned_zotero_through_the_cli() -> TestResult {
+    let expected: BTreeMap<String, Value> = serde_json::from_str(include_str!(
+        "../../../fixtures/formatted/source-files/ris-accessed-expected.json"
+    ))?;
+    assert_eq!(expected.len(), 6);
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/ris/zotero-accessed.ris");
+    let path = path.to_str().ok_or("fixture path")?.to_owned();
+    let engine = Engine::new().map_err(|error| format!("{error:?}"))?;
+    let search = run(
+        engine.clone(),
+        vec![
+            "ibis".into(),
+            "search".into(),
+            "Invented tidal charts".into(),
+            "--file".into(),
+            path.clone(),
+            "--json".into(),
+        ],
+        vec![],
+    )?;
+    let results: Value = serde_json::from_slice(&search)?;
+    let hits = results["data"]["hits"].as_array().ok_or("search hits")?;
+    assert_eq!(hits.len(), 1);
+    let item = &hits[0]["item"]["object"]["data"]["id"];
+    assert!(item.is_object(), "search returned no item reference");
+    for (style, oracle) in expected {
+        let input = serde_json::to_vec(&json!({
+            "items": [{"item": item}], "form": "bibliography-only",
+            "output": {"kind": "csl", "style": style}, "output_locale": "en-US"
+        }))?;
+        let output = run(
+            engine.clone(),
+            vec![
+                "ibis".into(),
+                "cite".into(),
+                "--request".into(),
+                "--file".into(),
+                path.clone(),
+                "--json".into(),
+            ],
+            input,
+        )?;
+        let envelope: Value = serde_json::from_slice(&output)?;
+        let result: CitationResult = serde_json::from_value(envelope["data"].clone())?;
+        assert_oracle(&result, &oracle, 1, &style)?;
     }
     Ok(())
 }
