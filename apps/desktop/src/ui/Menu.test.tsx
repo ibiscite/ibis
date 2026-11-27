@@ -295,12 +295,19 @@ function fittedLibrary(height: () => number) {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
     if (this === region) return box(0, height(), 0, 480);
     if (this.matches('button[aria-label="Library"]')) return box(60, 24, 20, 100);
-    const rows = [...this.closest('[role="menu"]')?.querySelectorAll('[role^="menuitem"]') ?? []];
-    if (rows.includes(this)) return box(rows.indexOf(this) * 56, 56);
+    const list = this.closest<HTMLElement>('[role="menu"]');
+    if (!list) return new DOMRect();
+    if (this === list) return box(0, list.clientHeight);
+    const rows = [...list.querySelectorAll('[role^="menuitem"]')];
+    // Row rectangles move with the scroll position, as they do in a browser.
+    if (rows.includes(this)) return box(rows.indexOf(this) * 56 - list.scrollTop, 56);
     return new DOMRect();
   });
   vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
     return this.matches(".menu-view [role=menu]") ? 112 : 0;
+  });
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.clientHeight;
   });
   const action = vi.fn();
   function Library() {
@@ -348,6 +355,8 @@ test("a Menu that becomes a view keeps the focused row, scrolls it into view and
   expect(list).not.toBe(menu);
   expect(view.contains(list)).toBe(true);
   expect(document.activeElement).toBe(reload);
+  // React Aria checks the focused row's visibility again on the next frame.
+  await act(async () => { await new Promise(requestAnimationFrame); });
   expect(list.scrollTop).toBe(112);
   fireEvent.keyDown(reload, { key: "Enter" });
   fireEvent.keyUp(reload, { key: "Enter" });
