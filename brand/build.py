@@ -644,10 +644,19 @@ def picker_pdfs():
     def pdf(name, size, box, body, colour="#000000"):
         svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}pt" height="{size}pt" '
                f'viewBox="{box}" color="{colour}">{body}</svg>')
-        subprocess.run(
-            ["rsvg-convert", "--format=pdf", "--output", str(directory / f"{name}.pdf")],
+        # Cairo versions choose different default PDF formats. Keep the output
+        # at 1.4 and neutralise the producer version without moving xref offsets.
+        rendered = subprocess.run(
+            ["rsvg-convert", "--format=pdf1.4"], capture_output=True,
             input=svg.encode(), check=True, env={**RENDER_ENV, "SOURCE_DATE_EPOCH": "0"},
+        ).stdout
+        rendered, replacements = re.subn(
+            rb"(?m)^(<< /Producer \(cairo )([\d.]+)(?= \()",
+            lambda match: match[1] + b" " * len(match[2]), rendered,
         )
+        if replacements != 1:
+            raise SystemExit(f"Unexpected PDF producer metadata in {name}.pdf")
+        (directory / f"{name}.pdf").write_bytes(rendered)
 
     bird = ui_mark(small=True, vector_clip=True)
     for name, colour in (("pickerMark", SCARLET), ("pickerMark-dark", SCARLET_DARK)):
