@@ -165,8 +165,11 @@ No more effort goes into making the web view imitate macOS.
    4. Sparkle;
    5. signing.
 
-   It ships beside the Tauri build in nightlies. The Tauri Mac build is
-   retired when the native one reaches parity and passes 0032.
+   One stream (the maintainer, 2026-11-26: "keep it simple and all in one
+   stream nightly"): there is no separate native app for testers. Once the
+   native picker and paste work, the Mac nightly is the native app, and the
+   Tauri Mac build is retired from it; Settings, Sparkle and signing follow in
+   later nightlies.
 3. Measure every shell against 0032 (memory, wake-ups, summon to typeable).
 4. Simplify the Tauri shell's recipe for Windows and Linux.
 5. Add system extensions as thin clients.
