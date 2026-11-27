@@ -83,7 +83,7 @@ pub fn shell_words(language: Language) -> BTreeMap<&'static str, String> {
         ("more", "picker-more"),
         ("actionsTitle", "palette-actions-title"),
         ("searchActions", "palette-search-actions"),
-        ("noActionSelected", "palette-no-action-selected"),
+        ("noActionSelected", "picker-native-no-action-selected"),
         ("actionStateOn", "backup-value-on"),
         ("actionStateOff", "backup-value-off"),
         ("settingsSearch", "settings-search"),
