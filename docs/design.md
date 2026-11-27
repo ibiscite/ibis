@@ -15,6 +15,7 @@ has its own page; read only the one your change touches:
 
 | Page | What it holds | Tags |
 | --- | --- | --- |
+| [macOS design guide](design/macos.md) | Platform patterns, reference measurements and review rules for both Mac shells | |
 | [Foundations](design/foundations.md) | Tokens, colour, materials, type, spacing, corners, icons, the bird, key caps, motion, accessibility, per platform | C1 C3 C4 C10 C13 C15 C17, D1 D3–D6 D8–D11 D15 |
 | [Components](../apps/desktop/src/ui/README.md) | Each shared part in `ui/`, its states, and menus | C9 C21, D7 |
 | [Picker](design/picker.md) | Search bar, results, search rules, the delivery bar and its drawer, keys, window behaviour | C2 C5–C8 C11 |
