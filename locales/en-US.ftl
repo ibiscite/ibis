@@ -2093,6 +2093,7 @@ picker-native-panel = Ibis, citation picker
 picker-native-open = Open Ibis
 picker-native-quit = Quit Ibis Native
 picker-native-allow-paste = Allow Paste…
+picker-native-paste-copy-mode = Ibis copies citations. Press ⌘V to paste.
 picker-native-open-library = Open Library
 picker-native-shortcut-unavailable = The Ibis Native shortcut is unavailable.
 picker-native-format = Format

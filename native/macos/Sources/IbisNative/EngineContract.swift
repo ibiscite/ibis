@@ -454,11 +454,13 @@ struct SettingsRequest: Codable, Hashable, Sendable {
     let appearance: Appearance?
     let density: Density?
     let largerText: Bool?
+    let paste: Bool?
 
     enum CodingKeys: String, CodingKey {
         case appearance = "appearance"
         case density = "density"
         case largerText = "larger_text"
+        case paste = "paste"
     }
 }
 
@@ -466,12 +468,14 @@ struct SettingsResult: Codable, Hashable, Sendable {
     let appearance: Appearance
     let density: Density
     let largerText: Bool
+    let paste: Bool
     let version: String
 
     enum CodingKeys: String, CodingKey {
         case appearance = "appearance"
         case density = "density"
         case largerText = "larger_text"
+        case paste = "paste"
         case version = "version"
     }
 }

@@ -32,20 +32,21 @@ edit Text before, Text after and Show as in a popover. Return runs the delivery
 action shown in the bar. Escape closes the popover, clears the query, then
 hides the picker.
 
-For paste, choose **Allow Paste…** in the Ibis Native menu. In macOS System
-Settings, grant **Ibis Native** Accessibility separately from Ibis and Ibis
-Nightly. Summon it again from an editor after granting permission. When
-paste is unavailable, the citation is copied in the engine's available
-clipboard formats. The native build uses its own settings profile in Application Support.
-Its stored recent citation history contains reference identities. Settings (⌘,)
+For automatic paste, use Pasting in Settings (⌘,). The switch saves your
+preference and the form shows whether macOS allows the paste. If access is
+missing, use **Open System Settings** to allow this copy of **Ibis Native**
+separately from Ibis and Ibis Nightly. Return to your editor and summon Ibis
+again. With the switch off or paste unavailable, Ibis copies the citation.
+The native build uses its own settings profile in Application Support. Its
+stored recent citation history contains reference identities. Settings also
 saves Appearance, Rows and Larger Text through the engine. Find it in More
 and the Ibis menu bar item, which also opens About Ibis.
 ⌘+ and ⌘− temporarily scale the picker from 100% to 200%. The window keeps its
 size while you type and remembers edge resizing per display.
 
 The existing nightly sets the functional baseline for the native app
-(maintainer, 2026-11-27). The next Settings work covers the summon shortcut,
-launch at login and paste controls that report the macOS permission state.
+(maintainer, 2026-11-27). The next Settings work covers the summon shortcut
+and launch at login.
 Saved library and per-app formats, projects, editor commands and the searchable
 action menu are also nightly capabilities the native picker needs to regain.
 

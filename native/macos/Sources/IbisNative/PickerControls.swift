@@ -93,7 +93,7 @@ final class PickerSearchField: NSSearchField {
     init() {
         super.init(frame: .zero)
         sendsSearchStringImmediately = true
-        focusRingType = .none
+        focusRingType = .default
         target = self
         action = #selector(reportChange)
     }

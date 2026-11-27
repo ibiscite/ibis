@@ -8,6 +8,7 @@ pub struct SettingsRequest {
     pub appearance: Option<Appearance>,
     pub density: Option<Density>,
     pub larger_text: Option<bool>,
+    pub paste: Option<bool>,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -15,12 +16,13 @@ pub struct SettingsResult {
     pub appearance: Appearance,
     pub density: Density,
     pub larger_text: bool,
+    pub paste: bool,
     pub version: &'static str,
 }
 
 impl SettingsRequest {
     pub fn answer(self, owner: &Owner) -> Result<SettingsResult, SettingsError> {
-        if self.appearance.is_none() && self.density.is_none() && self.larger_text.is_none() {
+        if self.appearance.is_none() && self.density.is_none() && self.larger_text.is_none() && self.paste.is_none() {
             let loaded = owner.read();
             return match loaded.problem {
                 Some(problem) => Err(problem),
@@ -39,6 +41,9 @@ impl SettingsRequest {
             if let Some(larger_text) = self.larger_text {
                 portable.larger_text = unless_default(larger_text, DEFAULTS.larger_text);
             }
+            if let Some(paste) = self.paste {
+                portable.paste = unless_default(paste, DEFAULTS.paste);
+            }
             Ok::<(), SettingsError>(())
         })?;
         Ok(SettingsResult::from(&saved.portable))
@@ -51,6 +56,7 @@ impl From<&Portable> for SettingsResult {
             appearance: portable.appearance(),
             density: portable.density(),
             larger_text: portable.larger_text(),
+            paste: portable.paste(),
             version: ibis_core::VERSION,
         }
     }

@@ -36,10 +36,6 @@ private final class PickerTable: NSTableView {
 private final class PickerTableRow: NSTableRowView {
     var hovered = false { didSet { needsDisplay = true } }
     var metrics = PickerMetrics(scale: 1, density: .compact)
-    override var isEmphasized: Bool { get { true } set {} }
-    override var interiorBackgroundStyle: NSView.BackgroundStyle {
-        isSelected ? .emphasized : .normal
-    }
 
     private func fill(_ color: NSColor) {
         let fill = bounds.insetBy(dx: metrics.pt(8), dy: metrics.pt(2))
@@ -47,7 +43,9 @@ private final class PickerTableRow: NSTableRowView {
         NSBezierPath(roundedRect: fill, xRadius: metrics.pt(8), yRadius: metrics.pt(8)).fill()
     }
 
-    override func drawSelection(in dirtyRect: NSRect) { fill(.selectedContentBackgroundColor) }
+    override func drawSelection(in dirtyRect: NSRect) {
+        fill(isEmphasized ? .selectedContentBackgroundColor : .unemphasizedSelectedContentBackgroundColor)
+    }
     override func drawBackground(in dirtyRect: NSRect) {
         if hovered && !isSelected { fill(.pickerQuaternaryFill) }
     }

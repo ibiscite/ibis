@@ -68,7 +68,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
         openItem.target = self
         menu.addItem(openItem)
         menu.addItem(item(PickerWords.text(.choose), action: #selector(chooseLibraryItem)))
-        menu.addItem(item(PickerWords.text(.allowPaste), action: #selector(allowPaste)))
+        menu.addItem(item(PickerWords.text(.allowPaste), action: #selector(showSettings)))
         menu.addItem(.separator())
         menu.addItem(item(PickerWords.text(.settings), action: #selector(showSettings), key: ","))
         menu.addItem(item(PickerWords.text(.about), action: #selector(showAbout)))
@@ -139,7 +139,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
 
     @objc private func showAbout() {
         Task {
-            let saved = try? await engine.settings(SettingsRequest(appearance: nil, density: nil, largerText: nil))
+            let saved = try? await engine.settings(SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: nil))
             var options: [NSApplication.AboutPanelOptionKey: Any] = [.applicationName: PickerWords.text(.app)]
             if let saved { options[.applicationVersion] = saved.version }
             activateAppWindow()
@@ -188,11 +188,5 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func allowPaste() {
-        ibis_native_request_paste_access()
-        if let pane = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(pane)
-        }
-    }
     @objc private func quit() { NSApp.terminate(nil) }
 }

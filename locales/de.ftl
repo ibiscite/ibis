@@ -2074,6 +2074,7 @@ picker-native-panel = Ibis, Zitationsauswahl
 picker-native-open = Ibis öffnen
 picker-native-quit = Ibis Native beenden
 picker-native-allow-paste = Einfügen erlauben…
+picker-native-paste-copy-mode = Ibis kopiert Zitate. Drücken Sie ⌘V zum Einfügen.
 picker-native-open-library = Bibliothek öffnen
 picker-native-shortcut-unavailable = Das Tastenkürzel von Ibis Native ist nicht verfügbar.
 picker-native-format = Format

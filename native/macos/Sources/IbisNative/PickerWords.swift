@@ -10,6 +10,7 @@ enum PickerWord {
     case allowPaste
     case app
     case appearance
+    case automaticPaste
     case before
     case beforeExample
     case best
@@ -31,6 +32,7 @@ enum PickerWord {
     case copyCitation
     case copyCitations
     case copyFailed
+    case copyMode
     case dark
     case density
     case details
@@ -58,6 +60,7 @@ enum PickerWord {
     case open
     case openLibrary
     case openSource
+    case openSystemSettings
     case openZotero
     case opening
     case page
@@ -65,6 +68,10 @@ enum PickerWord {
     case panel
     case paste
     case pasteCitations
+    case pasteNeedsAccess
+    case pasteReady
+    case pasteSettings
+    case pasteTryAgain
     case pasted
     case peek
     case pickerPreferences
@@ -89,6 +96,7 @@ enum PickerWord {
     case textLarger
     case textSmaller
     case token
+    case tryAgain
     case typeCitation
     case undo
     case untitled
@@ -117,6 +125,7 @@ enum PickerWords {
             .allowPaste: "السماح باللصق…",
             .app: "Ibis Native",
             .appearance: "المظهر",
+            .automaticPaste: "اللصق في التطبيق الذي جئت منه",
             .before: "نص قبله",
             .beforeExample: "انظر",
             .best: "أفضل التطابقات",
@@ -138,6 +147,7 @@ enum PickerWords {
             .copyCitation: "نسخ الاستشهاد",
             .copyCitations: "نسخ الاستشهادات ({IBIS_VALUE})",
             .copyFailed: "تغيّرت الحافظة أو تعذّرت الكتابة فيها.",
+            .copyMode: "ينسخ Ibis الاستشهادات. اضغط ⌘V للصق.",
             .dark: "داكن",
             .density: "الصفوف",
             .details: "تفاصيل الاستشهاد",
@@ -165,6 +175,7 @@ enum PickerWords {
             .open: "فتح Ibis",
             .openLibrary: "فتح المكتبة",
             .openSource: "فتح المصدر",
+            .openSystemSettings: "فتح إعدادات النظام",
             .openZotero: "فتح Zotero",
             .opening: "جارٍ فتح المكتبة…",
             .page: "صفحة",
@@ -172,6 +183,10 @@ enum PickerWords {
             .panel: "Ibis، منتقي الاستشهادات",
             .paste: "لصق في {IBIS_VALUE}",
             .pasteCitations: "لصق الاستشهادات ({IBIS_COUNT}) في {IBIS_VALUE}",
+            .pasteNeedsAccess: "ليلصق بأمان، يحتاج Ibis إلى إذن تسهيلات الاستخدام ليتحقق من النافذة التي تتلقى الكتابة، وإلى إذن بضغط ⌘V. ولا يقرأ أبدًا ما تكتبه.",
+            .pasteReady: "يستطيع Ibis اللصق الآن.",
+            .pasteSettings: "اللصق",
+            .pasteTryAgain: "عُد إلى مستندك وافتح Ibis مجددًا. اضغط Enter للمحاولة مرة أخرى.",
             .pasted: "القائمة الملصقة",
             .peek: "لمحة عن المرجع",
             .pickerPreferences: "منتقي الاستشهادات",
@@ -196,6 +211,7 @@ enum PickerWords {
             .textLarger: "تكبير النص",
             .textSmaller: "تصغير النص",
             .token: "استشهاد: {IBIS_VALUE}",
+            .tryAgain: "إعادة المحاولة",
             .typeCitation: "كتابة استشهاد",
             .undo: "تراجع",
             .untitled: "بلا عنوان",
@@ -211,6 +227,7 @@ enum PickerWords {
             .allowPaste: "Einfügen erlauben…",
             .app: "Ibis Native",
             .appearance: "Erscheinungsbild",
+            .automaticPaste: "In die vorherige App einfügen",
             .before: "Text davor",
             .beforeExample: "siehe",
             .best: "Beste Treffer",
@@ -232,6 +249,7 @@ enum PickerWords {
             .copyCitation: "Zitat kopieren",
             .copyCitations: "{IBIS_VALUE} Zitate kopieren",
             .copyFailed: "Die Zwischenablage hat sich geändert oder konnte nicht beschrieben werden.",
+            .copyMode: "Ibis kopiert Zitate. Drücken Sie ⌘V zum Einfügen.",
             .dark: "Dunkel",
             .density: "Zeilen",
             .details: "Zitationsdetails",
@@ -259,6 +277,7 @@ enum PickerWords {
             .open: "Ibis öffnen",
             .openLibrary: "Bibliothek öffnen",
             .openSource: "Quelle öffnen",
+            .openSystemSettings: "Systemeinstellungen öffnen",
             .openZotero: "Zotero öffnen",
             .opening: "Bibliothek wird geöffnet…",
             .page: "Seite",
@@ -266,6 +285,10 @@ enum PickerWords {
             .panel: "Ibis, Zitationsauswahl",
             .paste: "In {IBIS_VALUE} einfügen",
             .pasteCitations: "{IBIS_COUNT} Zitate in {IBIS_VALUE} einfügen",
+            .pasteNeedsAccess: "Um sicher einzufügen, braucht Ibis Zugriff auf Bedienungshilfen, um zu prüfen, welches Fenster die Tastatur hat, und die Erlaubnis, ⌘V zu drücken. Was Sie tippen, liest Ibis nie.",
+            .pasteReady: "Ibis kann jetzt einfügen.",
+            .pasteSettings: "Einfügen",
+            .pasteTryAgain: "Kehren Sie zu Ihrem Dokument zurück und öffnen Sie Ibis erneut. Drücken Sie Enter, um es noch einmal zu versuchen.",
             .pasted: "Eingefügte Liste",
             .peek: "Kurzansicht der Referenz",
             .pickerPreferences: "Auswahlfenster",
@@ -290,6 +313,7 @@ enum PickerWords {
             .textLarger: "Größere Schrift",
             .textSmaller: "Kleinere Schrift",
             .token: "Zitat: {IBIS_VALUE}",
+            .tryAgain: "Erneut versuchen",
             .typeCitation: "Zitat eingeben",
             .undo: "Rückgängig",
             .untitled: "Ohne Titel",
@@ -305,6 +329,7 @@ enum PickerWords {
             .allowPaste: "Allow Paste…",
             .app: "Ibis Native",
             .appearance: "Appearance",
+            .automaticPaste: "Paste into the app you came from",
             .before: "Text before",
             .beforeExample: "see",
             .best: "Best matches",
@@ -326,6 +351,7 @@ enum PickerWords {
             .copyCitation: "Copy Citation",
             .copyCitations: "Copy {IBIS_VALUE} Citations",
             .copyFailed: "The clipboard changed or could not be written.",
+            .copyMode: "Ibis copies citations. Press ⌘V to paste.",
             .dark: "Dark",
             .density: "Rows",
             .details: "Citation details",
@@ -353,6 +379,7 @@ enum PickerWords {
             .open: "Open Ibis",
             .openLibrary: "Open Library",
             .openSource: "Open Source",
+            .openSystemSettings: "Open System Settings",
             .openZotero: "Open Zotero",
             .opening: "Opening library…",
             .page: "Page",
@@ -360,6 +387,10 @@ enum PickerWords {
             .panel: "Ibis, citation picker",
             .paste: "Paste into {IBIS_VALUE}",
             .pasteCitations: "Paste {IBIS_COUNT} Citations into {IBIS_VALUE}",
+            .pasteNeedsAccess: "To paste safely, Ibis needs Accessibility access to check which window has the keyboard, as well as permission to press ⌘V. It never reads what you type.",
+            .pasteReady: "Ibis can paste now.",
+            .pasteSettings: "Pasting",
+            .pasteTryAgain: "Return to your document and open Ibis again. Press Enter to try again.",
             .pasted: "Pasted list",
             .peek: "Peek at Reference",
             .pickerPreferences: "Picker",
@@ -384,6 +415,7 @@ enum PickerWords {
             .textLarger: "Larger Text",
             .textSmaller: "Smaller Text",
             .token: "Citation: {IBIS_VALUE}",
+            .tryAgain: "Try Again",
             .typeCitation: "Type a Citation",
             .undo: "Undo",
             .untitled: "Untitled",

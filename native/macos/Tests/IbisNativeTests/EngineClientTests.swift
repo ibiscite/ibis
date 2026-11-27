@@ -9,11 +9,15 @@ final class EngineClientTests: XCTestCase {
         let fixture = try Fixture()
         try fixture.identifyDaemon()
         let client = fixture.client()
-        let empty = SettingsRequest(appearance: nil, density: nil, largerText: nil)
+        let empty = SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: nil)
         let initial = try await client.settings(empty)
         XCTAssertEqual(initial.density, .compact)
-        let saved = try await client.settings(SettingsRequest(appearance: .dark, density: .comfortable, largerText: true))
+        XCTAssertTrue(initial.paste)
+        let saved = try await client.settings(
+            SettingsRequest(appearance: .dark, density: .comfortable, largerText: true, paste: false)
+        )
         XCTAssertEqual(saved.density, .comfortable)
+        XCTAssertFalse(saved.paste)
         XCTAssertFalse(saved.version.isEmpty)
         let reader = fixture.client()
         let reloaded = try await reader.settings(empty)
@@ -22,7 +26,7 @@ final class EngineClientTests: XCTestCase {
         XCTAssertEqual(opened.appearance, .dark)
         XCTAssertEqual(opened.density, .comfortable)
         XCTAssertTrue(opened.largerText)
-        XCTAssertTrue(opened.pasteEnabled)
+        XCTAssertFalse(opened.pasteEnabled)
     }
 
     @MainActor
@@ -40,20 +44,23 @@ final class EngineClientTests: XCTestCase {
         XCTAssertEqual(row.authors, ["Mira Vale"])
         XCTAssertEqual(row.year, "2024")
         XCTAssertEqual(row.journal, "Journal of Imaginary Cities")
-        let (preview, session) = try await client.preview(PickerPreviewRequest(
+        let draft = PickerPreviewRequest(
             entries: [PickerPreviewEntry(cite: row.cite, form: .narrative, item: row.id,
                                          locator: Locator(term: .page, value: "chapter 12"), prefix: nil, suffix: nil)],
             format: "apa", keepOrder: false
-        ))
+        )
+        let (preview, session) = try await client.preview(draft)
         XCTAssertNil(preview.problem)
         XCTAssertTrue(preview.text.contains("chapter 12"), preview.text)
         let browse = try await client.search(PickerSearchRequest(query: "bridges", shorthand: false))
         XCTAssertEqual(browse.session, session)
         XCTAssertNotEqual(browse.result.sections.first?.rows.first?.id, row.id)
 
-        try FileManager.default.createDirectory(at: fixture.settings.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        try Data(#"{"paste": false}"#.utf8).write(to: fixture.settings, options: .atomic)
+        let preferences = fixture.client()
+        let disabled = try await preferences.settings(
+            SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: false)
+        )
+        XCTAssertFalse(disabled.paste)
 
         let request = PickerDeliverRequest(contentHash: preview.contentHash, paste: true, ticket: preview.ticket)
         let settingsLock = fixture.settings.deletingPathExtension().appendingPathExtension("json.lock").path
@@ -85,6 +92,22 @@ final class EngineClientTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? DaemonError, .changed)
         }
+
+        let copyOnly = try await client.open(fixture.opening)
+        XCTAssertFalse(copyOnly.pasteEnabled)
+        let copyPreview = try await client.preview(draft).result
+        let enabled = try await preferences.settings(
+            SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: true)
+        )
+        XCTAssertTrue(enabled.paste)
+        let copyRequest = PickerDeliverRequest(contentHash: copyPreview.contentHash, paste: true, ticket: copyPreview.ticket)
+        let result = try await client.deliver(copyRequest) { grant in
+            XCTAssertFalse(grant.paste, "A new preference must not enable paste for an old opening.")
+            return 1
+        }
+        XCTAssertNotNil(result)
+        let reopened = try await client.open(fixture.opening)
+        XCTAssertTrue(reopened.pasteEnabled)
     }
 
     @MainActor

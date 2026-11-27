@@ -46,7 +46,7 @@ final class EngineClient: @unchecked Sendable {
 
     func settings(_ request: SettingsRequest) async throws -> SettingsResult {
         try await onQueue {
-            if request.appearance == nil, request.density == nil, request.largerText == nil {
+            if request.appearance == nil, request.density == nil, request.largerText == nil, request.paste == nil {
                 return try self.read(Settings.self, request)
             }
             // A failed reply can follow a committed change. Let the window read

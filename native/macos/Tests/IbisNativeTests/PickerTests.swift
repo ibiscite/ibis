@@ -102,6 +102,7 @@ final class PickerTests: XCTestCase {
         try await eventually { model.canDeliver }
         XCTAssertTrue(panel.searchField?.currentEditor() === panel.firstResponder)
         XCTAssertEqual(panel.searchField?.accessibilityLabel(), "Search references")
+        XCTAssertEqual(panel.searchField?.focusRingType, .default)
         let contentView = try XCTUnwrap(panel.contentView)
         contentView.layoutSubtreeIfNeeded()
         let membership = try XCTUnwrap(descendants(of: contentView).compactMap { $0 as? NSButton }
@@ -127,6 +128,12 @@ final class PickerTests: XCTestCase {
         let page = try XCTUnwrap(descendants(of: try XCTUnwrap(panel.contentView))
             .compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == PickerWords.text(.page) })
         XCTAssertTrue(page.currentEditor() === panel.firstResponder)
+        let resultsTable = try XCTUnwrap(resultTable(in: panel))
+        let selectedRow = try XCTUnwrap(resultsTable.rowView(atRow: resultsTable.selectedRow, makeIfNecessary: true))
+        XCTAssertFalse(selectedRow.isEmphasized)
+        XCTAssertTrue(panel.makeFirstResponder(resultsTable))
+        XCTAssertTrue(selectedRow.isEmphasized)
+        XCTAssertTrue(panel.makeFirstResponder(page))
         XCTAssertEqual(page.stringValue, "")
         try send("\t", key: 48, to: panel)
         XCTAssertTrue(panel.searchField?.currentEditor() === panel.firstResponder)

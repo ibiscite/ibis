@@ -2,7 +2,9 @@
 
 ## Native macOS repo build
 
-Settings is a compact titled window reached through the Ibis menu, menu bar item or ⌘,. The first pane groups Appearance, Rows and Larger Text. Each change saves through the daemon's settings owner and updates the picker. ⌘+ and ⌘− are temporary picker zoom. The Ibis menu opens the standard About window.
+Settings is a titled window reached through the Ibis menu, menu bar item or ⌘,. Picker groups Appearance, Rows and Larger Text. Each change saves through the daemon's settings owner and updates the picker. ⌘+ and ⌘− are temporary picker zoom. The Ibis menu opens the standard About window.
+
+Pasting has a saved switch and a separate macOS permission status. With the switch off, Ibis copies. With it on, both Accessibility and the ability to post ⌘V must be available before Settings reports that Ibis can paste. The Open System Settings button requests access on demand. Ibis rechecks the grants when Settings regains focus. Return to the document and reopen Ibis to try a paste with the new permission. The shell and daemon still verify consent and the captured destination at delivery.
 
 ## Web settings
 

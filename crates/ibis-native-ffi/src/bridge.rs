@@ -199,7 +199,9 @@ extern "C" fn ibis_native_paste(token: u32) -> IbisDelivery {
     }
 }
 
-fn paste_granted() -> bool {
+// SAFETY: This unique symbol performs a passive grant check on the main thread.
+#[unsafe(no_mangle)]
+extern "C" fn ibis_native_paste_granted() -> bool {
     MainThreadMarker::new().is_some() && macos::accessibility_granted() && CGPreflightPostEventAccess()
 }
 
@@ -213,7 +215,7 @@ extern "C" fn ibis_native_paste_destination(enabled: bool) -> i32 {
                 captured,
                 PastePermission {
                     enabled,
-                    granted: enabled && paste_granted(),
+                    granted: enabled && ibis_native_paste_granted(),
                     app: None,
                 },
             )

@@ -27,6 +27,8 @@ uint32_t ibis_native_write(uint32_t request, IbisUtf8 text, IbisUtf8 html, IbisU
 // The captured target to offer a paste to, including a target waiting for permission.
 // Zero means copy. The offer does not grant permission to post a key event.
 int32_t ibis_native_paste_destination(bool enabled);
+// Main thread, passive. Both Accessibility and PostEvent must be granted.
+bool ibis_native_paste_granted(void);
 void ibis_native_request_paste_access(void);
 
 // Worker thread, after the panel has been hidden. Consumes the write receipt.
