@@ -11,6 +11,15 @@ It supersedes the shell part of [0004](0004-desktop-shell.md). It builds on
 [0057](0057-one-method-table.md), [0064](0064-one-citation-one-status-generated-surfaces.md)
 and the connection runtime planned for 0.7.
 
+**Amended** 2026-11-26 by the maintainer, after testing the nightly built
+from #2052: the Mac app "does not feel native", and the problem is structural.
+A web view draws its own copy of every Mac control, so text, controls,
+menus, scrolling, focus and window chrome stay imitations that drift with
+each macOS release. **The native macOS shell goes ahead now**; it no longer
+waits for the measurement below. The Tauri shell over `ibisd` continues on
+Windows and Linux and stays on the Mac until the native one reaches parity.
+No more effort goes into making the web view imitate macOS.
+
 ## Why
 
 - **Every front end loads its own engine.** The app, `ibis`, and each AI
@@ -76,7 +85,7 @@ and the connection runtime planned for 0.7.
      grant, hiding before posting and 0029's timing proofs belong to the
      app people granted. A native shell links it through a narrow Rust
      interface and never reimplements it in Swift.
-   - **The switch is earned by measurement.** After `ibisd` is extracted,
+   - **The switch is earned by measurement** (superseded 2026-11-26: the native Mac shell goes ahead now; see the amendment above). After `ibisd` is extracted,
      the Tauri shell must meet 0032's hidden-memory budget and its summon
      budget (≤100 ms p95 to typeable) together, on the 10k fixture. Hidden
      Settings and Reader web views are destroyed when closed. A web view
@@ -148,8 +157,8 @@ and the connection runtime planned for 0.7.
 1. Build `ibisd` beside `ibis serve`. The same method table serves both. The
    CLI and MCP become clients; then the Tauri app does, and its in-process
    engine is deleted.
-2. Measure the Tauri shell over `ibisd` against 0032, as above.
-3. If the measurement says so, grow the macOS native shell from the spike to parity:
+2. Grow the macOS native shell from the spike to parity (amended
+   2026-11-26: now, not after a measurement):
    1. picker;
    2. delivery and paste;
    3. Settings;
@@ -157,6 +166,7 @@ and the connection runtime planned for 0.7.
    5. signing.
 
    It ships beside the Tauri build in nightlies. The Tauri Mac build is
-   retired when the native one passes 0032.
+   retired when the native one reaches parity and passes 0032.
+3. Measure every shell against 0032 (memory, wake-ups, summon to typeable).
 4. Simplify the Tauri shell's recipe for Windows and Linux.
 5. Add system extensions as thin clients.
