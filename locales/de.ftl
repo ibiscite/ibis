@@ -2077,6 +2077,7 @@ picker-native-allow-paste = Einfügen erlauben…
 picker-native-paste-copy-mode = Ibis kopiert Zitate. Drücken Sie ⌘V zum Einfügen.
 picker-native-open-library = Bibliothek öffnen
 picker-native-shortcut-unavailable = Das Tastenkürzel von Ibis Native ist nicht verfügbar.
+picker-native-shortcut-not-saved = Ibis konnte nicht bestätigen, dass das Tastenkürzel gespeichert wurde.
 picker-native-format = Format
 picker-native-format-value = Format, { $format }
 picker-native-citation = Zitat

@@ -9,24 +9,33 @@ final class EngineClientTests: XCTestCase {
         let fixture = try Fixture()
         try fixture.identifyDaemon()
         let client = fixture.client()
-        let empty = SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: nil)
-        let initial = try await client.settings(empty)
+        let initial = try await client.settings(.readOnly)
         XCTAssertEqual(initial.density, .compact)
         XCTAssertTrue(initial.paste)
+        XCTAssertNil(initial.shortcut)
+        let shortcut = "Control+Alt+Shift+Command+F18"
         let saved = try await client.settings(
-            SettingsRequest(appearance: .dark, density: .comfortable, largerText: true, paste: false)
+            SettingsRequest(appearance: .dark, density: .comfortable, largerText: true, paste: false,
+                            shortcut: ShortcutSetting(binding: shortcut))
         )
         XCTAssertEqual(saved.density, .comfortable)
         XCTAssertFalse(saved.paste)
         XCTAssertFalse(saved.version.isEmpty)
         let reader = fixture.client()
-        let reloaded = try await reader.settings(empty)
+        let reloaded = try await reader.settings(.readOnly)
         XCTAssertEqual(reloaded, saved)
+        XCTAssertEqual(reloaded.shortcut, shortcut)
         let opened = try await reader.open(fixture.opening)
         XCTAssertEqual(opened.appearance, .dark)
         XCTAssertEqual(opened.density, .comfortable)
         XCTAssertTrue(opened.largerText)
         XCTAssertFalse(opened.pasteEnabled)
+        _ = try await reader.settings(SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: nil,
+                                                       shortcut: ShortcutSetting(binding: nil)))
+        let reset = try await client.settings(.readOnly)
+        XCTAssertNil(reset.shortcut)
+        XCTAssertEqual(reset.density, .comfortable)
+        XCTAssertFalse(reset.paste)
     }
 
     @MainActor
@@ -58,7 +67,7 @@ final class EngineClientTests: XCTestCase {
 
         let preferences = fixture.client()
         let disabled = try await preferences.settings(
-            SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: false)
+            SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: false, shortcut: nil)
         )
         XCTAssertFalse(disabled.paste)
 
@@ -97,7 +106,7 @@ final class EngineClientTests: XCTestCase {
         XCTAssertFalse(copyOnly.pasteEnabled)
         let copyPreview = try await client.preview(draft).result
         let enabled = try await preferences.settings(
-            SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: true)
+            SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: true, shortcut: nil)
         )
         XCTAssertTrue(enabled.paste)
         let copyRequest = PickerDeliverRequest(contentHash: copyPreview.contentHash, paste: true, ticket: copyPreview.ticket)

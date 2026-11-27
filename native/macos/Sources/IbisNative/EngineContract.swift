@@ -455,12 +455,14 @@ struct SettingsRequest: Codable, Hashable, Sendable {
     let density: Density?
     let largerText: Bool?
     let paste: Bool?
+    let shortcut: ShortcutSetting?
 
     enum CodingKeys: String, CodingKey {
         case appearance = "appearance"
         case density = "density"
         case largerText = "larger_text"
         case paste = "paste"
+        case shortcut = "shortcut"
     }
 }
 
@@ -469,6 +471,7 @@ struct SettingsResult: Codable, Hashable, Sendable {
     let density: Density
     let largerText: Bool
     let paste: Bool
+    let shortcut: String?
     let version: String
 
     enum CodingKeys: String, CodingKey {
@@ -476,7 +479,12 @@ struct SettingsResult: Codable, Hashable, Sendable {
         case density = "density"
         case largerText = "larger_text"
         case paste = "paste"
+        case shortcut = "shortcut"
         case version = "version"
     }
+}
+
+struct ShortcutSetting: Codable, Hashable, Sendable {
+    let binding: String?
 }
 

@@ -4,6 +4,8 @@
 
 Settings is a titled window reached through the Ibis menu, menu bar item or ⌘,. Picker groups Appearance, Rows and Larger Text. Each change saves through the daemon's settings owner and updates the picker. ⌘+ and ⌘− are temporary picker zoom. The Ibis menu opens the standard About window.
 
+Shortcuts shows the working key for Open Ibis. Activate the button and type a new shortcut in the Settings window. Escape, Tab and leaving the recorder cancel. Ibis keeps the working shortcut until macOS has registered the replacement and the daemon has confirmed the saved choice. Use Default restores the repo build's ⌥⇧⌘Y. The menu-bar item follows the active registration.
+
 Pasting has a saved switch and a separate macOS permission status. With the switch off, Ibis copies. With it on, both Accessibility and the ability to post ⌘V must be available before Settings reports that Ibis can paste. The Open System Settings button requests access on demand. Ibis rechecks the grants when Settings regains focus. Return to the document and reopen Ibis to try a paste with the new permission. The shell and daemon still verify consent and the captured destination at delivery.
 
 ## Web settings

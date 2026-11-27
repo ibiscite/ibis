@@ -1,6 +1,14 @@
 import CIbisNative
 import Foundation
 
+extension SettingsRequest {
+    static let readOnly = SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: nil, shortcut: nil)
+
+    var isReadOnly: Bool {
+        appearance == nil && density == nil && largerText == nil && paste == nil && shortcut == nil
+    }
+}
+
 /// Blocking file descriptors and daemon launches stay on one utility queue.
 /// Read intents may reconnect and replay. Clipboard intents never replay.
 final class EngineClient: @unchecked Sendable {
@@ -46,7 +54,7 @@ final class EngineClient: @unchecked Sendable {
 
     func settings(_ request: SettingsRequest) async throws -> SettingsResult {
         try await onQueue {
-            if request.appearance == nil, request.density == nil, request.largerText == nil, request.paste == nil {
+            if request.isReadOnly {
                 return try self.read(Settings.self, request)
             }
             // A failed reply can follow a committed change. Let the window read

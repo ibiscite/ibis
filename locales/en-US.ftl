@@ -2096,6 +2096,7 @@ picker-native-allow-paste = Allow Paste…
 picker-native-paste-copy-mode = Ibis copies citations. Press ⌘V to paste.
 picker-native-open-library = Open Library
 picker-native-shortcut-unavailable = The Ibis Native shortcut is unavailable.
+picker-native-shortcut-not-saved = Ibis could not confirm that the shortcut was saved.
 picker-native-format = Format
 picker-native-format-value = Format, { $format }
 picker-native-citation = Citation

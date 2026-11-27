@@ -1,14 +1,30 @@
 import AppKit
 import Carbon
-import CIbisNative
 
-/// Carbon registers only this one shortcut. It does not listen to other keys.
+/// Reserve a candidate before changing the working shortcut. While Settings
+/// saves, both combinations stay reserved and only the working one opens Ibis.
 @MainActor
 final class HotKey {
+    private struct Registration {
+        let reference: EventHotKeyRef
+        let id: UInt32
+        let code: UInt16
+        var shortcut: OpeningShortcut
+    }
+
+    private enum Reservation {
+        case existing(OpeningShortcut)
+        case replacement(Registration)
+    }
+
     private static let signature: OSType = 0x49626973 // Ibis
     private var handler: EventHandlerRef?
-    private var key: EventHotKeyRef?
+    private var active: Registration?
+    private var reservation: Reservation?
+    private var nextID: UInt32 = 0
     private let action: () -> Void
+
+    var registered: OpeningShortcut? { active?.shortcut }
 
     init(action: @escaping () -> Void) {
         self.action = action
@@ -21,27 +37,61 @@ final class HotKey {
                                         nil, MemoryLayout<EventHotKeyID>.size, nil, &identity) == noErr,
                       identity.signature == HotKey.signature else { return OSStatus(eventNotHandledErr) }
                 let hotKey = Unmanaged<HotKey>.fromOpaque(context).takeUnretainedValue()
-                MainActor.assumeIsolated { hotKey.action() }
+                MainActor.assumeIsolated {
+                    if hotKey.active?.id == identity.id { hotKey.action() }
+                }
                 return noErr
             }, 1, &event, Unmanaged.passUnretained(self).toOpaque(), &handler
         )
     }
 
-    /// The repo bundle has its own shortcut so it can run beside Tauri.
-    func register() -> Bool {
-        if let key { UnregisterEventHotKey(key) }
-        key = nil
-        let code = ibis_native_command_key(UInt16(kVK_ANSI_Y), UInt8(ascii: "y"))
-        guard handler != nil, code >= 0 else { return false }
-        let identity = EventHotKeyID(signature: Self.signature, id: 1)
-        return RegisterEventHotKey(
-            UInt32(code), UInt32(cmdKey | shiftKey | optionKey), identity,
-            GetApplicationEventTarget(), UInt32(kEventHotKeyExclusive), &key
-        ) == noErr
+    func register(_ shortcut: OpeningShortcut) -> Bool {
+        guard reserve(shortcut) else { return false }
+        commitReservation()
+        return true
+    }
+
+    func reserve(_ shortcut: OpeningShortcut) -> Bool {
+        guard handler != nil, reservation == nil else { return false }
+        let code = shortcut.resolvedCode()
+        guard !shortcut.conflictsWithPicker(at: code) else { return false }
+        let candidate = shortcut.registered(at: code)
+        if let active, active.code == code, active.shortcut.modifiers == shortcut.modifiers {
+            reservation = .existing(candidate)
+            return true
+        }
+
+        nextID &+= 1
+        let identity = EventHotKeyID(signature: Self.signature, id: nextID)
+        var reference: EventHotKeyRef?
+        guard RegisterEventHotKey(UInt32(code), shortcut.carbonModifiers, identity,
+                                  GetApplicationEventTarget(), UInt32(kEventHotKeyExclusive), &reference) == noErr,
+              let reference else { return false }
+        reservation = .replacement(Registration(reference: reference, id: identity.id, code: code, shortcut: candidate))
+        return true
+    }
+
+    func commitReservation() {
+        guard let reservation else { return }
+        self.reservation = nil
+        switch reservation {
+        case .existing(let shortcut):
+            active?.shortcut = shortcut
+        case .replacement(let replacement):
+            let previous = active
+            active = replacement
+            if let previous { UnregisterEventHotKey(previous.reference) }
+        }
+    }
+
+    func discardReservation() {
+        if case .replacement(let candidate) = reservation { UnregisterEventHotKey(candidate.reference) }
+        reservation = nil
     }
 
     deinit {
-        if let key { UnregisterEventHotKey(key) }
+        if case .replacement(let candidate) = reservation { UnregisterEventHotKey(candidate.reference) }
+        if let active { UnregisterEventHotKey(active.reference) }
         if let handler { RemoveEventHandler(handler) }
     }
 }

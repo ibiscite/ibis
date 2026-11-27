@@ -1,9 +1,79 @@
 import AppKit
+import Carbon
 import CoreGraphics
 import XCTest
 @testable import IbisNative
 
 final class PickerTests: XCTestCase {
+    @MainActor
+    func testOpeningShortcutPreservesIntentAndRejectsPickerCommands() throws {
+        let logical = try OpeningShortcut.parse("Cmd+Option+Shift+Y")
+        let physical = try OpeningShortcut.parse("Cmd+Option+Shift+KeyY")
+        XCTAssertEqual(logical, .repoDefault)
+        XCTAssertEqual(logical.savedValue, "Alt+Shift+Command+Y")
+        XCTAssertEqual(physical.savedValue, "Alt+Shift+Command+KeyY")
+        XCTAssertNotEqual(logical, physical)
+        for (input, expected) in [("Shift+Y", ShortcutRefusal.needsModifier),
+                                  ("Command+Q", .reserved), ("Option+Enter", .reserved),
+                                  ("Control+Unknown", .invalid)] {
+            XCTAssertThrowsError(try OpeningShortcut.parse(input)) { XCTAssertEqual($0 as? ShortcutRefusal, expected) }
+        }
+    }
+
+    @MainActor
+    func testHotKeyKeptUntilReplacementIsCommitted() throws {
+        guard CGSessionCopyCurrentDictionary() != nil else { throw XCTSkip("A WindowServer session is needed.") }
+        _ = NSApplication.shared
+        let hotKey = HotKey {}
+        let first = try OpeningShortcut.parse("Control+Alt+Shift+Command+F18")
+        let next = try OpeningShortcut.parse("Control+Alt+Shift+Command+F19")
+        guard hotKey.register(first) else { throw XCTSkip("The fixture shortcut is already in use.") }
+        XCTAssertTrue(hotKey.reserve(next))
+        XCTAssertEqual(hotKey.registered, first)
+        hotKey.discardReservation()
+        XCTAssertEqual(hotKey.registered, first)
+        XCTAssertTrue(hotKey.reserve(next))
+        hotKey.commitReservation()
+        XCTAssertEqual(hotKey.registered, next)
+    }
+
+    @MainActor
+    func testSettingsRecorderCancelsAndSavesItsAcceptedShortcut() async throws {
+        guard CGSessionCopyCurrentDictionary() != nil else { throw XCTSkip("A WindowServer session is needed.") }
+        _ = NSApplication.shared
+        let fixture = try Fixture()
+        try fixture.identifyDaemon()
+        let engine = fixture.client()
+        let shortcuts = OpeningShortcuts(engine: engine, action: {}, updateMenu: { _ in })
+        let settings = NativeSettingsWindow(engine: engine, shortcuts: shortcuts) { _, _ in }
+        let window = try XCTUnwrap(settings.window)
+        let flags: NSEvent.ModifierFlags = [.control, .option, .shift, .command]
+        let old = try OpeningShortcut.parse("Control+Alt+Shift+Command+F18")
+        let writ = try await engine.settings(SettingsRequest(appearance: nil, density: nil, largerText: nil,
+                                                              paste: nil, shortcut: ShortcutSetting(binding: old.savedValue)))
+        shortcuts.restore(writ.shortcut)
+        guard shortcuts.active == old else { throw XCTSkip("The fixture shortcut is already in use.") }
+
+        shortcuts.beginRecording()
+        try send("\u{1b}", key: UInt16(kVK_Escape), to: window)
+        XCTAssertFalse(shortcuts.recording)
+        XCTAssertEqual(shortcuts.active, old)
+
+        shortcuts.beginRecording()
+        let quit = try keyEvent("q", key: UInt16(kVK_ANSI_Q), flags: [.command], to: window)
+        XCTAssertTrue(window.performKeyEquivalent(with: quit))
+        XCTAssertEqual(shortcuts.issue, .shortcutReserved)
+        XCTAssertEqual(shortcuts.active, old)
+
+        shortcuts.beginRecording()
+        let f19 = try XCTUnwrap(UnicodeScalar(NSF19FunctionKey))
+        try send(String(f19), key: UInt16(kVK_F19), flags: flags, to: window)
+        try await eventually { !shortcuts.saving }
+        let saved = try await fixture.client().settings(.readOnly)
+        XCTAssertEqual(saved.shortcut, "Control+Alt+Shift+Command+F19")
+        XCTAssertEqual(shortcuts.active?.savedValue, saved.shortcut)
+    }
+
     @MainActor
     func testLocatorAndPopoverEditsStayWithTheirReference() async throws {
         let fixture = try Fixture()
@@ -183,12 +253,16 @@ final class PickerTests: XCTestCase {
     }
 
     @MainActor
-    private func send(_ character: String, key: UInt16, flags: NSEvent.ModifierFlags = [], to panel: PickerPanel) throws {
-        let event = try XCTUnwrap(NSEvent.keyEvent(
+    private func send(_ character: String, key: UInt16, flags: NSEvent.ModifierFlags = [], to window: NSWindow) throws {
+        window.sendEvent(try keyEvent(character, key: key, flags: flags, to: window))
+    }
+
+    @MainActor
+    private func keyEvent(_ character: String, key: UInt16, flags: NSEvent.ModifierFlags, to window: NSWindow) throws -> NSEvent {
+        try XCTUnwrap(NSEvent.keyEvent(
             with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: panel.windowNumber, context: nil, characters: character, charactersIgnoringModifiers: character,
+            windowNumber: window.windowNumber, context: nil, characters: character, charactersIgnoringModifiers: character,
             isARepeat: false, keyCode: key
         ))
-        panel.sendEvent(event)
     }
 }

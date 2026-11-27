@@ -5,15 +5,19 @@ import SwiftUI
 @MainActor
 final class NativeSettingsWindow: NSWindowController, NSWindowDelegate {
     private let preferences: NativePreferences
+    private let shortcuts: OpeningShortcuts
 
-    init(engine: EngineClient, applied: @escaping (SettingsResult, Bool) -> Void) {
-        let preferences = NativePreferences(engine: engine, applied: applied)
+    init(engine: EngineClient, shortcuts: OpeningShortcuts, applied: @escaping (SettingsResult, Bool) -> Void) {
+        self.shortcuts = shortcuts
+        let preferences = NativePreferences(engine: engine) { [weak shortcuts] saved, resetText in
+            shortcuts?.restore(saved.shortcut)
+            applied(saved, resetText)
+        }
         self.preferences = preferences
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
-                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let window = SettingsHostWindow(shortcuts: shortcuts)
         window.title = PickerWords.text(.settingsWindow)
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: NativeSettingsForm(preferences: preferences))
+        window.contentView = NSHostingView(rootView: NativeSettingsForm(preferences: preferences, shortcuts: shortcuts))
         window.center()
         super.init(window: window)
         window.delegate = self
@@ -29,6 +33,27 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate {
     }
 
     func windowDidBecomeKey(_ notification: Notification) { preferences.refreshPasteAccess() }
+    func windowDidResignKey(_ notification: Notification) { shortcuts.cancelRecording() }
+}
+
+@MainActor
+private final class SettingsHostWindow: NSWindow {
+    private let shortcuts: OpeningShortcuts
+
+    init(shortcuts: OpeningShortcuts) {
+        self.shortcuts = shortcuts
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 480, height: 435),
+                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        shortcuts.recordKey(event) || super.performKeyEquivalent(with: event)
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown || event.type == .rightMouseDown { shortcuts.cancelRecording() }
+        if !shortcuts.recordKey(event) { super.sendEvent(event) }
+    }
 }
 
 @MainActor
@@ -39,14 +64,13 @@ private final class NativePreferences: ObservableObject {
     @Published private(set) var pasteGranted = false
     private let engine: EngineClient
     private let applied: (SettingsResult, Bool) -> Void
-    private let empty = SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: nil)
 
     init(engine: EngineClient, applied: @escaping (SettingsResult, Bool) -> Void) {
         self.engine = engine
         self.applied = applied
     }
 
-    func read() { send(empty, changing: false) }
+    func read() { send(.readOnly, changing: false) }
 
     func refreshPasteAccess() { pasteGranted = ibis_native_paste_granted() }
 
@@ -61,7 +85,8 @@ private final class NativePreferences: ObservableObject {
 
     func change(appearance: Appearance? = nil, density: Density? = nil, largerText: Bool? = nil, paste: Bool? = nil) {
         guard saved != nil else { return }
-        send(SettingsRequest(appearance: appearance, density: density, largerText: largerText, paste: paste), changing: true)
+        send(SettingsRequest(appearance: appearance, density: density, largerText: largerText, paste: paste, shortcut: nil),
+             changing: true)
     }
 
     private func send(_ request: SettingsRequest, changing: Bool) {
@@ -77,7 +102,7 @@ private final class NativePreferences: ObservableObject {
             } catch {
                 if changing {
                     // A dropped reply can follow a committed write. Recover the saved view.
-                    if let reply = try? await engine.settings(empty) {
+                    if let reply = try? await engine.settings(.readOnly) {
                         saved = reply
                         applied(reply, request.largerText != nil)
                     } else {
@@ -94,12 +119,14 @@ private final class NativePreferences: ObservableObject {
 
 private struct NativeSettingsForm: View {
     @ObservedObject var preferences: NativePreferences
+    @ObservedObject var shortcuts: OpeningShortcuts
 
     var body: some View {
         Form {
             if let saved = preferences.saved {
-                pasteSection(saved).disabled(preferences.busy)
-                pickerSection(saved).disabled(preferences.busy)
+                shortcutSection.disabled(preferences.busy || shortcuts.saving)
+                pasteSection(saved).disabled(preferences.busy || shortcuts.saving)
+                pickerSection(saved).disabled(preferences.busy || shortcuts.saving)
             }
 
             if let problem = preferences.problem {
@@ -117,6 +144,25 @@ private struct NativeSettingsForm: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var shortcutSection: some View {
+        Section(PickerWords.text(.shortcuts)) {
+            LabeledContent {
+                let label = shortcuts.active?.label ?? PickerWords.text(.shortcutNotAssigned)
+                Button(shortcuts.recording ? PickerWords.text(.recordShortcut) : label) { shortcuts.beginRecording() }
+                    .accessibilityLabel(Text(PickerWords.text(.open)))
+                    .accessibilityValue(Text(shortcuts.recording ? PickerWords.text(.recordShortcut) : label))
+                if shortcuts.hasCustomShortcut {
+                    Button(PickerWords.text(.restoreShortcut)) { shortcuts.useDefault() }
+                }
+            } label: {
+                Text(PickerWords.text(.open))
+            }
+            if let issue = shortcuts.issue {
+                Text(PickerWords.text(issue)).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private func pasteSection(_ saved: SettingsResult) -> some View {

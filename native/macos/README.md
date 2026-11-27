@@ -14,7 +14,9 @@ scripts/native-macos.sh test
 The build produces `target/native-macos/Ibis Native.app` with the bundle ID
 `com.ibiscite.ibis.native` and a local ad-hoc signature. `--show` explicitly
 opens the picker at launch. Use ⌥⇧⌘Y or the Ibis menu-bar item to summon it
-later. The repo build has its own shortcut for side-by-side use with Tauri.
+later. To change the key, open Settings and select the shortcut next to
+**Open Ibis**. Use Default returns to the repo build's shortcut for side-by-side
+use with Tauri.
 Quit Ibis Native before running a rebuilt bundle or supplying a new
 `--file` argument to a fresh launch.
 
@@ -45,8 +47,7 @@ and the Ibis menu bar item, which also opens About Ibis.
 size while you type and remembers edge resizing per display.
 
 The existing nightly sets the functional baseline for the native app
-(maintainer, 2026-11-27). The next Settings work covers the summon shortcut
-and launch at login.
+(maintainer, 2026-11-27). The next Settings work covers launch at login.
 Saved library and per-app formats, projects, editor commands and the searchable
 action menu are also nightly capabilities the native picker needs to regain.
 

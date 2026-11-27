@@ -77,12 +77,14 @@ enum PickerWord {
     case pickerPreferences
     case quit
     case recentlyAdded
+    case recordShortcut
     case references
     case reload
     case remove
     case removeShort
     case removeToken
     case requestFailed
+    case restoreShortcut
     case resultHint
     case returnKey
     case search
@@ -90,6 +92,13 @@ enum PickerWord {
     case settingsReadFailed
     case settingsSaveFailed
     case settingsWindow
+    case shortcutInUse
+    case shortcutInvalid
+    case shortcutNeedsModifier
+    case shortcutNotAssigned
+    case shortcutNotSaved
+    case shortcutReserved
+    case shortcuts
     case shorthandExample
     case showAs
     case system
@@ -192,12 +201,14 @@ enum PickerWords {
             .pickerPreferences: "منتقي الاستشهادات",
             .quit: "إنهاء Ibis Native",
             .recentlyAdded: "أُضيفت مؤخرًا",
+            .recordShortcut: "اكتب اختصارًا…",
             .references: "المراجع",
             .reload: "إعادة تحميل المكتبة",
             .remove: "إزالة من الاستشهاد",
             .removeShort: "إزالة",
             .removeToken: "إزالة {IBIS_VALUE} من الاستشهاد",
             .requestFailed: "تعذّر على Ibis إكمال الطلب. حاول مجددًا.",
+            .restoreShortcut: "استخدام الافتراضي",
             .resultHint: "اكتب عنوانًا أو مؤلفًا أو سنةً أو مفتاحًا.",
             .returnKey: "مفتاح الإدخال",
             .search: "البحث في المراجع",
@@ -205,6 +216,13 @@ enum PickerWords {
             .settingsReadFailed: "تعذّر على Ibis قراءة إعداداتك؛ أعد فتح الإعدادات للمحاولة مرة أخرى.",
             .settingsSaveFailed: "تعذّر على Ibis حفظ هذا الخيار؛ تظهر القيمة المحفوظة.",
             .settingsWindow: "إعدادات Ibis",
+            .shortcutInUse: "قد يكون هذا الاختصار مستخدمًا من تطبيق آخر أو من النظام. جرّب غيره.",
+            .shortcutInvalid: "لا يستطيع Ibis استخدام تركيبة المفاتيح هذه. جرّب اختصارًا آخر.",
+            .shortcutNeedsModifier: "أضف Control أو Alt أو Command. لا يكفي Shift وحده.",
+            .shortcutNotAssigned: "غير معيّن",
+            .shortcutNotSaved: "تعذّر على Ibis تأكيد حفظ الاختصار.",
+            .shortcutReserved: "هذا الاختصار مخصص لأوامر التطبيق. أضف مفتاح تعديل آخر.",
+            .shortcuts: "الاختصارات",
             .shorthandExample: "vale 2024 p12; ostrom ch3",
             .showAs: "طريقة العرض",
             .system: "النظام",
@@ -294,12 +312,14 @@ enum PickerWords {
             .pickerPreferences: "Auswahlfenster",
             .quit: "Ibis Native beenden",
             .recentlyAdded: "Zuletzt hinzugefügt",
+            .recordShortcut: "Tastenkürzel eingeben…",
             .references: "Referenzen",
             .reload: "Bibliothek neu laden",
             .remove: "Aus Zitation entfernen",
             .removeShort: "Entfernen",
             .removeToken: "{IBIS_VALUE} aus der Zitation entfernen",
             .requestFailed: "Ibis konnte die Anfrage nicht abschließen. Versuchen Sie es erneut.",
+            .restoreShortcut: "Standard verwenden",
             .resultHint: "Geben Sie einen Titel, Autor, ein Jahr oder einen Schlüssel ein.",
             .returnKey: "Eingabetaste",
             .search: "Referenzen suchen",
@@ -307,6 +327,13 @@ enum PickerWords {
             .settingsReadFailed: "Ibis konnte Ihre Einstellungen nicht lesen; öffnen Sie die Einstellungen erneut, um es noch einmal zu versuchen.",
             .settingsSaveFailed: "Ibis konnte diese Wahl nicht speichern; der gespeicherte Wert wird angezeigt.",
             .settingsWindow: "Ibis-Einstellungen",
+            .shortcutInUse: "Eine andere App oder das System verwendet dieses Tastenkürzel womöglich. Versuchen Sie ein anderes.",
+            .shortcutInvalid: "Ibis kann diese Tastenkombination nicht verwenden. Versuchen Sie ein anderes Tastenkürzel.",
+            .shortcutNeedsModifier: "Nehmen Sie Control, Alt oder Command dazu. Shift allein reicht nicht.",
+            .shortcutNotAssigned: "Nicht zugewiesen",
+            .shortcutNotSaved: "Ibis konnte nicht bestätigen, dass das Tastenkürzel gespeichert wurde.",
+            .shortcutReserved: "Dieses Tastenkürzel ist für App-Befehle reserviert. Nehmen Sie eine weitere Sondertaste dazu.",
+            .shortcuts: "Tastenkürzel",
             .shorthandExample: "vale 2024 Seite12; ostrom Kapitel3",
             .showAs: "Anzeigen als",
             .system: "System",
@@ -396,12 +423,14 @@ enum PickerWords {
             .pickerPreferences: "Picker",
             .quit: "Quit Ibis Native",
             .recentlyAdded: "Recently added",
+            .recordShortcut: "Type a shortcut…",
             .references: "References",
             .reload: "Reload Library",
             .remove: "Remove from Citation",
             .removeShort: "Remove",
             .removeToken: "Remove {IBIS_VALUE} from citation",
             .requestFailed: "Ibis couldn’t finish this request. Try again.",
+            .restoreShortcut: "Use Default",
             .resultHint: "Type a title, author, year or key.",
             .returnKey: "Return",
             .search: "Search references",
@@ -409,6 +438,13 @@ enum PickerWords {
             .settingsReadFailed: "Ibis could not read your settings; reopen Settings to try again.",
             .settingsSaveFailed: "Ibis could not save this choice; the saved value is shown.",
             .settingsWindow: "Ibis Settings",
+            .shortcutInUse: "Another app or the system may be using that shortcut. Try another.",
+            .shortcutInvalid: "Ibis cannot use that key combination. Try another shortcut.",
+            .shortcutNeedsModifier: "Include Control, Alt or Command. Shift alone is not enough.",
+            .shortcutNotAssigned: "Not assigned",
+            .shortcutNotSaved: "Ibis could not confirm that the shortcut was saved.",
+            .shortcutReserved: "That shortcut is used for app commands. Add another modifier.",
+            .shortcuts: "Shortcuts",
             .shorthandExample: "vale 2024 p12; ostrom ch3",
             .showAs: "Show as",
             .system: "System",

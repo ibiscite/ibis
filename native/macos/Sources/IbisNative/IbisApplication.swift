@@ -41,7 +41,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
         panel.openSettings = { [weak self] in self?.showSettings() }
         return panel
     }()
-    private lazy var settings = NativeSettingsWindow(engine: engine) { [weak self] saved, resetText in
+    private lazy var settings = NativeSettingsWindow(engine: engine, shortcuts: shortcuts) { [weak self] saved, resetText in
         self?.model.applySettings(saved, resetTextSize: resetText)
     }
     private var previousApp: NSRunningApplication?
@@ -50,7 +50,20 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
     }
     private let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let openItem = NSMenuItem(title: PickerWords.text(.open), action: #selector(toggle), keyEquivalent: "")
-    private lazy var hotKey = HotKey { [weak self] in self?.toggle() }
+    private lazy var shortcuts: OpeningShortcuts = OpeningShortcuts(engine: engine, action: { [weak self] in
+        guard let self else { return }
+        if shortcuts.recording { shortcuts.cancelRecording() }
+        else { toggle() }
+    }, updateMenu: { [weak self] shortcut in
+        guard let self else { return }
+        let title = PickerWords.text(.open)
+        let key = shortcut?.menuKey ?? ""
+        if let shortcut, key.isEmpty { openItem.title = "\(title) (\(shortcut.label))" }
+        else { openItem.title = title }
+        openItem.keyEquivalent = key
+        openItem.keyEquivalentModifierMask = shortcut?.modifiers ?? []
+        openItem.toolTip = shortcut == nil ? PickerWords.text(.missingShortcut) : nil
+    })
     private var layoutObserver: NSObjectProtocol?
     private var windowObserver: NSObjectProtocol?
 
@@ -80,12 +93,12 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
                                                                  object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.restoreAccessoryWhenPossible() }
         }
-        registerShortcut()
+        shortcuts.start()
         layoutObserver = DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String),
             object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.registerShortcut() }
+            MainActor.assumeIsolated { self?.shortcuts.layoutChanged() }
         }
         if launch.show { panel.summon() }
     }
@@ -139,7 +152,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
 
     @objc private func showAbout() {
         Task {
-            let saved = try? await engine.settings(SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: nil))
+            let saved = try? await engine.settings(.readOnly)
             var options: [NSApplication.AboutPanelOptionKey: Any] = [.applicationName: PickerWords.text(.app)]
             if let saved { options[.applicationVersion] = saved.version }
             activateAppWindow()
@@ -151,13 +164,6 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = self
         return item
-    }
-
-    private func registerShortcut() {
-        let registered = hotKey.register()
-        openItem.keyEquivalent = registered ? "y" : ""
-        openItem.keyEquivalentModifierMask = [.command, .shift, .option]
-        openItem.toolTip = registered ? nil : PickerWords.text(.missingShortcut)
     }
 
     @objc private func toggle() {

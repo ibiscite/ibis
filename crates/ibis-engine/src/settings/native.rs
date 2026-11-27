@@ -9,6 +9,14 @@ pub struct SettingsRequest {
     pub density: Option<Density>,
     pub larger_text: Option<bool>,
     pub paste: Option<bool>,
+    pub shortcut: Option<ShortcutSetting>,
+}
+
+/// An omitted patch leaves the shortcut alone. An empty patch uses the default.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShortcutSetting {
+    pub binding: Option<String>,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -17,12 +25,18 @@ pub struct SettingsResult {
     pub density: Density,
     pub larger_text: bool,
     pub paste: bool,
+    pub shortcut: Option<String>,
     pub version: &'static str,
 }
 
 impl SettingsRequest {
     pub fn answer(self, owner: &Owner) -> Result<SettingsResult, SettingsError> {
-        if self.appearance.is_none() && self.density.is_none() && self.larger_text.is_none() && self.paste.is_none() {
+        if self.appearance.is_none()
+            && self.density.is_none()
+            && self.larger_text.is_none()
+            && self.paste.is_none()
+            && self.shortcut.is_none()
+        {
             let loaded = owner.read();
             return match loaded.problem {
                 Some(problem) => Err(problem),
@@ -44,6 +58,9 @@ impl SettingsRequest {
             if let Some(paste) = self.paste {
                 portable.paste = unless_default(paste, DEFAULTS.paste);
             }
+            if let Some(shortcut) = self.shortcut {
+                portable.shortcut.set_here(shortcut.binding);
+            }
             Ok::<(), SettingsError>(())
         })?;
         Ok(SettingsResult::from(&saved.portable))
@@ -57,6 +74,7 @@ impl From<&Portable> for SettingsResult {
             density: portable.density(),
             larger_text: portable.larger_text(),
             paste: portable.paste(),
+            shortcut: portable.shortcut.here().map(str::to_owned),
             version: ibis_core::VERSION,
         }
     }

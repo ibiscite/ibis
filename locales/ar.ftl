@@ -2181,6 +2181,7 @@ picker-native-allow-paste = السماح باللصق…
 picker-native-paste-copy-mode = ينسخ Ibis الاستشهادات. اضغط ⌘V للصق.
 picker-native-open-library = فتح المكتبة
 picker-native-shortcut-unavailable = اختصار Ibis Native غير متاح.
+picker-native-shortcut-not-saved = تعذّر على Ibis تأكيد حفظ الاختصار.
 picker-native-format = التنسيق
 picker-native-format-value = التنسيق، { $format }
 picker-native-citation = استشهاد
