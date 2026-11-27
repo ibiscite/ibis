@@ -8,7 +8,7 @@ use ibis_engine::citations::SessionId;
 use ibis_engine::picker::{self, PickerLibraryCondition, PickerOpenRequest};
 use ibis_engine::recents::{List, SessionReferences};
 use ibis_engine::settings::native::SettingsRequest;
-use ibis_engine::{Cancellation, Engine, PickerMethod, protocol, rpc, settings, settings_backup};
+use ibis_engine::{Cancellation, Engine, PickerMethod, protocol, rpc, settings};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::io::{self, BufRead, BufReader, Read};
@@ -200,10 +200,12 @@ pub(super) fn serve(
             PickerMethod::Open => decode(params).and_then(|params| encode(picker.open(params)?)),
             PickerMethod::Settings => decode::<Option<SettingsRequest>>(params).and_then(|params| {
                 let owner = host.settings_for(picker.settings.clone(), |_| {});
-                let saved = params
-                    .unwrap_or_default()
-                    .answer(&owner)
-                    .map_err(|problem| settings_backup::settings_code(&problem))?;
+                let saved = params.unwrap_or_default().answer(&owner, |path| {
+                    // Validate a replacement off to the side so the current picker ticket stays usable.
+                    host.cli_engine()?
+                        .open_file_id(path, &Cancellation::default())
+                        .map(|_| ())
+                })?;
                 encode(saved)
             }),
             PickerMethod::Search => decode(params).and_then(|params| {

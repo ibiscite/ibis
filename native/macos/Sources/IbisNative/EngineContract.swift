@@ -450,10 +450,17 @@ enum Script: String, Codable, Hashable, Sendable {
     case superscript = "superscript"
 }
 
+struct SettingsLibrary: Codable, Hashable, Sendable {
+    let file: String?
+    let missing: Bool
+    let name: String
+}
+
 struct SettingsRequest: Codable, Hashable, Sendable {
     let appearance: Appearance?
     let density: Density?
     let largerText: Bool?
+    let libraryFile: String?
     let paste: Bool?
     let shortcut: ShortcutSetting?
 
@@ -461,6 +468,7 @@ struct SettingsRequest: Codable, Hashable, Sendable {
         case appearance = "appearance"
         case density = "density"
         case largerText = "larger_text"
+        case libraryFile = "library_file"
         case paste = "paste"
         case shortcut = "shortcut"
     }
@@ -470,6 +478,8 @@ struct SettingsResult: Codable, Hashable, Sendable {
     let appearance: Appearance
     let density: Density
     let largerText: Bool
+    let library: SettingsLibrary?
+    let libraryExtensions: [String]
     let paste: Bool
     let shortcut: String?
     let version: String
@@ -478,6 +488,8 @@ struct SettingsResult: Codable, Hashable, Sendable {
         case appearance = "appearance"
         case density = "density"
         case largerText = "larger_text"
+        case library = "library"
+        case libraryExtensions = "library_extensions"
         case paste = "paste"
         case shortcut = "shortcut"
         case version = "version"

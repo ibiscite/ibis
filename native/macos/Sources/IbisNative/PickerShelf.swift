@@ -2,7 +2,6 @@ import AppKit
 
 @MainActor
 final class PickerShelf: NSView {
-    let library = PickerButton()
     let membership = PickerButton()
     let action = PickerDeliveryButton()
     let more = PickerButton()
@@ -43,16 +42,15 @@ final class PickerShelf: NSView {
         more.setAccessibilityLabel(PickerWords.text(.more))
         membership.key = "⇧↩"
         membership.surface = .link
-        library.setAccessibilityLabel(PickerWords.text(.library))
         draftLabel.textColor = .secondaryLabelColor
         draftLabel.setAccessibilityElement(true)
-        [rule, beak, scroll, pending, locator, draftLabel, library, membership, action, more].forEach(addSubview)
+        [rule, beak, scroll, pending, locator, draftLabel, membership, action, more].forEach(addSubview)
     }
 
     required init?(coder: NSCoder) { nil }
 
     var keyViews: [NSView] {
-        tokens.map(\.button).filter { !$0.isHidden && $0.isEnabled } + locator.keyViews + [library, membership, action, more]
+        tokens.map(\.button).filter { !$0.isHidden && $0.isEnabled } + locator.keyViews + [membership, action, more]
     }
     var displayed: [ItemRef] { tokens.map(\.id) }
     var focused: ItemRef? {
@@ -83,15 +81,7 @@ final class PickerShelf: NSView {
 
     func configure(model: PickerModel, metrics m: PickerMetrics, width: CGFloat) {
         let stacked = twoRows(hasDraft: model.hasDraft, metrics: m, width: width)
-        for button in [library, membership, more] { button.metrics = m }
-        let name = model.catalog?.library?.name
-        let needingAttention = model.searchReply?.status.first(where: { $0.kind == .library })?.text
-            ?? model.catalog?.status.first?.text
-        let alert = needingAttention != nil || (name != nil && !model.libraryReady)
-        library.isHidden = !alert
-        library.text = name ?? PickerWords.text(.library)
-        library.maxCaption = m.pt(100)
-        library.toolTip = [name, needingAttention].compactMap { $0 }.joined(separator: "\n")
+        for button in [membership, more] { button.metrics = m }
 
         let label = model.deliveryTitle
         action.setAccessibilityLabel(label)
@@ -137,23 +127,20 @@ final class PickerShelf: NSView {
         let actionY = y + (stacked ? m.pt(34) : 0)
         let h = m.pt(28)
         let moreWidth = more.preferredWidth
-        let libraryWidth = library.isHidden ? 0 : library.preferredWidth
         let membershipWidth = membership.preferredWidth
         let actionWidth = min(action.fittingSize.width, max(m.pt(92), width * 0.35))
         let moreX = width - m.inset - moreWidth
         let actionX = moreX - m.pt(12) - actionWidth
         let membershipX = actionX - m.pt(8) - membershipWidth
-        let libraryX = membershipX - (library.isHidden ? 0 : m.pt(8)) - libraryWidth
         more.frame = NSRect(x: moreX, y: actionY, width: moreWidth, height: h)
         action.frame = NSRect(x: actionX, y: actionY, width: actionWidth, height: h)
         membership.frame = NSRect(x: membershipX, y: actionY, width: membershipWidth, height: h)
-        library.frame = NSRect(x: libraryX, y: actionY, width: libraryWidth, height: h)
-        pickerLine(draftLabel, x: m.column, y: actionY, width: libraryX - m.column - m.pt(8), height: h)
-        [more, action, membership, library].forEach { $0.needsLayout = true }
+        pickerLine(draftLabel, x: m.column, y: actionY, width: membershipX - m.column - m.pt(8), height: h)
+        [more, action, membership].forEach { $0.needsLayout = true }
         let icon = m.pt(20)
         beak.frame = NSRect(x: m.tileCenter - icon / 2, y: y + (h - icon) / 2, width: icon, height: icon)
 
-        let previewEnd = stacked ? width - m.inset : libraryX
+        let previewEnd = stacked ? width - m.inset : membershipX
         let available = max(0, previewEnd - m.column - locatorWidth - m.pt(16))
         let spanWidth = spans.reduce(0) { $0 + $1.width }
         let contentWidth = pending.isHidden ? spanWidth : pickerWidth(pending.stringValue, font: m.font(13))

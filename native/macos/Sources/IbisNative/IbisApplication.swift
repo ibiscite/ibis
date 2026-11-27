@@ -41,9 +41,11 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
         panel.openSettings = { [weak self] in self?.showSettings() }
         return panel
     }()
-    private lazy var settings = NativeSettingsWindow(engine: engine, shortcuts: shortcuts) { [weak self] saved, resetText in
+    private lazy var settings = NativeSettingsWindow(engine: engine, shortcuts: shortcuts, chooseLibrary: {
+        [weak self] window, missing in self?.chooseLibrary(missing: missing, in: window)
+    }, applied: { [weak self] saved, resetText in
         self?.model.applySettings(saved, resetTextSize: resetText)
-    }
+    })
     private var previousApp: NSRunningApplication?
     private var layoutDefaults: UserDefaults? {
         ProcessInfo.processInfo.environment["IBIS_CONFIG_DIR"] == nil ? .standard : nil
@@ -81,7 +83,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
         openItem.target = self
         menu.addItem(openItem)
         menu.addItem(item(PickerWords.text(.choose), action: #selector(chooseLibraryItem)))
-        menu.addItem(item(PickerWords.text(.allowPaste), action: #selector(showSettings)))
+        menu.addItem(item(PickerWords.text(.allowPaste), action: #selector(showPasteSettings)))
         menu.addItem(.separator())
         menu.addItem(item(PickerWords.text(.settings), action: #selector(showSettings), key: ","))
         menu.addItem(item(PickerWords.text(.about), action: #selector(showAbout)))
@@ -129,6 +131,10 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
 
     private func activateAppWindow() {
         panel.dismiss()
+        activateTitledWindow()
+    }
+
+    private func activateTitledWindow() {
         if NSApp.activationPolicy() != .regular {
             previousApp = NSWorkspace.shared.frontmostApplication
             NSApp.setActivationPolicy(.regular)
@@ -148,6 +154,11 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
     @objc private func showSettings() {
         activateAppWindow()
         settings.showWindow(nil)
+    }
+
+    @objc private func showPasteSettings() {
+        settings.showGeneral()
+        showSettings()
     }
 
     @objc private func showAbout() {
@@ -172,26 +183,53 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
 
     @objc private func chooseLibraryItem() { chooseLibrary(missing: nil) }
 
-    private func chooseLibrary(missing: URL?) {
+    private func chooseLibrary(missing: URL?, in window: NSWindow? = nil) {
+        guard !panel.choosingLibrary, !model.isDelivering else { return }
         let chooser = NSOpenPanel()
         chooser.prompt = PickerWords.text(.openLibrary)
         chooser.canChooseDirectories = false
         chooser.allowsMultipleSelection = false
         chooser.directoryURL = missing?.deletingLastPathComponent()
-        chooser.allowedContentTypes = model.catalog?.libraryExtensions.compactMap { UTType(filenameExtension: $0) } ?? []
+        let extensions = window == nil ? model.catalog?.libraryExtensions ?? [] : settings.libraryExtensions
+        chooser.allowedContentTypes = extensions.compactMap { UTType(filenameExtension: $0) }
         panel.choosingLibrary = true
-        chooser.begin { [weak self] response in
+        if window == nil { activateTitledWindow() }
+        let fromSettings = window != nil
+        let finished: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard let self else { return }
-            self.panel.choosingLibrary = false
-            guard response == .OK, let file = chooser.url else { return }
-            self.model.file = file
-            if self.panel.pickerIsOpen {
-                self.panel.makeKeyAndOrderFront(nil)
-                self.model.reload()
-            } else {
-                self.panel.summon()
+            guard response == .OK, let file = chooser.url?.standardizedFileURL else {
+                self.panel.choosingLibrary = false
+                return
+            }
+            if fromSettings { self.settings.setLibraryBusy(true) }
+            Task {
+                defer {
+                    self.panel.choosingLibrary = false
+                    if fromSettings { self.settings.setLibraryBusy(false) }
+                }
+                do {
+                    let saved = try await self.engine.chooseLibrary(file)
+                    self.model.useSavedLibrary()
+                    if fromSettings {
+                        self.settings.didSelectLibrary(saved)
+                    } else if self.panel.pickerIsOpen {
+                        self.panel.makeKeyAndOrderFront(nil)
+                        self.panel.makeFirstResponder(self.panel.searchField)
+                    } else {
+                        self.panel.summon()
+                    }
+                } catch {
+                    if fromSettings {
+                        self.settings.didRejectLibrary(error)
+                    } else {
+                        if !self.panel.pickerIsOpen { self.panel.summon() }
+                        self.model.reportLibraryChoice(error)
+                    }
+                }
             }
         }
+        if let window { chooser.beginSheetModal(for: window, completionHandler: finished) }
+        else { chooser.begin(completionHandler: finished) }
     }
 
     @objc private func quit() { NSApp.terminate(nil) }

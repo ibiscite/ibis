@@ -10,6 +10,7 @@ enum PickerWord {
     case allowPaste
     case app
     case appearance
+    case appearanceSettings
     case automaticPaste
     case before
     case beforeExample
@@ -41,13 +42,16 @@ enum PickerWord {
     case emptyLibrary
     case emptyLibraryHint
     case findLibrary
+    case findSource
     case format
     case formatValue
     case formatting
+    case generalSettings
     case invalidFrame
     case keepOrder
     case largerText
     case library
+    case libraryMissing
     case light
     case locatorType
     case missingHint
@@ -55,6 +59,7 @@ enum PickerWord {
     case more
     case newerEngine
     case noEngine
+    case noLibrarySelected
     case noMatches
     case noMatchesHint
     case open
@@ -87,6 +92,7 @@ enum PickerWord {
     case restoreShortcut
     case resultHint
     case returnKey
+    case scopeLabel
     case search
     case settings
     case settingsReadFailed
@@ -134,6 +140,7 @@ enum PickerWords {
             .allowPaste: "السماح باللصق…",
             .app: "Ibis Native",
             .appearance: "المظهر",
+            .appearanceSettings: "المظهر",
             .automaticPaste: "اللصق في التطبيق الذي جئت منه",
             .before: "نص قبله",
             .beforeExample: "انظر",
@@ -141,7 +148,7 @@ enum PickerWords {
             .busy: "هناك عملية تسليم أخرى في Ibis.",
             .changed: "تغيّر الاستشهاد. راجعه قبل المحاولة مجددًا.",
             .choose: "اختيار المكتبة…",
-            .chooseHint: "يقرأ Ibis مكتبات Zotero وBibTeX وCSL-JSON وRIS.",
+            .chooseHint: "اختر ملف BibTeX أو CSL JSON أو RIS أو CSV للبحث فيه.",
             .chooseTitle: "اختر مكتبة",
             .citation: "استشهاد",
             .cited: "في الاستشهاد",
@@ -165,13 +172,16 @@ enum PickerWords {
             .emptyLibrary: "اكتب للعثور على مرجع",
             .emptyLibraryHint: "ابحث بالعنوان أو المؤلف أو السنة أو المفتاح.",
             .findLibrary: "البحث عن {IBIS_VALUE}…",
+            .findSource: "بحث…",
             .format: "التنسيق",
             .formatValue: "التنسيق، {IBIS_VALUE}",
             .formatting: "جارٍ التنسيق…",
+            .generalSettings: "عام",
             .invalidFrame: "أرسل محرك Ibis ردًا غير صالح.",
             .keepOrder: "الإبقاء على ترتيبي",
             .largerText: "نص أكبر",
             .library: "المكتبة",
+            .libraryMissing: "تعذّر العثور على {IBIS_VALUE}",
             .light: "فاتح",
             .locatorType: "نوع الموضع",
             .missingHint: "ربما نُقل الملف أو تغيّر اسمه.",
@@ -179,6 +189,7 @@ enum PickerWords {
             .more: "المزيد",
             .newerEngine: "يعمل إصدار أحدث من محرك Ibis. ابنِ التطبيق الأصلي بالإصدار الأحدث.",
             .noEngine: "تعذّر على Ibis تشغيل محركه المحلي.",
+            .noLibrarySelected: "لم تُختر أي مكتبة",
             .noMatches: "لا مراجع مطابقة",
             .noMatchesHint: "جرّب اسم عائلة أو سنة أو كلمات أقل.",
             .open: "فتح Ibis",
@@ -211,6 +222,7 @@ enum PickerWords {
             .restoreShortcut: "استخدام الافتراضي",
             .resultHint: "اكتب عنوانًا أو مؤلفًا أو سنةً أو مفتاحًا.",
             .returnKey: "مفتاح الإدخال",
+            .scopeLabel: "المكتبة: {IBIS_VALUE}",
             .search: "البحث في المراجع",
             .settings: "الإعدادات…",
             .settingsReadFailed: "تعذّر على Ibis قراءة إعداداتك؛ أعد فتح الإعدادات للمحاولة مرة أخرى.",
@@ -245,6 +257,7 @@ enum PickerWords {
             .allowPaste: "Einfügen erlauben…",
             .app: "Ibis Native",
             .appearance: "Erscheinungsbild",
+            .appearanceSettings: "Erscheinungsbild",
             .automaticPaste: "In die vorherige App einfügen",
             .before: "Text davor",
             .beforeExample: "siehe",
@@ -252,7 +265,7 @@ enum PickerWords {
             .busy: "Ibis fügt gerade ein anderes Zitat ein.",
             .changed: "Das Zitat hat sich geändert. Prüfen Sie es vor dem nächsten Versuch.",
             .choose: "Bibliothek wählen…",
-            .chooseHint: "Ibis liest Zotero, BibTeX, CSL-JSON und RIS.",
+            .chooseHint: "Wählen Sie eine BibTeX-, CSL-JSON-, RIS- oder CSV-Datei zum Durchsuchen.",
             .chooseTitle: "Bibliothek auswählen",
             .citation: "Zitat",
             .cited: "Im Zitat",
@@ -276,13 +289,16 @@ enum PickerWords {
             .emptyLibrary: "Tippen, um eine Referenz zu finden",
             .emptyLibraryHint: "Suchen Sie nach Titel, Autor, Jahr oder Schlüssel.",
             .findLibrary: "{IBIS_VALUE} suchen…",
+            .findSource: "Suchen…",
             .format: "Format",
             .formatValue: "Format, {IBIS_VALUE}",
             .formatting: "Wird formatiert…",
+            .generalSettings: "Allgemein",
             .invalidFrame: "Die Ibis-Engine hat eine ungültige Antwort gesendet.",
             .keepOrder: "Meine Reihenfolge beibehalten",
             .largerText: "Größerer Text",
             .library: "Bibliothek",
+            .libraryMissing: "{IBIS_VALUE} wurde nicht gefunden",
             .light: "Hell",
             .locatorType: "Art der Fundstelle",
             .missingHint: "Die Datei wurde möglicherweise verschoben oder umbenannt.",
@@ -290,6 +306,7 @@ enum PickerWords {
             .more: "Mehr",
             .newerEngine: "Eine neuere Ibis-Engine läuft. Bauen Sie die native App mit der neueren Version.",
             .noEngine: "Ibis konnte seine lokale Engine nicht starten.",
+            .noLibrarySelected: "Keine Bibliothek gewählt",
             .noMatches: "Keine passenden Referenzen",
             .noMatchesHint: "Versuchen Sie einen Nachnamen, ein Jahr oder weniger Wörter.",
             .open: "Ibis öffnen",
@@ -322,6 +339,7 @@ enum PickerWords {
             .restoreShortcut: "Standard verwenden",
             .resultHint: "Geben Sie einen Titel, Autor, ein Jahr oder einen Schlüssel ein.",
             .returnKey: "Eingabetaste",
+            .scopeLabel: "Bibliothek: {IBIS_VALUE}",
             .search: "Referenzen suchen",
             .settings: "Einstellungen…",
             .settingsReadFailed: "Ibis konnte Ihre Einstellungen nicht lesen; öffnen Sie die Einstellungen erneut, um es noch einmal zu versuchen.",
@@ -356,6 +374,7 @@ enum PickerWords {
             .allowPaste: "Allow Paste…",
             .app: "Ibis Native",
             .appearance: "Appearance",
+            .appearanceSettings: "Appearance",
             .automaticPaste: "Paste into the app you came from",
             .before: "Text before",
             .beforeExample: "see",
@@ -363,7 +382,7 @@ enum PickerWords {
             .busy: "Another Ibis delivery is in progress.",
             .changed: "The citation changed. Review it before trying again.",
             .choose: "Choose Library…",
-            .chooseHint: "Ibis reads Zotero, BibTeX, CSL-JSON and RIS.",
+            .chooseHint: "Choose a BibTeX, CSL JSON, RIS or CSV file to search.",
             .chooseTitle: "Choose a library",
             .citation: "Citation",
             .cited: "In citation",
@@ -387,13 +406,16 @@ enum PickerWords {
             .emptyLibrary: "Type to find a reference",
             .emptyLibraryHint: "Search by title, author, year or key.",
             .findLibrary: "Find {IBIS_VALUE}…",
+            .findSource: "Find…",
             .format: "Format",
             .formatValue: "Format, {IBIS_VALUE}",
             .formatting: "Formatting…",
+            .generalSettings: "General",
             .invalidFrame: "The Ibis engine sent an invalid response.",
             .keepOrder: "Keep My Order",
             .largerText: "Larger text",
             .library: "Library",
+            .libraryMissing: "{IBIS_VALUE} can’t be found",
             .light: "Light",
             .locatorType: "Locator type",
             .missingHint: "It may have moved or been renamed.",
@@ -401,6 +423,7 @@ enum PickerWords {
             .more: "More",
             .newerEngine: "A newer Ibis engine is running. Build the native app with the newer Ibis.",
             .noEngine: "Ibis could not start its local engine.",
+            .noLibrarySelected: "No library chosen",
             .noMatches: "No matching references",
             .noMatchesHint: "Try a surname, year or fewer words.",
             .open: "Open Ibis",
@@ -433,6 +456,7 @@ enum PickerWords {
             .restoreShortcut: "Use Default",
             .resultHint: "Type a title, author, year or key.",
             .returnKey: "Return",
+            .scopeLabel: "Library: {IBIS_VALUE}",
             .search: "Search references",
             .settings: "Settings…",
             .settingsReadFailed: "Ibis could not read your settings; reopen Settings to try again.",

@@ -72,6 +72,32 @@ Ibis has no telemetry. The study uses voluntary replies and session notes.
 
 ## Reference journeys
 
+### Native macOS baseline
+
+Use the last Tauri nightly `0.3.14-nightly.20261126205009` as the reference
+build ([source revision](https://github.com/ibiscite/ibis/tree/3572263ebd72b495dcf1873590f76cc67998d3b8)).
+Run each native candidate with the same invented library, format, destination
+and screen conditions. Compare what happens before the picker appears, what
+keys finish the task and what the writer has to reconstruct after leaving it.
+Use the original nightly's behavior as acceptance evidence and test changes
+to it with the same journeys.
+
+| Journey | Observable success |
+| --- | --- |
+| Open, choose, return | A ready picker paints current rows on opening. A first-time picker makes one source action available from search. A rejected or canceled source change leaves the working draft. An accepted change keeps the query and reruns it on the saved source. |
+| Browse and act | Return delivers the visible citation. The action list opens on ⌘K, accepts a command name, and closes with Escape while restoring the query, draft and focus. Commands follow the scope of their target, such as a selected result, the draft or the library. |
+| Write in two destinations | Choose a format in each destination. Reopen Ibis in the first and verify that the scope, format and output still agree. Include the one-use format path. |
+| Inspect and deliver | Distinguish two similar results at compact width and larger text. Complete a page-specific citation and verify the exact output or recover from a permission refusal. |
+
+The Tauri nightly's searchable action list and per-site formats are useful
+references for the second and third journeys. Alfred's Universal Actions and
+Raycast's Action Panel show how a quiet main path can expose more actions on
+demand through the keyboard. Recast offers a reference for bringing a
+writer's input into a small panel and returning the result to the originating
+app. [Alfred Universal Actions](https://www.alfredapp.com/help/features/universal-actions/)
+· [Raycast Action Panel](https://manual.raycast.com/action-panel)
+· [Recast](https://recast-ai.uk/)
+
 Use the named [canvas scenarios](../../apps/desktop/canvas/scenarios.ts) for
 the starting content. Reuse their invented records and labels in the study
 library and use the same expected results in canvas follow-up checks. The

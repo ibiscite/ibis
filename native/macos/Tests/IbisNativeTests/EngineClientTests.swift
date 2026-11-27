@@ -5,6 +5,52 @@ import XCTest
 
 final class EngineClientTests: XCTestCase {
     @MainActor
+    func testSavedLibrarySurvivesNewClientAndRejectedReplacement() async throws {
+        let fixture = try Fixture()
+        try fixture.identifyDaemon()
+        let settings = fixture.client()
+        let opening = PickerOpenRequest(app: nil, file: nil, language: .enUS, reload: nil)
+        let empty = try await settings.open(opening)
+        XCTAssertNil(empty.library)
+        let saved = try await settings.chooseLibrary(fixture.library)
+        XCTAssertEqual(saved.library?.name, fixture.library.lastPathComponent)
+        XCTAssertEqual(saved.library?.missing, false)
+
+        let picker = fixture.client()
+        let opened = try await picker.open(opening)
+        XCTAssertEqual(opened.library?.name, fixture.library.lastPathComponent)
+        XCTAssertEqual(opened.library?.condition, .ready)
+        let reply = try await picker.search(PickerSearchRequest(query: "north", shorthand: false)).result
+        let row = try XCTUnwrap(reply.sections.first?.rows.first)
+        let preview = try await picker.preview(PickerPreviewRequest(
+            entries: [PickerPreviewEntry(cite: row.cite, form: nil, item: row.id, locator: nil, prefix: nil, suffix: nil)],
+            format: "apa", keepOrder: false
+        )).result
+        let missing = fixture.root.appendingPathComponent("Missing.csljson")
+        do {
+            _ = try await picker.chooseLibrary(missing)
+            XCTFail("A missing replacement must not become the saved library.")
+        } catch {
+            let after = try await picker.settings(.readOnly)
+            XCTAssertEqual(after.library, saved.library)
+        }
+        let request = PickerDeliverRequest(contentHash: preview.contentHash, paste: false, ticket: preview.ticket)
+        let delivered = try await picker.deliver(request) { grant in
+            XCTAssertEqual(grant.text, preview.text)
+            return 1
+        }
+        XCTAssertNotNil(delivered)
+
+        try FileManager.default.moveItem(at: fixture.library, to: missing)
+        let moved = try await settings.settings(.readOnly)
+        XCTAssertEqual(moved.library?.missing, true)
+        let recovered = try await settings.chooseLibrary(missing)
+        XCTAssertEqual(recovered.library?.name, missing.lastPathComponent)
+        let reopened = try await fixture.client().open(opening)
+        XCTAssertEqual(reopened.library?.condition, .ready)
+    }
+
+    @MainActor
     func testSettingsPersistThroughTheOwnerAndReachThePicker() async throws {
         let fixture = try Fixture()
         try fixture.identifyDaemon()
@@ -15,8 +61,8 @@ final class EngineClientTests: XCTestCase {
         XCTAssertNil(initial.shortcut)
         let shortcut = "Control+Alt+Shift+Command+F18"
         let saved = try await client.settings(
-            SettingsRequest(appearance: .dark, density: .comfortable, largerText: true, paste: false,
-                            shortcut: ShortcutSetting(binding: shortcut))
+            .patch(appearance: .dark, density: .comfortable, largerText: true, paste: false,
+                   shortcut: ShortcutSetting(binding: shortcut))
         )
         XCTAssertEqual(saved.density, .comfortable)
         XCTAssertFalse(saved.paste)
@@ -30,8 +76,7 @@ final class EngineClientTests: XCTestCase {
         XCTAssertEqual(opened.density, .comfortable)
         XCTAssertTrue(opened.largerText)
         XCTAssertFalse(opened.pasteEnabled)
-        _ = try await reader.settings(SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: nil,
-                                                       shortcut: ShortcutSetting(binding: nil)))
+        _ = try await reader.settings(.patch(shortcut: ShortcutSetting(binding: nil)))
         let reset = try await client.settings(.readOnly)
         XCTAssertNil(reset.shortcut)
         XCTAssertEqual(reset.density, .comfortable)
@@ -67,7 +112,7 @@ final class EngineClientTests: XCTestCase {
 
         let preferences = fixture.client()
         let disabled = try await preferences.settings(
-            SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: false, shortcut: nil)
+            .patch(paste: false)
         )
         XCTAssertFalse(disabled.paste)
 
@@ -106,7 +151,7 @@ final class EngineClientTests: XCTestCase {
         XCTAssertFalse(copyOnly.pasteEnabled)
         let copyPreview = try await client.preview(draft).result
         let enabled = try await preferences.settings(
-            SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: true, shortcut: nil)
+            .patch(paste: true)
         )
         XCTAssertTrue(enabled.paste)
         let copyRequest = PickerDeliverRequest(contentHash: copyPreview.contentHash, paste: true, ticket: copyPreview.ticket)

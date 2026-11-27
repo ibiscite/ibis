@@ -76,7 +76,7 @@
     },
     {
       "text": "A native picker for macOS",
-      "note": "In the repo build, keep searching while a citation draft stays ready. Settings controls the opening shortcut, automatic paste and picker appearance."
+      "note": "The repo build remembers the chosen library and keeps drafts available while you search. Settings shows a live preview of picker appearance."
     },
     {
       "text": "Search Zotero highlights and notes, with the page they came from."

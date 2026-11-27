@@ -232,6 +232,7 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     }
 
     func submit(whenReady: Bool = false) {
+        if whenReady, canvas?.resolveLibraryIfNeeded() == true { return }
         model.deliver(whenReady: whenReady) { [weak self] in self?.dismiss(forDelivery: true) }
     }
 

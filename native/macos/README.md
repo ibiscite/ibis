@@ -20,10 +20,11 @@ use with Tauri.
 Quit Ibis Native before running a rebuilt bundle or supplying a new
 `--file` argument to a fresh launch.
 
-Choose a library from the menu or pass its path on launch. The chooser accepts
-files the engine can open, including BibTeX, BibLaTeX, CSL JSON, RIS and CSV.
-The file choice and format changes made in the picker last for the current
-run. Search shows title and byline, with recent citations for the captured
+Choose a library in the picker or in Settings › General. The engine checks
+the file before remembering it for future launches. The chooser accepts
+BibTeX, BibLaTeX, CSL JSON, RIS and CSV. The command-line `--file` argument
+sets a temporary library. Format changes in the picker last for the current
+run. Search shows the active source, title and byline, with recent citations for the captured
 app or source-added references when the query is empty. Use Up and Down to
 preview a reference or Return to deliver it. Add, ⇧↩ and ⌘-click hold a
 reference in a citation draft, which stays available while you keep searching.
@@ -48,7 +49,7 @@ size while you type and remembers edge resizing per display.
 
 The existing nightly sets the functional baseline for the native app
 (maintainer, 2026-11-27). The next Settings work covers launch at login.
-Saved library and per-app formats, projects, editor commands and the searchable
+Per-app formats, projects, editor commands and the searchable
 action menu are also nightly capabilities the native picker needs to regain.
 
 The bundled engine joins a daemon from the same build. If several builds

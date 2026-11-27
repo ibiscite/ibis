@@ -164,6 +164,8 @@ final class PickerModel: ObservableObject {
         if lastShown.map({ Date().timeIntervalSince($0) >= 60 }) ?? true { query = "" }
         lastShown = Date()
         selected = nil
+        sections = []
+        searchReply = nil
         notice = lastDelivery
         lastDelivery = nil
         targetName = name
@@ -178,6 +180,21 @@ final class PickerModel: ObservableObject {
         self.opening = PickerOpenRequest(app: opening.app, file: file?.path, language: opening.language, reload: true)
         loadLibrary()
     }
+
+    func useSavedLibrary() {
+        file = nil
+        guard let opening else { return }
+        clearDraft()
+        catalog = nil
+        sections = []
+        searchReply = nil
+        selected = nil
+        notice = nil
+        self.opening = PickerOpenRequest(app: opening.app, file: nil, language: opening.language, reload: nil)
+        loadLibrary()
+    }
+
+    func reportLibraryChoice(_ error: Error) { notice = pickerError(error) }
 
     private func loadLibrary() {
         guard let request = opening else { return }
@@ -217,26 +234,30 @@ final class PickerModel: ObservableObject {
         opening = nil
         openingTask?.cancel()
         searchTask?.cancel()
-        retirePreview()
         answeredQuery = nil
-        preview = nil
-        previewSession = nil
-        previewEntries = []
-        endCitationEdit()
-        citations = []
-        activeToken = nil
-        detailsByItem = [:]
+        clearDraft()
         applyingReply = true
         if shorthand { query = "" }
         shorthand = false
         applyingReply = false
-        keepOrder = false
-        undo = nil
         if !forDelivery {
             ibis_native_cancel()
             delivery = nil
             isDelivering = false
         }
+    }
+
+    private func clearDraft() {
+        retirePreview()
+        endCitationEdit()
+        preview = nil
+        previewSession = nil
+        previewEntries = []
+        citations = []
+        activeToken = nil
+        detailsByItem = [:]
+        undo = nil
+        keepOrder = false
     }
 
     func escape() -> Bool {

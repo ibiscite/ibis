@@ -49,8 +49,7 @@ final class PickerTests: XCTestCase {
         let window = try XCTUnwrap(settings.window)
         let flags: NSEvent.ModifierFlags = [.control, .option, .shift, .command]
         let old = try OpeningShortcut.parse("Control+Alt+Shift+Command+F18")
-        let writ = try await engine.settings(SettingsRequest(appearance: nil, density: nil, largerText: nil,
-                                                              paste: nil, shortcut: ShortcutSetting(binding: old.savedValue)))
+        let writ = try await engine.settings(.patch(shortcut: ShortcutSetting(binding: old.savedValue)))
         shortcuts.restore(writ.shortcut)
         guard shortcuts.active == old else { throw XCTSkip("The fixture shortcut is already in use.") }
 
@@ -148,6 +147,46 @@ final class PickerTests: XCTestCase {
     }
 
     @MainActor
+    func testOpeningWithoutLibraryAndSwitchingSourcesPreservesSearch() async throws {
+        guard CGSessionCopyCurrentDictionary() != nil else { throw XCTSkip("A WindowServer session is needed.") }
+        _ = NSApplication.shared
+        let fixture = try Fixture()
+        try fixture.identifyDaemon()
+        let engine = fixture.client()
+        let model = PickerModel(engine: engine)
+        var choseLibrary = false
+        let panel = PickerPanel(model: model, chooseLibrary: { _ in choseLibrary = true })
+        panel.summon()
+        defer { panel.dismiss() }
+        try await eventually { model.catalog != nil }
+        XCTAssertFalse(model.libraryReady)
+        model.query = "invented"
+        try send("\r", key: UInt16(kVK_Return), to: panel)
+        XCTAssertTrue(choseLibrary)
+        _ = try await engine.chooseLibrary(fixture.library)
+        model.useSavedLibrary()
+        try await eventually { model.canDeliver && model.rows.count == 2 }
+        XCTAssertEqual(model.query, "invented")
+
+        let previous = try XCTUnwrap(model.selection)
+        model.toggleCitation(previous)
+        model.changeDetails(for: previous.id) { $0.locator = "417" }
+        let replacement = fixture.root.appendingPathComponent("Replacement.csljson")
+        try Data("""
+        [{"id":"replacement","citation-key":"invented-replacement","type":"book",
+          "title":"Invented replacement","author":[{"family":"Vale"}],"issued":{"date-parts":[[2024]]}}]
+        """.utf8).write(to: replacement)
+        _ = try await engine.chooseLibrary(replacement)
+        model.useSavedLibrary()
+        try await eventually { model.preview != nil && model.rows.count == 1 }
+        XCTAssertTrue(model.canDeliver, model.preview?.problem?.text ?? "The new citation should be ready.")
+        XCTAssertEqual(model.query, "invented")
+        XCTAssertFalse(model.hasDraft)
+        XCTAssertNotEqual(model.citationItem, previous.id)
+        XCTAssertFalse(model.preview?.text.contains("417") ?? true)
+    }
+
+    @MainActor
     func testNonactivatingPanelTakesSearchAndArrowKeys() async throws {
         guard CGMainDisplayID() != 0, CGSessionCopyCurrentDictionary() != nil else {
             throw XCTSkip("A WindowServer session is needed to host an AppKit panel.")
@@ -227,8 +266,8 @@ final class PickerTests: XCTestCase {
         XCTAssertEqual(table.rowHeight, 72)
         XCTAssertGreaterThan(table.rect(ofRow: table.numberOfRows - 1).maxY, scroll.contentView.bounds.height)
         let library = try XCTUnwrap(views.compactMap { $0 as? NSButton }
-            .first { $0.accessibilityLabel() == PickerWords.text(.library) })
-        XCTAssertTrue(library.isHidden)
+            .first { $0.accessibilityLabel() == PickerWords.text(.scopeLabel, fixture.library.lastPathComponent) })
+        XCTAssertFalse(library.isHidden)
         let buttons = try [PickerWords.text(.add), model.deliveryTitle, PickerWords.text(.more)].map { label in
             try XCTUnwrap(views.compactMap { $0 as? NSButton }
                 .first { $0.accessibilityLabel() == label && !$0.isHidden })
@@ -236,6 +275,7 @@ final class PickerTests: XCTestCase {
         let placements = buttons.map { $0.convert($0.bounds, to: content) }
         XCTAssertTrue(placements.allSatisfy { $0.height == 56 && content.bounds.contains($0) })
         XCTAssertTrue(zip(placements, placements.dropFirst()).allSatisfy { $0.maxX < $1.minX })
+        XCTAssertFalse(library.convert(library.bounds, to: content).intersects(placements[0]))
         model.query = ""
         try await eventually { model.canDeliver }
         try send("\u{1b}", key: 53, to: panel)

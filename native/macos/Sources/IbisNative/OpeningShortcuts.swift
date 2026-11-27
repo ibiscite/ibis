@@ -102,8 +102,7 @@ final class OpeningShortcuts: ObservableObject {
         saving = true
         issue = nil
         Task {
-            let request = SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: nil,
-                                          shortcut: ShortcutSetting(binding: binding))
+            let request = SettingsRequest.patch(shortcut: ShortcutSetting(binding: binding))
             var saved = try? await engine.settings(request)
             // A dropped reply can follow a committed write. Confirm by reading.
             if saved == nil { saved = try? await engine.settings(.readOnly) }

@@ -95,7 +95,7 @@ private final class PickerRecordCell: NSTableCellView {
         let selected = backgroundStyle == .emphasized
         let text = selected ? NSColor.alternateSelectedControlTextColor : .labelColor
         titleLabel.textColor = text
-        byline.textColor = selected ? text : text.withAlphaComponent(0.76)
+        byline.textColor = selected ? text : .secondaryLabelColor
         date.textColor = byline.textColor
         shortcutLabel.textColor = byline.textColor
         icon.contentTintColor = selected ? text : .secondaryLabelColor

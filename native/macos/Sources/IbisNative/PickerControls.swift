@@ -251,6 +251,7 @@ final class PickerButton: NSButton {
     var key = "" { didSet { keyLabel.stringValue = key } }
     var icon: String? { didSet { glyph.image = icon.flatMap(PickerArt.image) } }
     var medium = false
+    var captionSize: CGFloat = 13
     var isCurrentToken = false { didSet { if isCurrentToken != oldValue { refreshColors() } } }
     var surface: Surface = .control
     var maxCaption: CGFloat = .greatestFiniteMagnitude
@@ -301,7 +302,7 @@ final class PickerButton: NSButton {
             + (remove == nil ? 0 : m.pt(13))
     }
 
-    private var captionFont: NSFont { metrics.font(13, medium ? .medium : .regular) }
+    private var captionFont: NSFont { metrics.font(captionSize, medium ? .medium : .regular) }
     private var keyWidth: CGFloat { pickerWidth(key, font: metrics.font(13)) }
     private var hintWidth: CGFloat {
         key.isEmpty ? 0 : keyWidth + metrics.pt(4) - pickerLabelAllowance

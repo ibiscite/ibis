@@ -2,12 +2,28 @@ import AppKit
 import CIbisNative
 import SwiftUI
 
+private enum SettingsPane: Int, CaseIterable {
+    case general, appearance
+
+    var title: String {
+        let label: PickerWord = switch self {
+        case .general: .generalSettings
+        case .appearance: .appearanceSettings
+        }
+        return PickerWords.text(label)
+    }
+}
+
 @MainActor
-final class NativeSettingsWindow: NSWindowController, NSWindowDelegate {
+final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
+    private static let navigation = NSToolbarItem.Identifier("SettingsPanes")
     private let preferences: NativePreferences
     private let shortcuts: OpeningShortcuts
+    private let tabs = NSSegmentedControl(labels: SettingsPane.allCases.map(\.title), trackingMode: .selectOne,
+                                         target: nil, action: nil)
 
-    init(engine: EngineClient, shortcuts: OpeningShortcuts, applied: @escaping (SettingsResult, Bool) -> Void) {
+    init(engine: EngineClient, shortcuts: OpeningShortcuts, chooseLibrary: @escaping (NSWindow, URL?) -> Void = { _, _ in },
+         applied: @escaping (SettingsResult, Bool) -> Void) {
         self.shortcuts = shortcuts
         let preferences = NativePreferences(engine: engine) { [weak shortcuts] saved, resetText in
             shortcuts?.restore(saved.shortcut)
@@ -15,12 +31,22 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate {
         }
         self.preferences = preferences
         let window = SettingsHostWindow(shortcuts: shortcuts)
-        window.title = PickerWords.text(.settingsWindow)
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: NativeSettingsForm(preferences: preferences, shortcuts: shortcuts))
+        window.contentView = NSHostingView(rootView: NativeSettingsForm(preferences: preferences, shortcuts: shortcuts) {
+            [weak window] file in
+            if let window { chooseLibrary(window, file) }
+        })
         window.center()
         super.init(window: window)
         window.delegate = self
+        let toolbar = NSToolbar(identifier: "IbisSettings")
+        toolbar.delegate = self
+        toolbar.allowsUserCustomization = false
+        window.toolbar = toolbar
+        window.toolbarStyle = .preference
+        tabs.target = self
+        tabs.action = #selector(choosePane)
+        showGeneral()
     }
 
     required init?(coder: NSCoder) { nil }
@@ -34,6 +60,41 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate {
 
     func windowDidBecomeKey(_ notification: Notification) { preferences.refreshPasteAccess() }
     func windowDidResignKey(_ notification: Notification) { shortcuts.cancelRecording() }
+
+    func showGeneral() { select(.general) }
+    var libraryExtensions: [String] { preferences.saved?.libraryExtensions ?? [] }
+    func setLibraryBusy(_ busy: Bool) { preferences.libraryBusy = busy }
+    func didSelectLibrary(_ saved: SettingsResult) { preferences.useSaved(saved, resetText: false) }
+    func didRejectLibrary(_ error: Error) { preferences.libraryProblem = pickerError(error) }
+
+    @objc private func choosePane() {
+        if let pane = SettingsPane(rawValue: tabs.selectedSegment) { select(pane) }
+    }
+
+    private func select(_ pane: SettingsPane) {
+        shortcuts.cancelRecording()
+        tabs.selectedSegment = pane.rawValue
+        preferences.pane = pane
+        window?.title = pane.title
+        let width: CGFloat = 510
+        window?.setContentSize(NSSize(width: width, height: pane == .general ? 445 : 420))
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.flexibleSpace, Self.navigation]
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.flexibleSpace, Self.navigation, .flexibleSpace]
+    }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard identifier == Self.navigation else { return nil }
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        item.view = tabs
+        return item
+    }
 }
 
 @MainActor
@@ -62,6 +123,11 @@ private final class NativePreferences: ObservableObject {
     @Published private(set) var busy = false
     @Published private(set) var problem: String?
     @Published private(set) var pasteGranted = false
+    @Published var pane: SettingsPane = .general
+    @Published var libraryBusy = false {
+        didSet { if libraryBusy { libraryProblem = nil } }
+    }
+    @Published var libraryProblem: String?
     private let engine: EngineClient
     private let applied: (SettingsResult, Bool) -> Void
 
@@ -85,8 +151,12 @@ private final class NativePreferences: ObservableObject {
 
     func change(appearance: Appearance? = nil, density: Density? = nil, largerText: Bool? = nil, paste: Bool? = nil) {
         guard saved != nil else { return }
-        send(SettingsRequest(appearance: appearance, density: density, largerText: largerText, paste: paste, shortcut: nil),
-             changing: true)
+        send(.patch(appearance: appearance, density: density, largerText: largerText, paste: paste), changing: true)
+    }
+
+    func useSaved(_ reply: SettingsResult, resetText: Bool) {
+        saved = reply
+        applied(reply, resetText)
     }
 
     private func send(_ request: SettingsRequest, changing: Bool) {
@@ -97,14 +167,12 @@ private final class NativePreferences: ObservableObject {
             defer { busy = false }
             do {
                 let reply = try await engine.settings(request)
-                saved = reply
-                applied(reply, request.largerText != nil)
+                useSaved(reply, resetText: request.largerText != nil)
             } catch {
                 if changing {
                     // A dropped reply can follow a committed write. Recover the saved view.
                     if let reply = try? await engine.settings(.readOnly) {
-                        saved = reply
-                        applied(reply, request.largerText != nil)
+                        useSaved(reply, resetText: request.largerText != nil)
                     } else {
                         saved = nil
                     }
@@ -120,13 +188,22 @@ private final class NativePreferences: ObservableObject {
 private struct NativeSettingsForm: View {
     @ObservedObject var preferences: NativePreferences
     @ObservedObject var shortcuts: OpeningShortcuts
+    let chooseLibrary: (URL?) -> Void
 
     var body: some View {
         Form {
             if let saved = preferences.saved {
-                shortcutSection.disabled(preferences.busy || shortcuts.saving)
-                pasteSection(saved).disabled(preferences.busy || shortcuts.saving)
-                pickerSection(saved).disabled(preferences.busy || shortcuts.saving)
+                Group {
+                    switch preferences.pane {
+                    case .general:
+                        librarySection(saved)
+                        shortcutSection
+                        pasteSection(saved)
+                    case .appearance:
+                        pickerSection(saved)
+                    }
+                }
+                .disabled(preferences.busy || shortcuts.saving || preferences.libraryBusy)
             }
 
             if let problem = preferences.problem {
@@ -144,6 +221,27 @@ private struct NativeSettingsForm: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func librarySection(_ saved: SettingsResult) -> some View {
+        Section(PickerWords.text(.library)) {
+            LabeledContent {
+                Button(PickerWords.text(saved.library?.missing == true ? .findSource : .choose)) {
+                    let missing = saved.library?.missing == true ? saved.library?.file.map(URL.init(fileURLWithPath:)) : nil
+                    chooseLibrary(missing)
+                }
+            } label: {
+                Text(saved.library?.name ?? PickerWords.text(.noLibrarySelected))
+            }
+            if let problem = preferences.libraryProblem {
+                Text(problem).foregroundStyle(.secondary)
+            } else if let library = saved.library, library.missing {
+                Text(PickerWords.text(.libraryMissing, library.name)).foregroundStyle(.secondary)
+            } else if saved.library == nil {
+                Text(PickerWords.text(.chooseHint)).foregroundStyle(.secondary)
+            }
+            if preferences.libraryBusy { ProgressView().controlSize(.small) }
+        }
     }
 
     private var shortcutSection: some View {
@@ -184,7 +282,7 @@ private struct NativeSettingsForm: View {
     }
 
     private func pickerSection(_ saved: SettingsResult) -> some View {
-        Section(PickerWords.text(.pickerPreferences)) {
+        Section {
             Picker(PickerWords.text(.appearance), selection: Binding(
                 get: { preferences.saved?.appearance ?? saved.appearance }, set: { preferences.change(appearance: $0) }
             )) {
@@ -201,6 +299,9 @@ private struct NativeSettingsForm: View {
             Toggle(PickerWords.text(.largerText), isOn: Binding(
                 get: { preferences.saved?.largerText ?? saved.largerText }, set: { preferences.change(largerText: $0) }
             ))
+        } header: {
+            AppearancePreview(appearance: saved.appearance, density: saved.density, largerText: saved.largerText)
+                .padding(.bottom, 12)
         }
     }
 }

@@ -19,6 +19,7 @@ final class PickerCanvas: NSView {
     private let headerRule = PickerRule()
     private let heading = pickerLabel()
     private let count = pickerLabel()
+    private let source = PickerButton()
     private let spinner = NSProgressIndicator()
     private let statusGlyph = NSImageView()
     private let fixButton = PickerButton()
@@ -44,7 +45,7 @@ final class PickerCanvas: NSView {
         self.model = model
         popover = PickerPopover(model: model)
         super.init(frame: .zero)
-        [header, mode, search, format, headerRule, heading, count, spinner, statusGlyph, fixButton,
+        [header, mode, search, format, headerRule, heading, count, source, spinner, statusGlyph, fixButton,
          results, empty, shelf].forEach(addSubview)
         header.addSubview(bird)
         mode.addSubview(modeLabel)
@@ -60,6 +61,9 @@ final class PickerCanvas: NSView {
         heading.setAccessibilityElement(true)
         count.alignment = .right
         count.setAccessibilityElement(true)
+        source.surface = .link
+        source.captionSize = 11
+        source.perform = { [weak self] in self?.libraryMenu() }
         spinner.style = .spinning
         spinner.isDisplayedWhenStopped = false
         statusGlyph.imageScaling = .scaleProportionallyUpOrDown
@@ -72,7 +76,6 @@ final class PickerCanvas: NSView {
         results.didAdd = { [weak model] in model?.toggleCitation($0) }
         results.didDoubleClick = { [weak self] in self?.panel?.submit(whenReady: true) }
         results.restoreSearch = { [weak self] in self?.focusSearch(caretAtEnd: true) }
-        shelf.library.perform = { [weak self] in self?.libraryMenu() }
         shelf.membership.perform = { [weak self] in self?.toggleSelectionMembership() }
         shelf.action.perform = { [weak self] in self?.panel?.submit() }
         shelf.more.perform = { [weak self] in self?.moreMenu() }
@@ -129,7 +132,8 @@ final class PickerCanvas: NSView {
         let headingY = m.header + m.line
         let hasHeading = arrangeHeading(width: width, y: headingY, metrics: m)
         let resultsY = headingY + (hasHeading ? m.section : 0)
-        let shelfHeight = shelf.height(hasDraft: model.hasDraft, metrics: m, width: width)
+        shelf.isHidden = !model.libraryReady || model.isOpening
+        let shelfHeight = shelf.isHidden ? 0 : shelf.height(hasDraft: model.hasDraft, metrics: m, width: width)
         let shelfY = height - shelfHeight
         results.frame = NSRect(x: 0, y: resultsY, width: width, height: max(0, shelfY - resultsY))
         results.configure(sections: model.sections, metrics: m, recent: model.searchReply?.total == nil,
@@ -137,7 +141,7 @@ final class PickerCanvas: NSView {
         empty.frame = results.frame
         empty.configure(state: emptyState, metrics: m)
         shelf.frame = NSRect(x: 0, y: shelfY, width: width, height: shelfHeight)
-        shelf.configure(model: model, metrics: m, width: width)
+        if !shelf.isHidden { shelf.configure(model: model, metrics: m, width: width) }
         makeKeyLoop()
         popover.refresh(m)
     }
@@ -178,8 +182,7 @@ final class PickerCanvas: NSView {
     }
 
     private func arrangeHeading(width: CGFloat, y: CGFloat, metrics m: PickerMetrics) -> Bool {
-        let libraryProblem = model.catalog?.library?.condition == .missing
-        let status = model.isOpening || libraryProblem ? nil
+        let status = model.isOpening || !model.libraryReady ? nil
             : (model.preview?.problem ?? model.searchReply?.status.first ?? model.catalog?.status.first)
         let notice = model.isOpening ? PickerWords.text(.opening) : model.notice
         let label = notice ?? status?.text ?? model.sections.first?.kind.label
@@ -206,15 +209,27 @@ final class PickerCanvas: NSView {
         fixButton.setAccessibilityLabel(fixButton.text)
         let fixWidth = fixButton.isHidden ? 0 : fixButton.preferredWidth + m.pt(8)
         let countWidth = count.isHidden ? 0 : pickerWidth(countText, font: m.font(11))
+        let library = model.libraryReady && !model.isOpening ? model.catalog?.library : nil
+        source.isHidden = library == nil
+        source.metrics = m
+        source.maxCaption = min(m.pt(145), width * 0.24)
+        source.icon = "library"
+        source.text = width >= m.pt(540) ? library?.name ?? "" : ""
+        source.key = source.text.isEmpty ? "" : "⌄"
+        source.toolTip = library?.name
+        source.setAccessibilityLabel(library.map { PickerWords.text(.scopeLabel, $0.name) } ?? PickerWords.text(.library))
+        let sourceWidth = source.isHidden ? 0 : source.preferredWidth + m.pt(6)
         let left = m.inset + (isStatus ? m.pt(20) : 0)
-        let right = width - m.inset - countWidth
+        let right = width - m.inset - countWidth - sourceWidth
         pickerLine(heading, x: left, y: y + m.pt(2), width: right - left - m.pt(6) - fixWidth, height: m.section)
         pickerLine(count, x: right, y: y + m.pt(2), width: countWidth, height: m.section)
+        source.frame = NSRect(x: right + countWidth + (sourceWidth > 0 ? m.pt(6) : 0), y: y + m.pt(2),
+                              width: max(0, sourceWidth - m.pt(6)), height: m.section)
         let glyph = NSRect(x: m.inset, y: y + m.pt(7), width: m.pt(14), height: m.pt(14))
         spinner.frame = glyph
         statusGlyph.frame = glyph
         fixButton.frame = NSRect(x: right - fixWidth - m.pt(4), y: y, width: fixWidth, height: m.section)
-        return label != nil
+        return label != nil || library != nil
     }
 
     private var emptyState: PickerEmpty.State? {
@@ -224,7 +239,7 @@ final class PickerCanvas: NSView {
                 switch library.condition {
                 case .missing:
                     return .missing(catalog.status.first?.text ?? library.name, library.name)
-                case .unreadable: return .choose
+                case .unreadable: return .unreadable(catalog.status.first?.text ?? library.name)
                 case .ready: return model.searchReply?.total == nil ? .newLibrary : .noMatches
                 }
             }
@@ -260,18 +275,29 @@ final class PickerCanvas: NSView {
 
     private func emptyAction(primary: Bool) {
         switch emptyState {
-        case .choose: panel?.chooseLibrary()
+        case .choose:
+            if primary { panel?.chooseLibrary() } else { panel?.openSettings?() }
+        case .unreadable: panel?.chooseLibrary()
         case .missing: panel?.chooseLibrary(locate: primary)
         case .noMatches:
-            if primary { model.query = ""; focusSearch() } else { panel?.openZotero() }
+            if primary { model.query = ""; focusSearch() }
         default: break
+        }
+    }
+
+    func resolveLibraryIfNeeded() -> Bool {
+        switch emptyState {
+        case .choose, .missing, .unreadable:
+            emptyAction(primary: true)
+            return true
+        default: return false
         }
     }
 
     private func makeKeyLoop() {
         let list = results.shown.isEmpty ? [] : [results.keyView]
         let options: [NSView] = empty.isHidden ? [] : [empty.primary, empty.secondary]
-        let keyViews = [search, format] + list + options + shelf.keyViews
+        let keyViews = [search, format, source] + list + options + (shelf.isHidden ? [] : shelf.keyViews)
         let enabled = keyViews.filter { !$0.isHidden && (($0 as? NSControl)?.isEnabled ?? true) }
         for (index, view) in enabled.enumerated() {
             view.nextKeyView = enabled[(index + 1) % enabled.count]
@@ -383,12 +409,11 @@ final class PickerCanvas: NSView {
     }
 
     func openSource() {
-        if case .noMatches = emptyState { panel?.openZotero() }
-        else { panel?.openSource() }
+        if model.libraryReady { panel?.openSource() }
     }
 
     private func libraryMenu() {
-        open(libraryCommands(), at: shelf.library)
+        open(libraryCommands(), at: source)
     }
 
     private func libraryCommands() -> NSMenu {
@@ -481,6 +506,7 @@ private final class PickerEmpty: NSView {
         case noMatches
         case choose
         case missing(String, String)
+        case unreadable(String)
     }
 
     let primary = PickerButton()
@@ -507,18 +533,21 @@ private final class PickerEmpty: NSView {
     func configure(state: State?, metrics m: PickerMetrics) {
         isHidden = state == nil
         guard let state else { return }
-        let content: (title: String, hint: PickerWord, primary: String?, secondary: String?, key: String, quietKey: String)
+        let content: (title: String, hint: PickerWord, primary: String?, secondary: String?, key: String)
         switch state {
         case .newLibrary:
-            content = (PickerWords.text(.emptyLibrary), .emptyLibraryHint, nil, nil, "", "")
+            content = (PickerWords.text(.emptyLibrary), .emptyLibraryHint, nil, nil, "")
         case .noMatches:
-            content = (PickerWords.text(.noMatches), .noMatchesHint, PickerWords.text(.clear), PickerWords.text(.openZotero), "", "⌘O")
+            content = (PickerWords.text(.noMatches), .noMatchesHint, PickerWords.text(.clear), nil, "")
         case .choose:
-            content = (PickerWords.text(.chooseTitle), .chooseHint, PickerWords.text(.choose), nil, "⇧⌘O", "")
+            content = (PickerWords.text(.chooseTitle), .chooseHint, PickerWords.text(.choose), PickerWords.text(.settings), "↩")
         case let .missing(title, name):
-            content = (title, .missingHint, PickerWords.text(.findLibrary, name), PickerWords.text(.choose), "", "")
+            content = (title, .missingHint, PickerWords.text(.findLibrary, name), PickerWords.text(.choose), "↩")
+        case let .unreadable(problem):
+            content = (problem, .chooseHint, PickerWords.text(.choose), nil, "↩")
         }
         titleLabel.stringValue = content.title
+        titleLabel.toolTip = content.title
         hint.stringValue = PickerWords.text(content.hint)
         titleLabel.font = m.font(15, .semibold)
         hint.font = m.font(13)
@@ -527,7 +556,6 @@ private final class PickerEmpty: NSView {
         primary.text = content.primary ?? ""
         secondary.text = content.secondary ?? ""
         primary.key = content.key
-        secondary.key = content.quietKey
         primary.setAccessibilityLabel(primary.text)
         secondary.setAccessibilityLabel(secondary.text)
         primary.isHidden = content.primary == nil

@@ -2,10 +2,16 @@ import CIbisNative
 import Foundation
 
 extension SettingsRequest {
-    static let readOnly = SettingsRequest(appearance: nil, density: nil, largerText: nil, paste: nil, shortcut: nil)
+    static let readOnly = patch()
+
+    static func patch(appearance: Appearance? = nil, density: Density? = nil, largerText: Bool? = nil,
+                      libraryFile: String? = nil, paste: Bool? = nil, shortcut: ShortcutSetting? = nil) -> Self {
+        SettingsRequest(appearance: appearance, density: density, largerText: largerText, libraryFile: libraryFile,
+                        paste: paste, shortcut: shortcut)
+    }
 
     var isReadOnly: Bool {
-        appearance == nil && density == nil && largerText == nil && paste == nil && shortcut == nil
+        appearance == nil && density == nil && largerText == nil && paste == nil && shortcut == nil && libraryFile == nil
     }
 }
 
@@ -67,6 +73,18 @@ final class EngineClient: @unchecked Sendable {
                 self.socket = nil
                 throw error
             }
+        }
+    }
+
+    func chooseLibrary(_ file: URL) async throws -> SettingsResult {
+        do {
+            return try await settings(.patch(libraryFile: file.path))
+        } catch let error as Rejected {
+            throw error
+        } catch {
+            // A disconnected reply may follow the commit. Never replay the write.
+            if let saved = try? await settings(.readOnly), saved.library?.file == file.path { return saved }
+            throw error
         }
     }
 

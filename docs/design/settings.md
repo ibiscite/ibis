@@ -2,7 +2,9 @@
 
 ## Native macOS repo build
 
-Settings is a titled window reached through the Ibis menu, menu bar item or ⌘,. Picker groups Appearance, Rows and Larger Text. Each change saves through the daemon's settings owner and updates the picker. ⌘+ and ⌘− are temporary picker zoom. The Ibis menu opens the standard About window.
+Settings is a titled window reached through the Ibis menu, menu bar item or ⌘,. The native toolbar separates General and Appearance. General groups the library, shortcut and paste behavior. Appearance shows a live picker preview with invented references, then theme, Rows and Larger Text. Each change saves through the daemon's settings owner and updates the picker. ⌘+ and ⌘− are temporary picker zoom. The Ibis menu opens the standard About window.
+
+General › Library shows the saved source and offers the file chooser as a sheet. Ibis checks that a replacement can open before saving the change. If the saved file moves, Find opens the chooser for a replacement. The picker shows the source it is actually searching, including temporary overrides.
 
 Shortcuts shows the working key for Open Ibis. Activate the button and type a new shortcut in the Settings window. Escape, Tab and leaving the recorder cancel. Ibis keeps the working shortcut until macOS has registered the replacement and the daemon has confirmed the saved choice. Use Default restores the repo build's ⌥⇧⌘Y. The menu-bar item follows the active registration.
 
