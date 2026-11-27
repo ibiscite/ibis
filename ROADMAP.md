@@ -270,6 +270,13 @@ is complete. From 1.0, an update keeps settings.
 
 ## Definition of done for 1.0
 
+1.0 serves both kinds of writer equally (the maintainer, 2026-11-26): people
+in Word and Google Docs, whose coauthors must be able to keep editing a
+manuscript and its citations, and people in LaTeX, Typst, Pandoc and Markdown.
+The editable manuscript handoff is tested first: a coauthor round trip in Word
+and Google Docs through Zotero's own document transfer and refresh, run on the
+maintainer's Mac.
+
 Every row of the generated compatibility table has recorded evidence on the
 exact release.
 
