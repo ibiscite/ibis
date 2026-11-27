@@ -4,10 +4,9 @@ struct PickerMetrics {
     let scale: CGFloat
     let density: Density
     func pt(_ points: CGFloat) -> CGFloat { points * scale }
-    var header: CGFloat { pt(56) }
-    var searchHeight: CGFloat { pt(34) }
-    var searchFont: NSFont { font(20) }
-    var footer: CGFloat { pt(44) }
+    var header: CGFloat { pt(60) }
+    var searchHeight: CGFloat { pt(42) }
+    var searchFont: NSFont { font(22) }
     var line: CGFloat { pt(1) }
     var inset: CGFloat { pt(20) }
     var tileCenter: CGFloat { pt(36) }
@@ -82,8 +81,10 @@ func pickerLine(_ label: NSTextField, x: CGFloat, y: CGFloat, width: CGFloat, he
 
 @MainActor
 final class PickerRule: NSView {
+    var color = NSColor.separatorColor
+
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.separatorColor.setFill()
+        color.setFill()
         bounds.fill()
     }
 }

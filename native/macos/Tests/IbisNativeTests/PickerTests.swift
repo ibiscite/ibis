@@ -343,7 +343,7 @@ final class PickerTests: XCTestCase {
         try await eventually { model.canDeliver }
         XCTAssertTrue(panel.searchField?.currentEditor() === panel.firstResponder)
         XCTAssertEqual(panel.searchField?.accessibilityLabel(), "Search references")
-        XCTAssertEqual(panel.searchField?.focusRingType, .default)
+        XCTAssertEqual(panel.searchField?.focusRingType, NSFocusRingType.none)
         let contentView = try XCTUnwrap(panel.contentView)
         contentView.layoutSubtreeIfNeeded()
         let membership = try XCTUnwrap(descendants(of: contentView).compactMap { $0 as? NSButton }
@@ -354,17 +354,26 @@ final class PickerTests: XCTestCase {
         let first = model.selected
         let quickPage = try XCTUnwrap(descendants(of: contentView).compactMap { $0 as? NSTextField }
             .first { $0.accessibilityLabel() == PickerWords.text(.page) })
-        let pagePosition = quickPage.convert(quickPage.bounds, to: contentView).minX
+        let pagePosition = quickPage.convert(quickPage.bounds, to: contentView)
+        let quickList = try XCTUnwrap(resultTable(in: panel)?.enclosingScrollView)
+        let quickListFrame = quickList.convert(quickList.bounds, to: contentView)
+        let formatButton = try XCTUnwrap(descendants(of: contentView).compactMap { $0 as? NSButton }
+            .first { $0.accessibilityLabel() == PickerWords.text(.formatValue, model.formatName) })
+        let formatPosition = formatButton.convert(formatButton.bounds, to: contentView)
+        XCTAssertEqual(pagePosition.midY, formatPosition.midY, accuracy: 2)
         try send("\u{f701}", key: 125, to: panel) // Down
         XCTAssertNotEqual(model.selected, first)
         try await eventually { model.canDeliver }
         contentView.layoutSubtreeIfNeeded()
-        XCTAssertEqual(quickPage.convert(quickPage.bounds, to: contentView).minX, pagePosition, accuracy: 0.5)
+        XCTAssertEqual(quickPage.convert(quickPage.bounds, to: contentView), pagePosition)
         try send("\r", key: 36, flags: [.shift], to: panel)
         XCTAssertEqual(model.citations.map(\.row.id), [model.selected].compactMap { $0 })
         try await eventually { model.canDeliver }
         contentView.layoutSubtreeIfNeeded()
         XCTAssertEqual(membership.accessibilityLabel(), PickerWords.text(.remove))
+        XCTAssertEqual(quickList.convert(quickList.bounds, to: contentView), quickListFrame)
+        XCTAssertEqual(quickPage.convert(quickPage.bounds, to: contentView), pagePosition)
+        XCTAssertEqual(formatButton.convert(formatButton.bounds, to: contentView), formatPosition)
         let beforePopover = try XCTUnwrap(resultTable(in: panel)?.enclosingScrollView?.frame)
         try send("i", key: 34, flags: [.command], to: panel)
         XCTAssertEqual(model.editingCitation, model.selected)
@@ -384,7 +393,7 @@ final class PickerTests: XCTestCase {
         XCTAssertEqual(page.stringValue, "")
         try send("\t", key: 48, to: panel)
         XCTAssertTrue(panel.searchField?.currentEditor() === panel.firstResponder)
-        panel.makeFirstResponder(panel.searchField)
+        XCTAssertTrue(panel.makeFirstResponder(panel.searchField))
         try send("\u{f700}", key: 126, to: panel) // Up
         XCTAssertEqual(model.selected, first)
         for _ in 0..<10 {

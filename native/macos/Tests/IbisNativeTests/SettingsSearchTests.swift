@@ -13,6 +13,14 @@ final class SettingsSearchTests: XCTestCase {
         XCTAssertEqual(search.highlighted, .density)
         XCTAssertEqual(search.highlighted?.pane, .appearance)
 
+        search.update(SettingsSearchRow.library.title)
+        XCTAssertEqual(search.highlighted, .library)
+        XCTAssertEqual(search.highlighted?.pane, .library)
+
+        search.update(SettingsPane.general.title)
+        XCTAssertTrue(search.matches.contains(.shortcut))
+        XCTAssertTrue(search.matches.contains(.paste))
+
         let hotkey = try XCTUnwrap(PickerWords.text(.settingsShortcutWords).split(whereSeparator: \.isWhitespace).last)
         search.update(String(hotkey))
         XCTAssertEqual(search.highlighted, .shortcut)
@@ -40,14 +48,16 @@ final class SettingsSearchTests: XCTestCase {
         let shortcuts = OpeningShortcuts(engine: engine, action: {}, updateMenu: { _ in })
         let settings = NativeSettingsWindow(engine: engine, shortcuts: shortcuts) { _, _ in }
         let window = try XCTUnwrap(settings.window)
-        let field = try XCTUnwrap(window.toolbar?.items.compactMap { ($0 as? NSSearchToolbarItem)?.searchField }.first)
+        let field = settings.searchField
         let editor = NSTextView()
+        let originalFrame = window.frame
 
         field.stringValue = PickerWords.text(.compact)
         settings.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
         XCTAssertTrue(settings.control(field, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:))))
         XCTAssertEqual(window.title, SettingsPane.appearance.title)
         XCTAssertEqual(field.stringValue, "")
+        XCTAssertEqual(window.frame, originalFrame)
 
         field.stringValue = "ivoryquartzmissing"
         settings.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
@@ -56,5 +66,11 @@ final class SettingsSearchTests: XCTestCase {
         XCTAssertTrue(settings.control(field, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:))))
         XCTAssertEqual(field.stringValue, "")
         XCTAssertEqual(window.title, SettingsPane.appearance.title)
+
+        field.stringValue = SettingsSearchRow.library.title
+        settings.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        XCTAssertTrue(settings.control(field, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:))))
+        XCTAssertEqual(window.title, SettingsPane.library.title)
+        XCTAssertEqual(window.frame, originalFrame)
     }
 }

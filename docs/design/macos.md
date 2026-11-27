@@ -15,8 +15,10 @@ than measuring and copying them. The Tauri shell stays on the Mac until the
 native one reaches parity, and on Windows and Linux after that.
 
 The [native repo build](../../native/macos/README.md) uses a system search
-field, list, pop-up buttons and disclosure for citation details. The title
-and byline always occupy the same two lines. The menu bar offers the picker,
+field, list, pop-up buttons and disclosure for citation details. The header
+belongs to search. The title and byline always occupy the same two lines.
+Page, Format and delivery live together in an inset tray that stays in place
+while the user browses or stages a draft. The menu bar offers the picker,
 the current shortcut, a library file chooser and the paste permission action.
 
 ## What the interface does

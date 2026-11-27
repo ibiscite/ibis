@@ -3,16 +3,12 @@ import CIbisNative
 import SwiftUI
 
 @MainActor
-final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSSearchFieldDelegate {
-    private static let navigation = NSToolbarItem.Identifier("SettingsPanes")
-    private static let search = NSToolbarItem.Identifier("SearchSettings")
+final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSSearchFieldDelegate {
     private let preferences: NativePreferences
     private let shortcuts: OpeningShortcuts
-    private let searchItem = NSSearchToolbarItem(itemIdentifier: NativeSettingsWindow.search)
+    let searchField = NSSearchField()
     private weak var searchOpener: NSResponder?
     private var searchAnnouncement: Task<Void, Never>?
-    private let tabs = NSSegmentedControl(labels: SettingsPane.allCases.map(\.title), trackingMode: .selectOne,
-                                         target: nil, action: nil)
 
     init(engine: EngineClient, shortcuts: OpeningShortcuts, chooseLibrary: @escaping (NSWindow, URL?) -> Void = { _, _ in },
          applied: @escaping (SettingsResult, Bool) -> Void) {
@@ -25,30 +21,22 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSToolba
         let window = SettingsHostWindow(shortcuts: shortcuts)
         window.isReleasedWhenClosed = false
         super.init(window: window)
-        window.contentView = NSHostingView(rootView: NativeSettingsForm(preferences: preferences, shortcuts: shortcuts, chooseLibrary: {
-            [weak window] file in
-            if let window { chooseLibrary(window, file) }
-        }, reveal: { [weak self] row in self?.reveal(row) }))
+        window.contentView = NSHostingView(rootView: NativeSettingsForm(
+            preferences: preferences, shortcuts: shortcuts, searchField: searchField,
+            chooseLibrary: { [weak window] file in
+                if let window { chooseLibrary(window, file) }
+            }, select: { [weak self] pane in self?.select(pane) },
+            reveal: { [weak self] row in self?.reveal(row) }
+        ))
         window.center()
         window.delegate = self
-        let toolbar = NSToolbar(identifier: "IbisSettings")
-        toolbar.delegate = self
-        toolbar.allowsUserCustomization = false
-        window.toolbar = toolbar
-        window.toolbarStyle = .preference
-        tabs.target = self
-        tabs.action = #selector(choosePane)
         let prompt = PickerWords.text(.settingsSearch)
-        let field = searchItem.searchField
-        field.placeholderString = prompt
-        field.setAccessibilityLabel(prompt)
-        field.sendsSearchStringImmediately = true
-        field.delegate = self
-        field.target = self
-        field.action = #selector(searchChanged)
-        searchItem.paletteLabel = prompt
-        searchItem.resignsFirstResponderWithCancel = false
-        searchItem.preferredWidthForSearchField = 196
+        searchField.placeholderString = prompt
+        searchField.setAccessibilityLabel(prompt)
+        searchField.sendsSearchStringImmediately = true
+        searchField.delegate = self
+        searchField.target = self
+        searchField.action = #selector(searchChanged)
         window.find = { [weak self] in self?.beginSearch() }
         select(.general)
     }
@@ -75,38 +63,29 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSToolba
     func didSelectLibrary(_ saved: SettingsResult) { preferences.useSaved(saved, resetText: false) }
     func didRejectLibrary(_ error: Error) { preferences.libraryProblem = pickerError(error) }
 
-    @objc private func choosePane() {
-        if let pane = SettingsPane(rawValue: tabs.selectedSegment) { select(pane) }
-    }
-
     private func select(_ pane: SettingsPane, revealing row: SettingsSearchRow? = nil) {
         shortcuts.cancelRecording()
         clearSearch(endInteraction: true)
-        tabs.selectedSegment = pane.rawValue
         preferences.pane = pane
         preferences.revealed = row
         window?.title = pane.title
-        let width: CGFloat = 510
-        window?.setContentSize(NSSize(width: width, height: pane == .general ? 445 : 420))
     }
 
     private func beginSearch() {
-        let field = searchItem.searchField
-        if window?.firstResponder !== field.currentEditor() {
+        if window?.firstResponder !== searchField.currentEditor() {
             searchOpener = window?.firstResponder
         }
-        searchItem.beginSearchInteraction()
-        field.selectText(nil)
+        window?.makeFirstResponder(searchField)
+        searchField.selectText(nil)
     }
 
     private func clearSearch(endInteraction: Bool) {
         searchAnnouncement?.cancel()
-        let field = searchItem.searchField
-        field.stringValue = ""
-        field.currentEditor()?.string = ""
+        searchField.stringValue = ""
+        searchField.currentEditor()?.string = ""
         if !preferences.search.query.isEmpty { preferences.search.update("") }
         if endInteraction {
-            if field.currentEditor() != nil { searchItem.endSearchInteraction() }
+            if searchField.currentEditor() != nil { window?.makeFirstResponder(nil) }
             searchOpener = nil
         }
     }
@@ -129,7 +108,7 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        guard control === searchItem.searchField, !textView.hasMarkedText() else { return false }
+        guard control === searchField, !textView.hasMarkedText() else { return false }
         switch commandSelector {
         case #selector(NSResponder.moveDown(_:)), #selector(NSResponder.moveUp(_:)):
             guard preferences.search.isSearching else { return false }
@@ -156,33 +135,15 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     private func announceSearchHighlight() {
-        let field = searchItem.searchField
-        guard window?.isKeyWindow == true, window?.firstResponder === field.currentEditor() else { return }
+        guard window?.isKeyWindow == true, window?.firstResponder === searchField.currentEditor() else { return }
         let message = preferences.search.highlighted.map { "\($0.title), \($0.pane.title)" }
             ?? PickerWords.text(.settingsNoResults, preferences.search.query)
-        NSAccessibility.post(element: field, notification: .announcementRequested, userInfo: [
+        NSAccessibility.post(element: searchField, notification: .announcementRequested, userInfo: [
             .announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue
         ])
     }
 
     private func reveal(_ row: SettingsSearchRow) { select(row.pane, revealing: row) }
-
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Self.navigation, Self.search]
-    }
-
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Self.navigation, .flexibleSpace, Self.search]
-    }
-
-    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
-                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        if identifier == Self.search { return searchItem }
-        guard identifier == Self.navigation else { return nil }
-        let item = NSToolbarItem(itemIdentifier: identifier)
-        item.view = tabs
-        return item
-    }
 }
 
 @MainActor
@@ -192,8 +153,10 @@ private final class SettingsHostWindow: NSWindow {
 
     init(shortcuts: OpeningShortcuts) {
         self.shortcuts = shortcuts
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 480, height: 435),
-                   styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 744, height: 500),
+                   styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        contentMinSize = NSSize(width: 620, height: 390)
+        titleVisibility = .hidden
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -283,21 +246,68 @@ private final class NativePreferences: ObservableObject {
     }
 }
 
+private struct SettingsSearchHost: NSViewRepresentable {
+    let field: NSSearchField
+
+    func makeNSView(context: Context) -> NSSearchField { field }
+    func updateNSView(_ field: NSSearchField, context: Context) {}
+}
+
 private struct NativeSettingsForm: View {
     @ObservedObject var preferences: NativePreferences
     @ObservedObject var shortcuts: OpeningShortcuts
     @FocusState private var focused: SettingsSearchRow?
     @AccessibilityFocusState(for: .voiceOver) private var spoken: SettingsSearchRow?
     @State private var flashed: SettingsSearchRow?
+    let searchField: NSSearchField
     let chooseLibrary: (URL?) -> Void
+    let select: (SettingsPane) -> Void
     let reveal: (SettingsSearchRow) -> Void
 
     var body: some View {
-        if preferences.search.isSearching {
-            searchResults.onAppear { flashed = nil }
-        } else {
+        HSplitView {
+            sidebar.frame(minWidth: 172, idealWidth: 192, maxWidth: 226)
+            detail.frame(minWidth: 410)
+        }
+    }
+
+    private var sidebar: some View {
+        VStack(spacing: 8) {
+            SettingsSearchHost(field: searchField)
+                .frame(height: 26)
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+
+            if preferences.search.isSearching {
+                searchResults.onAppear { flashed = nil }
+            } else {
+                List(selection: Binding<SettingsPane?>(
+                    get: { preferences.pane },
+                    set: { pane in if let pane { select(pane) } }
+                )) {
+                    ForEach(SettingsPane.allCases, id: \.self) { pane in
+                        Text(pane.title).tag(pane)
+                    }
+                }
+                .listStyle(.sidebar)
+                .scrollContentBackground(.hidden)
+            }
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private var detail: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(preferences.pane.title)
+                .font(.title2.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 17)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Divider()
             ScrollViewReader { scroll in
                 settingsForm
+                    .id(preferences.pane)
                     .task(id: revealWhenAvailable) {
                         guard let target = revealWhenAvailable else { return }
                         await Task.yield()
@@ -315,6 +325,7 @@ private struct NativeSettingsForm: View {
                     }
             }
         }
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var revealWhenAvailable: SettingsSearchRow? {
@@ -330,11 +341,13 @@ private struct NativeSettingsForm: View {
             }
             ForEach(preferences.search.matches) { row in
                 Button { reveal(row) } label: {
-                    HStack {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(row.title)
-                        Spacer(minLength: 12)
-                        Text(row.pane.title).foregroundStyle(.secondary)
+                        if row.title != row.pane.title {
+                            Text(row.pane.title).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
+                    .padding(.vertical, 3)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
@@ -345,7 +358,8 @@ private struct NativeSettingsForm: View {
                 .listRowBackground(row == preferences.search.highlighted ? Color.accentColor.opacity(0.14) : nil)
             }
         }
-        .listStyle(.inset)
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
         .accessibilityLabel(Text(PickerWords.text(.settingsSearchResults)))
     }
 
@@ -355,11 +369,16 @@ private struct NativeSettingsForm: View {
                 Group {
                     switch preferences.pane {
                     case .general:
-                        librarySection(saved)
                         shortcutSection
                         pasteSection(saved)
                     case .appearance:
                         pickerSection(saved)
+                        Section {
+                            AppearancePreview(appearance: saved.appearance, density: saved.density, largerText: saved.largerText)
+                                .padding(.vertical, 6)
+                        }
+                    case .library:
+                        librarySection(saved)
                     }
                 }
                 .disabled(preferences.busy || shortcuts.saving || preferences.libraryBusy)
@@ -394,7 +413,7 @@ private struct NativeSettingsForm: View {
     }
 
     private func librarySection(_ saved: SettingsResult) -> some View {
-        Section(SettingsSearchRow.library.title) {
+        Section {
             destination(.library) {
                 LabeledContent {
                     control(.library) {
@@ -493,9 +512,6 @@ private struct NativeSettingsForm: View {
                     ))
                 }
             }
-        } header: {
-            AppearancePreview(appearance: saved.appearance, density: saved.density, largerText: saved.largerText)
-                .padding(.bottom, 12)
         }
     }
 }

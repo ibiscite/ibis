@@ -8,9 +8,9 @@ struct AppearancePreview: View {
     let largerText: Bool
 
     var body: some View {
-        let metrics = PickerMetrics(scale: largerText ? 1.5 : 1, density: density)
+        let metrics = PickerMetrics(scale: (largerText ? 1.5 : 1) * 0.85, density: density)
         AppearanceSample(appearance: appearance, metrics: metrics)
-            .frame(height: max(40, metrics.pt(36)) + metrics.row * 2 + 12)
+            .frame(height: AppearanceSampleView.height(for: metrics))
             .accessibilityHidden(true)
     }
 }
@@ -30,8 +30,9 @@ private struct AppearanceSample: NSViewRepresentable {
 private final class AppearanceSampleView: NSView {
     private let mark = NSImageView()
     private let search = PickerSearchField()
-    private let format = pickerLabel("APA")
+    private let heading = pickerLabel(PickerSectionKind.best.label)
     private let rule = PickerRule()
+    private let searchFocus = PickerRule()
     private let results = PickerResults()
     private var metrics = PickerMetrics(scale: 1, density: .compact)
 
@@ -47,12 +48,19 @@ private final class AppearanceSampleView: NSView {
         search.stringValue = "shoreline"
         search.isEditable = false
         search.isSelectable = false
+        search.isBezeled = false
+        search.isBordered = false
+        search.drawsBackground = false
         search.focusRingType = .none
-        (search.cell as? NSSearchFieldCell)?.cancelButtonCell = nil
-        format.alignment = .right
-        format.textColor = .secondaryLabelColor
+        search.controlSize = .large
+        if let cell = search.cell as? NSSearchFieldCell {
+            cell.searchButtonCell = nil
+            cell.cancelButtonCell = nil
+        }
+        searchFocus.color = .keyboardFocusIndicatorColor
+        heading.textColor = .secondaryLabelColor
         results.scroll.hasVerticalScroller = false
-        [mark, search, format, rule, results].forEach(addSubview)
+        [mark, search, searchFocus, rule, heading, results].forEach(addSubview)
         updateAppearance()
     }
 
@@ -86,22 +94,29 @@ private final class AppearanceSampleView: NSView {
     override func layout() {
         super.layout()
         let width = bounds.width
-        let header = max(40, metrics.pt(36))
-        let markSize = metrics.pt(24)
-        let fieldHeight = metrics.pt(25)
-        format.font = metrics.font(11)
-        let formatWidth = pickerWidth(format.stringValue, font: metrics.font(11))
-        let trailing = width - metrics.inset - formatWidth
+        let header = metrics.header
+        let markSize = metrics.pt(32)
         mark.frame = NSRect(x: metrics.tileCenter - markSize / 2, y: (header - markSize) / 2,
                             width: markSize, height: markSize)
-        search.font = metrics.font(13)
-        search.frame = NSRect(x: metrics.column, y: (header - fieldHeight) / 2,
-                              width: max(0, trailing - metrics.column - metrics.pt(12)), height: fieldHeight)
-        pickerLine(format, x: trailing, y: 0, width: formatWidth, height: header)
-        rule.frame = NSRect(x: 0, y: header, width: width, height: 1)
-        results.frame = NSRect(x: 0, y: header + 6, width: width, height: metrics.row * CGFloat(Self.records.count))
+        let contentWidth = max(0, width - metrics.inset - metrics.column)
+        search.font = metrics.searchFont
+        search.frame = NSRect(x: metrics.column, y: (header - metrics.searchHeight) / 2,
+                              width: contentWidth, height: metrics.searchHeight)
+        searchFocus.frame = NSRect(x: metrics.column, y: search.frame.maxY - metrics.line,
+                                   width: contentWidth, height: metrics.line)
+        rule.frame = NSRect(x: 0, y: header, width: width, height: metrics.line)
+        let headingY = header + metrics.line
+        heading.font = metrics.font(12, .medium)
+        pickerLine(heading, x: metrics.column, y: headingY + metrics.pt(2), width: contentWidth, height: metrics.section)
+        results.frame = NSRect(x: 0, y: headingY + metrics.section, width: width,
+                               height: metrics.row * CGFloat(Self.records.count))
         results.configure(sections: [PickerSection(kind: .best, rows: Self.records)],
-                          metrics: metrics, recent: false, selected: Self.records.first?.id, cited: [], numbers: false)
+                          metrics: metrics, recent: false, selected: Self.records.first?.id, cited: [], numbers: false,
+                          quickDelivery: true)
+    }
+
+    static func height(for metrics: PickerMetrics) -> CGFloat {
+        metrics.header + metrics.line + metrics.section + metrics.row * CGFloat(records.count) + metrics.pt(6)
     }
 
     private static let records = [

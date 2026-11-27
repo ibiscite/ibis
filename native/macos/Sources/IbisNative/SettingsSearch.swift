@@ -1,8 +1,12 @@
-enum SettingsPane: Int, CaseIterable {
-    case general, appearance
+enum SettingsPane: CaseIterable {
+    case general, appearance, library
 
     var title: String {
-        PickerWords.text(self == .general ? .generalSettings : .appearanceSettings)
+        switch self {
+        case .general: PickerWords.text(.generalSettings)
+        case .appearance: PickerWords.text(.appearanceSettings)
+        case .library: PickerWords.text(.library)
+        }
     }
 }
 
@@ -13,7 +17,8 @@ enum SettingsSearchRow: String, CaseIterable, Identifiable {
 
     var pane: SettingsPane {
         switch self {
-        case .library, .shortcut, .paste: .general
+        case .shortcut, .paste: .general
+        case .library: .library
         case .appearance, .density, .largerText: .appearance
         }
     }
@@ -42,7 +47,9 @@ enum SettingsSearchRow: String, CaseIterable, Identifiable {
         }
     }
 
-    fileprivate var aliases: String { searchWords.map { PickerWords.text($0) }.joined(separator: " ") }
+    fileprivate var aliases: String {
+        ([pane.title] + searchWords.map { PickerWords.text($0) }).joined(separator: " ")
+    }
 }
 
 struct SettingsSearch {

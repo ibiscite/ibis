@@ -19,10 +19,10 @@ final class PickerCanvas: NSView {
     let search = PickerSearchField()
     private let header = PickerDragView()
     private let bird = NSImageView()
-    private let format = PickerButton()
     private let mode = PickerCapsule()
     private let modeLabel = pickerLabel(PickerWords.text(.citation))
     private let headerRule = PickerRule()
+    private let searchFocus = PickerRule()
     private let heading = pickerLabel()
     private let count = pickerLabel()
     private let source = PickerButton()
@@ -53,7 +53,7 @@ final class PickerCanvas: NSView {
         self.model = model
         popover = PickerPopover(model: model)
         super.init(frame: .zero)
-        [header, mode, search, format, headerRule, heading, count, source, spinner, statusGlyph, fixButton,
+        [header, mode, search, headerRule, searchFocus, heading, count, source, spinner, statusGlyph, fixButton,
          results, empty, shelf].forEach(addSubview)
         header.addSubview(bird)
         mode.addSubview(modeLabel)
@@ -61,11 +61,14 @@ final class PickerCanvas: NSView {
         bird.setAccessibilityElement(false)
         bird.unregisterDraggedTypes()
         search.setAccessibilityLabel(PickerWords.text(.search))
+        search.isBezeled = false
+        search.isBordered = false
+        search.drawsBackground = false
+        search.focusRingType = .none
+        (search.cell as? NSSearchFieldCell)?.searchButtonCell = nil
+        searchFocus.color = .keyboardFocusIndicatorColor
         search.change = { [weak model] in model?.query = $0 }
-        format.surface = .link
-        format.key = "⌄"
-        format.setAccessibilityRole(.popUpButton)
-        format.perform = { [weak self] in self?.openFormat() }
+        shelf.format.perform = { [weak self] in self?.openFormat() }
         heading.setAccessibilityElement(true)
         count.alignment = .right
         count.setAccessibilityElement(true)
@@ -146,7 +149,7 @@ final class PickerCanvas: NSView {
         let hasHeading = arrangeHeading(width: width, y: headingY, metrics: m)
         let resultsY = headingY + (hasHeading ? m.section : 0)
         shelf.isHidden = !model.libraryReady || model.isOpening
-        let shelfHeight = shelf.isHidden ? 0 : shelf.height(hasDraft: model.hasDraft, metrics: m, width: width)
+        let shelfHeight = shelf.isHidden ? 0 : shelf.height(metrics: m, width: width)
         let shelfY = height - shelfHeight
         results.frame = NSRect(x: 0, y: resultsY, width: width, height: max(0, shelfY - resultsY))
         results.configure(sections: model.sections, metrics: m, recent: model.searchReply?.total == nil,
@@ -168,19 +171,6 @@ final class PickerCanvas: NSView {
         bird.frame = NSRect(x: m.tileCenter - markSize / 2, y: (m.header - markSize) / 2, width: markSize, height: markSize)
         headerRule.frame = NSRect(x: 0, y: m.header, width: width, height: m.line)
 
-        let name = model.formatName
-        format.metrics = m
-        format.maxCaption = width * 0.28
-        format.isHidden = !model.libraryReady
-        format.isEnabled = model.canChooseFormat
-        format.text = name
-        format.setAccessibilityLabel(PickerWords.text(.formatValue, name))
-        format.setAccessibilityHelp(model.formatContext)
-        format.toolTip = model.formatContext
-        let buttonWidth = format.isHidden ? 0 : format.preferredWidth
-        let formatX = width - m.inset - buttonWidth
-        format.frame = NSRect(x: formatX, y: (m.header - m.pt(28)) / 2, width: buttonWidth, height: m.pt(28))
-
         mode.isHidden = !model.shorthand
         mode.scarlet = true
         mode.radius = m.pt(6)
@@ -195,7 +185,9 @@ final class PickerCanvas: NSView {
         search.placeholderString = PickerWords.text(model.shorthand ? .shorthandExample : .search)
         let searchHeight = m.searchHeight
         search.frame = NSRect(x: left, y: (m.header - searchHeight) / 2,
-                              width: max(1, formatX - left - m.pt(12)), height: searchHeight)
+                              width: max(1, width - m.inset - left), height: searchHeight)
+        searchFocus.frame = NSRect(x: left, y: search.frame.maxY - m.line, width: search.frame.width, height: m.line)
+        searchFocus.isHidden = !searchHasFocus
         search.show(model.query)
     }
 
@@ -210,11 +202,11 @@ final class PickerCanvas: NSView {
         let isStatus = notice != nil || status != nil
         heading.isHidden = label == nil
         heading.stringValue = label ?? ""
-        count.isHidden = label == nil || countText.isEmpty
+        count.isHidden = label == nil || countText.isEmpty || isStatus
         count.stringValue = countText
         count.textColor = .secondaryLabelColor
         count.font = m.font(11)
-        heading.font = m.font(11, .semibold)
+        heading.font = m.font(12, .medium)
         heading.textColor = .secondaryLabelColor
         heading.toolTip = isStatus ? label : nil
         statusGlyph.isHidden = !isStatus || model.isOpening
@@ -234,18 +226,21 @@ final class PickerCanvas: NSView {
         source.metrics = m
         source.maxCaption = min(m.pt(145), width * 0.24)
         source.icon = "library"
-        source.text = width >= m.pt(540) ? library?.name ?? "" : ""
+        source.text = width >= m.pt(540) && !isStatus ? library?.name ?? "" : ""
         source.key = source.text.isEmpty ? "" : "⌄"
         source.toolTip = library?.name
         source.setAccessibilityLabel(library.map { PickerWords.text(.scopeLabel, $0.name) } ?? PickerWords.text(.library))
         let sourceWidth = source.isHidden ? 0 : source.preferredWidth + m.pt(6)
-        let left = m.inset + (isStatus ? m.pt(20) : 0)
-        let right = width - m.inset - countWidth - sourceWidth
-        pickerLine(heading, x: left, y: y + m.pt(2), width: right - left - m.pt(6) - fixWidth, height: m.section)
-        pickerLine(count, x: right, y: y + m.pt(2), width: countWidth, height: m.section)
-        source.frame = NSRect(x: right + countWidth + (sourceWidth > 0 ? m.pt(6) : 0), y: y + m.pt(2),
+        let left = m.column
+        let right = width - m.inset - sourceWidth
+        let maxHeading = right - left - fixWidth - countWidth - m.pt(8)
+        let headingWidth = count.isHidden ? maxHeading : min(maxHeading, pickerWidth(label ?? "", font: m.font(12, .medium)))
+        pickerLine(heading, x: left, y: y + m.pt(2), width: headingWidth, height: m.section)
+        pickerLine(count, x: left + max(0, headingWidth) + m.pt(6), y: y + m.pt(2),
+                   width: countWidth, height: m.section)
+        source.frame = NSRect(x: right + (sourceWidth > 0 ? m.pt(6) : 0), y: y + m.pt(2),
                               width: max(0, sourceWidth - m.pt(6)), height: m.section)
-        let glyph = NSRect(x: m.inset, y: y + m.pt(7), width: m.pt(14), height: m.pt(14))
+        let glyph = NSRect(x: m.tileCenter - m.pt(7), y: y + m.pt(7), width: m.pt(14), height: m.pt(14))
         spinner.frame = glyph
         statusGlyph.frame = glyph
         fixButton.frame = NSRect(x: right - fixWidth - m.pt(4), y: y, width: fixWidth, height: m.section)
@@ -317,20 +312,25 @@ final class PickerCanvas: NSView {
     private func makeKeyLoop() {
         let list = results.shown.isEmpty ? [] : [results.keyView]
         let options: [NSView] = empty.isHidden ? [] : [empty.primary, empty.secondary]
-        let keyViews = [search, format, source] + list + options + (shelf.isHidden ? [] : shelf.keyViews)
+        let keyViews = [search, source] + list + options + (shelf.isHidden ? [] : shelf.keyViews)
         let enabled = keyViews.filter { !$0.isHidden && (($0 as? NSControl)?.isEnabled ?? true) }
         for (index, view) in enabled.enumerated() {
             view.nextKeyView = enabled[(index + 1) % enabled.count]
         }
     }
 
-    private var quickDelivery: Bool {
-        guard let window, window.isKeyWindow, !model.hasDraft, !hasOpenPopover, activeMenu == nil else { return false }
-        guard let responder = window.firstResponder else { return false }
+    private var searchHasFocus: Bool {
+        guard let window, window.isKeyWindow, !hasOpenPopover, activeMenu == nil,
+              let responder = window.firstResponder else { return false }
         return search === responder || search.currentEditor() === responder
     }
 
-    func refreshReturnTarget() { results.showQuickDelivery(quickDelivery) }
+    private var quickDelivery: Bool { !model.hasDraft && searchHasFocus }
+
+    func refreshReturnTarget() {
+        searchFocus.isHidden = !searchHasFocus
+        results.showQuickDelivery(quickDelivery)
+    }
 
     func focusSearch(caretAtEnd: Bool = false) {
         guard let window else { return }
@@ -383,7 +383,7 @@ final class PickerCanvas: NSView {
             menu.addItem(formatHeading(PickerWords.text(.formatForOne)))
         }
         addFormats(formats, to: menu, remembering: remember)
-        open(menu, at: format)
+        open(menu, at: shelf.format)
     }
 
     private func addFormats(_ formats: [PickerFormat], to menu: NSMenu, remembering: Bool) {
