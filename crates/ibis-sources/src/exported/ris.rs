@@ -226,6 +226,12 @@ fn csl(fields: &[(&str, String)]) -> Result<(BTreeMap<String, Value>, bool), Rec
         (None, lost) => dropped |= lost,
     }
 
+    let (accessed, lost) = date(&[], &all(&["Y2"]))?;
+    if let Some(accessed) = accessed {
+        csl.insert("accessed".into(), accessed);
+    }
+    dropped |= lost;
+
     let containers = one(&["T2", "JF"])?;
     match group {
         Group::Article => {
@@ -321,7 +327,7 @@ fn text(csl: &mut BTreeMap<String, Value>, field: &str, value: Option<&str>) {
     }
 }
 
-/// `issued` from `PY`/`Y1` and `DA`, and whether a value was dropped. Every
+/// Publication or access date, and whether a value was dropped. Every
 /// value must give the same year, and fuller dates must extend shorter ones;
 /// otherwise the record is refused. Exact parts win over text kept as
 /// written unless they give only the year.
@@ -373,11 +379,11 @@ fn date(years: &[&str], dates: &[&str]) -> Result<(Option<Value>, bool), RecordP
     }
     parts.sort_by_key(Vec::len);
     let fullest = parts.last();
-    let issued = match (fullest, literal) {
+    let parsed = match (fullest, literal) {
         (Some(fullest), Some(text)) if fullest.len() == 1 => serde_json::json!({"literal": text}),
         (Some(fullest), _) => serde_json::json!({"date-parts": [fullest]}),
         (None, Some(text)) => serde_json::json!({"literal": text}),
         (None, None) => return Ok((None, dropped)),
     };
-    Ok((Some(issued), dropped))
+    Ok((Some(parsed), dropped))
 }
