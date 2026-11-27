@@ -99,7 +99,6 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         commandHold?.cancel()
         commandHold = nil
         canvas?.showNumbers(false)
-        canvas?.showOption(false)
         model.dismiss(forDelivery: forDelivery)
         if forDelivery || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             orderOut(nil)
@@ -251,7 +250,6 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     }
 
     private func flags(_ flags: NSEvent.ModifierFlags, view: PickerCanvas) {
-        view.showOption(flags.contains(.option))
         if flags.contains(.command) {
             guard commandHold == nil else { return }
             commandHold = Task { [weak view] in
@@ -278,12 +276,12 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         }
         if key == .carriageReturn || key == .enter {
             if modifiers == [.shift] {
-                if !event.isARepeat { view.addSelection() }
+                if !event.isARepeat { view.toggleSelectionMembership() }
                 return true
             }
             if modifiers.isEmpty || modifiers == [.option] {
                 if !event.isARepeat {
-                    if modifiers.contains(.option) { view.addSelection() } else { submit(whenReady: true) }
+                    if modifiers.contains(.option) { view.toggleSelectionMembership() } else { submit(whenReady: true) }
                 }
                 return true
             }

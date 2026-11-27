@@ -26,9 +26,9 @@ See [decision 0063](../decisions/0063-form-follows-function.md) for the placemen
 - **Keys**: focus starts in the locator value. Tab moves through the type, Show as, Text before and Text after. Enter in a field does what the bar's action says. Esc closes an open menu, then the details, and focus returns to the token. Pressing another token moves them; pressing the same one closes them.
 - Closing or replacing the details stops their examples immediately, keeping the citation available to copy. Abandoned examples must not delay the next citation.
 
-## Web picker Inspector
+## Inspector
 
-[C19] The Reader and a citation's warnings are never an overlay. They open in a panel beside the list, as Preview's sidebar does.
+[C19] In the web picker, the Reader and a citation's warnings open in a panel beside the list, as Preview's sidebar does.
 
 - **Where**: in the middle row, on the trailing edge, `--inspector-width` wide, with the shelf running under both. Its divider runs the whole row it splits, as a Mac split view's does: it meets the search bar's divider at the top and the shelf at the bottom, and the content keeps S inside it (checked by `canvas/geometry.ts`). The window stays its one steady size. Search, list, shelf and footer stay where they are and stay live. Below 36 rem wide the panel takes the list's place instead.
 - **Warnings** list what the engine said about the citation, in words.

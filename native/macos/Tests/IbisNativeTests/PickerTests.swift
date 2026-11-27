@@ -43,6 +43,23 @@ final class PickerTests: XCTestCase {
         let firstItem = try XCTUnwrap(first)
         model.toggleCitation(try XCTUnwrap(model.rows.first { $0.id == firstItem }))
         model.changeDetails(for: firstItem) { $0.locator = "7" }
+        try await eventually { model.canDeliver }
+        let draft = try XCTUnwrap(model.preview)
+        model.select(second)
+        XCTAssertTrue(model.canDeliver)
+        XCTAssertEqual(model.citationItem, firstItem)
+        XCTAssertEqual(model.preview?.ticket, draft.ticket)
+
+        model.query = "invented nonexistent result"
+        XCTAssertTrue(model.canDeliver)
+        try await eventually { model.rows.isEmpty }
+        XCTAssertTrue(model.canDeliver)
+        XCTAssertEqual(model.citationItem, firstItem)
+        XCTAssertEqual(model.preview?.ticket, draft.ticket)
+        XCTAssertTrue(model.escape())
+        try await eventually { model.rows.count == 2 }
+        XCTAssertEqual(model.preview?.ticket, draft.ticket)
+
         model.toggleCitation(try XCTUnwrap(model.rows.first { $0.id == second }))
         XCTAssertEqual(model.citationItem, second)
         XCTAssertEqual(model.details(for: second).locator, "12")
@@ -85,6 +102,12 @@ final class PickerTests: XCTestCase {
         try await eventually { model.canDeliver }
         XCTAssertTrue(panel.searchField?.currentEditor() === panel.firstResponder)
         XCTAssertEqual(panel.searchField?.accessibilityLabel(), "Search references")
+        let contentView = try XCTUnwrap(panel.contentView)
+        contentView.layoutSubtreeIfNeeded()
+        let membership = try XCTUnwrap(descendants(of: contentView).compactMap { $0 as? NSButton }
+            .first { $0.accessibilityLabel() == PickerWords.text(.add) })
+        XCTAssertTrue(membership.isEnabled)
+        XCTAssertFalse(membership.isHidden)
 
         let first = model.selected
         try send("\u{f701}", key: 125, to: panel) // Down
@@ -92,6 +115,8 @@ final class PickerTests: XCTestCase {
         try send("\r", key: 36, flags: [.shift], to: panel)
         XCTAssertEqual(model.citations.map(\.row.id), [model.selected].compactMap { $0 })
         try await eventually { model.canDeliver }
+        contentView.layoutSubtreeIfNeeded()
+        XCTAssertEqual(membership.accessibilityLabel(), PickerWords.text(.remove))
         let beforePopover = try XCTUnwrap(resultTable(in: panel)?.enclosingScrollView?.frame)
         try send("i", key: 34, flags: [.command], to: panel)
         XCTAssertEqual(model.editingCitation, model.selected)
@@ -127,7 +152,7 @@ final class PickerTests: XCTestCase {
         let library = try XCTUnwrap(views.compactMap { $0 as? NSButton }
             .first { $0.accessibilityLabel() == PickerWords.text(.library) })
         XCTAssertTrue(library.isHidden)
-        let buttons = try [model.deliveryTitle, PickerWords.text(.more)].map { label in
+        let buttons = try [PickerWords.text(.add), model.deliveryTitle, PickerWords.text(.more)].map { label in
             try XCTUnwrap(views.compactMap { $0 as? NSButton }
                 .first { $0.accessibilityLabel() == label && !$0.isHidden })
         }

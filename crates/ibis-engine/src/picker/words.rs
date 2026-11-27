@@ -54,7 +54,10 @@ pub fn shell_words(language: Language) -> BTreeMap<&'static str, String> {
         ("after", "citation-details-suffix"),
         ("copyCitation", "picker-native-copy-citation"),
         ("add", "key-add-to-citation"),
+        ("addShort", "picker-native-add-short"),
         ("remove", "key-remove-from-citation"),
+        ("removeShort", "picker-native-remove-short"),
+        ("draft", "picker-native-citation-draft"),
         ("more", "picker-more"),
         ("returnKey", "picker-native-return"),
         ("typeCitation", "picker-native-type-citation"),
@@ -92,6 +95,7 @@ pub fn shell_words(language: Language) -> BTreeMap<&'static str, String> {
         ("copyCitations", "picker-native-copy-citations", "count", VALUE),
         ("findLibrary", "picker-native-find-library", "name", VALUE),
         ("token", "picker-native-token", "citation", VALUE),
+        ("activeToken", "picker-native-active-token", "citation", VALUE),
         ("removeToken", "picker-remove-named", "name", VALUE),
         ("formatValue", "picker-native-format-value", "format", VALUE),
     ];

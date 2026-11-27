@@ -23,12 +23,14 @@ files the engine can open, including BibTeX, BibLaTeX, CSL JSON, RIS and CSV.
 The file choice and format changes made in the picker last for the current
 run. Search shows title and byline, with recent citations for the captured
 app or source-added references when the query is empty. Use Up and Down to
-select a reference and ⇧↩ to add it to the citation. ⌘T starts typed
-citations, where a semicolon completes a reference. Use ⌘L to edit the active
-reference’s Page field in the bar, or use its menu to choose a chapter or
-another locator type. Click a citation token or press ⌘I to edit Text before,
-Text after and Show as in a popover. Return runs the delivery action shown in
-the bar. Escape closes the popover, clears the query, then hides the picker.
+preview a reference or Return to deliver it. Add, ⇧↩ and ⌘-click hold a
+reference in a citation draft, which stays available while you keep searching.
+The outlined token is the one ⌘L and the Page field edit. Use the locator
+menu to choose a chapter or another locator type. ⌘T starts typed citations,
+where a semicolon completes a reference. Click a citation token or press ⌘I to
+edit Text before, Text after and Show as in a popover. Return runs the delivery
+action shown in the bar. Escape closes the popover, clears the query, then
+hides the picker.
 
 For paste, choose **Allow Paste…** in the Ibis Native menu. In macOS System
 Settings, grant **Ibis Native** Accessibility separately from Ibis and Ibis
@@ -40,6 +42,12 @@ saves Appearance, Rows and Larger Text through the engine. Find it in More
 and the Ibis menu bar item, which also opens About Ibis.
 ⌘+ and ⌘− temporarily scale the picker from 100% to 200%. The window keeps its
 size while you type and remembers edge resizing per display.
+
+The existing nightly sets the functional baseline for the native app
+(maintainer, 2026-11-27). The next Settings work covers the summon shortcut,
+launch at login and paste controls that report the macOS permission state.
+Saved library and per-app formats, projects, editor commands and the searchable
+action menu are also nightly capabilities the native picker needs to regain.
 
 The bundled engine joins a daemon from the same build. If several builds
 use a profile, the newer build wins. Use an absolute `IBIS_CONFIG_DIR` for

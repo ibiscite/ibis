@@ -33,20 +33,23 @@ final class EngineClientTests: XCTestCase {
         let opened = try await client.open(fixture.opening)
         XCTAssertTrue(opened.library?.condition == .ready)
         XCTAssertTrue(opened.pasteEnabled)
-        let initial = try await client.search(PickerSearchRequest(query: "", shorthand: false))
+        let initial = try await client.search(PickerSearchRequest(query: "", shorthand: false)).result
         XCTAssertEqual(initial.sections.first?.kind, .recentlyAdded)
         let row = try XCTUnwrap(initial.sections.first?.rows.first)
         XCTAssertEqual(row.title, "Invented lanterns of North Quay")
         XCTAssertEqual(row.authors, ["Mira Vale"])
         XCTAssertEqual(row.year, "2024")
         XCTAssertEqual(row.journal, "Journal of Imaginary Cities")
-        let preview = try await client.preview(PickerPreviewRequest(
+        let (preview, session) = try await client.preview(PickerPreviewRequest(
             entries: [PickerPreviewEntry(cite: row.cite, form: .narrative, item: row.id,
                                          locator: Locator(term: .page, value: "chapter 12"), prefix: nil, suffix: nil)],
             format: "apa", keepOrder: false
         ))
         XCTAssertNil(preview.problem)
         XCTAssertTrue(preview.text.contains("chapter 12"), preview.text)
+        let browse = try await client.search(PickerSearchRequest(query: "bridges", shorthand: false))
+        XCTAssertEqual(browse.session, session)
+        XCTAssertNotEqual(browse.result.sections.first?.rows.first?.id, row.id)
 
         try FileManager.default.createDirectory(at: fixture.settings.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
@@ -69,7 +72,7 @@ final class EngineClientTests: XCTestCase {
             return 1 // The test acknowledges a copy without changing the system clipboard.
         }
         XCTAssertNotNil(copied)
-        let recents = try await client.search(PickerSearchRequest(query: "", shorthand: false))
+        let recents = try await client.search(PickerSearchRequest(query: "", shorthand: false)).result
         XCTAssertEqual(recents.sections.map(\.kind), [.citedHere, .recentlyAdded])
         XCTAssertEqual(recents.sections.first?.rows.map(\.id), [row.id])
 
@@ -91,18 +94,18 @@ final class EngineClientTests: XCTestCase {
         let client = fixture.client()
         _ = try await client.open(fixture.opening)
         let query = PickerSearchRequest(query: "north", shorthand: false)
-        let original = try await client.search(query)
+        let original = try await client.search(query).result
         let row = try XCTUnwrap(original.sections.first?.rows.first)
         let preview = try await client.preview(PickerPreviewRequest(
             entries: [PickerPreviewEntry(cite: row.cite, form: nil, item: row.id, locator: nil, prefix: nil, suffix: nil)],
             format: "apa", keepOrder: false
-        ))
+        )).result
         XCTAssertNil(preview.problem)
         let old = try String(contentsOf: fixture.library, encoding: .utf8)
         let changed = old.replacingOccurrences(of: "North Quay", with: "North Quay after rain")
         try changed.write(to: fixture.library, atomically: true, encoding: .utf8)
         let deadline = ContinuousClock.now + .seconds(10)
-        while try await client.search(query).sections.first?.rows.first?.cite == row.cite {
+        while try await client.search(query).result.sections.first?.rows.first?.cite == row.cite {
             guard ContinuousClock.now < deadline else {
                 return XCTFail("The engine did not publish the changed library.")
             }
@@ -133,7 +136,8 @@ final class EngineClientTests: XCTestCase {
         fixture.stop(signal: SIGKILL)
         try await Task.sleep(for: .milliseconds(30))
         let recovered = try await client.search(query)
-        XCTAssertEqual(recovered.sections, before.sections)
+        XCTAssertEqual(recovered.result.sections, before.result.sections)
+        XCTAssertNotEqual(recovered.session, before.session)
         let restarted = try fixture.identifyDaemon()
         XCTAssertNotEqual(original, restarted)
 
@@ -145,7 +149,7 @@ final class EngineClientTests: XCTestCase {
         let upgraded = fixture.client(binary: newerBinary)
         _ = try await upgraded.open(fixture.opening)
         let upgradedRows = try await upgraded.search(query)
-        XCTAssertEqual(upgradedRows.sections, before.sections)
+        XCTAssertEqual(upgradedRows.result.sections, before.result.sections)
         let replacement = try fixture.identifyDaemon(binary: newerBinary)
         XCTAssertNotEqual(replacement, restarted)
 

@@ -3,6 +3,7 @@ import AppKit
 @MainActor
 final class PickerShelf: NSView {
     let library = PickerButton()
+    let membership = PickerButton()
     let action = PickerDeliveryButton()
     let more = PickerButton()
     private let locator = ShelfLocator()
@@ -10,12 +11,14 @@ final class PickerShelf: NSView {
     private let scroll = NSScrollView()
     private let document = NSView()
     private let rule = PickerRule()
+    private let draftLabel = pickerLabel(PickerWords.text(.draft))
     private let pending = pickerLabel(PickerWords.text(.formatting))
     private var spans: [(view: NSView, width: CGFloat)] = []
     private var tokens: [(id: ItemRef, button: PickerButton)] = []
     private var rendered: PickerPreviewResult?
     private var renderedRows: [PickerRow] = []
     private var renderedScale: CGFloat = 0
+    private var revealedItem: ItemRef?
     var edit: ((ItemRef) -> Void)?
     var remove: ((ItemRef) -> Void)?
     var select: ((ItemRef) -> Void)?
@@ -38,14 +41,18 @@ final class PickerShelf: NSView {
         more.text = PickerWords.text(.more)
         more.key = "⌘K"
         more.setAccessibilityLabel(PickerWords.text(.more))
+        membership.key = "⇧↩"
+        membership.surface = .link
         library.setAccessibilityLabel(PickerWords.text(.library))
-        [rule, beak, scroll, pending, locator, library, action, more].forEach(addSubview)
+        draftLabel.textColor = .secondaryLabelColor
+        draftLabel.setAccessibilityElement(true)
+        [rule, beak, scroll, pending, locator, draftLabel, library, membership, action, more].forEach(addSubview)
     }
 
     required init?(coder: NSCoder) { nil }
 
     var keyViews: [NSView] {
-        tokens.map(\.button).filter { !$0.isHidden && $0.isEnabled } + locator.keyViews + [library, action, more]
+        tokens.map(\.button).filter { !$0.isHidden && $0.isEnabled } + locator.keyViews + [library, membership, action, more]
     }
     var displayed: [ItemRef] { tokens.map(\.id) }
     var focused: ItemRef? {
@@ -66,8 +73,17 @@ final class PickerShelf: NSView {
         return true
     }
 
-    func configure(model: PickerModel, option: Bool, metrics m: PickerMetrics, width: CGFloat) {
-        for button in [library, more] { button.metrics = m }
+    func height(hasDraft: Bool, metrics m: PickerMetrics, width: CGFloat) -> CGFloat {
+        m.footer + m.line + (twoRows(hasDraft: hasDraft, metrics: m, width: width) ? m.pt(34) : 0)
+    }
+
+    private func twoRows(hasDraft: Bool, metrics m: PickerMetrics, width: CGFloat) -> Bool {
+        hasDraft || width < m.pt(640)
+    }
+
+    func configure(model: PickerModel, metrics m: PickerMetrics, width: CGFloat) {
+        let stacked = twoRows(hasDraft: model.hasDraft, metrics: m, width: width)
+        for button in [library, membership, more] { button.metrics = m }
         let name = model.catalog?.library?.name
         let needingAttention = model.searchReply?.status.first(where: { $0.kind == .library })?.text
             ?? model.catalog?.status.first?.text
@@ -77,24 +93,37 @@ final class PickerShelf: NSView {
         library.maxCaption = m.pt(100)
         library.toolTip = [name, needingAttention].compactMap { $0 }.joined(separator: "\n")
 
-        let label = option ? PickerWords.text(.add) : model.deliveryTitle
+        let label = model.deliveryTitle
         action.setAccessibilityLabel(label)
-        action.isEnabled = option ? model.selection != nil : model.canDeliver
+        action.isEnabled = model.canDeliver
         action.toolTip = label
-        action.setAccessibilityHelp(option ? "⇧↩" : PickerWords.text(.returnKey))
+        action.setAccessibilityHelp(PickerWords.text(.returnKey))
         let title = NSMutableAttributedString(string: label, attributes: [.font: m.font(13, .medium)])
-        title.append(NSAttributedString(string: option ? "  ⇧↩" : "  ↩", attributes: [
+        title.append(NSAttributedString(string: "  ↩", attributes: [
             .font: m.font(12),
             .foregroundColor: action.isEnabled ? NSColor.secondaryLabelColor : NSColor.disabledControlTextColor,
         ]))
         action.attributedTitle = title
+        let membershipTitle = PickerWords.text(model.isSelectionStaged ? .remove : .add)
+        membership.text = PickerWords.text(model.isSelectionStaged ? .removeShort : .addShort)
+        membership.setAccessibilityLabel(membershipTitle)
+        membership.toolTip = membershipTitle
+        membership.isEnabled = model.canChangeSelectionMembership
+        draftLabel.isHidden = !model.hasDraft
+        draftLabel.font = m.font(12, .medium)
 
         let draft = model.citationRows
-        if rendered != model.preview || renderedRows != draft || renderedScale != m.scale {
+        let rebuild = rendered != model.preview || renderedRows != draft || renderedScale != m.scale
+        if rebuild {
             rendered = model.preview
             renderedRows = draft
             renderedScale = m.scale
             buildSpans(preview: model.preview, entries: model.previewEntries, draft: draft, metrics: m)
+        }
+        for token in tokens {
+            let active = model.hasDraft && token.id == model.citationItem
+            token.button.isCurrentToken = active
+            token.button.setAccessibilityLabel(PickerWords.text(active ? .activeToken : .token, token.button.text))
         }
         let locatorWidth = locator.configure(model: model, metrics: m)
         scroll.alphaValue = model.canDeliver || model.editingCitation != nil ? 1 : 0.55
@@ -105,28 +134,34 @@ final class PickerShelf: NSView {
         beak.contentTintColor = PickerArt.accent(effectiveAppearance)
 
         let y = m.line + m.pt(8)
+        let actionY = y + (stacked ? m.pt(34) : 0)
         let h = m.pt(28)
         let moreWidth = more.preferredWidth
         let libraryWidth = library.isHidden ? 0 : library.preferredWidth
+        let membershipWidth = membership.preferredWidth
         let actionWidth = min(action.fittingSize.width, max(m.pt(92), width * 0.35))
         let moreX = width - m.inset - moreWidth
         let actionX = moreX - m.pt(12) - actionWidth
-        let libraryX = actionX - (library.isHidden ? 0 : m.pt(8)) - libraryWidth
-        more.frame = NSRect(x: moreX, y: y, width: moreWidth, height: h)
-        action.frame = NSRect(x: actionX, y: y, width: actionWidth, height: h)
-        library.frame = NSRect(x: libraryX, y: y, width: libraryWidth, height: h)
-        [more, action, library].forEach { $0.needsLayout = true }
+        let membershipX = actionX - m.pt(8) - membershipWidth
+        let libraryX = membershipX - (library.isHidden ? 0 : m.pt(8)) - libraryWidth
+        more.frame = NSRect(x: moreX, y: actionY, width: moreWidth, height: h)
+        action.frame = NSRect(x: actionX, y: actionY, width: actionWidth, height: h)
+        membership.frame = NSRect(x: membershipX, y: actionY, width: membershipWidth, height: h)
+        library.frame = NSRect(x: libraryX, y: actionY, width: libraryWidth, height: h)
+        pickerLine(draftLabel, x: m.column, y: actionY, width: libraryX - m.column - m.pt(8), height: h)
+        [more, action, membership, library].forEach { $0.needsLayout = true }
         let icon = m.pt(20)
         beak.frame = NSRect(x: m.tileCenter - icon / 2, y: y + (h - icon) / 2, width: icon, height: icon)
 
-        let available = max(0, libraryX - m.column - locatorWidth - m.pt(16))
+        let previewEnd = stacked ? width - m.inset : libraryX
+        let available = max(0, previewEnd - m.column - locatorWidth - m.pt(16))
         let spanWidth = spans.reduce(0) { $0 + $1.width }
         let contentWidth = pending.isHidden ? spanWidth : pickerWidth(pending.stringValue, font: m.font(13))
         let clipWidth = min(available, contentWidth)
         scroll.frame = NSRect(x: m.column, y: y, width: clipWidth, height: h)
         pickerLine(pending, x: m.column, y: y, width: clipWidth, height: h)
-        locator.frame = NSRect(x: m.column + clipWidth + (clipWidth > 0 ? m.pt(8) : 0),
-                               y: y, width: locatorWidth, height: h)
+        let locatorX = stacked ? previewEnd - locatorWidth : m.column + clipWidth + (clipWidth > 0 ? m.pt(8) : 0)
+        locator.frame = NSRect(x: locatorX, y: y, width: locatorWidth, height: h)
 
         var x: CGFloat = 0
         for (view, width) in spans {
@@ -135,6 +170,12 @@ final class PickerShelf: NSView {
             x += width
         }
         document.frame = NSRect(x: 0, y: 0, width: max(clipWidth, x), height: h)
+        let activeItem = model.hasDraft ? model.citationItem : nil
+        if let activeItem, rebuild || activeItem != revealedItem,
+           let active = tokens.first(where: { $0.id == activeItem }) {
+            document.scrollToVisible(active.button.frame)
+        }
+        revealedItem = activeItem
         rule.frame = NSRect(x: 0, y: 0, width: width, height: m.line)
     }
 
@@ -167,7 +208,7 @@ final class PickerShelf: NSView {
                 let label = pickerLabel()
                 label.attributedStringValue = content
                 label.textColor = .secondaryLabelColor
-                spans.append((label, ceil(content.size().width) + 1))
+                spans.append((label, ceil(label.fittingSize.width)))
                 retained.insert(ObjectIdentifier(label))
                 document.addSubview(label)
             }

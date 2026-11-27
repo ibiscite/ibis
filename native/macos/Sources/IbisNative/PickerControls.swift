@@ -251,6 +251,7 @@ final class PickerButton: NSButton {
     var key = "" { didSet { keyLabel.stringValue = key } }
     var icon: String? { didSet { glyph.image = icon.flatMap(PickerArt.image) } }
     var medium = false
+    var isCurrentToken = false { didSet { if isCurrentToken != oldValue { refreshColors() } } }
     var surface: Surface = .control
     var maxCaption: CGFloat = .greatestFiniteMagnitude
     var metrics = PickerMetrics(scale: 1, density: .compact) { didSet { needsLayout = true } }
@@ -334,14 +335,14 @@ final class PickerButton: NSButton {
             let fill: NSColor = pressed && isEnabled ? .selectedControlColor
                 : hovered && isEnabled ? .pickerQuaternaryFill : .clear
             let background: NSColor = switch surface {
-            case .token: .pickerQuaternaryFill
+            case .token: isCurrentToken ? .controlAccentColor.withAlphaComponent(0.15) : .pickerQuaternaryFill
             case .primary: hovered ? .selectedContentBackgroundColor : .controlAccentColor
             default: fill
             }
             layer?.backgroundColor = background.cgColor
             layer?.cornerRadius = surface == .token ? m.pt(6) : bounds.height / 2
-            layer?.borderWidth = surface == .token && contrast ? m.line : 0
-            layer?.borderColor = NSColor.separatorColor.cgColor
+            layer?.borderWidth = surface == .token && (contrast || isCurrentToken) ? m.line : 0
+            layer?.borderColor = (isCurrentToken ? NSColor.controlAccentColor : .separatorColor).cgColor
             caption.textColor = !isEnabled ? .disabledControlTextColor
                 : (surface == .primary ? .alternateSelectedControlTextColor : .labelColor)
             glyph.contentTintColor = .secondaryLabelColor

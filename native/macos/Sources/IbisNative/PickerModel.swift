@@ -75,6 +75,7 @@ final class PickerModel: ObservableObject {
     private var answeredQuery: String?
     private var applyingReply = false
     private var prepared = false
+    private var previewSession: UInt64?
     private var delivery: UUID?
     private var queuedDelivery: (@MainActor () -> Void)?
     private var lastDelivery: String?
@@ -90,8 +91,11 @@ final class PickerModel: ObservableObject {
     var scale: CGFloat { CGFloat(textPercent) / 100 }
     var rows: [PickerRow] { sections.flatMap(\.rows) }
     var selection: PickerRow? { rows.first { $0.id == selected } }
+    var hasDraft: Bool { !citations.isEmpty }
+    var canChangeSelectionMembership: Bool { answeredQuery == query && !isOpening && !isDelivering && selection != nil }
+    var isSelectionStaged: Bool { citations.contains { $0.row.id == selected } }
     var citationRows: [PickerRow] {
-        citations.isEmpty ? selection.map { [$0] } ?? [] : citations.map(\.row)
+        hasDraft ? citations.map(\.row) : selection.map { [$0] } ?? []
     }
     var citationItem: ItemRef? {
         if let activeToken, containsCitation(activeToken) { return activeToken }
@@ -195,7 +199,7 @@ final class PickerModel: ObservableObject {
                 pasteDestination = destination > 0 && destination == targetPID ? targetName : nil
                 isOpening = false
                 if libraryReady {
-                    search()
+                    search(refreshDraft: true)
                 } else {
                     sections = []
                     searchReply = nil
@@ -216,6 +220,7 @@ final class PickerModel: ObservableObject {
         retirePreview()
         answeredQuery = nil
         preview = nil
+        previewSession = nil
         previewEntries = []
         endCitationEdit()
         citations = []
@@ -247,30 +252,32 @@ final class PickerModel: ObservableObject {
 
     func toggleShorthand() {
         shorthand.toggle()
-        search()
+        search(refreshDraft: true)
     }
 
-    private func search(afterTyping: Bool = false) {
+    private func search(afterTyping: Bool = false, refreshDraft: Bool = false) {
         guard opening != nil, !isOpening, libraryReady else { return }
         searchTask?.cancel()
-        retirePreview()
+        if refreshDraft || shorthand || !hasDraft { retirePreview() }
         answeredQuery = nil
         if afterTyping { notice = nil }
         let request = PickerSearchRequest(query: query, shorthand: shorthand)
         searchTask = Task {
             do {
                 if afterTyping { try await Task.sleep(for: .milliseconds(60)) }
-                let result = try await engine.search(request)
+                let answer = try await engine.search(request)
                 try Task.checkCancellation()
-                accept(result)
+                let sessionChanged = previewSession.map { $0 != answer.session } ?? false
+                accept(answer.result, refreshDraft: refreshDraft || sessionChanged)
             } catch {
                 guard !Task.isCancelled else { return }
+                retirePreview()
                 notice = pickerError(error)
             }
         }
     }
 
-    private func accept(_ reply: PickerSearchResult) {
+    private func accept(_ reply: PickerSearchResult, refreshDraft: Bool) {
         let finished = reply.segments.filter(\.complete)
         if shorthand, !finished.isEmpty, finished.allSatisfy({ $0.row != nil }) {
             saveUndo()
@@ -290,7 +297,7 @@ final class PickerModel: ObservableObject {
         }
         if selected == nil { selected = rows.first?.id }
         answeredQuery = query
-        prepare()
+        if refreshDraft || shorthand || !hasDraft || (!prepared && previewTask == nil) { prepare() }
     }
 
     private func retirePreview() {
@@ -306,8 +313,13 @@ final class PickerModel: ObservableObject {
     private func prepare() {
         retirePreview()
         if let editingCitation, !containsCitation(editingCitation) { endCitationEdit() }
-        guard opening != nil, answeredQuery == query, !isOpening, !format.isEmpty,
-              searchReply?.status.contains(where: { $0.kind == .shorthand }) != true else { return }
+        guard opening != nil, libraryReady, !isOpening, !format.isEmpty else { return }
+        // In normal search the draft has its own inputs. Shorthand still waits
+        // for the query, which can itself add references and locator details.
+        if !hasDraft || shorthand {
+            guard answeredQuery == query,
+                  searchReply?.status.contains(where: { $0.kind == .shorthand }) != true else { return }
+        }
         let entries = citationRows.map { Entry(row: $0, details: details(for: $0.id)) }
         guard !entries.isEmpty else {
             preview = nil
@@ -330,14 +342,15 @@ final class PickerModel: ObservableObject {
         }
         previewTask = Task {
             do {
-                let result = try await engine.preview(request)
+                let answer = try await engine.preview(request)
                 try Task.checkCancellation()
                 previewTask = nil
                 formatDelay?.cancel()
                 isFormatting = false
                 previewEntries = entries
-                prepared = result.problem == nil
-                preview = result
+                prepared = answer.result.problem == nil
+                preview = answer.result
+                previewSession = answer.session
                 examples()
                 let deliver = queuedDelivery
                 queuedDelivery = nil
@@ -356,7 +369,7 @@ final class PickerModel: ObservableObject {
     func select(_ item: ItemRef?) {
         guard answeredQuery == query, item != selected else { return }
         selected = item
-        prepare()
+        if !hasDraft || shorthand { prepare() }
     }
 
     func move(_ step: Int, within shown: [PickerRow]) {
@@ -380,14 +393,19 @@ final class PickerModel: ObservableObject {
     }
 
     func toggleCitation(_ row: PickerRow) {
-        guard answeredQuery == query, rows.contains(where: { $0.id == row.id }) else { return }
+        guard answeredQuery == query, !isOpening, !isDelivering,
+              rows.contains(where: { $0.id == row.id }) else { return }
         if citations.contains(where: { $0.row.id == row.id }) {
             remove(row.id)
         } else {
-            saveUndo()
-            add(row, details: detailsByItem[row.id] ?? CitationDetails(segment: row.id == selected ? activeSegment : nil))
-            prepare()
+            stage(row)
         }
+    }
+
+    private func stage(_ row: PickerRow) {
+        saveUndo()
+        add(row, details: details(for: row.id))
+        prepare()
     }
 
     func remove(_ id: ItemRef) {
@@ -494,7 +512,7 @@ final class PickerModel: ObservableObject {
             } catch {
                 guard delivery == attempt else { return }
                 notice = pickerError(error)
-                search()
+                search(refreshDraft: true)
             }
             if delivery == attempt {
                 delivery = nil

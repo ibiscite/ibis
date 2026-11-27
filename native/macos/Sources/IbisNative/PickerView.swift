@@ -28,7 +28,6 @@ final class PickerCanvas: NSView {
     private let popover: PickerPopover
     private let model: PickerModel
     private var statusAction: PickerStatus?
-    private var option = false
     private var numbers = false
     private var announcement: Task<Void, Never>?
     private var announcedRevision = 0
@@ -74,10 +73,8 @@ final class PickerCanvas: NSView {
         results.didDoubleClick = { [weak self] in self?.panel?.submit(whenReady: true) }
         results.restoreSearch = { [weak self] in self?.focusSearch(caretAtEnd: true) }
         shelf.library.perform = { [weak self] in self?.libraryMenu() }
-        shelf.action.perform = { [weak self] in
-            guard let self else { return }
-            if option { addSelection() } else { panel?.submit() }
-        }
+        shelf.membership.perform = { [weak self] in self?.toggleSelectionMembership() }
+        shelf.action.perform = { [weak self] in self?.panel?.submit() }
         shelf.more.perform = { [weak self] in self?.moreMenu() }
         shelf.edit = { [weak self] id in self?.showDetails(id) }
         shelf.select = { [weak model] id in model?.selectCitation(id) }
@@ -132,14 +129,15 @@ final class PickerCanvas: NSView {
         let headingY = m.header + m.line
         let hasHeading = arrangeHeading(width: width, y: headingY, metrics: m)
         let resultsY = headingY + (hasHeading ? m.section : 0)
-        let shelfY = height - m.footer - m.line
+        let shelfHeight = shelf.height(hasDraft: model.hasDraft, metrics: m, width: width)
+        let shelfY = height - shelfHeight
         results.frame = NSRect(x: 0, y: resultsY, width: width, height: max(0, shelfY - resultsY))
         results.configure(sections: model.sections, metrics: m, recent: model.searchReply?.total == nil,
                           selected: model.selected, cited: Set(model.citations.map { $0.row.id }), numbers: numbers)
         empty.frame = results.frame
         empty.configure(state: emptyState, metrics: m)
-        shelf.frame = NSRect(x: 0, y: shelfY, width: width, height: m.footer + m.line)
-        shelf.configure(model: model, option: option, metrics: m, width: width)
+        shelf.frame = NSRect(x: 0, y: shelfY, width: width, height: shelfHeight)
+        shelf.configure(model: model, metrics: m, width: width)
         makeKeyLoop()
         popover.refresh(m)
     }
@@ -299,13 +297,9 @@ final class PickerCanvas: NSView {
         if numbers != show { numbers = show; refresh() }
     }
 
-    func showOption(_ show: Bool) {
-        if option != show { option = show; refresh() }
-    }
-
     func openFormat() { if !format.isHidden { format.performClick(nil) } }
 
-    func addSelection() {
+    func toggleSelectionMembership() {
         if let row = model.selection { model.toggleCitation(row) }
     }
 
@@ -421,7 +415,11 @@ final class PickerCanvas: NSView {
         let type = command(.typeCitation, key: "t") { $0.model.toggleShorthand(); $0.focusSearch() }
         type.state = model.shorthand ? .on : .off
         menu.addItem(type)
-        menu.addItem(command(.add, key: "\r", modifiers: [.shift], enabled: model.selection != nil) { $0.addSelection() })
+        if !model.isSelectionStaged {
+            menu.addItem(command(.add, key: "\r", modifiers: [.shift], enabled: model.canChangeSelectionMembership) {
+                $0.toggleSelectionMembership()
+            })
+        }
         menu.addItem(command(.page, key: "l", enabled: model.citationItem != nil) { $0.focusLocator() })
         menu.addItem(command(.details, key: "i", enabled: model.citationItem != nil) { $0.showDetails() })
         menu.addItem(command(.remove, key: "\u{8}", modifiers: [], enabled: model.citationItem != nil) {

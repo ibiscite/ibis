@@ -3,7 +3,9 @@ import Foundation
 
 enum PickerWord {
     case about
+    case activeToken
     case add
+    case addShort
     case after
     case allowPaste
     case app
@@ -33,6 +35,7 @@ enum PickerWord {
     case density
     case details
     case disconnected
+    case draft
     case emptyLibrary
     case emptyLibraryHint
     case findLibrary
@@ -70,6 +73,7 @@ enum PickerWord {
     case references
     case reload
     case remove
+    case removeShort
     case removeToken
     case requestFailed
     case resultHint
@@ -106,7 +110,9 @@ enum PickerWords {
     private static let words: [Language: [PickerWord: String]] = [
         .ar: [
             .about: "حول Ibis",
+            .activeToken: "تحرير الاستشهاد: {IBIS_VALUE}",
             .add: "إضافة إلى الاستشهاد",
+            .addShort: "إضافة",
             .after: "نص بعده",
             .allowPaste: "السماح باللصق…",
             .app: "Ibis Native",
@@ -136,6 +142,7 @@ enum PickerWords {
             .density: "الصفوف",
             .details: "تفاصيل الاستشهاد",
             .disconnected: "توقّف محرك Ibis. حاول مجددًا.",
+            .draft: "مسودة الاستشهاد",
             .emptyLibrary: "اكتب للعثور على مرجع",
             .emptyLibraryHint: "ابحث بالعنوان أو المؤلف أو السنة أو المفتاح.",
             .findLibrary: "البحث عن {IBIS_VALUE}…",
@@ -173,6 +180,7 @@ enum PickerWords {
             .references: "المراجع",
             .reload: "إعادة تحميل المكتبة",
             .remove: "إزالة من الاستشهاد",
+            .removeShort: "إزالة",
             .removeToken: "إزالة {IBIS_VALUE} من الاستشهاد",
             .requestFailed: "تعذّر على Ibis إكمال الطلب. حاول مجددًا.",
             .resultHint: "اكتب عنوانًا أو مؤلفًا أو سنةً أو مفتاحًا.",
@@ -196,7 +204,9 @@ enum PickerWords {
         ],
         .de: [
             .about: "Über Ibis",
+            .activeToken: "Zitat bearbeiten: {IBIS_VALUE}",
             .add: "Zur Zitation hinzufügen",
+            .addShort: "Hinzufügen",
             .after: "Text danach",
             .allowPaste: "Einfügen erlauben…",
             .app: "Ibis Native",
@@ -226,6 +236,7 @@ enum PickerWords {
             .density: "Zeilen",
             .details: "Zitationsdetails",
             .disconnected: "Die Ibis-Engine wurde beendet. Versuchen Sie es erneut.",
+            .draft: "Zitatentwurf",
             .emptyLibrary: "Tippen, um eine Referenz zu finden",
             .emptyLibraryHint: "Suchen Sie nach Titel, Autor, Jahr oder Schlüssel.",
             .findLibrary: "{IBIS_VALUE} suchen…",
@@ -263,6 +274,7 @@ enum PickerWords {
             .references: "Referenzen",
             .reload: "Bibliothek neu laden",
             .remove: "Aus Zitation entfernen",
+            .removeShort: "Entfernen",
             .removeToken: "{IBIS_VALUE} aus der Zitation entfernen",
             .requestFailed: "Ibis konnte die Anfrage nicht abschließen. Versuchen Sie es erneut.",
             .resultHint: "Geben Sie einen Titel, Autor, ein Jahr oder einen Schlüssel ein.",
@@ -286,7 +298,9 @@ enum PickerWords {
         ],
         .enUS: [
             .about: "About Ibis",
+            .activeToken: "Editing citation: {IBIS_VALUE}",
             .add: "Add to Citation",
+            .addShort: "Add",
             .after: "Text after",
             .allowPaste: "Allow Paste…",
             .app: "Ibis Native",
@@ -316,6 +330,7 @@ enum PickerWords {
             .density: "Rows",
             .details: "Citation details",
             .disconnected: "The Ibis engine stopped. Try again.",
+            .draft: "Citation draft",
             .emptyLibrary: "Type to find a reference",
             .emptyLibraryHint: "Search by title, author, year or key.",
             .findLibrary: "Find {IBIS_VALUE}…",
@@ -353,6 +368,7 @@ enum PickerWords {
             .references: "References",
             .reload: "Reload Library",
             .remove: "Remove from Citation",
+            .removeShort: "Remove",
             .removeToken: "Remove {IBIS_VALUE} from citation",
             .requestFailed: "Ibis couldn’t finish this request. Try again.",
             .resultHint: "Type a title, author, year or key.",

@@ -12,6 +12,7 @@ final class EngineClient: @unchecked Sendable {
     private var socket: DaemonSocket?
     private var lastOpening: PickerOpenRequest?
     private var nextID: UInt64 = 0
+    private var session: UInt64 = 0
 
     init(binary: URL, configuration: URL? = nil) {
         self.binary = binary
@@ -25,12 +26,18 @@ final class EngineClient: @unchecked Sendable {
         }
     }
 
-    func search(_ request: PickerSearchRequest) async throws -> PickerSearchResult {
-        try await onQueue { try self.read(PickerSearch.self, request) }
+    func search(_ request: PickerSearchRequest) async throws -> (result: PickerSearchResult, session: UInt64) {
+        try await onQueue {
+            let result = try self.read(PickerSearch.self, request)
+            return (result, self.session)
+        }
     }
 
-    func preview(_ request: PickerPreviewRequest) async throws -> PickerPreviewResult {
-        try await onQueue { try self.read(PickerPreview.self, request) }
+    func preview(_ request: PickerPreviewRequest) async throws -> (result: PickerPreviewResult, session: UInt64) {
+        try await onQueue {
+            let result = try self.read(PickerPreview.self, request)
+            return (result, self.session)
+        }
     }
 
     func forms(_ request: PickerFormsRequest) async throws -> FormDetails {
@@ -121,6 +128,7 @@ final class EngineClient: @unchecked Sendable {
             _ = try exchange(PickerOpen.self, opening, on: connected)
         }
         socket = connected
+        session &+= 1
         return connected
     }
 
