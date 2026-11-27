@@ -26,7 +26,9 @@ use std::time::{Duration, Instant};
 #[cfg(unix)]
 use unix::pipe;
 #[cfg(unix)]
-pub use unix::{Termination, exit_on_termination};
+pub use unix::{
+    ClientOperation, GUARD_ARGUMENT, Termination, detach, exit_on_termination, guard_daemon_children, run_guard,
+};
 
 const POLL_MS: u8 = 5;
 const POLL: Duration = Duration::from_millis(POLL_MS as u64);
@@ -66,7 +68,9 @@ pub(crate) fn run(
 /// invoked outside that boundary, the helper gets its own group.
 #[cfg(all(target_os = "macos", feature = "endnote"))]
 pub(crate) fn run_helper(command: Command, request: &[u8], limits: Limits) -> Result<Output, ChildError> {
-    let in_adapter_group = nix::unistd::getpgrp() == nix::unistd::getpid();
+    use nix::unistd::{getpgid, getpgrp, getpid, getppid};
+    let group = getpgrp();
+    let in_adapter_group = group == getpid() || getpgid(Some(getppid())).is_ok_and(|parent| parent != group);
     exchange(command, request, limits, &|| false, !in_adapter_group)
 }
 
@@ -96,13 +100,14 @@ fn exchange(
     }
     ceiling::Ceiling::prepare(&mut command);
     #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        if own_group {
-            command.process_group(0);
-        }
+    let guard = {
         crate::pdf::inheritance::restrict(&mut command).map_err(|_| ChildError::Unavailable)?;
-    }
+        if own_group {
+            unix::Guard::start(&mut command).map_err(|_| ChildError::Unavailable)?
+        } else {
+            None
+        }
+    };
     let child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -114,6 +119,12 @@ fn exchange(
         .spawn()
         .map_err(|_| ChildError::Unavailable)?;
     let tree = Tree::new(child, own_group, limits.memory)?;
+    #[cfg(unix)]
+    let tree = {
+        let mut tree = tree;
+        tree.guard = guard;
+        tree
+    };
     let stop = AtomicBool::new(false);
     let stopped = &stop;
     thread::scope(move |scope| {
@@ -239,6 +250,8 @@ struct Tree {
     reaped: bool,
     #[cfg(unix)]
     own_group: bool,
+    #[cfg(unix)]
+    guard: Option<unix::Guard>,
     ceiling: Option<ceiling::Ceiling>,
 }
 
@@ -251,6 +264,8 @@ impl Tree {
             reaped: false,
             #[cfg(unix)]
             own_group,
+            #[cfg(unix)]
+            guard: None,
             ceiling: None,
         };
         tree.ceiling = Some(ceiling::Ceiling::start(&tree.child, memory).map_err(|_| ChildError::Unavailable)?);
@@ -270,7 +285,7 @@ impl Tree {
 
     fn finish(&mut self, abort: bool) -> Result<std::process::ExitStatus, ChildError> {
         #[cfg(unix)]
-        if self.own_group {
+        if self.own_group && self.guard.take().is_none() {
             use nix::sys::signal::{Signal, killpg};
             use nix::unistd::Pid;
             if let Ok(id) = i32::try_from(self.child.id()) {

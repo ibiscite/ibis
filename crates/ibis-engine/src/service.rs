@@ -9,6 +9,7 @@ use ibis_core::{
 pub use ibis_csl::{
     LocaleEntry as LocaleInfo, Release as UpstreamRelease, StyleEntry as StyleInfo, StylePage as StylesResult,
 };
+pub use ibis_sources::FileLoads;
 pub use ibis_sources::{LibraryKind, SourceCapability, SourceWarning, WarningCause, WarningCode};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -114,7 +115,7 @@ impl LibraryInfo {
         }
     }
 }
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LibrariesResult {
     pub libraries: Vec<LibraryInfo>,
     /// Answers `zotero-profiles`: each profile's safe name, never its location.
@@ -133,7 +134,7 @@ pub struct ZoteroGroup {
     pub id: u64,
     pub name: String,
 }
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchHit {
     pub item: SnapshotObject,
     pub score: u32,
@@ -145,11 +146,11 @@ pub struct SearchHit {
     pub partial: bool,
 }
 /// Missing explicit citation keys in a recognized pasted list.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PastedList {
     pub missing: Vec<String>,
 }
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SearchResult {
     pub snapshot: Fingerprints,
     pub hits: Vec<SearchHit>,
@@ -169,7 +170,7 @@ pub struct SearchResult {
     /// The libraries searched, as they were when these hits were found.
     pub source_health: health::SourceHealth,
 }
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DispatchResult<T = Value> {
     pub data: T,
     pub exit_code: ExitCode,
@@ -201,7 +202,7 @@ impl<T: Serialize> DispatchResult<T> {
 
 // Native callers retain the engine's result types until their output boundary.
 /// One method's result, as `call` answers it.
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum Reply {
     Libraries(health::Checked<LibrariesResult>),
@@ -362,6 +363,7 @@ pub struct Engine {
     pub(crate) shared: Arc<Shared>,
     formatting: Formatting,
     resources: Arc<sources::Owners>,
+    file_loads: Option<Arc<FileLoads>>,
     watch_files: bool,
     /// Reads PDFs in a child process; without one, PDFs stay unread.
     pdf: Option<ibis_sources::pdf::PdfReader>,
@@ -369,9 +371,16 @@ pub struct Engine {
     /// The `ibis` executable that serves built-in source adapters.
     built_in_sources: Option<std::path::PathBuf>,
     external_sources: Arc<BTreeMap<String, std::path::PathBuf>>,
+    source_directory: Option<std::path::PathBuf>,
     attachment_text_outside_library: bool,
 }
 impl Engine {
+    /// Connections with different selections can reuse the same immutable file records.
+    pub fn with_file_loads(mut self, loads: Arc<FileLoads>) -> Self {
+        self.file_loads = Some(loads);
+        self
+    }
+
     pub fn new() -> Result<Self, EngineError> {
         Ok(Self::from_snapshot(Arc::new(
             Snapshot::new(vec![]).map_err(|_| error(ErrorCode::Internal))?,
@@ -417,6 +426,11 @@ impl Engine {
         self.external_sources = Arc::new(sources);
         self
     }
+    /// Run source adapters in the caller's working directory.
+    pub fn with_source_directory(mut self, directory: Option<std::path::PathBuf>) -> Self {
+        self.source_directory = directory;
+        self
+    }
     /// Explicit device permission for the attachment text tools to read
     /// beyond a library file's folder or Zotero's storage folder.
     pub fn with_attachment_text_outside_library(mut self, allowed: bool) -> Self {
@@ -451,11 +465,13 @@ impl Engine {
                 libraries,
             }))),
             resources: Arc::new(sources::Owners::default()),
+            file_loads: None,
             watch_files: true,
             pdf: None,
             documents: None,
             built_in_sources: None,
             external_sources: Arc::default(),
+            source_directory: None,
             attachment_text_outside_library: false,
         }
     }

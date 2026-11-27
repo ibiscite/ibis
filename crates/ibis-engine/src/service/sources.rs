@@ -66,6 +66,7 @@ struct Slot {
     generation: u64,
     path: PathBuf,
     loaded: Arc<LoadedLibrary>,
+    revision: Option<ibis_sources::SourceRevision>,
 }
 impl Registry {
     /// Where a file library was read from; other sources have no file.
@@ -245,11 +246,13 @@ impl Engine {
             shared: Arc::new(Shared::new(base.clone())),
             formatting: self.formatting.clone(),
             resources: Arc::new(resources),
+            file_loads: self.file_loads.clone(),
             watch_files: false,
             pdf: self.pdf.clone(),
             documents: self.documents.clone(),
             built_in_sources: self.built_in_sources.clone(),
             external_sources: self.external_sources.clone(),
+            source_directory: self.source_directory.clone(),
             attachment_text_outside_library: self.attachment_text_outside_library,
         };
         let mut expected = base;
@@ -343,6 +346,15 @@ impl Engine {
 
     /// Return the canonical identity from the observation that supplied the bytes.
     pub fn open_file_observed(&self, path: &Path, cancel: &Cancellation) -> Result<PathBuf, EngineError> {
+        self.open_file_with_identity(path, cancel).map(|(path, _)| path)
+    }
+
+    /// The library chosen by this open, even when it was already warm.
+    pub fn open_file_id(&self, path: &Path, cancel: &Cancellation) -> Result<LibraryId, EngineError> {
+        self.open_file_with_identity(path, cancel).map(|(_, library)| library)
+    }
+
+    fn open_file_with_identity(&self, path: &Path, cancel: &Cancellation) -> Result<(PathBuf, LibraryId), EngineError> {
         cancel.check()?;
         let operation = self.resources.operation.recover_lock();
         let path = std::path::absolute(path).map_err(|_| error(ErrorCode::BadInput))?;
@@ -350,13 +362,30 @@ impl Engine {
         let asked = path.clone();
         let path = ibis_sources::inspect_io(move || ibis_sources::folder::library_file(&asked))
             .ok_or_else(|| error(ErrorCode::SourceUnavailable))?;
-        let (loaded, observation) =
-            ibis_sources::load_file_snapshot(&path, &|| cancel.is_cancelled()).map_err(source_error)?;
+        let (loaded, observation, revision) = if let Some(loads) = &self.file_loads {
+            loads.open(&path, &|| cancel.is_cancelled()).map_err(source_error)?
+        } else {
+            let (loaded, observation) =
+                ibis_sources::load_file_snapshot(&path, &|| cancel.is_cancelled()).map_err(source_error)?;
+            (loaded, observation, None)
+        };
         let source = observation.source_path().to_path_buf();
+        let library = loaded.library.clone();
         cancel.check()?;
-        self.install_file(path, loaded, Some(observation), cancel)?;
+        let checked = {
+            let registry = self.shared.sources.recover_lock();
+            revision.is_some()
+                && registry
+                    .slots
+                    .values()
+                    .any(|slot| slot.path == path && slot.revision == revision)
+                && self.shared.file_checked(&library)?
+        };
+        if !checked {
+            self.install_file(path, loaded, Some(observation), revision, cancel)?;
+        }
         drop(operation);
-        Ok(source)
+        Ok((source, library))
     }
     /// Prepare the read and watch without publishing. Source failures are also
     /// carried to acceptance, so superseded requests cannot change source health.
@@ -489,6 +518,7 @@ impl Engine {
                 generation,
                 path: prepared.path,
                 loaded: Arc::new(read.loaded),
+                revision: None,
             },
         );
         drop(state);
@@ -535,6 +565,7 @@ impl Engine {
         path: PathBuf,
         mut loaded: LoadedLibrary,
         observation: Option<ibis_sources::SourceSnapshot>,
+        revision: Option<ibis_sources::SourceRevision>,
         cancel: &Cancellation,
     ) -> Result<(), EngineError> {
         loaded.snapshot.reuse_unchanged(self.snapshot()?.as_ref());
@@ -590,6 +621,7 @@ impl Engine {
                 generation,
                 path,
                 loaded: Arc::new(loaded),
+                revision,
             },
         );
         drop(registry);
@@ -630,6 +662,10 @@ impl Engine {
         cancel.check()?;
         let configured = self.external_sources.get(name).map(|path| path.as_path());
         let adapter = SourceAdapter::find(name, self.built_in_sources.as_deref(), configured).map_err(adapter_error)?;
+        let adapter = match &self.source_directory {
+            Some(directory) => adapter.with_directory(directory.clone()),
+            None => adapter,
+        };
         self.open_adapter(adapter, library, cancel)
     }
 
@@ -960,6 +996,24 @@ impl Engine {
     }
 }
 impl Shared {
+    /// The bytes were checked now even when the warm parse and index still apply.
+    fn file_checked(&self, library: &LibraryId) -> Result<bool, EngineError> {
+        let _publication = self.publication.recover_lock();
+        let old = self.state_view()?;
+        let Some(info) = old.libraries.get(library).filter(|info| info.refresh_error.is_none()) else {
+            return Ok(false);
+        };
+        let checked = now_ms();
+        if checked != info.updated_at_ms {
+            let mut next = (*old).clone();
+            if let Some(info) = next.libraries.get_mut(library) {
+                info.updated_at_ms = checked;
+            }
+            *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(next);
+        }
+        Ok(true)
+    }
+
     fn file_changed(
         &self,
         id: u64,
@@ -995,7 +1049,9 @@ impl Shared {
                 match self.install(info(&loaded), &loaded.snapshot, remove) {
                     Ok(()) => {
                         let installed = loaded.snapshot.clone();
-                        registry.slots.get_mut(&id)?.loaded = Arc::new(loaded);
+                        let slot = registry.slots.get_mut(&id)?;
+                        slot.loaded = Arc::new(loaded);
+                        slot.revision = None;
                         Some(installed)
                     }
                     Err(failure) => {
@@ -1040,6 +1096,32 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_warm_file_check_advances_its_successful_read_time_without_reparsing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@article{demo,title={Synthetic widgets}}").unwrap();
+        let loads = Arc::new(ibis_sources::FileLoads::default());
+        let engine = Engine::new().unwrap().with_file_loads(loads.clone());
+        let cancel = Cancellation::default();
+        engine.open_file(&path, &cancel).unwrap();
+        let first = engine.libraries().unwrap().libraries.remove(0);
+        let item = engine.snapshot().unwrap().objects()[0].object.id().clone();
+        let cite = json!({"items":[{"item":item}], "output":{"kind":"preset","name":"pandoc"}});
+        let receipt = |engine: &Engine| {
+            engine.dispatch(Method::Cite, &cite, &cancel).unwrap().data["receipt"]["sources"][0]["last_successful_read_ms"]
+                .as_u64().unwrap()
+        };
+        assert_eq!(receipt(&engine), first.updated_at_ms);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        engine.open_file(&path, &cancel).unwrap();
+        let second = engine.libraries().unwrap().libraries.remove(0);
+        assert!(second.updated_at_ms > first.updated_at_ms);
+        assert_eq!(receipt(&engine), second.updated_at_ms);
+        assert_eq!(second.revision, first.revision);
+        assert_eq!(loads.parses(), 1);
+    }
 
     #[test]
     fn owner_probe_refusal_names_sharing_off_and_the_same_engine_recovers() {

@@ -32,7 +32,7 @@ mod snapshot;
 pub use snapshot::{PastedList, RecordHit, SnapshotIndex};
 
 /// Which part of a record matched a query term.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum MatchField {
     Citekey,

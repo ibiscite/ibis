@@ -37,7 +37,7 @@ impl Method {
 /// What an open library must offer for a method to have anything to work on.
 /// This is what the library can do, never whether the person allowed it:
 /// a front end adds that (decision 0055) before it offers the method.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Needs {
     /// Works with no library open.
@@ -64,7 +64,7 @@ impl Needs {
 }
 
 /// Whether answering a method may reach the network, and where (decision 0008).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Network {
     /// Never.
@@ -74,7 +74,7 @@ pub enum Network {
 }
 
 /// A selection ⌘K can offer a method for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Selection {
     /// One reference.

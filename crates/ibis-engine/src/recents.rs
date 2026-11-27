@@ -270,13 +270,47 @@ fn valid(value: &str) -> bool {
 fn save(path: Option<PathBuf>, entries: &mut Vec<(String, Vec<ItemRef>)>) -> io::Result<()> {
     #[cfg(test)]
     tests::before_save(path.as_deref());
+    let Some(path) = path else { return Ok(()) };
+    let settings =
+        (path.file_name().is_some_and(|name| name == "recents.json")).then(|| path.with_file_name("settings.json"));
+    // During the desktop transition, share the settings lease so a pending
+    // desktop save cannot put history back after consent was turned off.
+    let _writer = settings
+        .as_deref()
+        .map(crate::settings::writer_lock)
+        .transpose()
+        .map_err(io::Error::other)?;
+    if settings.as_deref().is_some_and(disabled) {
+        entries.clear();
+    }
     let mut text = serde_json::to_string(entries)?;
     while text.len() > MAX_BYTES {
         entries.pop();
         text = serde_json::to_string(entries)?;
     }
-    path.as_ref()
-        .map_or(Ok(()), |path| crate::settings::backup::save(path, &text, true))
+    crate::settings::backup::save(&path, &text, true)
+}
+
+fn disabled(settings: &std::path::Path) -> bool {
+    crate::settings::load(settings)
+        .cites()
+        .is_ok_and(|settings| !settings.portable.recent_citations())
+}
+
+/// Apply a saved privacy choice even when the app is closed. A later settings
+/// save may have already turned history back on, so check again under its lease.
+pub fn clear_disabled(settings: &std::path::Path) -> io::Result<()> {
+    let path = settings.with_file_name("recents.json");
+    let needs_clear =
+        || path.is_file() && !crate::settings::read_regular_bytes(&path).is_ok_and(|bytes| bytes.trim_ascii() == b"[]");
+    if !needs_clear() {
+        return Ok(());
+    }
+    let _writer = crate::settings::writer_lock(settings).map_err(io::Error::other)?;
+    if disabled(settings) && needs_clear() {
+        crate::settings::backup::save(&path, "[]", true)?;
+    }
+    Ok(())
 }
 
 /// Resolve current records, then source-added records, without repeating rows.

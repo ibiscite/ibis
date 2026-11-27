@@ -1,5 +1,6 @@
 //! The CLI parses arguments and presents typed engine results; no source or citation rules live here.
 use clap::{Arg, ArgAction, ArgMatches, Command};
+use headless::{Backend, KeyAdvice};
 use human::cli;
 use ibis_core::contract::*;
 use ibis_core::destination::{System, destination};
@@ -13,9 +14,11 @@ use std::{
 mod agents;
 mod app_libraries;
 mod completions;
+pub mod daemon;
 mod doctor;
 #[cfg(test)]
 mod generated;
+mod headless;
 mod human;
 mod keys;
 mod out;
@@ -30,6 +33,14 @@ pub fn run_document_child() -> u8 {
         return 1;
     }
     ibis_sources::document::child::serve(std::io::stdin().lock(), std::io::stdout().lock())
+}
+
+pub fn run_daemon() -> u8 {
+    match daemon::run() {
+        Ok(()) => 0,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => 0,
+        Err(_) => 5,
+    }
 }
 mod proposals;
 mod settings_backup;
@@ -708,19 +719,8 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
     mut errors: E,
     mode: OutputMode,
 ) -> u8 {
-    match Engine::new() {
-        Ok(engine) => {
-            // PDFs and built-in source adapters run in this same executable,
-            // each in a child process.
-            let engine = match std::env::current_exe() {
-                Ok(program) => engine
-                    .with_pdf_reader(program.clone())
-                    .with_document_reader(program.clone())
-                    .with_built_in_sources(program),
-                Err(_) => engine,
-            };
-            run_engine(engine, arguments, input, output, errors, mode, Defaults::App)
-        }
+    match headless::engine() {
+        Ok(engine) => run_engine(engine, arguments, input, output, errors, mode, Defaults::App),
         Err(error) => emit(
             json_before_options_end(&arguments),
             Err(error.into()),
@@ -845,17 +845,8 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     } else {
         engine.without_file_watches()
     };
-    let engine = if defaults == Defaults::App
-        && (matches!(matches.subcommand_name(), Some("outline" | "read" | "find-in"))
-            || matches
-                .subcommand_matches("call")
-                .and_then(|call| call.get_one::<String>("method"))
-                .is_some_and(|method| matches!(method.as_str(), "outline" | "read" | "find-in")))
-    {
-        let allowed = bounded(|| app_libraries::format_settings(false))
-            .and_then(Result::ok)
-            .is_some_and(|settings| settings.device.attachment_text_outside_library);
-        engine.with_attachment_text_outside_library(allowed)
+    let engine = if defaults == Defaults::App && reads_attachment_text(&matches) {
+        headless::for_reading(engine)
     } else {
         engine
     };
@@ -937,6 +928,14 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     }
 }
 
+fn reads_attachment_text(matches: &ArgMatches) -> bool {
+    matches!(matches.subcommand_name(), Some("outline" | "read" | "find-in"))
+        || matches
+            .subcommand_matches("call")
+            .and_then(|call| call.get_one::<String>("method"))
+            .is_some_and(|method| matches!(method.as_str(), "outline" | "read" | "find-in"))
+}
+
 /// The library options of this run, as they would be typed again.
 fn library_options(matches: &ArgMatches) -> String {
     library_arguments(matches)
@@ -1008,7 +1007,7 @@ fn local(result: ibis_engine::DispatchResult) -> DispatchResult {
     result.map_data(Response::Local)
 }
 fn dispatch(
-    engine: &Engine,
+    engine: &Backend<'_>,
     method: Method,
     params: &Value,
     cancel: &Cancellation,
@@ -1025,7 +1024,7 @@ enum Execution {
 }
 
 /// Names for the refusal, read only once a read has been refused.
-fn zotero_profiles(engine: &Engine, cancel: &Cancellation) -> Vec<String> {
+fn zotero_profiles(engine: &Backend<'_>, cancel: &Cancellation) -> Vec<String> {
     let request = json!({"action":"zotero-profiles"});
     dispatch(engine, Method::Libraries, &request, cancel)
         .ok()
@@ -1151,25 +1150,25 @@ fn zotero_open_failure(error: EngineError, profiles: &[String]) -> Failure {
 }
 /// Why a citation key selected no single reference, with every line that
 /// repeats it or the damaged entry that names it.
-fn key_failure(engine: &Engine, matches: &ArgMatches, key: &str, error: EngineError, libraries_open: bool) -> Failure {
-    let libraries = engine.libraries().map(|result| result.libraries).unwrap_or_default();
-    let warnings: Vec<_> = match error.reason {
-        Some(ErrorReason::DuplicateKey) => libraries
-            .iter()
-            .filter_map(|library| library.duplicate_keys.get(key))
-            .flatten()
-            .cloned()
-            .collect(),
-        Some(ErrorReason::DamagedEntry) => libraries
-            .iter()
-            .filter_map(|library| library.damaged_keys.get(key))
-            .cloned()
-            .collect(),
-        _ => vec![],
+fn key_failure(
+    engine: &Backend<'_>,
+    matches: &ArgMatches,
+    key: &str,
+    error: EngineError,
+    libraries_open: bool,
+) -> Failure {
+    let suggest = error.code == ErrorCode::NotFound && error.reason.is_none() && libraries_open;
+    let KeyAdvice { warnings, suggestions } = if suggest
+        || matches!(
+            error.reason,
+            Some(ErrorReason::DuplicateKey | ErrorReason::DamagedEntry)
+        ) {
+        engine.key_advice(key, error.reason)
+    } else {
+        KeyAdvice::default()
     };
     let mut failure = Failure::explained(error, human::key_failure(key, error, libraries_open, &warnings));
-    if error.code == ErrorCode::NotFound && error.reason.is_none() && libraries_open {
-        let suggestions = keys::suggestions(engine, key);
+    if suggest {
         let unique = suggestions.first().filter(|key| {
             engine
                 .show(&ShowRequest {
@@ -1227,7 +1226,7 @@ fn key_failure(engine: &Engine, matches: &ArgMatches, key: &str, error: EngineEr
     failure
 }
 
-fn failed_citation_key(engine: &Engine, matches: &ArgMatches, keys: &[KeyItem], error: EngineError) -> Failure {
+fn failed_citation_key(engine: &Backend<'_>, matches: &ArgMatches, keys: &[KeyItem], error: EngineError) -> Failure {
     if error.citation_error.is_some() {
         return error.into();
     }
@@ -1277,6 +1276,16 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     mode: OutputMode,
 ) -> Result<Execution, Failure> {
     let (name, args) = matches.subcommand().ok_or(EngineError::new(ErrorCode::Usage))?;
+    let keep_folder = name == "sources" && args.get_one::<String>("action").map(String::as_str) == Some("keep");
+    let shared = Method::parse(name).is_ok()
+        || name == "mcp"
+        || keep_folder
+        || name == "settings"
+            && args
+                .subcommand_matches("import")
+                .is_some_and(|args| !args.get_flag("dry-run"))
+        || name == "projects" && matches!(args.subcommand_name(), Some("create" | "rename" | "remove" | "update"));
+    let backend = Backend::new(engine, defaults == Defaults::App && shared);
     if name == "doctor" {
         return Ok(Execution::Result(
             local(doctor::run(engine, matches, mode, defaults)?),
@@ -1284,7 +1293,7 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         ));
     }
     if name == "settings" {
-        return Ok(Execution::Result(local(settings_backup::run(args)?), None));
+        return Ok(Execution::Result(local(settings_backup::run(args, &backend)?), None));
     }
     if name == "agents" {
         return Ok(Execution::Result(
@@ -1293,7 +1302,7 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         ));
     }
     if name == "projects" {
-        return Ok(Execution::Result(local(writings::run(engine, args)?), None));
+        return Ok(Execution::Result(local(writings::run(engine, args, &backend)?), None));
     }
     if name == "proposals" {
         return Ok(Execution::Result(local(proposals::run(args)?), None));
@@ -1329,46 +1338,63 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         ));
     }
     // A folder is kept before any library opens: until then it has none.
-    if name == "sources" && args.get_one::<String>("action").map(String::as_str) == Some("keep") {
-        return Ok(Execution::Result(local(sources::keep(engine, matches)?), None));
+    if keep_folder {
+        return Ok(Execution::Result(local(sources::keep(&backend, matches)?), None));
     }
-    let opened = open_libraries(engine, matches, name, defaults);
+    let opened = open_libraries(&backend, matches, name, defaults);
     if name == "mcp" {
-        let session = match opened {
-            Ok(_) => ibis_engine::mcp::Session::default(),
-            Err(failure) => {
-                write_stream(
-                    errors,
-                    format!("ibis: {}\n", terminal_display(&failure.sentence())).as_bytes(),
+        let startup = opened.err();
+        if let Some(failure) = &startup {
+            write_stream(
+                errors,
+                format!("ibis: {}\n", terminal_display(&failure.sentence())).as_bytes(),
+            )
+            .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
+        }
+        let allow_writes = args.get_flag("allow-writes");
+        let mut warned = false;
+        let mut missing_writes = || {
+            if std::mem::replace(&mut warned, true) {
+                return Ok(());
+            }
+            write_stream(errors, b"ibis: proposals are kept beside the app's settings, which cannot be found here, so this server offers no proposal tools\n")
+        };
+        let resume = match &backend {
+            Backend::Remote(remote) => {
+                let problem = startup.as_ref().map(|failure| match failure.error {
+                    Diagnostic::Engine(error) => error,
+                    Diagnostic::Proposal(_) => EngineError::new(failure.code()),
+                });
+                let mut remote = remote.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                daemon::mcp::relay(
+                    &mut remote,
+                    &mut *input,
+                    &mut *output,
+                    allow_writes,
+                    problem,
+                    &mut missing_writes,
                 )
-                .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
-                ibis_engine::mcp::Session::without_libraries(failure.refusal())
             }
+            Backend::Local(_) => Ok(Some(daemon::mcp::Resume::default())),
         };
-        // for_app reads the formats chosen in the app, as `cite --for-app` does.
-        let session = match settings_backup::settings_file(false) {
-            // Proposals are kept beside the app's settings, as its recent citations are.
-            Ok((_, path)) if args.get_flag("allow-writes") => session
-                .allowing_writes(ibis_engine::write::Proposals::beside(&path))
-                .with_formats(path),
-            Ok((_, path)) => session.with_formats(path),
-            Err(failure) => {
-                if args.get_flag("allow-writes") {
-                    write_stream(
-                        errors,
-                        b"ibis: proposals are kept beside the app's settings, which cannot be found here, so this server offers no proposal tools\n",
-                    )
-                    .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
+        let result = match resume {
+            Ok(Some(resume)) => {
+                let startup = if matches!(backend, Backend::Remote(_)) {
+                    open_libraries(&Backend::Local(engine), matches, name, defaults).err()
+                } else {
+                    startup
+                };
+                let (session, missing) = mcp_session(allow_writes, startup.as_ref().map(Failure::refusal));
+                if missing {
+                    missing_writes()
+                        .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
                 }
-                session.without_formats(failure.refusal())
+                resume.serve(engine, session, input, output)
             }
+            Ok(None) => Ok(()),
+            Err(error) => Err(error),
         };
-        return Ok(Execution::Stdio(
-            match ibis_engine::mcp::serve(engine, session, input, output) {
-                Ok(()) => 0,
-                Err(_) => 70,
-            },
-        ));
+        return Ok(Execution::Stdio(if result.is_ok() { 0 } else { 70 }));
     }
     let OpenedLibraries { names, tokens } = opened?;
     if name == "sources" {
@@ -1395,7 +1421,25 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         write_stream(errors, format!("ibis: {}\n", cli("cli-keys-waiting", &[])).as_bytes())
             .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
     }
-    run_method(engine, matches, name, args, names, input, mode)
+    run_method(&backend, matches, name, args, names, input, mode)
+}
+
+fn mcp_session(allow_writes: bool, startup: Option<ibis_engine::mcp::Refusal>) -> (ibis_engine::mcp::Session, bool) {
+    let session = startup.map_or_else(
+        ibis_engine::mcp::Session::default,
+        ibis_engine::mcp::Session::without_libraries,
+    );
+    // `for_app` follows the same settings as `cite --for-app`. Proposals live beside them.
+    match settings_backup::settings_file(false) {
+        Ok((_, path)) if allow_writes => (
+            session
+                .allowing_writes(ibis_engine::write::Proposals::beside(&path))
+                .with_formats(path),
+            false,
+        ),
+        Ok((_, path)) => (session.with_formats(path), false),
+        Err(failure) => (session.without_formats(failure.refusal()), allow_writes),
+    }
 }
 
 #[derive(Default)]
@@ -1407,7 +1451,7 @@ struct OpenedLibraries {
 /// Opens the libraries named here (or chosen in the app), retaining each
 /// display name and the adapter token from that exact initial read.
 fn open_libraries(
-    engine: &Engine,
+    engine: &Backend<'_>,
     matches: &ArgMatches,
     name: &str,
     defaults: Defaults,
@@ -1479,19 +1523,42 @@ fn open_libraries(
             }
         }
     }
+    let zotero: Vec<_> = personal
+        .then_some(ZoteroLibrary::User)
+        .into_iter()
+        .chain(groups.into_iter().map(ZoteroLibrary::Group))
+        .collect();
+    let profile = source_values::<String>(matches, "zotero-profile")
+        .pop()
+        .or_else(|| app.as_ref().and_then(|app| app.zotero_profile.clone()));
+    if let Some(path) = files.iter().find(|path| path.to_str().is_none()) {
+        return Err(Failure::new(
+            ErrorCode::BadInput,
+            cli(
+                "cli-file-name-invalid",
+                &[("path", &human::field(&path.display().to_string()))],
+            ),
+        ));
+    }
+    if matches!(engine, Backend::Remote(_)) {
+        let transient = called.is_some_and(|called| called == "libraries");
+        engine.select(
+            headless::Selection {
+                files: headless::selection_paths(&files),
+                adapters: sources.clone(),
+                adapter_directory: (!sources.is_empty() || transient)
+                    .then(|| std::env::current_dir().ok())
+                    .flatten(),
+                zotero: zotero.clone(),
+                profile: profile.clone(),
+            },
+            transient,
+            reads_attachment_text(matches),
+        )?;
+    }
     // A path named on the command line is the person's own, even if the app chose it too.
     let chosen_in = |path: &PathBuf| app.as_ref().filter(|_| !named_files.contains(path)).map(|app| app.app);
     for path in files {
-        let params = serde_json::to_value(LibrariesRequest::OpenFile { path: path.clone() }).map_err(|_| {
-            Failure::new(
-                ErrorCode::BadInput,
-                cli(
-                    "cli-file-name-invalid",
-                    &[("path", &human::field(&path.display().to_string()))],
-                ),
-            )
-        })?;
-        let before = engine.libraries()?.libraries;
         let chosen = chosen_in(&path);
         // A path the app chose is never shown: agents read these messages too.
         // The file is named even when the engine gives a reason: several may be open.
@@ -1502,18 +1569,15 @@ fn open_libraries(
             ),
             None => human::file_failure(&path, error),
         };
-        dispatch(engine, Method::Libraries, &params, &cancel)
+        let library = engine
+            .open_file(&path, &cancel)
             .map_err(|error| Failure::explained(error, message(error)))?;
         // Library ids are digests, never locations; people see the path they gave.
-        for library in engine.libraries()?.libraries {
-            if !before.iter().any(|old| old.id == library.id) {
-                let shown = match chosen {
-                    Some(app) => format!("Library chosen in {app}"),
-                    None => path.display().to_string(),
-                };
-                names.insert(library.id.as_str().to_owned(), shown);
-            }
-        }
+        let shown = match chosen {
+            Some(app) => format!("Library chosen in {app}"),
+            None => path.display().to_string(),
+        };
+        names.entry(library.as_str().to_owned()).or_insert(shown);
     }
     for source in sources {
         let (name, library) = split_source(&source);
@@ -1522,22 +1586,13 @@ fn open_libraries(
         names.insert(info.id.as_str().to_owned(), source);
         tokens.insert(info.id, token);
     }
-    let zotero: Vec<_> = personal
-        .then_some(ZoteroLibrary::User)
-        .into_iter()
-        .chain(groups.into_iter().map(ZoteroLibrary::Group))
-        .collect();
     if !zotero.is_empty() {
-        let profile = source_values::<String>(matches, "zotero-profile")
-            .pop()
-            .or_else(|| app.as_ref().and_then(|app| app.zotero_profile.clone()));
         let params = serde_json::to_value(LibrariesRequest::OpenZotero {
             libraries: Some(zotero),
             profile,
             reload: false,
         })
         .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
-        let before = engine.libraries()?.libraries;
         // A Zotero failure keeps its own wording with a reason too, so the
         // profiles a person can name are listed beside it.
         dispatch(engine, Method::Libraries, &params, &cancel).map_err(|error| {
@@ -1551,7 +1606,7 @@ fn open_libraries(
         // Each Zotero library is the app's only when the app chose it and the command line did not.
         if let Some(app) = &app {
             for library in engine.libraries()?.libraries {
-                if before.iter().any(|old| old.id == library.id) {
+                if library.zotero.is_none() {
                     continue;
                 }
                 let group = match library.zotero {
@@ -1579,7 +1634,7 @@ fn open_libraries(
 
 /// Runs an engine method once its libraries are open.
 fn run_method<R: BufRead>(
-    engine: &Engine,
+    engine: &Backend<'_>,
     matches: &ArgMatches,
     name: &str,
     args: &ArgMatches,
@@ -1833,69 +1888,52 @@ fn run_method<R: BufRead>(
                 output: output_name(&output),
                 form,
             };
-            let mut writing_result = writing
-                .as_ref()
-                .map(|writing| {
-                    engine.cite_writing_keys(
-                        writing,
-                        &KeyCitationRequest {
-                            keys: keys.clone(),
-                            output: output.clone(),
-                            form,
-                            strict: args.get_flag("strict"),
-                            output_locale: args.get_one::<String>("locale").cloned(),
-                            keep_order: args.get_flag("keep-order"),
+            let request = KeyCitationRequest {
+                keys: keys.clone(),
+                output: output.clone(),
+                form,
+                strict: args.get_flag("strict"),
+                output_locale: args.get_one::<String>("locale").cloned(),
+                keep_order: args.get_flag("keep-order"),
+            };
+            let answer = engine
+                .cite_keys(&request, writing.as_ref(), &cancel)
+                .map_err(|error| match error.reason {
+                    Some(ErrorReason::UnknownStyle) if writing.is_none() => Failure::explained(
+                        error,
+                        cli(
+                            "cli-style-unknown",
+                            &[(
+                                "style",
+                                &human::field(args.get_one::<String>("style").map_or("", String::as_str)),
+                            )],
+                        ),
+                    ),
+                    Some(ErrorReason::UnknownLocale) if writing.is_none() => Failure::explained(
+                        error,
+                        cli(
+                            "cli-locale-unknown",
+                            &[(
+                                "locale",
+                                &human::field(args.get_one::<String>("locale").map_or("", String::as_str)),
+                            )],
+                        ),
+                    ),
+                    _ => failed_citation_key(engine, matches, &keys, error),
+                })?;
+            let (mut result, writing_result) = match answer {
+                headless::Citation::Project(mut writing) => {
+                    writing.citation.destination = destination.clone();
+                    (
+                        ibis_engine::health::Checked {
+                            value: writing.citation.clone(),
+                            source_health: writing.source_health.clone(),
                         },
-                        &cancel,
+                        Some(*writing),
                     )
-                })
-                .transpose()
-                .map_err(|error| failed_citation_key(engine, matches, &keys, error))?;
-            if let Some(writing) = &mut writing_result {
-                writing.citation.destination = destination.clone();
-            }
-            let mut result = if let Some(writing) = &writing_result {
-                Ok(ibis_engine::health::Checked {
-                    value: writing.citation.clone(),
-                    source_health: writing.source_health.clone(),
-                })
-            } else {
-                engine.cite_keys_checked(
-                    &KeyCitationRequest {
-                        keys: keys.clone(),
-                        output: output.clone(),
-                        form,
-                        strict: args.get_flag("strict"),
-                        output_locale: args.get_one::<String>("locale").cloned(),
-                        keep_order: args.get_flag("keep-order"),
-                    },
-                    &cancel,
-                )
-            }
-            .map_err(|error| match error.reason {
-                Some(ErrorReason::UnknownStyle) => Failure::explained(
-                    error,
-                    cli(
-                        "cli-style-unknown",
-                        &[(
-                            "style",
-                            &human::field(args.get_one::<String>("style").map_or("", String::as_str)),
-                        )],
-                    ),
-                ),
-                Some(ErrorReason::UnknownLocale) => Failure::explained(
-                    error,
-                    cli(
-                        "cli-locale-unknown",
-                        &[(
-                            "locale",
-                            &human::field(args.get_one::<String>("locale").map_or("", String::as_str)),
-                        )],
-                    ),
-                ),
-                // The error names no key; the first key that fails the same way is the one.
-                _ => failed_citation_key(engine, matches, &keys, error),
-            })?;
+                }
+                headless::Citation::Plain(result) => (*result, None),
+            };
             result.value.destination = destination;
             let result = ibis_engine::DispatchResult::citation(result, keys.len(), &output)?
                 .map_data(|result| Response::Engine(Reply::Citation(Box::new(result))));

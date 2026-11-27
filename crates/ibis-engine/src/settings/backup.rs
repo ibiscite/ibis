@@ -258,7 +258,7 @@ fn system_name(system: System) -> String {
 /// One setting a restore changes. Values are as the settings file writes them,
 /// and `None` means unset (the default). The opening shortcut is one setting
 /// per system: `shortcut.macos`, `shortcut.windows` and `shortcut.linux`.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Change {
     pub setting: String,
     pub from: Option<Value>,
@@ -266,7 +266,7 @@ pub struct Change {
 }
 
 /// Something the person should know before restoring.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Note {
     /// The backup's bibliography file is not on this computer. It is restored
@@ -280,7 +280,7 @@ pub enum Note {
 }
 
 /// What a restore would do, worked out from the settings as they are now.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Plan {
     /// The settings the plan was made from. A restore is refused if they changed.
     pub current: Settings,

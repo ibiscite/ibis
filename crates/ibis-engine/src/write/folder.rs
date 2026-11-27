@@ -14,7 +14,7 @@ use ibis_sources::bibtex_edit::BibFile;
 use ibis_sources::folder::{LIBRARY_FILE, file_value, list, unkept};
 use ibis_sources::pdf::{PdfDetails, PdfReader, Refusal};
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -24,7 +24,7 @@ use std::sync::Arc;
 pub const KEEP_BATCH: usize = 100;
 
 /// What one keep did.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Kept {
     /// Entries appended, one per PDF.
     pub kept: usize,

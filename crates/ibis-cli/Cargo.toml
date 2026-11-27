@@ -26,8 +26,13 @@ lopdf = { version = "0.47.0", default-features = false }
 quick-xml = "=0.42.0"
 
 [target.'cfg(unix)'.dependencies]
-# The child's address-space and processor-time limits.
-nix = { version = "0.31.3", default-features = false, features = ["resource"] }
+# Parser resource limits and the daemon's peer credentials and socket waits.
+nix = { version = "0.31.3", default-features = false, features = ["fs", "poll", "resource", "socket", "user"] }
+
+[target.'cfg(windows)'.dependencies]
+# The daemon uses Tokio's overlapped named pipes with an explicit SID DACL.
+tokio = { version = "1.54.1", features = ["net", "rt-multi-thread", "sync", "time"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Pipes", "Win32_System_Threading"] }
 
 [dev-dependencies]
 insta = "1.49.0"
@@ -35,8 +40,16 @@ tempfile = "3.27.0"
 # Builds and reads invented office documents in the format tests.
 zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2"] }
 
-[lints]
-workspace = true
+# Decision 0029 scopes Win32 calls to daemon/windows.rs.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+panic = "deny"
+unused_result_ok = "deny"
+expect_used = "warn"
 
 # Also the fake source adapter it tests the engine with, so it has its own main.
 [[test]]

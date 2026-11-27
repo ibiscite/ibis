@@ -38,6 +38,7 @@ fn main() {
         ("a_failed_reread_keeps_the_last_good_library", last_good),
         ("keys_count_only_when_declared", keys_when_declared),
         ("only_configured_absolute_executables_are_run", command_line),
+        ("a_warm_daemon_uses_the_callers_adapter_directory", adapter_directory),
         ("an_intervening_revision_fails_conformance", changed_during_check),
         ("an_initial_token_change_fails_conformance", initial_token_change),
         (
@@ -57,6 +58,7 @@ fn main() {
         ("termination_kills_and_reaps_active_adapter_groups", termination),
         #[cfg(unix)]
         ("pending_termination_wins_over_stdin_completion", termination_at_eof),
+        ("a_daemon_crash_stops_the_active_parser_tree", daemon_crash),
     ];
     for (name, test) in tests {
         if filter.is_empty() || filter.iter().any(|wanted| name.contains(wanted.as_str())) {
@@ -753,6 +755,90 @@ fn termination() {
         assert!(kill(adapter, None).is_err(), "Ibis must reap its direct adapter child");
         assert_eq!(status.code(), Some(128 + signal as i32));
     }
+}
+
+fn daemon_crash() {
+    use std::process::{Command, Stdio};
+    let fake = Fake::new("fake");
+    fake.configure(json!({"fake": fake.program}));
+    let directory = fake.directory.path();
+    let descendant = directory.join("pid");
+    let parser = directory.join("adapter-pid");
+    fake.scenario(json!({"mode":"hang", "pid":descendant, "adapter-pid":parser}));
+    let cache = directory.join("cache");
+    let program = Path::new(env!("CARGO_BIN_EXE_ibis"));
+    let configured = || {
+        let mut command = Command::new(program);
+        command
+            .env("HOME", directory)
+            .env("XDG_CONFIG_HOME", directory)
+            .env("APPDATA", directory)
+            .env("LOCALAPPDATA", &cache)
+            .env("XDG_RUNTIME_DIR", directory)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        command
+    };
+    let (config, root) = if cfg!(target_os = "macos") {
+        (directory.join("Library/Application Support"), None)
+    } else if cfg!(windows) {
+        (directory.to_path_buf(), Some(cache.as_path()))
+    } else {
+        (directory.to_path_buf(), Some(directory))
+    };
+    let endpoint = ibis::daemon::Endpoint::new(&config, root).unwrap();
+    let mut daemon = configured().arg("daemon").spawn().unwrap();
+    let started = Instant::now();
+    let socket = loop {
+        if let Ok(socket) = endpoint.connect(program) {
+            break socket;
+        }
+        if started.elapsed() > Duration::from_secs(5) {
+            let _ = daemon.kill();
+            let _ = daemon.wait();
+            panic!("daemon failed to start");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!(socket.status().pid, daemon.id());
+    let mut client = configured()
+        .args(["libraries", "--source", &fake.source(), "--json"])
+        .spawn()
+        .unwrap();
+    wait_for(&parser);
+    daemon.kill().unwrap();
+    daemon.wait().unwrap();
+    assert_stopped(&parser);
+    assert_stopped(&descendant);
+    assert_eq!(client.wait().unwrap().code(), Some(5));
+}
+
+fn adapter_directory() {
+    let fake = Fake::new("fake");
+    fake.configure(json!({"fake": fake.program}));
+    fake.answer(read(invented()));
+    let directory = fake.directory.path();
+    let command = || {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_ibis"));
+        command
+            .env("HOME", directory)
+            .env("XDG_CONFIG_HOME", directory)
+            .env("APPDATA", directory)
+            .env("LOCALAPPDATA", directory.join("cache"))
+            .env("XDG_RUNTIME_DIR", directory);
+        command
+    };
+    let warmed = command().args(["styles", "--limit", "1"]).output().unwrap();
+    assert!(warmed.status.success());
+    let actual = command()
+        .current_dir(directory)
+        .args(["libraries", "--source", "fake=scenario.json", "--json"])
+        .output()
+        .unwrap();
+    assert!(actual.status.success(), "{}", String::from_utf8_lossy(&actual.stderr));
+    let answer: Value = serde_json::from_slice(&actual.stdout).unwrap();
+    assert_eq!(answer["data"]["libraries"].as_array().unwrap().len(), 1);
 }
 
 fn streaming_limit() {

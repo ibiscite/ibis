@@ -30,13 +30,13 @@ const ID_MARK: &str = "att:";
 const SLOT_LENGTH: usize = 16;
 
 /// A reference's attachments, in its library's order.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct OutlineResult {
     pub attachments: Vec<AttachmentOutline>,
 }
 
 /// One attachment, without its text.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AttachmentOutline {
     /// Pass to `read` or `find-in` while the library's content, attachment
     /// revision and indexed text remain unchanged.
@@ -102,7 +102,7 @@ impl From<Refusal> for TextAvailability {
 }
 
 /// Some of an attachment's text, page by page.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ReadResult {
     pub attachment: String,
     pub pages: Vec<PageText>,
@@ -113,7 +113,7 @@ pub struct ReadResult {
 }
 
 /// One page's text, or the text read when pages are not known.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PageText {
     /// The file's own page number, from 1; null when pages are not known.
     pub pdf_page: Option<u32>,
@@ -125,7 +125,7 @@ pub struct PageText {
     pub cut: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ReadNext {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_page: Option<u32>,
@@ -134,7 +134,7 @@ pub struct ReadNext {
 }
 
 /// Passages that hold the words, in the order they appear.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FindInResult {
     pub attachment: String,
     pub passages: Vec<Passage>,
@@ -143,7 +143,7 @@ pub struct FindInResult {
     pub pages_known: bool,
 }
 
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Passage {
     /// The file's own page number, from 1; null when pages are not known.
     pub pdf_page: Option<u32>,

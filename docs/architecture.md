@@ -11,7 +11,7 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API, closed database and Better BibTeX), discovery, database snapshots and file watches. Includes the built-in EndNote [source adapter](source-adapters.md). Each reader declares what its library offers. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
-| `crates/ibis-cli` | The `ibis` executable, and the PDF text extractor and built-in source adapters it starts as its own child processes (`ibis __extract-pdf`, with `lopdf`; `ibis __document`; `ibis __source NAME`). Depends on core and engine, and enables the EndNote reader and the document readers in `ibis-sources` for those processes. |
+| `crates/ibis-cli` | The `ibis` executable, its same-user daemon and the child processes for PDFs, documents and built-in source adapters. Depends on core and engine, and enables the EndNote reader and the document readers in `ibis-sources` for those processes. |
 | `crates/ibis-native` | Native paste with no window toolkit: the target capture, its proofs and their platform calls, and every `unsafe` block they need. The host supplies windows, the paste setting and the keyboard layout. Depends on core only. |
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste delivery through `ibis-native`, shortcuts, settings dialogs and updates. Depends on core, engine, native and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
@@ -37,6 +37,51 @@ Contracts for the CLI, JSON-RPC and MCP are in [the CLI reference](cli.md); the
 desktop also provides the [editor endpoint](parity.md#better-bibtex-cite-as-you-write).
 Library results carry `source_health` from the state they read; later refresh
 failures cannot change it.
+
+## Warm local engine
+
+The command line and MCP share a background `ibis daemon` process under
+[decision 0065](decisions/0065-one-warm-engine-thin-shells.md). A client starts
+it on demand. The public socket protocol uses the same JSON-RPC dispatcher
+and method table as `ibis serve --stdio`. The CLI uses the engine's typed
+replies for its terminal output. Each `ibis mcp` still speaks MCP over stdio
+to its AI app and relays that session to the daemon's existing MCP runtime.
+
+- Linux uses a `0700` directory at `$XDG_RUNTIME_DIR/ibis`. macOS uses a
+  `0700` directory at `$TMPDIR/ibis-<uid>` with a short `/tmp` path when the
+  socket name would exceed `sun_path`. Each end checks the peer UID with
+  `SO_PEERCRED` on Linux and `getpeereid` on macOS.
+- Windows uses a local named pipe with `FILE_FLAG_FIRST_PIPE_INSTANCE`,
+  `PIPE_REJECT_REMOTE_CLIENTS`, a DACL for the current user SID and a token
+  SID check on each end. [Win32 named pipe access rights](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights)
+- The configuration directory distinguishes profiles that use different
+  settings. A startup lock serializes launches. The daemon holds a separate
+  lock for its lifetime. Both ends exchange a protocol version and build
+  identity before dispatch. A newer client asks an older daemon to finish
+  accepted work, then starts the replacement. Clients reconnect with backoff
+  after a crash. A lost reply to a write leaves its outcome uncertain.
+- The engine stays warm while a client is connected and exits after 60
+  seconds without clients. That interval covers short terminal workflows and
+  keeps residency bounded under [0032](decisions/0032-release-gates.md).
+  On Unix the parser supervisor uses a pipe to end the process group even
+  after a hard crash.
+  Windows uses the existing kill-on-close Job Objects.
+
+The daemon retains up to four recent CLI and MCP library selections so
+matching clients reuse the same index. Different selections see their own
+records and health, even when they share parsed file records. File opens check
+the current bytes before reuse. Folder libraries and files with attachments
+are reread on open so changes to their other files are visible. The process
+shares the formatter and keeps citation sessions scoped to their connections.
+CLI and MCP source adapters start in the invoking process's working directory.
+Direct socket clients supply absolute file paths.
+
+The daemon owns CLI settings writes, watches settings files for hand edits
+and clears stored recents when the saved switch is off. In phase 1 the Tauri
+app still has an in-process engine and records its delivered citations. Both
+processes use the existing settings file lock, including when saving or
+clearing recents. The app takes its own paste consent and delivery decisions
+until it becomes a client in phase 2.
 
 ## Data and identity
 
@@ -360,6 +405,24 @@ entries on several threads gave the same records but no faster open on the
 Windows laptop. A two-reference citation takes 2.5× a single one: each of
 citeproc's text, HTML and RTF passes costs four to five times more with the
 second reference.
+
+### Daemon measurements
+
+Measured on arm64 macOS on 2026-11-26 with a release build and the 10,000
+invented references produced by `library` in `crates/ibis-engine/tests/perf.rs`.
+Times include the entire `ibis search avery --file … --json` invocation.
+Cold starts use a fresh daemon with the file already in the OS cache. Warm
+searches reuse its loaded library and index.
+
+| Measurement | Median | Samples |
+| --- | ---: | ---: |
+| Cold CLI search | 354.9 ms | 7 |
+| Warm CLI search | 93.7 ms | 35 |
+| One daemon RSS after searches | 64.1 MiB | 7 |
+| Three concurrent `ibis serve --stdio` processes, combined RSS | 221.9 MiB | 3 |
+
+RSS was sampled with `ps` after the same search and counts shared pages in
+each process. The daemon exited 60.1 seconds after its last client disconnected.
 
 ## Vocabulary
 

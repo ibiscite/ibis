@@ -104,7 +104,7 @@ pub(crate) fn configuration_report() -> Value {
 /// `ibis sources keep`: each folder named with `--file` keeps its new PDFs,
 /// a batch at a time until none waits (decision 0061). Run before any
 /// library opens, since a folder no one has kept has no library yet.
-pub(crate) fn keep(engine: &Engine, matches: &ArgMatches) -> Result<DispatchResult, Failure> {
+pub(crate) fn keep(engine: &crate::headless::Backend<'_>, matches: &ArgMatches) -> Result<DispatchResult, Failure> {
     let folders = crate::source_values::<PathBuf>(matches, "file");
     if folders.is_empty() {
         return Err(Failure::new(
@@ -113,7 +113,6 @@ pub(crate) fn keep(engine: &Engine, matches: &ArgMatches) -> Result<DispatchResu
         ));
     }
     let (_, settings) = crate::settings_backup::settings_file(false)?;
-    let store = ibis_engine::write::Proposals::beside(&settings);
     let cancel = Cancellation::default();
     let mut reports = Vec::new();
     let mut text = String::new();
@@ -121,12 +120,7 @@ pub(crate) fn keep(engine: &Engine, matches: &ArgMatches) -> Result<DispatchResu
         let mut total = ibis_engine::write::Kept::default();
         let mut skip = std::collections::BTreeSet::new();
         loop {
-            let kept = engine.keep_folder(&store, &folder, &skip, &cancel).map_err(|error| {
-                Failure::new(
-                    ErrorCode::SourceUnavailable,
-                    ibis_engine::catalogue::problem(error.problem(), ibis_engine::catalogue::Audience::Cli),
-                )
-            })?;
+            let kept = engine.keep_folder(&settings, &folder, &skip, &cancel)?;
             total.kept += kept.kept;
             total.unread += kept.unread;
             total.cut_short = kept.cut_short;
@@ -232,7 +226,7 @@ pub(crate) fn run(
             token = Some(second_token.clone());
         } else if info.kind != LibraryKind::Snapshot {
             let request = json!({"action": "reload", "library": info.id});
-            crate::dispatch(engine, ibis_engine::Method::Libraries, &request, &cancel)?;
+            engine.dispatch(ibis_engine::Method::Libraries, &request, &cancel)?;
             checks.push(Check {
                 name: "stable-revision-on-reread",
                 passed: revision(engine, &info.id)? == before.as_str(),

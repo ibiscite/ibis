@@ -23,9 +23,15 @@ A boundary with no safe binding gets one scoped module allowance, a crate-level
 - `ibis-sources/src/child/unix.rs` observes when an adapter exits with
   `waitid(WNOWAIT)`. This reserves the group leader's PID until the group
   has been signalled. The bounded runner then reaps the leader. The CLI also
-  installs SIGINT/SIGTERM handlers here with `sigaction`; the handler only
-  records a signal in a lock-free atomic. Ordinary threads cancel exchanges,
-  kill their groups and reap leaders before the termination thread exits.
+  installs SIGINT/SIGTERM handlers here with `sigaction`. The handler records
+  the signal in a lock-free atomic and wakes the termination thread through a
+  nonblocking pipe. Ordinary threads cancel exchanges, kill their groups and
+  reap leaders before exit. The daemon starts a group leader with a pipe
+  from the daemon. EOF kills its parser group even after a daemon crash.
+- `ibis-cli/src/daemon/windows.rs` gives the local named pipe a protected
+  current-user DACL and checks the peer process token on each end. Tokio owns
+  overlapped I/O and connection timeouts. The handles and allocations stay
+  inside the Windows module.
 - `ibis-sources/src/child/ceiling.rs` reads parser children's footprints on
   macOS with `proc_pid_rusage`.
 - `crates/ibis-native` holds the paste proofs' native calls; the desktop
