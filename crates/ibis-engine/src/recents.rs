@@ -315,6 +315,14 @@ pub fn clear_disabled(settings: &std::path::Path) -> io::Result<()> {
 
 /// Resolve current records, then source-added records, without repeating rows.
 pub fn resolve<'a>(snapshot: &'a Snapshot, ids: &[ItemRef], include_added: bool) -> Vec<(&'a SnapshotObject, bool)> {
+    resolve_with_added(snapshot, ids, if include_added { 3 } else { 0 })
+}
+
+pub(crate) fn resolve_with_added<'a>(
+    snapshot: &'a Snapshot,
+    ids: &[ItemRef],
+    added_limit: usize,
+) -> Vec<(&'a SnapshotObject, bool)> {
     let mut picked: Vec<_> = ids
         .iter()
         .filter_map(|id| snapshot.get(id))
@@ -322,7 +330,7 @@ pub fn resolve<'a>(snapshot: &'a Snapshot, ids: &[ItemRef], include_added: bool)
         .take(3)
         .map(|object| (object, true))
         .collect();
-    if include_added {
+    if added_limit != 0 {
         let mut added: Vec<_> = snapshot
             .objects()
             .iter()
@@ -335,7 +343,7 @@ pub fn resolve<'a>(snapshot: &'a Snapshot, ids: &[ItemRef], include_added: bool)
             })
             .collect();
         added.sort_by(|(a, ar), (b, br)| b.cmp(a).then_with(|| ar.object.id().cmp(br.object.id())));
-        picked.extend(added.into_iter().take(3).map(|(_, object)| (object, false)));
+        picked.extend(added.into_iter().take(added_limit).map(|(_, object)| (object, false)));
     }
     picked
 }

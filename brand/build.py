@@ -1,6 +1,6 @@
 """Build every Ibis brand export from master.svg.
 
-Standard library only. It needs librsvg's `rsvg-convert` for PNG, ICO and the
+Standard library only. It needs librsvg's `rsvg-convert` for PNG, PDF, ICO and the
 optical centre, and the Inter font for the social preview's text. Run:
 
     python3 brand/build.py
@@ -588,7 +588,7 @@ def ui_icons(root):
                       encoding="utf-8")
 
 
-def ui_mark(small=False):
+def ui_mark(small=False, vector_clip=False):
     # Small in-app birds are flat and take the page's --scarlet, the same colour
     # as the quote beak and the citation tile, so the picker shows one red per
     # theme. At the picker's size the eye needs a larger cutout to remain at least 2 px
@@ -600,8 +600,18 @@ def ui_mark(small=False):
     eye = SYM["eye"][1].replace("currentColor", "#000")
     if small:
         eye = eye.replace('r="2.1"', f'r="{side * SET["picker"]["eye_opening"] / (2 * SET["picker"]["size"]):g}"')
-    body = (f'<defs><mask id="ibis-mark-eye" maskUnits="userSpaceOnUse" {rect}><rect {rect} fill="#fff"/>{eye}</mask></defs>'
-            f'<g mask="url(#ibis-mark-eye)">{bird}</g>')
+    if vector_clip:
+        pupil = ElementTree.fromstring(eye)
+        x, y = (float(pupil.get(axis)) for axis in ("cx", "cy"))
+        r = float(pupil.get("r"))
+        left, top, _, _ = mbox
+        outline = f"M{left:g} {top:g}h{side:g}v{side:g}h{-side:g}z"
+        hole = f"M{x-r:g} {y:g}a{r:g} {r:g} 0 1 0 {2*r:g} 0a{r:g} {r:g} 0 1 0 {-2*r:g} 0z"
+        body = (f'<defs><clipPath id="ibis-mark-eye"><path clip-rule="evenodd" d="{outline}{hole}"/>'
+                f'</clipPath></defs><g clip-path="url(#ibis-mark-eye)">{bird}</g>')
+    else:
+        body = (f'<defs><mask id="ibis-mark-eye" maskUnits="userSpaceOnUse" {rect}><rect {rect} fill="#fff"/>{eye}</mask></defs>'
+                f'<g mask="url(#ibis-mark-eye)">{bird}</g>')
     return {"viewBox": " ".join(f"{v:g}" for v in mbox), "body": body}
 
 
@@ -624,6 +634,31 @@ def ui_marks(root):
                   + ';\nexport const appIcon = '
                   + json.dumps({"light": app_icon(False, "a"), "dark": app_icon(True, "ad")})
                   + ';\n', encoding="utf-8")
+
+
+def picker_pdfs():
+    """Native picker marks and template icons at their AppKit point sizes."""
+    directory = OUT / "macos-picker"
+    directory.mkdir(parents=True, exist_ok=True)
+
+    def pdf(name, size, box, body, colour="#000000"):
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}pt" height="{size}pt" '
+               f'viewBox="{box}" color="{colour}">{body}</svg>')
+        subprocess.run(
+            ["rsvg-convert", "--format=pdf", "--output", str(directory / f"{name}.pdf")],
+            input=svg.encode(), check=True, env={**RENDER_ENV, "SOURCE_DATE_EPOCH": "0"},
+        )
+
+    bird = ui_mark(small=True, vector_clip=True)
+    for name, colour in (("pickerMark", SCARLET), ("pickerMark-dark", SCARLET_DARK)):
+        pdf(name, SET["picker"]["size"], bird["viewBox"], bird["body"], colour)
+    box, body = SYM["beak"]
+    pdf("ibis-quote-beak", 20, " ".join(f"{value:g}" for value in box), body)
+    for name in ("article", "book", "chapter", "thesis", "web", "report", "other",
+                 "check", "library", "close", "warning", "error"):
+        icon = ElementTree.fromstring((HERE / "icons" / f"{name}.svg").read_text(encoding="utf-8"))
+        body = "".join(ElementTree.tostring(shape, encoding="unicode") for shape in icon)
+        pdf(name, 20, icon.attrib["viewBox"], f'<g fill="currentColor">{body}</g>')
 
 
 def main(root=HERE.parent):
@@ -698,6 +733,7 @@ def main(root=HERE.parent):
     write_palette()
     website_tokens(root)
     ui_marks(root)
+    picker_pdfs()
     subprocess.run([sys.executable, str(HERE.parent / "apps/desktop/src-tauri/icons/source/generate.py"),
                     "--output", str(root / "apps/desktop/src-tauri/icons")], check=True)
 

@@ -24,10 +24,22 @@ enum PickerPreview: PickerRPC {
     typealias Reply = PickerPreviewResult
 }
 
+enum PickerForms: PickerRPC {
+    static let name = "picker/forms"
+    typealias Parameters = PickerFormsRequest
+    typealias Reply = FormDetails
+}
+
 enum PickerDeliver: PickerRPC {
     static let name = "picker/deliver"
     typealias Parameters = PickerDeliverRequest
     typealias Reply = PickerDeliverResult
+}
+
+enum Appearance: String, Codable, Hashable, Sendable {
+    case system = "system"
+    case light = "light"
+    case dark = "dark"
 }
 
 enum CitationForm: String, Codable, Hashable, Sendable {
@@ -39,12 +51,97 @@ enum CitationForm: String, Codable, Hashable, Sendable {
     case bibliographyOnly = "bibliography-only"
 }
 
+enum Density: String, Codable, Hashable, Sendable {
+    case compact = "compact"
+    case comfortable = "comfortable"
+}
+
+struct DisplayBlock: Codable, Hashable, Sendable {
+    let end: UInt64
+    let kind: DisplayBlockKind
+    let start: UInt64
+}
+
+enum DisplayBlockKind: String, Codable, Hashable, Sendable {
+    case entry = "entry"
+    case margin = "margin"
+    case inline = "inline"
+    case block = "block"
+    case indent = "indent"
+}
+
+struct DisplayNode: Codable, Hashable, Sendable {
+    let blocks: [DisplayBlock]
+    let content: [DisplayRun]
+    let item: UInt64?
+}
+
+struct DisplayRun: Codable, Hashable, Sendable {
+    let bold: Bool?
+    let italic: Bool?
+    let script: Script?
+    let smallCaps: Bool?
+    let text: String
+    let underline: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case bold = "bold"
+        case italic = "italic"
+        case script = "script"
+        case smallCaps = "small_caps"
+        case text = "text"
+        case underline = "underline"
+    }
+}
+
+struct DisplayTree: Codable, Hashable, Sendable {
+    let nodes: [DisplayNode]
+}
+
+struct FormDetails: Codable, Hashable, Sendable {
+    let currentForm: CitationForm?
+    let forms: [FormOption]
+
+    enum CodingKeys: String, CodingKey {
+        case currentForm = "current_form"
+        case forms = "forms"
+    }
+}
+
+struct FormOption: Codable, Hashable, Sendable {
+    let example: String?
+    let form: CitationForm
+    let reason: FormUnavailable?
+}
+
+enum FormUnavailable: String, Codable, Hashable, Sendable {
+    case entries = "entries"
+    case keysOnly = "keys-only"
+    case textcite = "textcite"
+    case citedAlone = "cited-alone"
+    case output = "output"
+}
+
 struct ItemRef: Codable, Hashable, Sendable {
     let key: RecordId
     let library: LibraryId
 }
 
+enum Language: String, Codable, Hashable, Sendable {
+    case enUS = "en-US"
+    case de = "de"
+    case ar = "ar"
+}
+
 typealias LibraryId = String
+
+enum LibraryKind: String, Codable, Hashable, Sendable {
+    case zotero = "zotero"
+    case file = "file"
+    case snapshot = "snapshot"
+    case adapter = "adapter"
+    case folder = "folder"
+}
 
 struct LocatorInput: Codable, Hashable, Sendable {
     let label: LocatorTerm
@@ -102,6 +199,15 @@ struct PickerDeliverResult: Codable, Hashable, Sendable {
     let text: String
 }
 
+enum PickerFix: String, Codable, Hashable, Sendable {
+    case chooseLibrary = "choose-library"
+    case locateLibrary = "locate-library"
+    case reloadLibrary = "reload-library"
+    case clearSearch = "clear-search"
+    case chooseFormat = "choose-format"
+    case editCitation = "edit-citation"
+}
+
 struct PickerForm: Codable, Hashable, Sendable {
     let form: CitationForm
     let name: String
@@ -113,6 +219,31 @@ struct PickerFormat: Codable, Hashable, Sendable {
     let name: String
 }
 
+struct PickerFormsRequest: Codable, Hashable, Sendable {
+    let contentHash: String
+    let item: UInt64
+    let ticket: String
+
+    enum CodingKeys: String, CodingKey {
+        case contentHash = "content_hash"
+        case item = "item"
+        case ticket = "ticket"
+    }
+}
+
+struct PickerLibrary: Codable, Hashable, Sendable {
+    let condition: PickerLibraryCondition
+    let file: String?
+    let kind: LibraryKind
+    let name: String
+}
+
+enum PickerLibraryCondition: String, Codable, Hashable, Sendable {
+    case ready = "ready"
+    case missing = "missing"
+    case unreadable = "unreadable"
+}
+
 struct PickerLocator: Codable, Hashable, Sendable {
     let name: String
     let term: LocatorTerm
@@ -121,69 +252,186 @@ struct PickerLocator: Codable, Hashable, Sendable {
 struct PickerOpenRequest: Codable, Hashable, Sendable {
     let app: String?
     let file: String?
+    let language: Language
+    let reload: Bool?
 }
 
 struct PickerOpenResult: Codable, Hashable, Sendable {
+    let appearance: Appearance
+    let density: Density
     let format: String
     let formats: [PickerFormat]
     let forms: [PickerForm]
+    let largerText: Bool
+    let library: PickerLibrary?
     let libraryExtensions: [String]
-    let libraryOpen: Bool
     let locators: [PickerLocator]
     let pasteEnabled: Bool
+    let status: [PickerStatus]
 
     enum CodingKeys: String, CodingKey {
+        case appearance = "appearance"
+        case density = "density"
         case format = "format"
         case formats = "formats"
         case forms = "forms"
+        case largerText = "larger_text"
+        case library = "library"
         case libraryExtensions = "library_extensions"
-        case libraryOpen = "library_open"
         case locators = "locators"
         case pasteEnabled = "paste_enabled"
+        case status = "status"
     }
 }
 
-struct PickerPreviewRequest: Codable, Hashable, Sendable {
+struct PickerPreviewEntry: Codable, Hashable, Sendable {
     let cite: String
     let form: CitationForm?
-    let format: String
     let item: ItemRef
     let locator: LocatorInput?
     let prefix: String?
     let suffix: String?
 }
 
+struct PickerPreviewRequest: Codable, Hashable, Sendable {
+    let entries: [PickerPreviewEntry]
+    let format: String
+    let keepOrder: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case entries = "entries"
+        case format = "format"
+        case keepOrder = "keep_order"
+    }
+}
+
 struct PickerPreviewResult: Codable, Hashable, Sendable {
     let contentHash: String
-    let problem: String?
+    let display: DisplayTree
+    let problem: PickerStatus?
     let text: String
     let ticket: String
+    let warnings: [PickerWarning]
 
     enum CodingKeys: String, CodingKey {
         case contentHash = "content_hash"
+        case display = "display"
         case problem = "problem"
         case text = "text"
         case ticket = "ticket"
+        case warnings = "warnings"
     }
 }
 
 struct PickerRow: Codable, Hashable, Sendable {
+    let authorCount: UInt64
     let authors: [String]
+    let bylines: [String]
+    let citationKey: String?
     let cite: String
+    let firstAuthor: String?
+    let fullByline: String
     let id: ItemRef
+    let itemType: String?
     let journal: String?
+    let kind: PickerRowKind
+    let kindLabel: String
     let title: String?
     let year: String?
+
+    enum CodingKeys: String, CodingKey {
+        case authorCount = "author_count"
+        case authors = "authors"
+        case bylines = "bylines"
+        case citationKey = "citation_key"
+        case cite = "cite"
+        case firstAuthor = "first_author"
+        case fullByline = "full_byline"
+        case id = "id"
+        case itemType = "item_type"
+        case journal = "journal"
+        case kind = "kind"
+        case kindLabel = "kind_label"
+        case title = "title"
+        case year = "year"
+    }
+}
+
+enum PickerRowKind: String, Codable, Hashable, Sendable {
+    case article = "article"
+    case book = "book"
+    case chapter = "chapter"
+    case thesis = "thesis"
+    case web = "web"
+    case report = "report"
+    case other = "other"
 }
 
 struct PickerSearchRequest: Codable, Hashable, Sendable {
     let query: String
+    let shorthand: Bool
 }
 
 struct PickerSearchResult: Codable, Hashable, Sendable {
-    let heading: String?
+    let countLabel: String?
+    let sections: [PickerSection]
+    let segments: [PickerSegment]
+    let status: [PickerStatus]
+    let total: UInt64?
+
+    enum CodingKeys: String, CodingKey {
+        case countLabel = "count_label"
+        case sections = "sections"
+        case segments = "segments"
+        case status = "status"
+        case total = "total"
+    }
+}
+
+struct PickerSection: Codable, Hashable, Sendable {
+    let kind: PickerSectionKind
     let rows: [PickerRow]
 }
 
+enum PickerSectionKind: String, Codable, Hashable, Sendable {
+    case best = "best"
+    case closest = "closest"
+    case citedHere = "cited-here"
+    case recentlyAdded = "recently-added"
+    case pasted = "pasted"
+}
+
+struct PickerSegment: Codable, Hashable, Sendable {
+    let complete: Bool
+    let locator: LocatorInput?
+    let prefix: String?
+    let row: PickerRow?
+    let search: String
+    let typed: String
+}
+
+struct PickerStatus: Codable, Hashable, Sendable {
+    let fix: PickerFix?
+    let kind: PickerStatusKind
+    let text: String
+}
+
+enum PickerStatusKind: String, Codable, Hashable, Sendable {
+    case library = "library"
+    case shorthand = "shorthand"
+    case citation = "citation"
+}
+
+struct PickerWarning: Codable, Hashable, Sendable {
+    let item: UInt64?
+    let text: String
+}
+
 typealias RecordId = String
+
+enum Script: String, Codable, Hashable, Sendable {
+    case normal = "normal"
+    case `subscript` = "subscript"
+    case superscript = "superscript"
+}
 

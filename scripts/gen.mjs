@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { swiftBindings } from "./gen-swift.mjs";
+import { swiftBindings, swiftWords } from "./gen-swift.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -38,6 +38,7 @@ export function derived(folder, read = (path) => readFileSync(join(root, path), 
     "fixtures/cli-schema.json": made("cli-schema.json"),
     "fixtures/cli-surface.json": surface,
     "native/macos/Sources/IbisNative/EngineContract.swift": swiftBindings(JSON.parse(made("picker-schema.json"))),
+    "native/macos/Sources/IbisNative/PickerWords.swift": swiftWords(JSON.parse(made("picker-words.json"))),
     "docs/cli.md": section(cli, "<!-- gen:errors -->", "<!-- /gen:errors -->", `\n| Exit | Error code |\n| --- | --- |\n${errors}\n`),
     ...(headless ? {} : { "apps/desktop/src/bindings.ts": bindings(JSON.parse(made("desktop-contract.json"))) }),
   };

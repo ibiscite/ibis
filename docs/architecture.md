@@ -341,8 +341,8 @@ Delivery begins with the shown preview's one-use ticket. The daemon recites
 it and keeps the checked preview, library publication lock and settings
 writer lease through the shell's acknowledgment. The shell holds a local
 file lock that keeps a replacement daemon from starting while the native
-effect is in flight. Drain lets an admitted delivery finish and EOF releases
-its guard. The C ABI writes the engine's plain text, HTML and RTF in the app
+effect is in flight. Drain lets an admitted delivery finish. An acknowledgement deadline
+bounds the guard at two seconds. EOF also releases it. The C ABI writes the engine's plain text, HTML and RTF in the app
 with the Accessibility grant. It then uses the existing focus, clipboard and
 timing proofs in [0029](decisions/0029-native-calls.md) to paste after the
 panel hides. A lost delivery reply is never replayed.

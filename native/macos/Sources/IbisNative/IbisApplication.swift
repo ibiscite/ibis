@@ -36,9 +36,14 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
         engine: EngineClient(binary: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/ibis")),
         file: launch.file
     )
-    private lazy var panel = PickerPanel(model: model) { [weak self] in self?.chooseLibrary() }
+    private lazy var panel = PickerPanel(model: model, sizes: layoutDefaults) { [weak self] missing in
+        self?.chooseLibrary(missing: missing)
+    }
+    private var layoutDefaults: UserDefaults? {
+        ProcessInfo.processInfo.environment["IBIS_CONFIG_DIR"] == nil ? .standard : nil
+    }
     private let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private let openItem = NSMenuItem(title: "Open Ibis", action: #selector(toggle), keyEquivalent: "")
+    private let openItem = NSMenuItem(title: PickerWords.text(.open), action: #selector(toggle), keyEquivalent: "")
     private lazy var hotKey = HotKey { [weak self] in self?.toggle() }
     private var layoutObserver: NSObjectProtocol?
 
@@ -49,16 +54,16 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
             image.size = NSSize(width: 18, height: 18)
             status.button?.image = image
         } else {
-            status.button?.title = "Ibis"
+            status.button?.title = PickerWords.text(.app)
         }
-        status.button?.setAccessibilityLabel("Ibis Native")
+        status.button?.setAccessibilityLabel(PickerWords.text(.app))
         let menu = NSMenu()
         openItem.target = self
         menu.addItem(openItem)
-        menu.addItem(item("Choose Library…", action: #selector(chooseLibrary)))
-        menu.addItem(item("Allow Paste…", action: #selector(allowPaste)))
+        menu.addItem(item(PickerWords.text(.choose), action: #selector(chooseLibraryItem)))
+        menu.addItem(item(PickerWords.text(.allowPaste), action: #selector(allowPaste)))
         menu.addItem(.separator())
-        menu.addItem(item("Quit Ibis Native", action: #selector(quit), key: "q"))
+        menu.addItem(item(PickerWords.text(.quit), action: #selector(quit), key: "q"))
         status.menu = menu
         registerShortcut()
         layoutObserver = DistributedNotificationCenter.default().addObserver(
@@ -84,23 +89,34 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
         let registered = hotKey.register()
         openItem.keyEquivalent = registered ? "y" : ""
         openItem.keyEquivalentModifierMask = [.command, .shift, .option]
-        openItem.toolTip = registered ? nil : "The Ibis Native shortcut is unavailable."
+        openItem.toolTip = registered ? nil : PickerWords.text(.missingShortcut)
     }
 
     @objc private func toggle() {
-        if panel.isVisible { panel.dismiss() } else { panel.summon() }
+        if panel.pickerIsOpen { panel.dismiss() } else { panel.summon() }
     }
 
-    @objc private func chooseLibrary() {
+    @objc private func chooseLibraryItem() { chooseLibrary(missing: nil) }
+
+    private func chooseLibrary(missing: URL?) {
         let chooser = NSOpenPanel()
-        chooser.prompt = "Open Library"
+        chooser.prompt = PickerWords.text(.openLibrary)
         chooser.canChooseDirectories = false
         chooser.allowsMultipleSelection = false
+        chooser.directoryURL = missing?.deletingLastPathComponent()
         chooser.allowedContentTypes = model.catalog?.libraryExtensions.compactMap { UTType(filenameExtension: $0) } ?? []
+        panel.choosingLibrary = true
         chooser.begin { [weak self] response in
-            guard let self, response == .OK, let file = chooser.url else { return }
+            guard let self else { return }
+            self.panel.choosingLibrary = false
+            guard response == .OK, let file = chooser.url else { return }
             self.model.file = file
-            self.panel.summon()
+            if self.panel.pickerIsOpen {
+                self.panel.makeKeyAndOrderFront(nil)
+                self.model.reload()
+            } else {
+                self.panel.summon()
+            }
         }
     }
 

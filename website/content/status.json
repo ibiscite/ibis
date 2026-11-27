@@ -75,6 +75,10 @@
       "text": "Complete citation forms, with real style previews."
     },
     {
+      "text": "A native picker for macOS",
+      "note": "In the repo build: fixed-height rows, a citation bar and a details drawer that keeps search available."
+    },
+    {
       "text": "Search Zotero highlights and notes, with the page they came from."
     },
     {

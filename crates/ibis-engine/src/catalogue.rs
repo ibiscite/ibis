@@ -158,18 +158,29 @@ pub fn text(id: &str, attribute: Option<&str>, args: &[(&str, &str)]) -> Option<
 
 /// [`text`] in a given language, whatever this process speaks.
 pub fn text_in(language: Language, id: &str, attribute: Option<&str>, args: &[(&str, &str)]) -> Option<String> {
+    let mut values = FluentArgs::new();
+    for (name, value) in args {
+        values.set(*name, FluentValue::from(*value));
+    }
+    format_in(language, id, attribute, &values)
+}
+
+/// A count is numeric so Fluent applies the language's plural categories.
+pub(crate) fn count_in(language: Language, id: &str, count: usize) -> Option<String> {
+    let mut values = FluentArgs::new();
+    values.set("count", count);
+    format_in(language, id, None, &values)
+}
+
+fn format_in(language: Language, id: &str, attribute: Option<&str>, values: &FluentArgs<'_>) -> Option<String> {
     let bundle = bundle_in(language);
     let message = bundle.get_message(id)?;
     let pattern = match attribute {
         Some(name) => message.get_attribute(name)?.value(),
         None => message.value()?,
     };
-    let mut values = FluentArgs::new();
-    for (name, value) in args {
-        values.set(*name, FluentValue::from(*value));
-    }
     let mut errors = Vec::new();
-    let text = bundle.format_pattern(pattern, Some(&values), &mut errors);
+    let text = bundle.format_pattern(pattern, Some(values), &mut errors);
     Some(text.into_owned())
 }
 
@@ -200,6 +211,17 @@ fn render(
     context: Option<ibis_core::contract::CitationSurface>,
     args: &[(&str, &str)],
 ) -> String {
+    render_in(language(), id, audience, context, args)
+}
+
+fn render_in(
+    language: Language,
+    id: &str,
+    audience: Audience,
+    context: Option<ibis_core::contract::CitationSurface>,
+    args: &[(&str, &str)],
+) -> String {
+    let text = |id, attribute, args| text_in(language, id, attribute, args);
     if audience == Audience::Cli && context.is_none() {
         let detail = if args.iter().any(|(key, value)| *key == "form" && *value != "normal") {
             text(id, Some("cli-form"), args)
@@ -253,12 +275,16 @@ pub fn problem(problem: &ibis_core::contract::Problem, audience: Audience) -> St
 
 /// A declared message in this audience's words, as the app's catalogue says it.
 pub fn message(message: &ibis_core::contract::Message, audience: Audience) -> String {
+    message_in(language(), message, audience)
+}
+
+pub(crate) fn message_in(language: Language, message: &ibis_core::contract::Message, audience: Audience) -> String {
     let args: Vec<_> = message
         .args
         .iter()
         .map(|(name, value)| (name.as_str(), value.as_str()))
         .collect();
-    render(&message.id, audience, message.context, &args)
+    render_in(language, &message.id, audience, message.context, &args)
 }
 
 /// The fallback words for a code alone.

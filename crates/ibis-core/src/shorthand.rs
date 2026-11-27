@@ -8,7 +8,10 @@
 //!
 //! The caller shows what was read so the person can undo it.
 
-use crate::locator::{TrailingLocator, parse_trailing};
+use crate::{
+    contract::LocatorTerm,
+    locator::{TrailingLocator, parse_typed},
+};
 
 /// Signals that open a citation, longest first so `see also` wins over `see`.
 const SIGNALS: [&str; 11] = [
@@ -40,6 +43,11 @@ pub struct Shorthand {
 
 /// Read `query`, or `None` when it holds no signal and no locator.
 pub fn read(query: &str) -> Option<Shorthand> {
+    read_with_labels(query, &[])
+}
+
+/// The same grammar with the interface's local locator names.
+pub fn read_with_labels(query: &str, labels: &[(String, LocatorTerm)]) -> Option<Shorthand> {
     let trimmed = query.trim_start();
     let lower = trimmed.to_lowercase();
     let signal = SIGNALS.iter().find_map(|signal| {
@@ -49,7 +57,7 @@ pub fn read(query: &str) -> Option<Shorthand> {
             .then(|| (trimmed[..signal.len()].to_string(), rest.trim_start()))
     });
     let (prefix, rest) = signal.map_or((None, trimmed), |(prefix, rest)| (Some(prefix), rest));
-    let locator = parse_trailing(rest);
+    let locator = parse_typed(rest, labels);
     if prefix.is_none() && locator.is_none() {
         return None;
     }

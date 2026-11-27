@@ -33,6 +33,10 @@ final class EngineClient: @unchecked Sendable {
         try await onQueue { try self.read(PickerPreview.self, request) }
     }
 
+    func forms(_ request: PickerFormsRequest) async throws -> FormDetails {
+        try await onQueue { try self.read(PickerForms.self, request) }
+    }
+
     /// A nonzero write receipt is reported to the daemon even when paste is
     /// refused. The shell holds the daemon's grant through copy and paste.
     func deliver(

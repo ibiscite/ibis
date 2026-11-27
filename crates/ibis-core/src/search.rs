@@ -398,13 +398,15 @@ fn spelling_aliases(text: &str) -> String {
 /// When the whole query is a DOI, ISBN, PubMed ID or arXiv ID that some
 /// records in scope carry, those records, newest first. `Some(None)` falls
 /// back to ordinary search; `None` means cancellation.
+type Ranked<'a, T> = (Vec<Hit<'a, T>>, usize);
+
 fn by_identifier<'r, 'i, T: SearchDocument + 'r>(
     docs: impl Iterator<Item = (&'r T, &'i [Identifier])>,
     query: &str,
     limit: usize,
     scope: Option<&[T::Source]>,
     stop: &dyn Fn() -> bool,
-) -> Option<Option<Vec<Hit<'r, T>>>> {
+) -> Option<Option<Ranked<'r, T>>> {
     if stop() {
         return None;
     }
@@ -439,8 +441,9 @@ fn by_identifier<'r, 'i, T: SearchDocument + 'r>(
             .cmp(&a.reference.year())
             .then_with(|| a.reference.identity().cmp(b.reference.identity()))
     });
+    let total = hits.len();
     hits.truncate(limit);
-    Some(Some(hits))
+    Some(Some((hits, total)))
 }
 
 const STOP_CHECK_INTERVAL: usize = 4096;
@@ -801,11 +804,11 @@ fn rank<'r, T: SearchDocument>(
     limit: usize,
     scope: Option<&[T::Source]>,
     stop: &dyn Fn() -> bool,
-) -> Option<Vec<Hit<'r, T>>> {
+) -> Option<Ranked<'r, T>> {
     let raw = query;
     let query = Query::parse(query, stop)?;
     if limit == 0 {
-        return Some(Vec::new());
+        return Some((Vec::new(), 0));
     }
     let mut found = vec![false; docs.len()];
     let mut candidates: Vec<Candidate<'r, T>> = Vec::new();
@@ -967,12 +970,13 @@ fn rank<'r, T: SearchDocument>(
             .then_with(|| b.reference.year().cmp(&a.reference.year()))
             .then_with(|| a.reference.identity().cmp(b.reference.identity()))
     };
-    if candidates.len() > limit {
+    let total = candidates.len();
+    if total > limit {
         candidates.select_nth_unstable_by(limit - 1, order);
         candidates.truncate(limit);
     }
     candidates.sort_unstable_by(order);
-    Some(
+    Some((
         candidates
             .into_iter()
             .map(|candidate| Hit {
@@ -987,7 +991,8 @@ fn rank<'r, T: SearchDocument>(
                 partial: candidate.pass == Pass::Closest,
             })
             .collect(),
-    )
+        total,
+    ))
 }
 
 fn candidate<'r, T: SearchDocument>(

@@ -663,3 +663,65 @@ fn restoring_settings_honors_the_apps_writer_lock_and_clears_disabled_history() 
     assert_eq!(std::fs::read_to_string(&history).unwrap(), "[]");
     assert_eq!(daemon.status().pid, home.connect(Path::new(IBIS)).status().pid);
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn picker_releases_a_delivery_whose_acknowledgement_stops_mid_frame() {
+    use std::fs::OpenOptions;
+    use std::os::unix::{fs::OpenOptionsExt, net::UnixStream};
+
+    let home = Home::new();
+    let library = home.library();
+    let endpoint = home.command().arg("__picker_endpoint").output().unwrap();
+    assert!(endpoint.status.success());
+    let endpoint: Value = serde_json::from_slice(&endpoint.stdout).unwrap();
+    let mut wire = UnixStream::connect(endpoint["socket"].as_str().unwrap()).unwrap();
+    wire.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let mut reader = BufReader::new(wire.try_clone().unwrap());
+    write_frame(&mut wire, &endpoint["hello"]).unwrap();
+    assert!(read_response_frame(&mut reader).unwrap().unwrap()["ready"].is_object());
+    let mut call = |id, method, params| {
+        write_frame(
+            &mut wire,
+            &json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}),
+        )
+        .unwrap();
+        let response = read_response_frame(&mut reader).unwrap().unwrap();
+        assert_eq!(response["id"], id);
+        assert!(response["result"].is_object(), "{response}");
+        response["result"].clone()
+    };
+    call(1, "picker/open", json!({"app":null,"file":library,"language":"en-US"}));
+    let search = call(2, "picker/search", json!({"query":"lantern","shorthand":false}));
+    let row = &search["sections"][0]["rows"][0];
+    let preview = call(
+        3,
+        "picker/preview",
+        json!({
+            "entries":[{"item":row["id"],"cite":row["cite"]}],
+            "format":"apa","keep_order":false
+        }),
+    );
+    let fence = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .mode(0o600)
+        .open(endpoint["delivery_lock"].as_str().unwrap())
+        .unwrap();
+    fence.lock().unwrap();
+    let grant = call(
+        4,
+        "picker/deliver",
+        json!({
+            "ticket":preview["ticket"],"content_hash":preview["content_hash"],"paste":false
+        }),
+    );
+    assert_eq!(grant["text"], preview["text"]);
+    let start = Instant::now();
+    wire.write_all(b"Content-Length: 4\r\n\r\nt").unwrap();
+    assert!(read_response_frame(&mut reader).unwrap().is_none());
+    assert!(start.elapsed() >= ibis_core::destination::PASTE_DEADLINE);
+    assert!(start.elapsed() < Duration::from_secs(5));
+}

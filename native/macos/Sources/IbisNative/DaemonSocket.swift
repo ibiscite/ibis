@@ -5,15 +5,16 @@ enum DaemonError: LocalizedError, Equatable {
     case disconnected, invalidFrame, wrongPeer, newerEngine, noEngine, busy, changed
 
     var errorDescription: String? {
-        switch self {
-        case .disconnected: "The Ibis engine stopped. Try again."
-        case .invalidFrame: "The Ibis engine sent an invalid response."
-        case .wrongPeer: "Ibis could not verify its local engine."
-        case .newerEngine: "A newer Ibis engine is running. Build the native app with the newer Ibis."
-        case .noEngine: "Ibis could not start its local engine."
-        case .busy: "Another Ibis delivery is in progress."
-        case .changed: "The citation changed. Review it before trying again."
+        let word: PickerWord = switch self {
+        case .disconnected: .disconnected
+        case .invalidFrame: .invalidFrame
+        case .wrongPeer: .wrongPeer
+        case .newerEngine: .newerEngine
+        case .noEngine: .noEngine
+        case .busy: .busy
+        case .changed: .changed
         }
+        return PickerWords.text(word)
     }
 }
 

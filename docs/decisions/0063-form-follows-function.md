@@ -47,8 +47,10 @@ built; this says which parts exist.
      not allowed, a refused format, an update: each shows there as one line
      with at most one fix as a button. Typed messages from the engine name
      the fix.
-   - The delivery bar shows only the citation and its action. The empty
-     list's body may explain at length; it never repeats the line.
+   - The delivery bar shows the citation, the library button, its delivery
+     action and More (maintainer, 2026-11-26). The library button shows
+     the source in its menu and tooltip. The empty list can give a
+     longer explanation and a next action.
 
 ## Consequences
 

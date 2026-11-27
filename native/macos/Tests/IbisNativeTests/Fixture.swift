@@ -37,7 +37,9 @@ final class Fixture {
         EngineClient(binary: binary ?? self.binary, configuration: configuration)
     }
 
-    var opening: PickerOpenRequest { PickerOpenRequest(app: "com.apple.TextEdit", file: library.path) }
+    var opening: PickerOpenRequest {
+        PickerOpenRequest(app: "com.apple.TextEdit", file: library.path, language: .enUS, reload: nil)
+    }
 
     var settings: URL {
         configuration.appendingPathComponent("com.ibiscite.ibis.native/settings.json")

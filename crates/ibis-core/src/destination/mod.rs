@@ -18,6 +18,9 @@ use crate::contract::citation::{KeySyntax, OutputSpec};
 pub use site::site;
 pub use table::{APPS, App};
 
+/// Maximum age of a clipboard write when native paste is posted.
+pub const PASTE_DEADLINE: std::time::Duration = std::time::Duration::from_millis(1_500);
+
 /// Where an app ID belongs: the operating system it runs on, or the web for
 /// a website inside a browser, whose ID is only its site name (see [`site`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]

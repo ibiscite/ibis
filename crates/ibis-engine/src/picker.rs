@@ -1,31 +1,39 @@
-//! The picker reads engine projections and commits the preview it showed.
+//! Projections for the native picker. The shell measures and presents them.
+use crate::catalogue::{self, Audience, Language};
 use crate::citations::{SessionError, SessionId};
-use crate::{Cancellation, Engine, catalogue, format, health, outputs, recents, settings};
+use crate::{Cancellation, Engine, format, health, outputs, recents, settings};
 use ibis_core::contract::*;
 use ibis_core::destination::{AppId, System};
+use ibis_core::summary::Author;
+use ibis_sources::LibraryKind;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+mod words;
+pub use words::shell_words;
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PickerOpenRequest {
     pub file: Option<String>,
     pub app: Option<String>,
+    pub language: Language,
+    #[serde(default)]
+    pub reload: bool,
 }
 
 impl PickerOpenRequest {
-    pub fn library(&self, path: &Path) -> Result<Option<PathBuf>, EngineError> {
-        let file = self.file.as_ref().map(PathBuf::from).or_else(|| {
-            match &settings::load(path).cites().ok()?.portable.library {
-                Some(settings::LibrarySetting::Bibtex(file)) => Some(file.clone()),
-                _ => None,
-            }
-        });
-        if file.as_ref().is_some_and(|file| !file.is_absolute()) {
+    pub fn library(&self, path: &Path) -> Result<Option<settings::LibrarySetting>, EngineError> {
+        let library = self
+            .file
+            .as_ref()
+            .map(|file| settings::LibrarySetting::Bibtex(PathBuf::from(file)))
+            .or_else(|| settings::load(path).cites().ok()?.portable.library.clone());
+        if matches!(&library, Some(settings::LibrarySetting::Bibtex(file)) if !file.is_absolute()) {
             return Err(ErrorCode::BadInput.into());
         }
-        Ok(file)
+        Ok(library)
     }
 
     pub fn destination(&self) -> Option<AppId> {
@@ -38,13 +46,33 @@ impl PickerOpenRequest {
 
 #[derive(Serialize, JsonSchema)]
 pub struct PickerOpenResult {
-    pub library_open: bool,
+    pub library: Option<PickerLibrary>,
+    pub status: Vec<PickerStatus>,
     pub format: String,
     pub formats: Vec<PickerFormat>,
     pub forms: Vec<PickerForm>,
     pub locators: Vec<PickerLocator>,
     pub library_extensions: Vec<String>,
     pub paste_enabled: bool,
+    pub appearance: settings::Appearance,
+    pub density: settings::Density,
+    pub larger_text: bool,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub struct PickerLibrary {
+    pub name: String,
+    pub kind: LibraryKind,
+    pub condition: PickerLibraryCondition,
+    pub file: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum PickerLibraryCondition {
+    Ready,
+    Missing,
+    Unreadable,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -66,19 +94,70 @@ pub struct PickerLocator {
     pub name: String,
 }
 
-pub fn open_result(path: &Path, app: Option<&AppId>, library_open: bool) -> PickerOpenResult {
+pub fn open_result(
+    path: &Path,
+    app: Option<&AppId>,
+    source: Option<&settings::LibrarySetting>,
+    error: Option<EngineError>,
+    language: Language,
+) -> PickerOpenResult {
+    use settings::LibrarySetting;
     let loaded = settings::load(path);
     let defaults = settings::Settings::default();
-    let choice = format::usual(loaded.cites().unwrap_or(&defaults), app);
+    let settings = loaded.cites().unwrap_or(&defaults);
+    let choice = format::usual(settings, app);
+    let library = source.map(|source| {
+        let (name, kind, file) = match source {
+            LibrarySetting::Bibtex(file) => (
+                file.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+                LibraryKind::File,
+                Some(file.to_string_lossy().into_owned()),
+            ),
+            LibrarySetting::Zotero(_) => (word(language, "picker-native-zotero", &[]), LibraryKind::Zotero, None),
+        };
+        let condition = match (source, error) {
+            (_, None) => PickerLibraryCondition::Ready,
+            (LibrarySetting::Bibtex(file), Some(_)) if file.try_exists().ok() == Some(false) => {
+                PickerLibraryCondition::Missing
+            }
+            (_, Some(_)) => PickerLibraryCondition::Unreadable,
+        };
+        PickerLibrary {
+            name,
+            kind,
+            condition,
+            file,
+        }
+    });
+    let status = error
+        .into_iter()
+        .zip(&library)
+        .map(|(error, library)| {
+            let (text, fix) = if library.condition == PickerLibraryCondition::Missing {
+                (
+                    word(language, "picker-native-library-missing", &[("name", &library.name)]),
+                    PickerFix::LocateLibrary,
+                )
+            } else {
+                (problem_text(language, &error.into()), PickerFix::ChooseLibrary)
+            };
+            PickerStatus {
+                kind: PickerStatusKind::Library,
+                text,
+                fix: Some(fix),
+            }
+        })
+        .collect();
     PickerOpenResult {
-        library_open,
+        library,
+        status,
         format: choice.id.unwrap_or_else(|| outputs::DEFAULT.to_owned()),
         formats: outputs::outputs()
             .iter()
             .filter(|entry| !entry.exports_records && !entry.zotero_items)
             .map(|entry| PickerFormat {
                 id: entry.id.clone(),
-                name: entry.name.clone(),
+                name: output_name(entry, language),
                 forms: entry.forms.clone(),
             })
             .collect(),
@@ -86,36 +165,111 @@ pub fn open_result(path: &Path, app: Option<&AppId>, library_open: bool) -> Pick
             .into_iter()
             .map(|form| PickerForm {
                 form,
-                name: label("form", form),
+                name: word(language, &catalogue::id("form", form), &[]),
             })
             .collect(),
         locators: LocatorTerm::ALL
             .into_iter()
             .map(|term| PickerLocator {
                 term,
-                name: label("locator", term),
+                name: word(language, &catalogue::id("locator", term), &[]),
             })
             .collect(),
         paste_enabled: loaded.cites().is_ok_and(|saved| saved.portable.paste()),
         library_extensions: crate::library_file_extensions().map(str::to_owned).collect(),
+        appearance: settings.portable.appearance(),
+        density: settings.portable.density(),
+        larger_text: settings.portable.larger_text(),
     }
 }
 
-fn label(group: &str, value: impl Serialize) -> String {
-    let id = catalogue::id(group, value);
-    catalogue::text(&id, None, &[]).unwrap_or(id)
+fn word(language: Language, id: &str, args: &[(&str, &str)]) -> String {
+    catalogue::text_in(language, id, None, args).unwrap_or_else(|| id.to_owned())
+}
+
+fn output_name(output: &outputs::OutputInfo, language: Language) -> String {
+    let id = output
+        .id
+        .strip_prefix("china-national-standard-gb-t-7714-2025-")
+        .map_or_else(
+            || format!("output-name-{}", output.id),
+            |edition| format!("output-name-gb-{edition}"),
+        );
+    catalogue::text_in(language, &id, None, &[]).unwrap_or_else(|| output.name.clone())
+}
+
+fn problem_text(language: Language, problem: &Problem) -> String {
+    catalogue::message_in(language, &problem.info.message, Audience::App)
 }
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PickerSearchRequest {
     pub query: String,
+    pub shorthand: bool,
 }
 
 #[derive(Serialize, JsonSchema)]
 pub struct PickerSearchResult {
+    pub sections: Vec<PickerSection>,
+    /// The count of all matches. Absent for an empty search.
+    pub total: Option<usize>,
+    pub count_label: Option<String>,
+    pub status: Vec<PickerStatus>,
+    pub segments: Vec<PickerSegment>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum PickerSectionKind {
+    Best,
+    Closest,
+    CitedHere,
+    RecentlyAdded,
+    Pasted,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub struct PickerSection {
+    pub kind: PickerSectionKind,
     pub rows: Vec<PickerRow>,
-    pub heading: Option<String>,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub struct PickerStatus {
+    pub kind: PickerStatusKind,
+    pub text: String,
+    pub fix: Option<PickerFix>,
+}
+
+#[derive(Clone, Copy, Serialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum PickerStatusKind {
+    Library,
+    Shorthand,
+    Citation,
+}
+
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum PickerFix {
+    ChooseLibrary,
+    LocateLibrary,
+    ReloadLibrary,
+    ClearSearch,
+    ChooseFormat,
+    EditCitation,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub struct PickerSegment {
+    pub typed: String,
+    pub search: String,
+    pub complete: bool,
+    pub locator: Option<LocatorInput>,
+    pub prefix: Option<String>,
+    /// A finished segment is automatically added only for a clear first match.
+    pub row: Option<PickerRow>,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -125,77 +279,288 @@ pub struct PickerRow {
     pub cite: Fingerprint,
     pub title: Option<String>,
     pub authors: Vec<String>,
+    pub first_author: Option<String>,
+    pub author_count: usize,
     pub year: Option<String>,
     pub journal: Option<String>,
+    pub item_type: Option<String>,
+    pub kind: PickerRowKind,
+    pub kind_label: String,
+    pub citation_key: Option<String>,
+    pub full_byline: String,
+    /// Best first, all the way to a date on its own. Layout only measures and picks.
+    pub bylines: Vec<String>,
 }
 
-fn row(item: &SnapshotObject) -> Option<PickerRow> {
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum PickerRowKind {
+    Article,
+    Book,
+    Chapter,
+    Thesis,
+    Web,
+    Report,
+    Other,
+}
+
+fn kind(item_type: &str) -> PickerRowKind {
+    use PickerRowKind::*;
+    match item_type {
+        "article" | "article-journal" | "article-magazine" | "article-newspaper" => Article,
+        "book" => Book,
+        "chapter" | "entry" | "entry-dictionary" | "entry-encyclopedia" => Chapter,
+        "thesis" => Thesis,
+        "webpage" => Web,
+        "report" | "standard" => Report,
+        _ => Other,
+    }
+}
+
+fn bylines(authors: &[Author], year: &str, container: Option<&str>, language: Language) -> (String, Vec<String>) {
+    let join = |authors: &str, container| {
+        [(!authors.is_empty()).then_some(authors), Some(year), container]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" · ")
+    };
+    let names = authors
+        .iter()
+        .map(|author| author.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let full = join(&names, container);
+    let first = authors.first();
+    let and_others = first.map_or_else(String::new, |author| {
+        word(language, "picker-native-author-others", &[("author", &author.short)])
+    });
+    let main = if authors.len() > 2 { &and_others } else { &names };
+    let short = if authors.len() > 2 {
+        and_others.clone()
+    } else {
+        authors
+            .iter()
+            .map(|author| author.short.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let mut choices = vec![join(main, container), join(main, None), join(&short, None)];
+    if authors.len() > 1 {
+        choices.push(join(&and_others, None));
+    }
+    if let Some(author) = first {
+        choices.push(join(&author.short, None));
+        for (end, _) in author.short.char_indices().filter(|(_, c)| c.is_whitespace()).rev() {
+            choices.push(join(&format!("{}…", author.short[..end].trim_end()), None));
+        }
+    }
+    choices.push(join("", None));
+    choices.dedup();
+    (full, choices)
+}
+
+fn row(item: &SnapshotObject, language: Language) -> Option<PickerRow> {
     let LibraryObject::Record(record) = &item.object else {
         return None;
     };
-    let summary = record.summary();
+    let mut summary = record.full_summary();
+    for author in summary.authors.iter_mut().filter(|author| author.others) {
+        let label = word(language, "row-et-al", &[]);
+        author.name = label.clone();
+        author.short = label;
+    }
+    let no_date = word(language, "picker-no-date", &[]);
+    let (full_byline, bylines) = bylines(
+        &summary.authors,
+        summary.year.as_deref().unwrap_or(&no_date),
+        summary.container.as_deref(),
+        language,
+    );
+    let item_type = summary.item_type.as_deref().unwrap_or_default();
+    let kind_label = if item_type == "article-journal" {
+        word(language, "picker-native-journal-article", &[])
+    } else {
+        let short = word(language, "row-item-type", &[("type", item_type)]);
+        if short.is_empty() {
+            word(language, "picker-native-other-reference", &[])
+        } else {
+            short
+        }
+    };
     Some(PickerRow {
         id: record.id.clone(),
         cite: item.fingerprints.cite.clone(),
         title: summary.title,
-        authors: summary.authors.into_iter().map(|author| author.short).collect(),
+        first_author: summary.authors.first().map(|author| author.short.clone()),
+        author_count: summary.authors.len(),
+        authors: summary.authors.into_iter().map(|author| author.name).collect(),
         year: summary.year,
         journal: summary.container,
+        kind: kind(item_type),
+        kind_label,
+        item_type: summary.item_type,
+        citation_key: record
+            .citation_key()
+            .ok()
+            .flatten()
+            .map(str::to_owned)
+            .or_else(|| Some(record.id.key.clone())),
+        full_byline,
+        bylines,
     })
+}
+
+fn source_status(health: health::SourceHealth, language: Language) -> Vec<PickerStatus> {
+    health
+        .findings
+        .into_iter()
+        .filter_map(|finding| {
+            let (text, fix) = match finding {
+                health::SourceFinding::RefreshFailed { .. } => (
+                    word(language, "app-library-not-refreshed", &[]),
+                    Some(PickerFix::ReloadLibrary),
+                ),
+                health::SourceFinding::SourceWarnings { count, .. } => (
+                    catalogue::count_in(language, "library-entries-to-check", count).unwrap_or_default(),
+                    None,
+                ),
+                health::SourceFinding::Unknown => return None,
+            };
+            Some(PickerStatus {
+                kind: PickerStatusKind::Library,
+                text,
+                fix,
+            })
+        })
+        .collect()
 }
 
 pub fn search(
     engine: &Engine,
     request: PickerSearchRequest,
     recent: &[ItemRef],
+    language: Language,
     cancel: &Cancellation,
 ) -> Result<PickerSearchResult, EngineError> {
-    let (rows, health, heading) = if request.query.trim().is_empty() {
-        let (snapshot, libraries) = engine.health()?;
-        let mut picks = recents::resolve(&snapshot, recent, false);
-        let heading = if picks.is_empty() {
-            picks = recents::resolve(&snapshot, &[], true);
-            "Recently Added"
-        } else {
-            "Recent Citations"
-        };
-        let rows = picks.into_iter().filter_map(|(item, _)| row(item)).collect::<Vec<_>>();
-        let heading = (!rows.is_empty()).then_some(heading);
-        (rows, health::SourceHealth::of(&libraries), heading)
+    if request.query.len() > 64 * 1024 {
+        return Err(ErrorCode::BadInput.into());
+    }
+    let mut pieces = vec![request.query.as_str()];
+    if request.shorthand {
+        pieces = request.query.split(';').collect();
+        if pieces.len() > crate::MAX_CITATION_ITEMS + 1 {
+            return Err(ErrorCode::ResourceLimit.into());
+        }
+    }
+    let query = pieces.pop().unwrap_or_default().trim();
+    let mut segments = Vec::new();
+    let mut status = Vec::new();
+    let labels = if request.shorthand && language != Language::English {
+        LocatorTerm::ALL
+            .into_iter()
+            .map(|term| (word(language, &catalogue::id("locator", term), &[]), term))
+            .collect()
     } else {
-        let result = engine.search(
+        Vec::new()
+    };
+    let search_one = |query: &str| {
+        engine.search_with_total(
             &crate::request::SearchRequest {
-                query: request.query,
+                query: query.to_owned(),
                 limit: 50,
                 libraries: None,
-                interpret_locator: false,
+                interpret_locator: request.shorthand,
             },
+            &labels,
             cancel,
-        )?;
-        let heading = result.hits.first().filter(|hit| hit.partial).map(|_| "Closest Matches");
-        (
-            result.hits.iter().filter_map(|hit| row(&hit.item)).collect(),
-            result.source_health,
-            heading,
         )
     };
-    let heading = match health.findings.first() {
-        Some(health::SourceFinding::RefreshFailed { .. }) => catalogue::text("app-library-not-refreshed", None, &[]),
-        Some(health::SourceFinding::SourceWarnings { count, .. }) => {
-            Some(format!("{count} library entries need attention."))
+    let segment = |typed: &str, complete, result: &crate::service::SearchResult| {
+        let read = result.shorthand.as_ref();
+        let best = result.hits.first().filter(|hit| {
+            complete && !hit.partial && !hit.typo && result.hits.get(1).is_none_or(|next| hit.score > next.score)
+        });
+        PickerSegment {
+            typed: typed.to_owned(),
+            search: read.map_or(typed, |read| read.search.as_str()).to_owned(),
+            complete,
+            prefix: read.and_then(|read| read.prefix.clone()),
+            locator: read.and_then(|read| read.locator.as_ref()).map(|found| LocatorInput {
+                label: found.locator.term,
+                text: found.locator.value.clone(),
+            }),
+            row: best.and_then(|hit| row(&hit.item, language)),
         }
-        _ => heading.map(str::to_owned),
     };
-    Ok(PickerSearchResult { rows, heading })
+    for typed in pieces.into_iter().map(str::trim).filter(|part| !part.is_empty()) {
+        let (found, _) = search_one(typed)?;
+        let finished = segment(typed, true, &found);
+        if finished.row.is_none() && status.is_empty() {
+            status.push(PickerStatus {
+                kind: PickerStatusKind::Shorthand,
+                text: word(language, "picker-native-unmatched-segment", &[("query", typed)]),
+                fix: Some(PickerFix::ClearSearch),
+            });
+        }
+        segments.push(finished);
+    }
+    let (sections, total, health) = if query.is_empty() {
+        let (snapshot, libraries) = engine.health()?;
+        let (cited, added): (Vec<_>, Vec<_>) = recents::resolve_with_added(&snapshot, recent, 12)
+            .into_iter()
+            .partition(|(_, cited)| *cited);
+        let sections = [
+            (PickerSectionKind::CitedHere, cited),
+            (PickerSectionKind::RecentlyAdded, added),
+        ]
+        .into_iter()
+        .filter(|(_, items)| !items.is_empty())
+        .map(|(kind, items)| PickerSection {
+            kind,
+            rows: items.into_iter().filter_map(|(item, _)| row(item, language)).collect(),
+        })
+        .collect();
+        (sections, None, health::SourceHealth::of(&libraries))
+    } else {
+        let (result, total) = search_one(query)?;
+        if request.shorthand {
+            segments.push(segment(query, false, &result));
+        }
+        let kind = if result.list.is_some() {
+            PickerSectionKind::Pasted
+        } else if result.hits.first().is_some_and(|hit| hit.partial) {
+            PickerSectionKind::Closest
+        } else {
+            PickerSectionKind::Best
+        };
+        let rows = result.hits.iter().filter_map(|hit| row(&hit.item, language)).collect();
+        (vec![PickerSection { kind, rows }], Some(total), result.source_health)
+    };
+    status.extend(source_status(health, language));
+    Ok(PickerSearchResult {
+        sections,
+        total,
+        count_label: total.and_then(|count| catalogue::count_in(language, "picker-result-count", count)),
+        status,
+        segments,
+    })
 }
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PickerPreviewRequest {
+    pub entries: Vec<PickerPreviewEntry>,
+    pub format: String,
+    pub keep_order: bool,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PickerPreviewEntry {
     pub item: ItemRef,
     #[schemars(with = "String")]
     pub cite: Fingerprint,
-    pub format: String,
     pub locator: Option<LocatorInput>,
     pub form: Option<CitationForm>,
     pub prefix: Option<String>,
@@ -207,44 +572,110 @@ pub struct PickerPreviewResult {
     pub ticket: String,
     pub content_hash: String,
     pub text: String,
-    pub problem: Option<String>,
+    /// Ordered spans owned by request entries, including the rich text runs.
+    pub display: DisplayTree,
+    pub warnings: Vec<PickerWarning>,
+    pub problem: Option<PickerStatus>,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub struct PickerWarning {
+    pub item: Option<usize>,
+    pub text: String,
 }
 
 pub fn preview(
     engine: &Engine,
     request: PickerPreviewRequest,
+    language: Language,
     cancel: Cancellation,
-) -> Result<PickerPreviewResult, SessionError> {
+) -> PickerPreviewResult {
     let result = engine
         .citations()
         .preview(
             SessionId::PICKER,
             Draft {
-                items: vec![DraftItem {
-                    id: request.item,
-                    cite: request.cite,
-                    locator: None,
-                    locator_input: request.locator,
-                    form: request.form,
-                    prefix: request.prefix,
-                    suffix: request.suffix,
-                }],
+                items: request
+                    .entries
+                    .into_iter()
+                    .map(|entry| DraftItem {
+                        id: entry.item,
+                        cite: entry.cite,
+                        locator: None,
+                        locator_input: entry.locator,
+                        form: entry.form,
+                        prefix: entry.prefix,
+                        suffix: entry.suffix,
+                    })
+                    .collect(),
                 output: OutputSpec::Preset { name: request.format },
                 form: CitationForm::Normal,
-                keep_order: false,
+                keep_order: request.keep_order,
                 input_language: None,
                 output_locale: None,
                 sample: false,
             },
             cancel,
+        )
+        .and_then(|work| work.run());
+    let status = |problem: Problem| {
+        let fix = match problem.info.recovery() {
+            Recovery::ChooseOutput | Recovery::ChooseStyle => Some(PickerFix::ChooseFormat),
+            Recovery::ChooseForm | Recovery::EditLocator | Recovery::EditCitation => Some(PickerFix::EditCitation),
+            _ => None,
+        };
+        PickerStatus {
+            kind: PickerStatusKind::Citation,
+            text: problem_text(language, &problem),
+            fix,
+        }
+    };
+    match result {
+        Ok(result) => PickerPreviewResult {
+            ticket: result.ticket,
+            content_hash: result.content_hash,
+            text: result.text,
+            display: result.display,
+            warnings: result
+                .warnings
+                .into_iter()
+                .map(|warning| PickerWarning {
+                    item: warning.item,
+                    text: catalogue::message_in(language, &warning.message, Audience::App),
+                })
+                .collect(),
+            problem: result.failure.map(status),
+        },
+        Err(error) => PickerPreviewResult {
+            ticket: String::new(),
+            content_hash: String::new(),
+            text: String::new(),
+            display: DisplayTree::default(),
+            warnings: Vec::new(),
+            problem: Some(status(error.problem())),
+        },
+    }
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PickerFormsRequest {
+    pub ticket: String,
+    pub content_hash: String,
+    pub item: usize,
+}
+
+pub fn forms(engine: &Engine, request: PickerFormsRequest, cancel: Cancellation) -> Result<FormDetails, SessionError> {
+    engine
+        .citations()
+        .forms(
+            SessionId::PICKER,
+            &request.ticket,
+            &request.content_hash,
+            request.item,
+            cancel,
         )?
-        .run()?;
-    Ok(PickerPreviewResult {
-        ticket: result.ticket,
-        content_hash: result.content_hash,
-        text: result.text,
-        problem: result.problem,
-    })
+        .run()
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -292,3 +723,6 @@ pub fn deliver<T>(
     })
     .map_err(|_| SessionError::from(ErrorCode::SourceUnavailable))?
 }
+
+#[cfg(test)]
+mod tests;

@@ -6,7 +6,7 @@ use crate::service::{
     Cancellation, DispatchResult, Engine, EntryResult, FindInResult, LibrariesResult, OutlineResult, ProjectResult,
     ReadResult, Reply, SearchResult, ShareResult, StylesResult, answers, parameters,
 };
-use ibis_core::contract::{CitationRequest, CitationResult, EngineError, ErrorCode, SnapshotObject};
+use ibis_core::contract::{CitationRequest, CitationResult, EngineError, ErrorCode, FormDetails, SnapshotObject};
 use ibis_sources::SourceCapability;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -368,6 +368,7 @@ picker_rows! {
     Open "picker/open": PickerOpenRequest => PickerOpenResult;
     Search "picker/search": PickerSearchRequest => PickerSearchResult;
     Preview "picker/preview": PickerPreviewRequest => PickerPreviewResult;
+    Forms "picker/forms": PickerFormsRequest => FormDetails;
     Deliver "picker/deliver": PickerDeliverRequest => PickerDeliverResult;
 }
 

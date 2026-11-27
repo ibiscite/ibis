@@ -1,17 +1,58 @@
 //! A native picker's ordered RPC turns. A delivery turn ends with the
 //! shell's acknowledgment, or with its connection closing.
-use super::{Connections, Endpoint, Framed};
+use super::{Connections, Endpoint, Framed, Stream, WRITE_TIMEOUT, decode as decode_frame};
 use ibis_core::contract::{EngineError, ErrorCode, ItemRef};
-use ibis_core::destination::AppId;
+use ibis_core::destination::{AppId, PASTE_DEADLINE};
+use ibis_engine::catalogue::Language;
 use ibis_engine::citations::SessionId;
-use ibis_engine::picker::{self, PickerOpenRequest, PickerPreviewResult};
+use ibis_engine::picker::{self, PickerLibraryCondition, PickerOpenRequest};
 use ibis_engine::recents::{List, SessionReferences};
-use ibis_engine::{Cancellation, Engine, PickerMethod, rpc, settings};
+use ibis_engine::{Cancellation, Engine, PickerMethod, protocol, rpc, settings};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use std::io;
+use std::io::{self, BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, atomic::Ordering};
+use std::time::{Duration, Instant};
+
+// Allow for the native post and the acknowledgement after the last possible paste.
+const ACK_GRACE: Duration = Duration::from_millis(500);
+
+fn acknowledgement(framed: &mut Framed) -> io::Result<bool> {
+    // A stalled or partial frame closes the turn. A deadline bounds the
+    // entire frame even if the peer makes intermittent progress.
+    struct Until<'a> {
+        reader: &'a mut BufReader<Stream>,
+        deadline: Instant,
+    }
+    impl Read for Until<'_> {
+        fn read(&mut self, destination: &mut [u8]) -> io::Result<usize> {
+            let n = self.fill_buf()?.read(destination)?;
+            self.consume(n);
+            Ok(n)
+        }
+    }
+    impl BufRead for Until<'_> {
+        fn fill_buf(&mut self) -> io::Result<&[u8]> {
+            let left = self.deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return Err(io::ErrorKind::TimedOut.into());
+            }
+            self.reader.get_mut().set_timeouts(Some(left), WRITE_TIMEOUT)?;
+            self.reader.fill_buf()
+        }
+        fn consume(&mut self, n: usize) {
+            self.reader.consume(n);
+        }
+    }
+    let mut reader = Until {
+        reader: &mut framed.reader,
+        deadline: Instant::now() + PASTE_DEADLINE + ACK_GRACE,
+    };
+    let copied = decode_frame(protocol::read_frame(&mut reader))?.ok_or(io::ErrorKind::UnexpectedEof)?;
+    framed.session()?;
+    Ok(copied)
+}
 
 pub(crate) struct History {
     refs: SessionReferences,
@@ -70,8 +111,9 @@ struct Picker<'a> {
     host: &'a crate::headless::Host,
     settings: PathBuf,
     engine: Engine,
-    file: Option<PathBuf>,
+    source: Option<settings::LibrarySetting>,
     target: Option<AppId>,
+    language: Language,
     paste_at_opening: bool,
 }
 
@@ -80,19 +122,40 @@ impl Picker<'_> {
         self.engine.citations().invalidate(SessionId::PICKER);
         self.paste_at_opening = false;
         self.target = request.destination();
-        let file = request.library(&self.settings)?;
-        if file != self.file {
+        self.language = request.language;
+        let source = request.library(&self.settings)?;
+        let mut error = None;
+        if request.reload || source != self.source {
             // Each picker connection has its own library selection; file reads
             // and formatting still use the daemon's shared caches.
             self.engine = self.host.cli_engine()?;
-            self.file = None;
-            if let Some(path) = &file {
-                self.engine.open_file_id(path, &Cancellation::default())?;
+            self.source = None;
+            let cancel = Cancellation::default();
+            let opened = match &source {
+                Some(settings::LibrarySetting::Bibtex(path)) => self.engine.open_file_id(path, &cancel).map(|_| ()),
+                Some(settings::LibrarySetting::Zotero(libraries)) => self
+                    .engine
+                    .prepare_zotero_reload(request.reload, Some(libraries.libraries()), None, &cancel)
+                    .and_then(|prepared| self.engine.accept_zotero_reload(prepared)),
+                None => Ok(()),
+            };
+            match opened {
+                Ok(()) => self.source = source.clone(),
+                Err(failure) => error = Some(failure),
             }
-            self.file = file;
         }
-        let result = picker::open_result(&self.settings, self.target.as_ref(), self.file.is_some());
-        self.paste_at_opening = result.paste_enabled;
+        let result = picker::open_result(
+            &self.settings,
+            self.target.as_ref(),
+            source.as_ref(),
+            error,
+            self.language,
+        );
+        self.paste_at_opening = result.paste_enabled
+            && result
+                .library
+                .as_ref()
+                .is_some_and(|library| library.condition == PickerLibraryCondition::Ready);
         Ok(result)
     }
 
@@ -113,8 +176,9 @@ pub(super) fn serve(
         host,
         settings: config.join("com.ibiscite.ibis.native/settings.json"),
         engine: host.cli_engine().map_err(|_| io::Error::other("engine unavailable"))?,
-        file: None,
+        source: None,
         target: None,
+        language: Language::default(),
         paste_at_opening: false,
     };
     while !connections.draining.load(Ordering::Acquire) {
@@ -139,20 +203,22 @@ pub(super) fn serve(
                     &picker.engine,
                     params,
                     &recent,
+                    picker.language,
                     &Cancellation::default(),
                 )?)
             }),
             PickerMethod::Preview => decode(params).and_then(|params| {
-                let preview =
-                    picker::preview(&picker.engine, params, Cancellation::default()).unwrap_or_else(|error| {
-                        PickerPreviewResult {
-                            ticket: String::new(),
-                            content_hash: String::new(),
-                            text: String::new(),
-                            problem: Some(error.to_string()),
-                        }
-                    });
-                encode(preview)
+                encode(picker::preview(
+                    &picker.engine,
+                    params,
+                    picker.language,
+                    Cancellation::default(),
+                ))
+            }),
+            PickerMethod::Forms => decode(params).and_then(|params| {
+                encode(
+                    picker::forms(&picker.engine, params, Cancellation::default()).map_err(|_| ErrorCode::Cancelled)?,
+                )
             }),
             PickerMethod::Deliver => {
                 let _turn = delivery.lock().map_err(|_| io::Error::other("delivery unavailable"))?;
@@ -170,11 +236,8 @@ pub(super) fn serve(
                         picker.paste_at_opening,
                         |grant| {
                             framed.send(&rpc::success(&id, serde_json::to_value(grant)?))?;
-                            // The client keeps the restart fence until its last native
-                            // effect. EOF means it can no longer perform that effect.
-                            framed
-                                .request::<bool>()?
-                                .ok_or_else(|| io::Error::from(io::ErrorKind::UnexpectedEof))
+                            // The client keeps the restart fence until its last native effect.
+                            acknowledgement(&mut framed)
                         },
                     ) {
                         Ok((copied, items)) => {

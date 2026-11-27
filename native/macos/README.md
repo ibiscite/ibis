@@ -22,20 +22,21 @@ Choose a library from the menu or pass its path on launch. The chooser accepts
 files the engine can open, including BibTeX, BibLaTeX, CSL JSON, RIS and CSV.
 The file choice and format changes made in the picker last for the current
 run. Search shows title and byline, with recent citations for the captured
-app or source-added references when the query is empty. Use Up and Down to
-select a reference, open **Citation Details** for the form, locator and
-surrounding text, and press Return to deliver the shown preview. Escape
-closes details, clears the query, then hides the picker.
+app or source-added references when the query is empty. Use Up and Down to select a reference and ⇧↩ to add it to the citation.
+⌘T starts typed citations, where a semicolon completes a reference. Use
+⌘I to edit its form, locator and surrounding text in the drawer. Return
+delivers the shown preview. Escape closes details, clears the query, then
+hides the picker.
 
 For paste, choose **Allow Paste…** in the Ibis Native menu. In macOS System
 Settings, grant **Ibis Native** Accessibility separately from Ibis and Ibis
 Nightly. Summon it again from an editor after granting permission. When
 paste is unavailable, the citation is copied in the engine's available
-clipboard formats. The native build uses its own settings profile in
-Application Support. Its stored recent citation history contains reference
-identities. System controls and text styles follow the current appearance
-and display scaling. macOS applies its Accessibility Text Size slider to
-the apps it lists. [Apple's display scaling and text size guide](https://support.apple.com/guide/mac-help/mchld786f2cd/mac)
+clipboard formats. The native build uses its own settings profile in Application Support.
+Its stored recent citation history contains reference identities. More
+has Compact and Comfortable rows and System, Light and Dark appearance.
+⌘+ and ⌘− scale the whole picker from 100% to 200%. The window keeps its
+size while you type and remembers edge resizing per display.
 
 The bundled engine joins a daemon from the same build. If several builds
 use a profile, the newer build wins. Use an absolute `IBIS_CONFIG_DIR` for
@@ -48,7 +49,6 @@ contract with `node scripts/gen.mjs` after changing picker methods.
 
 Steps 2.3–2.5 cover Settings, Sparkle, release signing and notarisation.
 The macOS CI leg builds and tests the repo app. Packaging it for the Mac
-nightly is release work. The Reader, live Zotero selection, projects,
-app-specific paste approvals and multi-reference drafts remain parity
-work. The site can describe native availability when the app ships in a
+nightly is release work. The Reader, advanced Zotero selection, projects and app-specific
+paste approvals remain parity work. The site can describe native availability when the app ships in a
 nightly.
