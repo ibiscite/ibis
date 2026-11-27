@@ -34,7 +34,8 @@ private final class PickerTable: NSTableView {
 }
 
 private final class PickerTableRow: NSTableRowView {
-    var hovered = false { didSet { needsDisplay = true } }
+    var hovered = false { didSet { if hovered != oldValue { needsDisplay = true } } }
+    var isQuickTarget = false { didSet { if isQuickTarget != oldValue { needsDisplay = true } } }
     var metrics = PickerMetrics(scale: 1, density: .compact)
 
     private func fill(_ color: NSColor) {
@@ -44,7 +45,7 @@ private final class PickerTableRow: NSTableRowView {
     }
 
     override func drawSelection(in dirtyRect: NSRect) {
-        fill(isEmphasized ? .selectedContentBackgroundColor : .unemphasizedSelectedContentBackgroundColor)
+        fill(isEmphasized || isQuickTarget ? .selectedContentBackgroundColor : .unemphasizedSelectedContentBackgroundColor)
     }
     override func drawBackground(in dirtyRect: NSRect) {
         if hovered && !isSelected { fill(.pickerQuaternaryFill) }
@@ -60,6 +61,8 @@ private final class PickerRecordCell: NSTableCellView {
     private let shortcutLabel = pickerLabel()
     private let record: PickerRow
     private let metrics: PickerMetrics
+    private var cited = false
+    private var isQuickTarget = false
 
     init(record: PickerRow, metrics: PickerMetrics) {
         self.record = record
@@ -70,12 +73,12 @@ private final class PickerRecordCell: NSTableCellView {
         icon.contentTintColor = .secondaryLabelColor
         icon.setAccessibilityElement(false)
         titleLabel.stringValue = record.title ?? PickerWords.text(.untitled)
-        titleLabel.font = metrics.font(13)
+        titleLabel.font = metrics.font(14)
         titleLabel.textColor = .labelColor
         byline.font = metrics.font(12)
         explanation.font = NSFontManager.shared.convert(metrics.font(12), toHaveTrait: .italicFontMask)
         explanation.stringValue = record.matchReasons.joined(separator: " · ")
-        date.font = .monospacedDigitSystemFont(ofSize: metrics.pt(12), weight: .regular)
+        date.font = .monospacedDigitSystemFont(ofSize: metrics.pt(12), weight: .medium)
         date.stringValue = record.year ?? PickerWords.text(.noDate)
         date.alignment = .right
         shortcutLabel.font = metrics.font(11, .medium)
@@ -95,21 +98,25 @@ private final class PickerRecordCell: NSTableCellView {
     }
 
     private func updateForeground() {
-        let selected = backgroundStyle == .emphasized
+        let selected = isQuickTarget || backgroundStyle == .emphasized
         let text = selected ? NSColor.alternateSelectedControlTextColor : .labelColor
         titleLabel.textColor = text
         byline.textColor = selected ? text : .secondaryLabelColor
         explanation.textColor = byline.textColor
         date.textColor = byline.textColor
         shortcutLabel.textColor = byline.textColor
-        icon.contentTintColor = selected ? text : .secondaryLabelColor
+        icon.contentTintColor = selected ? text : (cited ? PickerArt.accent(effectiveAppearance) : .secondaryLabelColor)
     }
 
     private var accessibilitySummary: [String] {
         [titleLabel.stringValue, record.fullByline, record.kindLabel] + record.matchReasons
     }
 
-    func describe(cited: Bool, shortcut: Int?) {
+    func describe(cited: Bool, shortcut: Int?, quickTarget: Bool) {
+        if self.cited != cited { icon.image = PickerArt.image(cited ? "check" : record.kind.rawValue) }
+        self.cited = cited
+        isQuickTarget = quickTarget
+        updateForeground()
         shortcutLabel.stringValue = shortcut.map(String.init) ?? ""
         shortcutLabel.isHidden = shortcut == nil
         icon.isHidden = shortcut != nil
@@ -164,6 +171,7 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var selected: ItemRef?
     private var cited: Set<ItemRef> = []
     private var numbers = false
+    private var quickDelivery = false
     private var hovered = -1
     private var hintHeight: CGFloat = 0
     private var updatingSelection = false
@@ -239,12 +247,13 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func configure(sections: [PickerSection], metrics: PickerMetrics, recent: Bool, selected: ItemRef?,
-                   cited: Set<ItemRef>, numbers: Bool) {
+                   cited: Set<ItemRef>, numbers: Bool, quickDelivery: Bool = false) {
         let oldHeight = self.metrics.row
         let oldScale = self.metrics.scale
         self.metrics = metrics
         self.cited = cited
         self.numbers = numbers
+        self.quickDelivery = quickDelivery
         scroll.scrollerInsets = NSEdgeInsets(top: metrics.pt(4), left: 0, bottom: metrics.pt(4), right: 0)
         var next: [Cell] = []
         var used: CGFloat = 0
@@ -290,6 +299,12 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
         refreshVisibleRows()
     }
 
+    func showQuickDelivery(_ enabled: Bool) {
+        guard quickDelivery != enabled else { return }
+        quickDelivery = enabled
+        if table.selectedRow >= 0 { refresh(table.selectedRow, numbered: numbers ? numberedRows : []) }
+    }
+
     private var visibleRows: Range<Int> {
         let rows = table.rows(in: table.visibleRect)
         guard rows.location != NSNotFound else { return 0..<0 }
@@ -333,9 +348,14 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     private func refresh(_ index: Int, numbered: [Int]) {
         guard let row = record(at: index) else { return }
-        (table.rowView(atRow: index, makeIfNecessary: false) as? PickerTableRow)?.hovered = index == hovered
+        let quickTarget = quickDelivery && row.id == selected
+        if let view = table.rowView(atRow: index, makeIfNecessary: false) as? PickerTableRow {
+            view.hovered = index == hovered
+            view.isQuickTarget = quickTarget
+        }
         (table.view(atColumn: 0, row: index, makeIfNecessary: false) as? PickerRecordCell)?
-            .describe(cited: cited.contains(row.id), shortcut: numbered.firstIndex(of: index).map { $0 + 1 })
+            .describe(cited: cited.contains(row.id), shortcut: numbered.firstIndex(of: index).map { $0 + 1 },
+                      quickTarget: quickTarget)
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { cells.count }
@@ -352,6 +372,7 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let view = PickerTableRow()
         view.metrics = metrics
         view.hovered = row == hovered
+        view.isQuickTarget = quickDelivery && selected != nil && record(at: row)?.id == selected
         return view
     }
 
@@ -360,7 +381,8 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
         case let .record(record):
             let cell = PickerRecordCell(record: record, metrics: metrics)
             let position = numbers ? numberedRows.firstIndex(of: row).map { $0 + 1 } : nil
-            cell.describe(cited: cited.contains(record.id), shortcut: position)
+            cell.describe(cited: cited.contains(record.id), shortcut: position,
+                          quickTarget: quickDelivery && record.id == selected)
             return cell
         case let .section(title):
             return PickerListLabel(title, metrics: metrics, centered: false)

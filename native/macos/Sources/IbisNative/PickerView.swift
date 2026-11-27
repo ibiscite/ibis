@@ -151,7 +151,7 @@ final class PickerCanvas: NSView {
         results.frame = NSRect(x: 0, y: resultsY, width: width, height: max(0, shelfY - resultsY))
         results.configure(sections: model.sections, metrics: m, recent: model.searchReply?.total == nil,
                           selected: model.selected, cited: Set(model.citations.map { $0.row.id }),
-                          numbers: numbers && !hasOpenPopover)
+                          numbers: numbers && !hasOpenPopover, quickDelivery: quickDelivery)
         empty.frame = results.frame
         empty.configure(state: emptyState, actionsOpen: hasOpenActions, metrics: m)
         shelf.frame = NSRect(x: 0, y: shelfY, width: width, height: shelfHeight)
@@ -179,7 +179,7 @@ final class PickerCanvas: NSView {
         format.toolTip = model.formatContext
         let buttonWidth = format.isHidden ? 0 : format.preferredWidth
         let formatX = width - m.inset - buttonWidth
-        format.frame = NSRect(x: formatX, y: m.pt(12), width: buttonWidth, height: m.pt(28))
+        format.frame = NSRect(x: formatX, y: (m.header - m.pt(28)) / 2, width: buttonWidth, height: m.pt(28))
 
         mode.isHidden = !model.shorthand
         mode.scarlet = true
@@ -187,12 +187,13 @@ final class PickerCanvas: NSView {
         modeLabel.font = m.font(13, .medium)
         modeLabel.textColor = PickerArt.accent(effectiveAppearance)
         let modeWidth = pickerWidth(modeLabel.stringValue, font: m.font(13, .medium)) + m.pt(16)
-        mode.frame = NSRect(x: m.column, y: m.pt(14), width: modeWidth, height: m.pt(24))
+        mode.frame = NSRect(x: m.column, y: (m.header - m.pt(24)) / 2, width: modeWidth, height: m.pt(24))
         pickerLine(modeLabel, x: m.pt(8), y: 0, width: modeWidth - m.pt(16), height: mode.bounds.height)
         let left = m.column + (model.shorthand ? modeWidth + m.pt(8) : 0)
-        search.font = m.font(16)
+        search.controlSize = .large
+        search.font = m.searchFont
         search.placeholderString = PickerWords.text(model.shorthand ? .shorthandExample : .search)
-        let searchHeight = m.pt(32)
+        let searchHeight = m.searchHeight
         search.frame = NSRect(x: left, y: (m.header - searchHeight) / 2,
                               width: max(1, formatX - left - m.pt(12)), height: searchHeight)
         search.show(model.query)
@@ -322,6 +323,14 @@ final class PickerCanvas: NSView {
             view.nextKeyView = enabled[(index + 1) % enabled.count]
         }
     }
+
+    private var quickDelivery: Bool {
+        guard let window, window.isKeyWindow, !model.hasDraft, !hasOpenPopover, activeMenu == nil else { return false }
+        guard let responder = window.firstResponder else { return false }
+        return search === responder || search.currentEditor() === responder
+    }
+
+    func refreshReturnTarget() { results.showQuickDelivery(quickDelivery) }
 
     func focusSearch(caretAtEnd: Bool = false) {
         guard let window else { return }
@@ -624,8 +633,10 @@ final class PickerCanvas: NSView {
     private func open(_ menu: NSMenu, at button: NSView) {
         menu.autoenablesItems = false
         activeMenu = menu
+        refreshReturnTarget()
         menu.popUp(positioning: nil, at: NSPoint(x: button.bounds.minX, y: button.bounds.maxY), in: button)
         activeMenu = nil
+        refreshReturnTarget()
     }
 
     private func menuItem(_ command: PickerCommand) -> NSMenuItem {

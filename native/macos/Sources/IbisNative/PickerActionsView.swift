@@ -58,7 +58,7 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
     private let metrics: PickerMetrics
     private let scroll = NSScrollView()
     private let table = PickerActionsTable()
-    private let run = PickerDeliveryButton()
+    private let run = PickerButton()
     private let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("action"))
     private let empty = pickerLabel(PickerWords.text(.noActions))
     private var rows: [Row] = []
@@ -118,7 +118,11 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
         table.target = self
         table.action = #selector(chooseClicked)
         let runLabel = PickerWords.text(.runAction)
-        run.attributedTitle = NSAttributedString(string: runLabel + "  ↩", attributes: [.font: metrics.font(13, .medium)])
+        run.metrics = metrics
+        run.surface = .primary
+        run.medium = true
+        run.text = runLabel
+        run.key = "↩"
         run.setAccessibilityLabel(runLabel)
         run.perform = { [weak self] in self?.chooseSelected() }
         back.metrics = metrics
@@ -163,6 +167,7 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
             back.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -metrics.pt(6)),
             run.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
             run.leadingAnchor.constraint(greaterThanOrEqualTo: back.trailingAnchor, constant: metrics.pt(8)),
+            run.widthAnchor.constraint(equalToConstant: run.preferredWidth),
             run.heightAnchor.constraint(equalTo: back.heightAnchor),
             run.bottomAnchor.constraint(equalTo: back.bottomAnchor)
         ])

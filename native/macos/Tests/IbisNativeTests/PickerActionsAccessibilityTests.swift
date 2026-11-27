@@ -39,8 +39,8 @@ final class PickerActionsAccessibilityTests: XCTestCase {
         let content = try XCTUnwrap(window.contentView)
         content.layoutSubtreeIfNeeded()
 
-        let back = try XCTUnwrap(content.subviews.compactMap { $0 as? PickerButton }.first)
-        let run = try XCTUnwrap(content.subviews.compactMap { $0 as? PickerDeliveryButton }.first)
+        let back = try XCTUnwrap(content.subviews.compactMap { $0 as? PickerButton }.first { $0.accessibilityLabel() == PickerWords.text(.backFromActions) })
+        let run = try XCTUnwrap(content.subviews.compactMap { $0 as? PickerButton }.first { $0.accessibilityLabel() == PickerWords.text(.runAction) })
         let scroll = try XCTUnwrap(content.subviews.compactMap { $0 as? NSScrollView }.first)
         for child in [controller.search, back, run, scroll] as [NSView] {
             XCTAssertTrue(content.bounds.contains(child.frame))
@@ -97,8 +97,8 @@ final class PickerActionsAccessibilityTests: XCTestCase {
         let search = try XCTUnwrap(actionSearchFields().first { !previousFields.contains(ObjectIdentifier($0)) })
         let window = try XCTUnwrap(search.window)
         let content = try XCTUnwrap(search.superview)
-        let back = try XCTUnwrap(content.subviews.compactMap { $0 as? PickerButton }.first)
-        let run = try XCTUnwrap(content.subviews.compactMap { $0 as? PickerDeliveryButton }.first)
+        let back = try XCTUnwrap(content.subviews.compactMap { $0 as? PickerButton }.first { $0.accessibilityLabel() == PickerWords.text(.backFromActions) })
+        let run = try XCTUnwrap(content.subviews.compactMap { $0 as? PickerButton }.first { $0.accessibilityLabel() == PickerWords.text(.runAction) })
 
         for origin in [owner.frame.origin,
                        NSPoint(x: display.minX + 12, y: display.maxY - owner.frame.height - 12)] {

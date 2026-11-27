@@ -352,8 +352,14 @@ final class PickerTests: XCTestCase {
         XCTAssertFalse(membership.isHidden)
 
         let first = model.selected
+        let quickPage = try XCTUnwrap(descendants(of: contentView).compactMap { $0 as? NSTextField }
+            .first { $0.accessibilityLabel() == PickerWords.text(.page) })
+        let pagePosition = quickPage.convert(quickPage.bounds, to: contentView).minX
         try send("\u{f701}", key: 125, to: panel) // Down
         XCTAssertNotEqual(model.selected, first)
+        try await eventually { model.canDeliver }
+        contentView.layoutSubtreeIfNeeded()
+        XCTAssertEqual(quickPage.convert(quickPage.bounds, to: contentView).minX, pagePosition, accuracy: 0.5)
         try send("\r", key: 36, flags: [.shift], to: panel)
         XCTAssertEqual(model.citations.map(\.row.id), [model.selected].compactMap { $0 })
         try await eventually { model.canDeliver }
@@ -386,6 +392,11 @@ final class PickerTests: XCTestCase {
         }
         XCTAssertEqual(model.scale, 2)
         try await eventually { panel.frame.width > 720 }
+        contentView.layoutSubtreeIfNeeded()
+        let screen = try XCTUnwrap(panel.screen)
+        XCTAssertTrue(screen.visibleFrame.insetBy(dx: -1, dy: -1).contains(panel.frame))
+        let scaledSearch = try XCTUnwrap(panel.searchField)
+        XCTAssertTrue(contentView.bounds.contains(scaledSearch.convert(scaledSearch.bounds, to: contentView)))
         let frame = panel.frame
         panel.setFrame(NSRect(x: frame.minX, y: frame.maxY - 720, width: 960, height: 720), display: true)
         model.query = "invented"

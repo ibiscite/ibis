@@ -122,7 +122,18 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         }
     }
 
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        let accepted = super.makeFirstResponder(responder)
+        if accepted { canvas?.refreshReturnTarget() }
+        return accepted
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        canvas?.refreshReturnTarget()
+    }
+
     func windowDidResignKey(_ notification: Notification) {
+        canvas?.refreshReturnTarget()
         if shown, !choosingLibrary, canvas?.hasOpenPopover != true { dismiss() }
     }
 

@@ -3,7 +3,7 @@ import AppKit
 @MainActor
 final class PickerShelf: NSView {
     let membership = PickerButton()
-    let action = PickerDeliveryButton()
+    let action = PickerButton()
     let more = PickerButton()
     private let locator = ShelfLocator()
     private let beak = NSImageView()
@@ -17,6 +17,7 @@ final class PickerShelf: NSView {
     private var rendered: PickerPreviewResult?
     private var renderedRows: [PickerRow] = []
     private var renderedScale: CGFloat = 0
+    private var renderedDraft = false
     private var revealedItem: ItemRef?
     var edit: ((ItemRef) -> Void)?
     var remove: ((ItemRef) -> Void)?
@@ -39,7 +40,10 @@ final class PickerShelf: NSView {
         pending.setAccessibilityElement(true)
         more.text = PickerWords.text(.more)
         more.key = "⌘K"
+        more.surface = .link
         more.setAccessibilityLabel(PickerWords.text(.more))
+        action.key = "↩"
+        action.medium = true
         membership.key = "⇧↩"
         membership.surface = .link
         draftLabel.textColor = .secondaryLabelColor
@@ -82,20 +86,16 @@ final class PickerShelf: NSView {
 
     func configure(model: PickerModel, actionsOpen: Bool, metrics m: PickerMetrics, width: CGFloat) {
         let stacked = twoRows(hasDraft: model.hasDraft, metrics: m, width: width)
-        for button in [membership, more] { button.metrics = m }
+        for button in [membership, more, action] { button.metrics = m }
 
         let label = model.deliveryTitle
+        action.text = label
         action.setAccessibilityLabel(label)
         action.isEnabled = model.canDeliver && !actionsOpen
+        action.surface = model.hasDraft ? .primary : .delivery
+        action.showsKey = !actionsOpen
         action.toolTip = label
         action.setAccessibilityHelp(actionsOpen ? nil : PickerWords.text(.returnKey))
-        let title = NSMutableAttributedString(string: label, attributes: [.font: m.font(13, .medium)])
-        title.append(NSAttributedString(string: "  ↩", attributes: [
-            .font: m.font(12),
-            .foregroundColor: actionsOpen ? NSColor.clear
-                : (action.isEnabled ? NSColor.secondaryLabelColor : NSColor.disabledControlTextColor),
-        ]))
-        action.attributedTitle = title
         let membershipTitle = PickerWords.text(model.isSelectionStaged ? .remove : .add)
         membership.text = PickerWords.text(model.isSelectionStaged ? .removeShort : .addShort)
         membership.setAccessibilityLabel(membershipTitle)
@@ -106,10 +106,12 @@ final class PickerShelf: NSView {
 
         let draft = model.citationRows
         let rebuild = rendered != model.preview || renderedRows != draft || renderedScale != m.scale
+            || renderedDraft != model.hasDraft
         if rebuild {
             rendered = model.preview
             renderedRows = draft
             renderedScale = m.scale
+            renderedDraft = model.hasDraft
             buildSpans(preview: model.preview, entries: model.previewEntries, draft: draft, metrics: m)
         }
         for token in tokens {
@@ -129,8 +131,9 @@ final class PickerShelf: NSView {
         let actionY = y + (stacked ? m.pt(34) : 0)
         let h = m.pt(28)
         let moreWidth = more.preferredWidth
-        let membershipWidth = membership.preferredWidth
-        let actionWidth = min(action.fittingSize.width, max(m.pt(92), width * 0.35))
+        let membershipWidth = max(membership.preferredWidth(for: PickerWords.text(.addShort)),
+                                  membership.preferredWidth(for: PickerWords.text(.removeShort)))
+        let actionWidth = min(action.preferredWidth, max(m.pt(92), width * 0.35))
         let moreX = width - m.inset - moreWidth
         let actionX = moreX - m.pt(12) - actionWidth
         let membershipX = actionX - m.pt(8) - membershipWidth
@@ -142,14 +145,11 @@ final class PickerShelf: NSView {
         let icon = m.pt(20)
         beak.frame = NSRect(x: m.tileCenter - icon / 2, y: y + (h - icon) / 2, width: icon, height: icon)
 
-        let previewEnd = stacked ? width - m.inset : membershipX
-        let available = max(0, previewEnd - m.column - locatorWidth - m.pt(16))
-        let spanWidth = spans.reduce(0) { $0 + $1.width }
-        let contentWidth = pending.isHidden ? spanWidth : pickerWidth(pending.stringValue, font: m.font(13))
-        let clipWidth = min(available, contentWidth)
+        let previewEnd = stacked ? width - m.inset : membershipX - m.pt(8)
+        let locatorX = previewEnd - locatorWidth
+        let clipWidth = max(0, locatorX - m.column - m.pt(10))
         scroll.frame = NSRect(x: m.column, y: y, width: clipWidth, height: h)
         pickerLine(pending, x: m.column, y: y, width: clipWidth, height: h)
-        let locatorX = stacked ? previewEnd - locatorWidth : m.column + clipWidth + (clipWidth > 0 ? m.pt(8) : 0)
         locator.frame = NSRect(x: locatorX, y: y, width: locatorWidth, height: h)
 
         var x: CGFloat = 0
@@ -183,6 +183,7 @@ final class PickerShelf: NSView {
                 let button = previous[id]?.first { !retained.contains(ObjectIdentifier($0)) } ?? makeToken(row.id)
                 button.identifier = id
                 button.metrics = m
+                button.surface = renderedDraft ? .token : .preview
                 button.maxCaption = m.pt(270)
                 button.text = content.string
                 button.richText = content
@@ -326,7 +327,7 @@ private final class ShelfLocator: NSView {
         value.setAccessibilityLabel(title)
         value.show(details.locator)
         let typeWidth = min(m.pt(80), max(m.pt(36), pickerWidth(short, font: font) + m.pt(20)))
-        let valueWidth = max(m.pt(44), min(m.pt(80), pickerWidth(details.locator.isEmpty ? title : details.locator, font: font) + m.pt(10)))
+        let valueWidth = max(m.pt(52), min(m.pt(80), pickerWidth(title, font: font) + m.pt(10)))
         types.frame = NSRect(x: 0, y: 0, width: typeWidth, height: m.pt(28))
         value.frame = NSRect(x: typeWidth + m.pt(2), y: m.pt(3), width: valueWidth, height: m.pt(22))
         let width = typeWidth + valueWidth + m.pt(6)

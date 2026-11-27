@@ -4,7 +4,9 @@ struct PickerMetrics {
     let scale: CGFloat
     let density: Density
     func pt(_ points: CGFloat) -> CGFloat { points * scale }
-    var header: CGFloat { pt(52) }
+    var header: CGFloat { pt(56) }
+    var searchHeight: CGFloat { pt(34) }
+    var searchFont: NSFont { font(20) }
     var footer: CGFloat { pt(44) }
     var line: CGFloat { pt(1) }
     var inset: CGFloat { pt(20) }
@@ -106,24 +108,6 @@ final class PickerSearchField: NSSearchField {
     }
 
     @objc private func reportChange() { change?(stringValue) }
-}
-
-@MainActor
-final class PickerDeliveryButton: NSButton {
-    var perform: (() -> Void)?
-
-    init() {
-        super.init(frame: .zero)
-        bezelStyle = .rounded
-        setButtonType(.momentaryPushIn)
-        cell?.lineBreakMode = .byTruncatingTail
-        target = self
-        action = #selector(deliver)
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    @objc private func deliver() { perform?() }
 }
 
 @MainActor
@@ -243,7 +227,7 @@ final class PickerDragView: NSView {
 
 @MainActor
 final class PickerButton: NSButton {
-    enum Surface { case control, token, link, primary }
+    enum Surface { case control, preview, token, link, delivery, primary }
 
     var perform: (() -> Void)?
     var remove: (() -> Void)?
@@ -256,6 +240,7 @@ final class PickerButton: NSButton {
         }
     }
     var key = "" { didSet { keyLabel.stringValue = key } }
+    var showsKey = true
     var icon: String? { didSet { glyph.image = icon.flatMap(PickerArt.image) } }
     var medium = false
     var captionSize: CGFloat = 13
@@ -300,15 +285,18 @@ final class PickerButton: NSButton {
 
     required init?(coder: NSCoder) { nil }
 
-    var preferredWidth: CGFloat {
+    var preferredWidth: CGFloat { preferredWidth(for: text) }
+
+    func preferredWidth(for text: String) -> CGFloat {
         let m = metrics
         if icon != nil, text.isEmpty { return m.pt(28) }
         let pad = surface == .link ? m.pt(4) : m.pt(8)
         let labelWidth = richText.map { ceil($0.size().width) + m.pt(5) } ?? pickerWidth(text, font: captionFont)
         return pad * 2 + min(maxCaption, labelWidth) + hintWidth
-            + (remove == nil ? 0 : m.pt(13))
+            + removeWidth
     }
 
+    private var removeWidth: CGFloat { remove == nil || surface == .preview ? 0 : metrics.pt(13) }
     private var captionFont: NSFont { metrics.font(captionSize, medium ? .medium : .regular) }
     private var keyWidth: CGFloat { pickerWidth(key, font: metrics.font(13)) }
     private var hintWidth: CGFloat {
@@ -325,10 +313,10 @@ final class PickerButton: NSButton {
         let iconSize = m.pt(18)
         glyph.frame = NSRect(x: (bounds.width - iconSize) / 2, y: (bounds.height - iconSize) / 2,
                              width: iconSize, height: iconSize)
-        keyLabel.isHidden = key.isEmpty
+        keyLabel.isHidden = key.isEmpty || !showsKey
         keyLabel.font = m.font(13)
         pickerLine(keyLabel, x: bounds.width - pad - keyWidth, y: 0, width: keyWidth, height: bounds.height)
-        let close: CGFloat = remove == nil ? 0 : m.pt(13)
+        let close = removeWidth
         removeGlyph.frame = NSRect(x: bounds.width - pad - close, y: (bounds.height - close) / 2,
                                    width: close, height: close)
         pickerLine(caption, x: pad, y: 0, width: bounds.width - pad * 2 - close - hintWidth,
@@ -344,19 +332,23 @@ final class PickerButton: NSButton {
                 : hovered && isEnabled ? .pickerQuaternaryFill : .clear
             let background: NSColor = switch surface {
             case .token: isCurrentToken ? .controlAccentColor.withAlphaComponent(0.15) : .pickerQuaternaryFill
-            case .primary: hovered ? .selectedContentBackgroundColor : .controlAccentColor
+            case .delivery: pressed && isEnabled ? fill : .pickerQuaternaryFill
+            case .primary:
+                if isEnabled { hovered || pressed ? .selectedContentBackgroundColor : .controlAccentColor }
+                else { .pickerQuaternaryFill }
             default: fill
             }
             layer?.backgroundColor = background.cgColor
-            layer?.cornerRadius = surface == .token ? m.pt(6) : bounds.height / 2
+            layer?.cornerRadius = surface == .token || surface == .preview ? m.pt(6) : bounds.height / 2
             layer?.borderWidth = surface == .token && (contrast || isCurrentToken) ? m.line : 0
             layer?.borderColor = (isCurrentToken ? NSColor.controlAccentColor : .separatorColor).cgColor
             caption.textColor = !isEnabled ? .disabledControlTextColor
                 : (surface == .primary ? .alternateSelectedControlTextColor : .labelColor)
             glyph.contentTintColor = .secondaryLabelColor
             removeGlyph.contentTintColor = .secondaryLabelColor
-            removeGlyph.isHidden = remove == nil || !(focused || hovered)
-            keyLabel.textColor = isEnabled ? .secondaryLabelColor : .disabledControlTextColor
+            removeGlyph.isHidden = removeWidth == 0 || !(focused || hovered)
+            keyLabel.textColor = !isEnabled ? .disabledControlTextColor
+                : (surface == .primary ? .alternateSelectedControlTextColor : .secondaryLabelColor)
         }
         needsDisplay = true
     }

@@ -30,7 +30,9 @@ and a listed site. Search can
 explain closest, spelling and hidden-field matches. It shows the active source,
 title and byline, with recent citations for the captured
 app or source-added references when the query is empty. Use Up and Down to
-preview a reference or Return to deliver it. Add, ⇧↩ and ⌘-click hold a
+preview a reference or Return to deliver it. The selected quick-cite row uses
+the system accent. Once you add a reference, a check marks it in the list
+and the delivery button takes the accent. Add, ⇧↩ and ⌘-click hold a
 reference in a citation draft, which stays available while you keep searching.
 The outlined token is the one ⌘L and the Page field edit. Use the locator
 menu to choose a chapter or another locator type. ⌘T starts typed citations,
