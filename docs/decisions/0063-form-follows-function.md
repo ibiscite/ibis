@@ -11,7 +11,12 @@ built; this says which parts exist.
 
 ## The decisions
 
-1. **A citation can be typed whole in the search field.**
+1. **A citation can be typed whole in the search field.** (Amended
+   2026-11-26 by the maintainer, after an outside critique: the typed form is
+   read **only when the person asks**, with one explicit action such as a key,
+   as the CLI's `--shorthand` does. Ordinary search stays plain text, so titles
+   with numbers and punctuation, German and Arabic locators, and input-method
+   composition are never misread. It may become automatic later if people ask.)
    - The search understands locators (`p12`, `pp. 12–15`, `ch 3`, `sec 2.1`
      and the other CSL locator terms, in the interface language and in
      English).
