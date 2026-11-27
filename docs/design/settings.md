@@ -1,5 +1,11 @@
 # Settings
 
+## Native macOS repo build
+
+Settings is a compact titled window reached through the Ibis menu, menu bar item or ⌘,. The first pane groups Appearance, Rows and Larger Text. Each change saves through the daemon's settings owner and updates the picker. ⌘+ and ⌘− are temporary picker zoom. The Ibis menu opens the standard About window.
+
+## Web settings
+
 [C18] Its own window (in the Dock and Alt+Tab while open), opened with **Settings…** (⌘,) from More, the menu bar or tray. A sidebar of pages runs under the window buttons, as in System Settings. Every change applies at once and reaches an open picker.
 
 - **Window**: 920 × 560 by default, minimum 800 × 400, each limited to the screen's work area less a margin, so a small or scaled screen (1440 × 900 at `GDK_SCALE=2` is 720 × 450) never puts a control off it. A two-column shell with a reserved `--titlebar-height` (macOS only, where the window buttons sit over the content); the sidebar background runs full height. Nothing slides behind the title bar; only the page and the sidebar list scroll.

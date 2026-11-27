@@ -364,12 +364,14 @@ macro_rules! picker_rows {
 }
 
 use crate::picker::*;
+use crate::settings::native::{SettingsRequest, SettingsResult};
 picker_rows! {
     Open "picker/open": PickerOpenRequest => PickerOpenResult;
     Search "picker/search": PickerSearchRequest => PickerSearchResult;
     Preview "picker/preview": PickerPreviewRequest => PickerPreviewResult;
     Forms "picker/forms": PickerFormsRequest => FormDetails;
     Deliver "picker/deliver": PickerDeliverRequest => PickerDeliverResult;
+    Settings "settings": SettingsRequest => SettingsResult;
 }
 
 #[cfg(test)]

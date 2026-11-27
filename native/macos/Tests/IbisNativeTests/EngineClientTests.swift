@@ -5,6 +5,27 @@ import XCTest
 
 final class EngineClientTests: XCTestCase {
     @MainActor
+    func testSettingsPersistThroughTheOwnerAndReachThePicker() async throws {
+        let fixture = try Fixture()
+        try fixture.identifyDaemon()
+        let client = fixture.client()
+        let empty = SettingsRequest(appearance: nil, density: nil, largerText: nil)
+        let initial = try await client.settings(empty)
+        XCTAssertEqual(initial.density, .compact)
+        let saved = try await client.settings(SettingsRequest(appearance: .dark, density: .comfortable, largerText: true))
+        XCTAssertEqual(saved.density, .comfortable)
+        XCTAssertFalse(saved.version.isEmpty)
+        let reader = fixture.client()
+        let reloaded = try await reader.settings(empty)
+        XCTAssertEqual(reloaded, saved)
+        let opened = try await reader.open(fixture.opening)
+        XCTAssertEqual(opened.appearance, .dark)
+        XCTAssertEqual(opened.density, .comfortable)
+        XCTAssertTrue(opened.largerText)
+        XCTAssertTrue(opened.pasteEnabled)
+    }
+
+    @MainActor
     func testGuardedDeliveryConsumesPreviewAndObservesRevocation() async throws {
         let fixture = try Fixture()
         try fixture.identifyDaemon()
@@ -21,11 +42,11 @@ final class EngineClientTests: XCTestCase {
         XCTAssertEqual(row.journal, "Journal of Imaginary Cities")
         let preview = try await client.preview(PickerPreviewRequest(
             entries: [PickerPreviewEntry(cite: row.cite, form: .narrative, item: row.id,
-                                         locator: LocatorInput(label: .page, text: "12"), prefix: nil, suffix: nil)],
+                                         locator: Locator(term: .page, value: "chapter 12"), prefix: nil, suffix: nil)],
             format: "apa", keepOrder: false
         ))
         XCTAssertNil(preview.problem)
-        XCTAssertTrue(preview.text.contains("12"))
+        XCTAssertTrue(preview.text.contains("chapter 12"), preview.text)
 
         try FileManager.default.createDirectory(at: fixture.settings.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)

@@ -223,6 +223,9 @@ app-file-dialog-formats = { -library-formats }
 ## The app’s native windows and dialogs, and its words about other apps.
 
 app-window-settings = Ibis-Einstellungen
+picker-native-settings-picker = Auswahlfenster
+picker-native-window-menu = Fenster
+picker-native-close-window = Fenster schließen
 app-window-notice = Ibis-Hinweis
 app-open-link-title = Link öffnen
 app-open-link-copied = Ibis konnte Ihren Browser nicht öffnen. Der Link wurde kopiert: Fügen Sie ihn in Ihren Browser ein.
@@ -2093,7 +2096,6 @@ picker-native-author-others = { $author } { row-et-al }
 picker-native-unmatched-segment = Wählen Sie eine Referenz für „{ $query }“.
 picker-native-token = Zitat: { $citation }
 picker-native-locator-type = Art der Fundstelle
-picker-native-locator-value = Fundstelle
 picker-native-return = Eingabetaste
 picker-native-type-citation = Zitat eingeben
 picker-native-open-source = Quelle öffnen
@@ -2111,3 +2113,8 @@ picker-native-engine-launch = Ibis konnte seine lokale Engine nicht starten.
 picker-native-engine-busy = Ibis fügt gerade ein anderes Zitat ein.
 picker-native-engine-changed = Das Zitat hat sich geändert. Prüfen Sie es vor dem nächsten Versuch.
 picker-native-request-failed = Ibis konnte die Anfrage nicht abschließen. Versuchen Sie es erneut.
+picker-native-before-example = siehe
+picker-native-form-narrative = Name im Text
+picker-native-copy-citation = Zitat kopieren
+picker-native-copy-citations = { $count } Zitate kopieren
+picker-native-paste-citations = { $count } Zitate in { $app } einfügen

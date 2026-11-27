@@ -50,9 +50,10 @@ built; this says which parts exist.
      not allowed, a refused format, an update: each shows there as one line
      with at most one fix as a button. Typed messages from the engine name
      the fix.
-   - The delivery bar shows the citation, the library button, its delivery
-     action and More (maintainer, 2026-11-26). The library button shows
-     the source in its menu and tooltip. The empty list can give a
+   - The delivery bar shows the citation, delivery action and More
+     (maintainer, 2026-11-26). The native picker also shows Page and moves
+     the library commands into More when the library is healthy. A library
+     that needs attention gets its own control. The empty list can give a
      longer explanation and a next action.
 
 ## Consequences

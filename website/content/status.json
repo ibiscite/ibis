@@ -76,7 +76,7 @@
     },
     {
       "text": "A native picker for macOS",
-      "note": "In the repo build: fixed-height rows, a citation bar and a details drawer that keeps search available."
+      "note": "In the repo build, add a page or chapter in the citation bar, edit the citation in a popover and save picker appearance in Settings."
     },
     {
       "text": "Search Zotero highlights and notes, with the page they came from."

@@ -244,25 +244,32 @@ impl Host {
 
     fn settings(&self, nightly: bool) -> Result<Arc<Owner>, EngineError> {
         let (_, path) = settings_backup::profile_file(nightly).map_err(|failure| EngineError::new(failure.code()))?;
-        Ok(locked(&self.settings)
+        Ok(self.settings_for(path, |owner| {
+            let path = owner.path().to_path_buf();
+            let clear = move |loaded: &ibis_engine::settings::Loaded| {
+                if loaded
+                    .cites()
+                    .is_ok_and(|settings| !settings.portable.recent_citations())
+                {
+                    let _ = ibis_engine::recents::clear_disabled(&path);
+                }
+            };
+            clear(&owner.view());
+            owner.on_publish(clear);
+        }))
+    }
+
+    pub(super) fn settings_for(&self, path: PathBuf, initialize: impl FnOnce(&Owner)) -> Arc<Owner> {
+        locked(&self.settings)
             .entry(path.clone())
             .or_insert_with(|| {
-                let owner = Arc::new(Owner::open(path.clone()));
-                let clear = move |loaded: &ibis_engine::settings::Loaded| {
-                    if loaded
-                        .cites()
-                        .is_ok_and(|settings| !settings.portable.recent_citations())
-                    {
-                        let _ = ibis_engine::recents::clear_disabled(&path);
-                    }
-                };
-                clear(&owner.view());
-                owner.on_publish(clear);
+                let owner = Arc::new(Owner::open(path));
+                initialize(&owner);
                 let watch = owner.watch(|_, _| {});
                 Profile { owner, _watch: watch }
             })
             .owner
-            .clone())
+            .clone()
     }
 
     pub fn answer(&self, engine: &mut Engine, intent: Intent, cancel: &Cancellation) -> Result<Value, EngineError> {

@@ -20,6 +20,7 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     private var commandHold: Task<Void, Never>?
     private var displayOptions: NSObjectProtocol?
     var choosingLibrary = false
+    var openSettings: (() -> Void)?
 
     var searchField: NSTextField? { canvas?.search }
     var pickerIsOpen: Bool { shown }
@@ -73,7 +74,7 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
             ?? NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
             ?? NSScreen.main
         if let display { place(on: display) }
-        model.present(app: target?.bundleIdentifier, name: target?.localizedName)
+        model.present(app: target?.bundleIdentifier, name: target?.localizedName, pid: target?.processIdentifier)
         ibis_native_capture(windowNumber)
         contentView?.layoutSubtreeIfNeeded()
         invalidateShadow()
@@ -94,6 +95,7 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     func dismiss(forDelivery: Bool = false) {
         guard shown else { return }
         shown = false
+        canvas?.closePopover()
         commandHold?.cancel()
         commandHold = nil
         canvas?.showNumbers(false)
@@ -115,7 +117,7 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        if shown, !choosingLibrary { dismiss() }
+        if shown, !choosingLibrary, canvas?.hasOpenPopover != true { dismiss() }
     }
 
     func windowDidEndLiveResize(_ notification: Notification) {
@@ -237,10 +239,15 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     override func sendEvent(_ event: NSEvent) {
         if let canvas {
             if event.type == .flagsChanged { flags(event.modifierFlags, view: canvas) }
-            if event.type == .keyDown, (firstResponder as? NSTextInputClient)?.hasMarkedText() != true,
-               handleKey(event, view: canvas) { return }
+            if event.type == .keyDown, routeKey(event, view: canvas) { return }
         }
         super.sendEvent(event)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Route Command keys before AppKit asks the search field to handle them.
+        if isKeyWindow, let canvas, routeKey(event, view: canvas) { return true }
+        return super.performKeyEquivalent(with: event)
     }
 
     private func flags(_ flags: NSEvent.ModifierFlags, view: PickerCanvas) {
@@ -258,11 +265,17 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         }
     }
 
-    private func handleKey(_ event: NSEvent, view: PickerCanvas) -> Bool {
+    func routeKey(_ event: NSEvent, view: PickerCanvas) -> Bool {
+        let responder = (event.window ?? self).firstResponder
+        guard (responder as? NSTextInputClient)?.hasMarkedText() != true else { return false }
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let key = event.specialKey
         let character = event.charactersIgnoringModifiers?.lowercased()
-        let inSearch = searchField?.currentEditor() === firstResponder || searchField === firstResponder
+        let inSearch = searchField?.currentEditor() === responder || searchField === responder
+        if modifiers.isEmpty, character == "\t", view.locatorHasFocus {
+            view.focusSearch()
+            return true
+        }
         if key == .carriageReturn || key == .enter {
             if modifiers == [.shift] {
                 if !event.isARepeat { view.addSelection() }
@@ -270,7 +283,7 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
             }
             if modifiers.isEmpty || modifiers == [.option] {
                 if !event.isARepeat {
-                    if modifiers.contains(.option) { view.addSelection() } else { submit() }
+                    if modifiers.contains(.option) { view.addSelection() } else { submit(whenReady: true) }
                 }
                 return true
             }
@@ -307,8 +320,10 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         switch character {
         case "t": model.toggleShorthand(); view.focusSearch()
         case "i": view.showDetails()
-        case "y": model.togglePeek()
+        case "l": view.focusLocator()
+        case "y": view.togglePeek()
         case "k": if !event.isARepeat { view.moreMenu() }
+        case ",": if !event.isARepeat { openSettings?() }
         case "o": view.openSource()
         case "z": if model.canUndo { model.undoChange() } else { return false }
         case "+", "=": model.changeSize(10)

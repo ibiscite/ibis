@@ -2,6 +2,14 @@
 
 Search, list and the delivery bar ([design](../design.md#the-model)). The Inspector and Reader are in [inspector-and-reader.md](inspector-and-reader.md); copying, pasting and notices in [delivery.md](delivery.md).
 
+## Native macOS repo build
+
+- A native search field sits between the bird and format menu. A standard Mac button names the delivery action. Return invokes the same action.
+- Compact rows are 36 pt with a 32 pt selection fill. Comfortable rows are 48 pt with a 44 pt fill. Both put a regular title and trailing year on the first line, with author and venue below. Holding ⌘ shows row shortcuts in the kind column. VoiceOver announces citation membership, which is also visible in the citation bar. ⌘Y opens the full record.
+- The 44 pt bar holds the citation, its locator type and value, delivery and More. A library that needs attention also gets a control in the bar. Delivery names the target app for paste or says Copy Citation, with a count for multiple references. More leads to the library commands and Settings. See [native citation details](inspector-and-reader.md#native-macos-picker-repo-build) for Page and the token popover.
+
+The sections below describe the web picker and its design targets.
+
 ## Search bar
 
 - Order: the bird in the lead column, the query on the title column, the format pop-up ending on the trailing edge. No clear button: Esc clears, as in Spotlight and Raycast, and every search field (the picker's and a view's) is the same frameless field. The header is its tallest control plus 2S, with a divider below [C2]. Its controls take the field's height, so the gap above and beside them is S and their corners nest in the window's (`--r-control`).

@@ -37,6 +37,24 @@ final class EngineClient: @unchecked Sendable {
         try await onQueue { try self.read(PickerForms.self, request) }
     }
 
+    func settings(_ request: SettingsRequest) async throws -> SettingsResult {
+        try await onQueue {
+            if request.appearance == nil, request.density == nil, request.largerText == nil {
+                return try self.read(Settings.self, request)
+            }
+            // A failed reply can follow a committed change. Let the window read
+            // back the saved value without replaying the write.
+            do {
+                return try self.exchange(Settings.self, request, on: self.connect(restoring: true))
+            } catch let error as Rejected {
+                throw error
+            } catch {
+                self.socket = nil
+                throw error
+            }
+        }
+    }
+
     /// A nonzero write receipt is reported to the daemon even when paste is
     /// refused. The shell holds the daemon's grant through copy and paste.
     func deliver(

@@ -205,10 +205,11 @@ fn paste_granted() -> bool {
 
 // SAFETY: This unique symbol reads the current capture and passive grants.
 #[unsafe(no_mangle)]
-extern "C" fn ibis_native_paste_expected(enabled: bool) -> bool {
+extern "C" fn ibis_native_paste_destination(enabled: bool) -> i32 {
     TARGET
         .with_captured(|captured| {
-            paste::intended_paste(
+            let captured = captured?;
+            paste::offers_paste(
                 captured,
                 PastePermission {
                     enabled,
@@ -216,8 +217,11 @@ extern "C" fn ibis_native_paste_expected(enabled: bool) -> bool {
                     app: None,
                 },
             )
+            .then_some(captured.pid)
+            .flatten()
         })
-        .unwrap_or(false)
+        .flatten()
+        .unwrap_or(0)
 }
 
 // SAFETY: This unique symbol can only request the app's own paste grants.
@@ -231,5 +235,38 @@ extern "C" fn ibis_native_request_paste_access() {
     }
     if !macos::accessibility_granted() {
         macos::request_accessibility();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_known_target_can_offer_paste_while_waiting_for_permission() {
+        let mut capture = Captured::unknown(System::Macos);
+        capture.target.app = Some(AppId {
+            system: System::Macos,
+            id: "com.apple.TextEdit".into(),
+        });
+        capture.focus_failure = Some(CopyReason::AccessibilityRequired);
+        let permission = PastePermission {
+            enabled: true,
+            granted: false,
+            app: None,
+        };
+        assert!(paste::offers_paste(&capture, permission));
+        assert!(!paste::intended_paste(Some(&capture), permission));
+        assert!(!paste::offers_paste(
+            &capture,
+            PastePermission {
+                enabled: false,
+                ..permission
+            }
+        ));
+        if let Some(app) = &mut capture.target.app {
+            app.id = "com.apple.Terminal".into();
+        }
+        assert!(!paste::offers_paste(&capture, permission));
     }
 }

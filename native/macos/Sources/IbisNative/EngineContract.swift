@@ -36,6 +36,12 @@ enum PickerDeliver: PickerRPC {
     typealias Reply = PickerDeliverResult
 }
 
+enum Settings: PickerRPC {
+    static let name = "settings"
+    typealias Parameters = SettingsRequest
+    typealias Reply = SettingsResult
+}
+
 enum Appearance: String, Codable, Hashable, Sendable {
     case system = "system"
     case light = "light"
@@ -143,9 +149,9 @@ enum LibraryKind: String, Codable, Hashable, Sendable {
     case folder = "folder"
 }
 
-struct LocatorInput: Codable, Hashable, Sendable {
-    let label: LocatorTerm
-    let text: String
+struct Locator: Codable, Hashable, Sendable {
+    let term: LocatorTerm
+    let value: String
 }
 
 enum LocatorTerm: String, Codable, Hashable, Sendable {
@@ -205,6 +211,7 @@ enum PickerFix: String, Codable, Hashable, Sendable {
     case reloadLibrary = "reload-library"
     case clearSearch = "clear-search"
     case chooseFormat = "choose-format"
+    case editLocator = "edit-locator"
     case editCitation = "edit-citation"
 }
 
@@ -246,7 +253,14 @@ enum PickerLibraryCondition: String, Codable, Hashable, Sendable {
 
 struct PickerLocator: Codable, Hashable, Sendable {
     let name: String
+    let shortName: String
     let term: LocatorTerm
+
+    enum CodingKeys: String, CodingKey {
+        case name = "name"
+        case shortName = "short_name"
+        case term = "term"
+    }
 }
 
 struct PickerOpenRequest: Codable, Hashable, Sendable {
@@ -288,7 +302,7 @@ struct PickerPreviewEntry: Codable, Hashable, Sendable {
     let cite: String
     let form: CitationForm?
     let item: ItemRef
-    let locator: LocatorInput?
+    let locator: Locator?
     let prefix: String?
     let suffix: String?
 }
@@ -403,7 +417,7 @@ enum PickerSectionKind: String, Codable, Hashable, Sendable {
 
 struct PickerSegment: Codable, Hashable, Sendable {
     let complete: Bool
-    let locator: LocatorInput?
+    let locator: Locator?
     let prefix: String?
     let row: PickerRow?
     let search: String
@@ -412,6 +426,7 @@ struct PickerSegment: Codable, Hashable, Sendable {
 
 struct PickerStatus: Codable, Hashable, Sendable {
     let fix: PickerFix?
+    let item: ItemRef?
     let kind: PickerStatusKind
     let text: String
 }
@@ -433,5 +448,31 @@ enum Script: String, Codable, Hashable, Sendable {
     case normal = "normal"
     case `subscript` = "subscript"
     case superscript = "superscript"
+}
+
+struct SettingsRequest: Codable, Hashable, Sendable {
+    let appearance: Appearance?
+    let density: Density?
+    let largerText: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case appearance = "appearance"
+        case density = "density"
+        case largerText = "larger_text"
+    }
+}
+
+struct SettingsResult: Codable, Hashable, Sendable {
+    let appearance: Appearance
+    let density: Density
+    let largerText: Bool
+    let version: String
+
+    enum CodingKeys: String, CodingKey {
+        case appearance = "appearance"
+        case density = "density"
+        case largerText = "larger_text"
+        case version = "version"
+    }
 }
 

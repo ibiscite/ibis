@@ -414,7 +414,7 @@ impl Citations<'_> {
     }
 }
 /// Invalid field input retains its recovery and field focus until rendering.
-fn field_failure(error: ibis_core::locator::FieldError, index: usize) -> SessionError {
+fn field_failure(error: ibis_core::locator::FieldError, index: usize, item: ItemRef) -> SessionError {
     use ibis_core::locator::FieldError;
     let (FieldError::MissingValue(term) | FieldError::InvalidValue(term)) = error;
     let mut problem = CitationError::InvalidLocator.problem();
@@ -429,6 +429,7 @@ fn field_failure(error: ibis_core::locator::FieldError, index: usize) -> Session
     let label = crate::catalogue::text(&id, None, &[]).unwrap_or_default();
     problem.info = problem
         .info
+        .for_item(item)
         .argument("number", (index + 1).to_string())
         .argument("label", label);
     SessionError::Presented(problem)
@@ -667,13 +668,16 @@ impl Worker {
                     (Some(_), Some(_)) => {
                         let mut problem = CitationError::InvalidLocator.problem();
                         problem.info.message.id = "app-command-locator-conflict".into();
-                        problem.info = problem.info.argument("number", (index + 1).to_string());
+                        problem.info = problem
+                            .info
+                            .for_item(item.id)
+                            .argument("number", (index + 1).to_string());
                         return Err(SessionError::Presented(problem));
                     }
                     (locator, None) => locator,
                     (None, Some(input)) => Some(
                         ibis_core::locator::read_field(input.label, &input.text)
-                            .map_err(|error| field_failure(error, index))?,
+                            .map_err(|error| field_failure(error, index, item.id.clone()))?,
                     ),
                 };
                 Ok(CitationItem {
@@ -721,6 +725,7 @@ impl Worker {
                 let label = crate::catalogue::text(&crate::catalogue::id("form", form), None, &[]).unwrap_or_default();
                 failure.info = failure
                     .info
+                    .for_item(request.items[item].item.clone())
                     .argument("form", label)
                     .argument(
                         "reference",
@@ -744,7 +749,13 @@ impl Worker {
                 .outcomes
                 .iter()
                 .find_map(|outcome| match outcome {
-                    ItemOutcome::Refused { error, .. } => Some(SessionError::from(*error)),
+                    ItemOutcome::Refused { item, error } => {
+                        let mut problem = error.problem();
+                        if let Some(entry) = request.items.get(*item) {
+                            problem.info = problem.info.for_item(entry.item.clone());
+                        }
+                        Some(SessionError::Presented(problem))
+                    }
                     _ => None,
                 })
                 .unwrap_or_else(|| SessionError::from(CitationError::FormatterUnavailable)));

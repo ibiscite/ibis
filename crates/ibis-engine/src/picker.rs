@@ -92,6 +92,7 @@ pub struct PickerForm {
 pub struct PickerLocator {
     pub term: LocatorTerm,
     pub name: String,
+    pub short_name: String,
 }
 
 pub fn open_result(
@@ -145,6 +146,7 @@ pub fn open_result(
                 kind: PickerStatusKind::Library,
                 text,
                 fix: Some(fix),
+                item: None,
             }
         })
         .collect();
@@ -165,7 +167,10 @@ pub fn open_result(
             .into_iter()
             .map(|form| PickerForm {
                 form,
-                name: word(language, &catalogue::id("form", form), &[]),
+                name: match form {
+                    CitationForm::Narrative => word(language, "picker-native-form-narrative", &[]),
+                    _ => word(language, &catalogue::id("form", form), &[]),
+                },
             })
             .collect(),
         locators: LocatorTerm::ALL
@@ -173,6 +178,7 @@ pub fn open_result(
             .map(|term| PickerLocator {
                 term,
                 name: word(language, &catalogue::id("locator", term), &[]),
+                short_name: word(language, &catalogue::id("locator-short", term), &[]),
             })
             .collect(),
         paste_enabled: loaded.cites().is_ok_and(|saved| saved.portable.paste()),
@@ -240,6 +246,7 @@ pub struct PickerStatus {
     pub kind: PickerStatusKind,
     pub text: String,
     pub fix: Option<PickerFix>,
+    pub item: Option<ItemRef>,
 }
 
 #[derive(Clone, Copy, Serialize, JsonSchema)]
@@ -258,6 +265,7 @@ pub enum PickerFix {
     ReloadLibrary,
     ClearSearch,
     ChooseFormat,
+    EditLocator,
     EditCitation,
 }
 
@@ -266,7 +274,7 @@ pub struct PickerSegment {
     pub typed: String,
     pub search: String,
     pub complete: bool,
-    pub locator: Option<LocatorInput>,
+    pub locator: Option<Locator>,
     pub prefix: Option<String>,
     /// A finished segment is automatically added only for a clear first match.
     pub row: Option<PickerRow>,
@@ -288,7 +296,7 @@ pub struct PickerRow {
     pub kind_label: String,
     pub citation_key: Option<String>,
     pub full_byline: String,
-    /// Best first, all the way to a date on its own. Layout only measures and picks.
+    /// Author and venue alternatives, best first. The date has its own column.
     pub bylines: Vec<String>,
 }
 
@@ -318,8 +326,8 @@ fn kind(item_type: &str) -> PickerRowKind {
 }
 
 fn bylines(authors: &[Author], year: &str, container: Option<&str>, language: Language) -> (String, Vec<String>) {
-    let join = |authors: &str, container| {
-        [(!authors.is_empty()).then_some(authors), Some(year), container]
+    let join = |authors: &str, date, venue| {
+        [(!authors.is_empty()).then_some(authors), date, venue]
             .into_iter()
             .flatten()
             .collect::<Vec<_>>()
@@ -330,7 +338,7 @@ fn bylines(authors: &[Author], year: &str, container: Option<&str>, language: La
         .map(|author| author.name.as_str())
         .collect::<Vec<_>>()
         .join(", ");
-    let full = join(&names, container);
+    let full = join(&names, Some(year), container);
     let first = authors.first();
     let and_others = first.map_or_else(String::new, |author| {
         word(language, "picker-native-author-others", &[("author", &author.short)])
@@ -345,17 +353,22 @@ fn bylines(authors: &[Author], year: &str, container: Option<&str>, language: La
             .collect::<Vec<_>>()
             .join(", ")
     };
-    let mut choices = vec![join(main, container), join(main, None), join(&short, None)];
+    let mut choices = vec![
+        join(main, None, container),
+        join(&short, None, container),
+        join(main, None, None),
+        join(&short, None, None),
+    ];
     if authors.len() > 1 {
-        choices.push(join(&and_others, None));
+        choices.push(join(&and_others, None, None));
     }
     if let Some(author) = first {
-        choices.push(join(&author.short, None));
+        choices.push(join(&author.short, None, None));
         for (end, _) in author.short.char_indices().filter(|(_, c)| c.is_whitespace()).rev() {
-            choices.push(join(&format!("{}…", author.short[..end].trim_end()), None));
+            choices.push(join(&format!("{}…", author.short[..end].trim_end()), None, None));
         }
     }
-    choices.push(join("", None));
+    choices.retain(|choice| !choice.is_empty());
     choices.dedup();
     (full, choices)
 }
@@ -431,6 +444,7 @@ fn source_status(health: health::SourceHealth, language: Language) -> Vec<Picker
                 kind: PickerStatusKind::Library,
                 text,
                 fix,
+                item: None,
             })
         })
         .collect()
@@ -486,10 +500,9 @@ pub fn search(
             search: read.map_or(typed, |read| read.search.as_str()).to_owned(),
             complete,
             prefix: read.and_then(|read| read.prefix.clone()),
-            locator: read.and_then(|read| read.locator.as_ref()).map(|found| LocatorInput {
-                label: found.locator.term,
-                text: found.locator.value.clone(),
-            }),
+            locator: read
+                .and_then(|read| read.locator.as_ref())
+                .map(|found| found.locator.clone()),
             row: best.and_then(|hit| row(&hit.item, language)),
         }
     };
@@ -501,6 +514,7 @@ pub fn search(
                 kind: PickerStatusKind::Shorthand,
                 text: word(language, "picker-native-unmatched-segment", &[("query", typed)]),
                 fix: Some(PickerFix::ClearSearch),
+                item: None,
             });
         }
         segments.push(finished);
@@ -561,7 +575,7 @@ pub struct PickerPreviewEntry {
     pub item: ItemRef,
     #[schemars(with = "String")]
     pub cite: Fingerprint,
-    pub locator: Option<LocatorInput>,
+    pub locator: Option<Locator>,
     pub form: Option<CitationForm>,
     pub prefix: Option<String>,
     pub suffix: Option<String>,
@@ -601,8 +615,8 @@ pub fn preview(
                     .map(|entry| DraftItem {
                         id: entry.item,
                         cite: entry.cite,
-                        locator: None,
-                        locator_input: entry.locator,
+                        locator: entry.locator,
+                        locator_input: None,
                         form: entry.form,
                         prefix: entry.prefix,
                         suffix: entry.suffix,
@@ -621,13 +635,15 @@ pub fn preview(
     let status = |problem: Problem| {
         let fix = match problem.info.recovery() {
             Recovery::ChooseOutput | Recovery::ChooseStyle => Some(PickerFix::ChooseFormat),
-            Recovery::ChooseForm | Recovery::EditLocator | Recovery::EditCitation => Some(PickerFix::EditCitation),
+            Recovery::EditLocator => Some(PickerFix::EditLocator),
+            Recovery::ChooseForm | Recovery::EditCitation => Some(PickerFix::EditCitation),
             _ => None,
         };
         PickerStatus {
             kind: PickerStatusKind::Citation,
             text: problem_text(language, &problem),
             fix,
+            item: problem.info.item.map(|item| *item),
         }
     };
     match result {

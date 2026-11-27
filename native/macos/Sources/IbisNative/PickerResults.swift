@@ -37,9 +37,12 @@ private final class PickerTableRow: NSTableRowView {
     var hovered = false { didSet { needsDisplay = true } }
     var metrics = PickerMetrics(scale: 1, density: .compact)
     override var isEmphasized: Bool { get { true } set {} }
+    override var interiorBackgroundStyle: NSView.BackgroundStyle {
+        isSelected ? .emphasized : .normal
+    }
 
     private func fill(_ color: NSColor) {
-        let fill = bounds.insetBy(dx: metrics.pt(8), dy: 0)
+        let fill = bounds.insetBy(dx: metrics.pt(8), dy: metrics.pt(2))
         color.setFill()
         NSBezierPath(roundedRect: fill, xRadius: metrics.pt(8), yRadius: metrics.pt(8)).fill()
     }
@@ -54,8 +57,8 @@ private final class PickerRecordCell: NSTableCellView {
     private let icon = NSImageView()
     private let titleLabel = pickerLabel()
     private let byline = pickerLabel()
-    private let check = NSImageView()
-    private let number = pickerLabel()
+    private let date = pickerLabel()
+    private let shortcutLabel = pickerLabel()
     private let record: PickerRow
     private let metrics: PickerMetrics
 
@@ -64,14 +67,20 @@ private final class PickerRecordCell: NSTableCellView {
         self.metrics = metrics
         super.init(frame: .zero)
         icon.image = PickerArt.image(record.kind.rawValue)
-        check.image = PickerArt.image("check")
-        [icon, check].forEach { $0.imageScaling = .scaleProportionallyUpOrDown; $0.setAccessibilityElement(false) }
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.contentTintColor = .secondaryLabelColor
+        icon.setAccessibilityElement(false)
         titleLabel.stringValue = record.title ?? PickerWords.text(.untitled)
-        titleLabel.font = metrics.font(13, .semibold)
-        byline.font = metrics.font(metrics.density == .compact ? 13 : 12)
-        number.font = .monospacedDigitSystemFont(ofSize: metrics.pt(11), weight: .medium)
-        number.alignment = .right
-        [icon, titleLabel, byline, check, number].forEach(addSubview)
+        titleLabel.font = metrics.font(13)
+        titleLabel.textColor = .labelColor
+        byline.font = metrics.font(12)
+        date.font = .monospacedDigitSystemFont(ofSize: metrics.pt(12), weight: .regular)
+        date.stringValue = record.year ?? ""
+        date.alignment = .right
+        shortcutLabel.font = metrics.font(11, .medium)
+        shortcutLabel.alignment = .center
+        [icon, titleLabel, byline, date, shortcutLabel].forEach(addSubview)
+        updateForeground()
         setAccessibilityElement(true)
         setAccessibilityRole(.cell)
         toolTip = ([titleLabel.stringValue, record.fullByline, record.kindLabel] + [record.citationKey].compactMap { $0 })
@@ -80,15 +89,24 @@ private final class PickerRecordCell: NSTableCellView {
 
     required init?(coder: NSCoder) { nil }
 
-    func paint(selected: Bool, cited: Bool, shortcut: Int?) {
-        let selectedText = NSColor.alternateSelectedControlTextColor
-        titleLabel.textColor = selected ? selectedText : .labelColor
-        byline.textColor = selected ? selectedText.withAlphaComponent(0.85) : .secondaryLabelColor
-        icon.contentTintColor = selected ? selectedText : .secondaryLabelColor
-        check.contentTintColor = selected ? selectedText : PickerArt.accent(effectiveAppearance)
-        check.isHidden = !cited || shortcut != nil
-        number.stringValue = shortcut.map { "⌘\($0)" } ?? ""
-        number.textColor = selected ? selectedText : .secondaryLabelColor
+    override var backgroundStyle: NSView.BackgroundStyle {
+        didSet { updateForeground() }
+    }
+
+    private func updateForeground() {
+        let selected = backgroundStyle == .emphasized
+        let text = selected ? NSColor.alternateSelectedControlTextColor : .labelColor
+        titleLabel.textColor = text
+        byline.textColor = selected ? text : text.withAlphaComponent(0.76)
+        date.textColor = byline.textColor
+        shortcutLabel.textColor = byline.textColor
+        icon.contentTintColor = selected ? text : .secondaryLabelColor
+    }
+
+    func describe(cited: Bool, shortcut: Int?) {
+        shortcutLabel.stringValue = shortcut.map { "⌘\($0)" } ?? ""
+        shortcutLabel.isHidden = shortcut == nil
+        icon.isHidden = shortcut != nil
         setAccessibilityLabel(([titleLabel.stringValue, record.fullByline, record.kindLabel]
             + (cited ? [PickerWords.text(.cited)] : []) + [record.citationKey].compactMap { $0 }).joined(separator: ", "))
     }
@@ -97,23 +115,18 @@ private final class PickerRecordCell: NSTableCellView {
         super.layout()
         let m = metrics
         let right = bounds.width - m.inset
-        let iconSize = m.pt(20)
-        let checkSize = m.pt(16)
-        let trailing = right - iconSize
-        let textWidth = max(0, trailing - m.column)
+        let iconSize = m.pt(18)
+        let textWidth = max(0, right - m.column)
+        let dateFont = date.font ?? m.font(12)
+        let dateWidth = min(textWidth * 0.30, pickerWidth(date.stringValue, font: dateFont))
+        let baseline = (bounds.height - m.pt(32)) / 2
         icon.frame = NSRect(x: m.tileCenter - iconSize / 2, y: (bounds.height - iconSize) / 2,
                             width: iconSize, height: iconSize)
-        check.frame = NSRect(x: right - checkSize, y: (bounds.height - checkSize) / 2, width: checkSize, height: checkSize)
-        pickerLine(number, x: trailing - m.pt(9), y: 0, width: iconSize + m.pt(9), height: bounds.height)
-
-        if m.density == .compact {
-            let bylineWidth = min(textWidth, min(m.pt(300), max(m.pt(200), textWidth * 0.4)))
-            pickerLine(titleLabel, x: m.column, y: 0, width: textWidth - bylineWidth - m.pt(16), height: bounds.height)
-            pickerLine(byline, x: trailing - bylineWidth, y: 0, width: bylineWidth, height: bounds.height)
-        } else {
-            pickerLine(titleLabel, x: m.column, y: m.pt(20), width: textWidth, height: m.pt(18))
-            pickerLine(byline, x: m.column, y: m.pt(5), width: textWidth, height: m.pt(16))
-        }
+        pickerLine(shortcutLabel, x: m.tileCenter - m.pt(17), y: 0, width: m.pt(34), height: bounds.height)
+        pickerLine(titleLabel, x: m.column, y: baseline + m.pt(15),
+                   width: textWidth - dateWidth - m.pt(12), height: m.pt(17))
+        pickerLine(date, x: right - dateWidth, y: baseline + m.pt(15), width: dateWidth, height: m.pt(17))
+        pickerLine(byline, x: m.column, y: baseline, width: textWidth, height: m.pt(15))
         if let font = byline.font {
             byline.stringValue = record.bylines.first { pickerWidth($0, font: font) <= byline.frame.width } ?? ""
         }
@@ -149,6 +162,12 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
     var keyView: NSView { table }
     var shown: [PickerRow] {
         cells.compactMap { cell in if case let .record(row) = cell { row } else { nil } }
+    }
+
+    func anchor(for item: ItemRef) -> NSView? {
+        guard let index = cells.indices.first(where: { record(at: $0)?.id == item }) else { return nil }
+        table.scrollRowToVisible(index)
+        return table.view(atColumn: 0, row: index, makeIfNecessary: true)
     }
 
     override init(frame: NSRect) {
@@ -279,7 +298,7 @@ final class PickerResults: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     private func paint(_ cell: PickerRecordCell?, record: PickerRow) {
         let position = numbers ? shown.prefix(9).firstIndex { $0.id == record.id }.map { $0 + 1 } : nil
-        cell?.paint(selected: record.id == selected, cited: cited.contains(record.id), shortcut: position)
+        cell?.describe(cited: cited.contains(record.id), shortcut: position)
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { cells.count }
@@ -335,7 +354,7 @@ private final class PickerListLabel: NSView {
         super.init(frame: .zero)
         label.alignment = centered ? .center : .left
         label.setAccessibilityElement(true)
-        label.font = metrics.font(12, centered ? .regular : .semibold)
+        label.font = metrics.font(centered ? 12 : 11, centered ? .regular : .semibold)
         label.textColor = centered ? .tertiaryLabelColor : .secondaryLabelColor
         addSubview(label)
     }

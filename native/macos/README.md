@@ -22,20 +22,23 @@ Choose a library from the menu or pass its path on launch. The chooser accepts
 files the engine can open, including BibTeX, BibLaTeX, CSL JSON, RIS and CSV.
 The file choice and format changes made in the picker last for the current
 run. Search shows title and byline, with recent citations for the captured
-app or source-added references when the query is empty. Use Up and Down to select a reference and ⇧↩ to add it to the citation.
-⌘T starts typed citations, where a semicolon completes a reference. Use
-⌘I to edit its form, locator and surrounding text in the drawer. Return
-delivers the shown preview. Escape closes details, clears the query, then
-hides the picker.
+app or source-added references when the query is empty. Use Up and Down to
+select a reference and ⇧↩ to add it to the citation. ⌘T starts typed
+citations, where a semicolon completes a reference. Use ⌘L to edit the active
+reference’s Page field in the bar, or use its menu to choose a chapter or
+another locator type. Click a citation token or press ⌘I to edit Text before,
+Text after and Show as in a popover. Return runs the delivery action shown in
+the bar. Escape closes the popover, clears the query, then hides the picker.
 
 For paste, choose **Allow Paste…** in the Ibis Native menu. In macOS System
 Settings, grant **Ibis Native** Accessibility separately from Ibis and Ibis
 Nightly. Summon it again from an editor after granting permission. When
 paste is unavailable, the citation is copied in the engine's available
 clipboard formats. The native build uses its own settings profile in Application Support.
-Its stored recent citation history contains reference identities. More
-has Compact and Comfortable rows and System, Light and Dark appearance.
-⌘+ and ⌘− scale the whole picker from 100% to 200%. The window keeps its
+Its stored recent citation history contains reference identities. Settings (⌘,)
+saves Appearance, Rows and Larger Text through the engine. Find it in More
+and the Ibis menu bar item, which also opens About Ibis.
+⌘+ and ⌘− temporarily scale the picker from 100% to 200%. The window keeps its
 size while you type and remembers edge resizing per display.
 
 The bundled engine joins a daemon from the same build. If several builds
@@ -47,7 +50,7 @@ contract with `node scripts/gen.mjs` after changing picker methods.
 
 ## Handoff
 
-Steps 2.3–2.5 cover Settings, Sparkle, release signing and notarisation.
+Further Settings controls, Sparkle, release signing and notarisation remain.
 The macOS CI leg builds and tests the repo app. Packaging it for the Mac
 nightly is release work. The Reader, advanced Zotero selection, projects and app-specific
 paste approvals remain parity work. The site can describe native availability when the app ships in a

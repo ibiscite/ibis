@@ -10,7 +10,7 @@ struct PickerView: NSViewRepresentable {
 
 @MainActor
 final class PickerCanvas: NSView {
-    let search = PickerField(plainFocus: true)
+    let search = PickerSearchField()
     private let header = PickerDragView()
     private let bird = NSImageView()
     private let format = PickerPopup()
@@ -25,27 +25,28 @@ final class PickerCanvas: NSView {
     private let results = PickerResults()
     private let empty = PickerEmpty()
     private let shelf = PickerShelf()
-    private let drawer: PickerDrawer
+    private let popover: PickerPopover
     private let model: PickerModel
-    private var statusFix: PickerFix?
+    private var statusAction: PickerStatus?
     private var option = false
     private var numbers = false
     private var announcement: Task<Void, Never>?
     private var announcedRevision = 0
     private var announcedQuery = ""
-    private var previousDrawer: PickerModel.Drawer?
-    private var focusLocator = false
     private var activeMenu: NSMenu?
 
     override var isFlipped: Bool { true }
     private var panel: PickerPanel? { window as? PickerPanel }
+    var hasOpenPopover: Bool { popover.isOpen }
+    var locatorHasFocus: Bool { shelf.locatorHasFocus }
+    private var metrics: PickerMetrics { PickerMetrics(scale: model.scale, density: model.density) }
 
     init(model: PickerModel) {
         self.model = model
-        drawer = PickerDrawer(model: model)
+        popover = PickerPopover(model: model)
         super.init(frame: .zero)
         [header, mode, search, format, headerRule, heading, count, spinner, statusGlyph, fixButton,
-         results, empty, drawer, shelf].forEach(addSubview)
+         results, empty, shelf].forEach(addSubview)
         header.addSubview(bird)
         mode.addSubview(modeLabel)
         bird.imageScaling = .scaleProportionallyUpOrDown
@@ -65,7 +66,7 @@ final class PickerCanvas: NSView {
         statusGlyph.imageScaling = .scaleProportionallyUpOrDown
         statusGlyph.contentTintColor = .secondaryLabelColor
         fixButton.surface = .link
-        fixButton.perform = { [weak self] in self?.runFix(self?.statusFix) }
+        fixButton.perform = { [weak self] in self?.runFix(self?.statusAction) }
         empty.primary.perform = { [weak self] in self?.emptyAction(primary: true) }
         empty.secondary.perform = { [weak self] in self?.emptyAction(primary: false) }
         results.didSelect = { [weak model] in model?.select($0) }
@@ -78,11 +79,14 @@ final class PickerCanvas: NSView {
             if option { addSelection() } else { panel?.submit() }
         }
         shelf.more.perform = { [weak self] in self?.moreMenu() }
-        shelf.edit = { [weak self] id in
-            guard let self else { return }
-            if model.drawer == .citation(id) { model.closeDrawer() } else { showDetails(id) }
-        }
+        shelf.edit = { [weak self] id in self?.showDetails(id) }
+        shelf.select = { [weak model] id in model?.selectCitation(id) }
         shelf.remove = { [weak self] id in self?.removeToken(id) }
+        popover.routeKey = { [weak self] event in
+            guard let self else { return false }
+            return panel?.routeKey(event, view: self) ?? false
+        }
+        popover.closed = { [weak self] subject, restore in self?.popoverClosed(subject, restore: restore) }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -120,7 +124,7 @@ final class PickerCanvas: NSView {
 
     override func layout() {
         super.layout()
-        let m = PickerMetrics(scale: model.scale, density: model.density)
+        let m = metrics
         let width = bounds.width
         let height = bounds.height
         guard width > 0, height > 0 else { return }
@@ -129,24 +133,15 @@ final class PickerCanvas: NSView {
         let hasHeading = arrangeHeading(width: width, y: headingY, metrics: m)
         let resultsY = headingY + (hasHeading ? m.section : 0)
         let shelfY = height - m.footer - m.line
-        let drawerHeight = drawer.arrange(width: width, metrics: m)
-        let drawerY = max(resultsY, shelfY - drawerHeight)
-        results.frame = NSRect(x: 0, y: resultsY, width: width, height: drawerY - resultsY)
+        results.frame = NSRect(x: 0, y: resultsY, width: width, height: max(0, shelfY - resultsY))
         results.configure(sections: model.sections, metrics: m, recent: model.searchReply?.total == nil,
                           selected: model.selected, cited: Set(model.citations.map { $0.row.id }), numbers: numbers)
         empty.frame = results.frame
         empty.configure(state: emptyState, metrics: m)
-        drawer.frame = NSRect(x: 0, y: drawerY, width: width, height: max(0, shelfY - drawerY))
         shelf.frame = NSRect(x: 0, y: shelfY, width: width, height: m.footer + m.line)
         shelf.configure(model: model, option: option, metrics: m, width: width)
         makeKeyLoop()
-        if previousDrawer != model.drawer || focusLocator {
-            previousDrawer = model.drawer
-            if focusLocator, case .citation = model.drawer {
-                focusLocator = false
-                window?.makeFirstResponder(drawer.locator)
-            }
-        }
+        popover.refresh(m)
     }
 
     private func arrangeHeader(width: CGFloat, metrics m: PickerMetrics) {
@@ -176,9 +171,11 @@ final class PickerCanvas: NSView {
         mode.frame = NSRect(x: m.column, y: m.pt(14), width: modeWidth, height: m.pt(24))
         pickerLine(modeLabel, x: m.pt(8), y: 0, width: modeWidth - m.pt(16), height: mode.bounds.height)
         let left = m.column + (model.shorthand ? modeWidth + m.pt(8) : 0)
-        search.font = m.font(22)
+        search.font = m.font(16)
         search.placeholderString = PickerWords.text(model.shorthand ? .shorthandExample : .search)
-        pickerLine(search, x: left, y: m.pt(8), width: max(1, formatX - left - m.pt(8)), height: m.pt(36))
+        let searchHeight = m.pt(32)
+        search.frame = NSRect(x: left, y: (m.header - searchHeight) / 2,
+                              width: max(1, formatX - left - m.pt(12)), height: searchHeight)
         search.show(model.query)
     }
 
@@ -195,8 +192,8 @@ final class PickerCanvas: NSView {
         count.isHidden = label == nil || countText.isEmpty
         count.stringValue = countText
         count.textColor = .secondaryLabelColor
-        count.font = .monospacedDigitSystemFont(ofSize: m.pt(12), weight: .semibold)
-        heading.font = m.font(12, .semibold)
+        count.font = m.font(11)
+        heading.font = m.font(11, .semibold)
         heading.textColor = .secondaryLabelColor
         heading.toolTip = isStatus ? label : nil
         statusGlyph.isHidden = !isStatus || model.isOpening
@@ -204,17 +201,17 @@ final class PickerCanvas: NSView {
         spinner.isHidden = !model.isOpening
         if model.isOpening { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
 
-        statusFix = notice == nil ? status?.fix : nil
+        statusAction = notice == nil ? status : nil
         fixButton.metrics = m
-        fixButton.isHidden = statusFix == nil
-        fixButton.text = statusFix.map(fixTitle) ?? ""
+        fixButton.isHidden = statusAction?.fix == nil
+        fixButton.text = statusAction?.fix.map(fixTitle) ?? ""
         fixButton.setAccessibilityLabel(fixButton.text)
         let fixWidth = fixButton.isHidden ? 0 : fixButton.preferredWidth + m.pt(8)
-        let countWidth = count.isHidden ? 0 : pickerWidth(countText, font: count.font ?? m.font(12))
+        let countWidth = count.isHidden ? 0 : pickerWidth(countText, font: m.font(11))
         let left = m.inset + (isStatus ? m.pt(20) : 0)
         let right = width - m.inset - countWidth
-        pickerLine(heading, x: left, y: y, width: right - left - m.pt(6) - fixWidth, height: m.section)
-        pickerLine(count, x: right, y: y, width: countWidth, height: m.section)
+        pickerLine(heading, x: left, y: y + m.pt(2), width: right - left - m.pt(6) - fixWidth, height: m.section)
+        pickerLine(count, x: right, y: y + m.pt(2), width: countWidth, height: m.section)
         let glyph = NSRect(x: m.inset, y: y + m.pt(7), width: m.pt(14), height: m.pt(14))
         spinner.frame = glyph
         statusGlyph.frame = glyph
@@ -245,18 +242,20 @@ final class PickerCanvas: NSView {
         case .reloadLibrary: PickerWords.text(.reload)
         case .clearSearch: PickerWords.text(.clear)
         case .chooseFormat: PickerWords.text(.format)
+        case .editLocator: PickerWords.text(.page)
         case .editCitation: PickerWords.text(.details)
         }
     }
 
-    private func runFix(_ fix: PickerFix?) {
-        switch fix {
+    private func runFix(_ status: PickerStatus?) {
+        switch status?.fix {
         case .chooseLibrary: panel?.chooseLibrary()
         case .locateLibrary: panel?.chooseLibrary(locate: true)
         case .reloadLibrary: model.reload()
         case .clearSearch: model.query = ""; focusSearch()
         case .chooseFormat: openFormat()
-        case .editCitation: showDetails()
+        case .editLocator: focusLocator(status?.item)
+        case .editCitation: showDetails(status?.item)
         case nil: break
         }
     }
@@ -274,7 +273,7 @@ final class PickerCanvas: NSView {
     private func makeKeyLoop() {
         let list = results.shown.isEmpty ? [] : [results.keyView]
         let options: [NSView] = empty.isHidden ? [] : [empty.primary, empty.secondary]
-        let keyViews = [search, format] + list + options + drawer.keys + shelf.keyViews
+        let keyViews = [search, format] + list + options + shelf.keyViews
         let enabled = keyViews.filter { !$0.isHidden && (($0 as? NSControl)?.isEnabled ?? true) }
         for (index, view) in enabled.enumerated() {
             view.nextKeyView = enabled[(index + 1) % enabled.count]
@@ -333,17 +332,58 @@ final class PickerCanvas: NSView {
     }
 
     func showDetails(_ id: ItemRef? = nil) {
-        focusLocator = true
-        model.showDrawer(for: id ?? shelf.focused)
-        refresh()
+        guard let item = id ?? shelf.focused ?? model.citationItem else { return }
+        if popover.subject == .citation(item) {
+            popover.close(restoringFocus: true)
+            return
+        }
         layoutSubtreeIfNeeded()
+        guard let anchor = shelf.anchor(for: item) else { return }
+        popover.showCitation(item, at: anchor, metrics: metrics)
+    }
+
+    func focusLocator(_ item: ItemRef? = nil) {
+        closePopover()
+        if let item {
+            model.selectCitation(item)
+            needsLayout = true
+            layoutSubtreeIfNeeded()
+        }
+        if window?.isKeyWindow == false { window?.makeKey() }
+        shelf.focusLocator()
+    }
+
+    func togglePeek() {
+        guard let row = model.selection else { return }
+        if popover.subject == .peek(row.id) {
+            popover.close(restoringFocus: true)
+        } else if let anchor = results.anchor(for: row.id) {
+            popover.showPeek(row, at: anchor, metrics: metrics)
+        }
+    }
+
+    func closePopover() { popover.close() }
+
+    private func popoverClosed(_ subject: PickerPopover.Subject, restore: Bool) {
+        guard let panel, panel.pickerIsOpen else { return }
+        if restore {
+            if !panel.isKeyWindow { panel.makeKey() }
+            if case let .citation(item) = subject, shelf.focus(item) { return }
+            focusSearch()
+        } else {
+            // AppKit returns key status after closing its transient window.
+            DispatchQueue.main.async { [weak self, weak panel] in
+                guard let panel, panel.pickerIsOpen, self?.hasOpenPopover == false,
+                      !panel.isKeyWindow, !panel.choosingLibrary else { return }
+                panel.dismiss()
+            }
+        }
     }
 
     func escape() -> Bool {
         if let menu = activeMenu { menu.cancelTracking(); return true }
-        let closed = model.drawer
+        if hasOpenPopover { popover.close(restoringFocus: true); return true }
         let handled = model.escape()
-        if case let .citation(id) = closed, shelf.focus(id) { return true }
         if handled { focusSearch() }
         return handled
     }
@@ -354,7 +394,12 @@ final class PickerCanvas: NSView {
     }
 
     private func libraryMenu() {
+        open(libraryCommands(), at: shelf.library)
+    }
+
+    private func libraryCommands() -> NSMenu {
         let menu = NSMenu()
+        menu.autoenablesItems = false
         if let name = model.catalog?.library?.name {
             let source = NSMenuItem(title: name, action: nil, keyEquivalent: "")
             source.isEnabled = false
@@ -367,46 +412,35 @@ final class PickerCanvas: NSView {
             menu.addItem(.separator())
         }
         menu.addItem(command(.choose) { $0.panel?.chooseLibrary() })
-        open(menu, at: shelf.library)
+        return menu
     }
 
     func moreMenu() {
+        if hasOpenPopover { popover.close(restoringFocus: true) }
         let menu = NSMenu()
         let type = command(.typeCitation, key: "t") { $0.model.toggleShorthand(); $0.focusSearch() }
         type.state = model.shorthand ? .on : .off
         menu.addItem(type)
         menu.addItem(command(.add, key: "\r", modifiers: [.shift], enabled: model.selection != nil) { $0.addSelection() })
-        menu.addItem(command(.details, key: "i", enabled: model.selection != nil || !model.citations.isEmpty) { $0.showDetails() })
-        menu.addItem(command(.peek, key: "y", enabled: model.selection != nil) { $0.model.togglePeek() })
+        menu.addItem(command(.page, key: "l", enabled: model.citationItem != nil) { $0.focusLocator() })
+        menu.addItem(command(.details, key: "i", enabled: model.citationItem != nil) { $0.showDetails() })
+        menu.addItem(command(.remove, key: "\u{8}", modifiers: [], enabled: model.citationItem != nil) {
+            if let item = $0.model.citationItem { $0.removeToken(item) }
+        })
+        menu.addItem(command(.peek, key: "y", enabled: model.selection != nil) { $0.togglePeek() })
         let order = command(.keepOrder, enabled: model.citations.count > 1) { $0.model.toggleKeepOrder() }
         order.state = model.keepOrder ? .on : .off
         menu.addItem(order)
         menu.addItem(command(.undo, key: "z", enabled: model.canUndo) { $0.model.undoChange() })
         menu.addItem(.separator())
-        menu.addItem(command(.openSource, key: "o", enabled: model.libraryReady) { $0.panel?.openSource() })
-        menu.addItem(command(.choose, key: "o", modifiers: [.shift, .command]) { $0.panel?.chooseLibrary() })
+        let library = NSMenuItem(title: PickerWords.text(.library), action: nil, keyEquivalent: "")
+        library.submenu = libraryCommands()
+        menu.addItem(library)
         menu.addItem(command(.format, key: "f", modifiers: [.shift, .command], enabled: model.libraryReady) { $0.openFormat() })
         menu.addItem(.separator())
         menu.addItem(command(.textLarger, key: "+", enabled: model.textPercent < 200) { $0.model.changeSize(10) })
         menu.addItem(command(.textSmaller, key: "-", enabled: model.textPercent > 100) { $0.model.changeSize(-10) })
-        let rowsMenu = NSMenu()
-        for (word, density) in [(PickerWord.compact, Density.compact), (.comfortable, .comfortable)] {
-            let item = command(word) { $0.model.chooseDensity(density) }
-            item.state = model.density == density ? .on : .off
-            rowsMenu.addItem(item)
-        }
-        let rows = NSMenuItem(title: PickerWords.text(.density), action: nil, keyEquivalent: "")
-        rows.submenu = rowsMenu
-        menu.addItem(rows)
-        let appearances = NSMenu()
-        for (word, appearance) in [(PickerWord.system, Appearance.system), (.light, .light), (.dark, .dark)] {
-            let item = command(word) { $0.model.chooseAppearance(appearance) }
-            item.state = model.appearance == appearance ? .on : .off
-            appearances.addItem(item)
-        }
-        let appearance = NSMenuItem(title: PickerWords.text(.appearance), action: nil, keyEquivalent: "")
-        appearance.submenu = appearances
-        menu.addItem(appearance)
+        menu.addItem(command(.settings, key: ",") { $0.panel?.openSettings?() })
         open(menu, at: shelf.more)
     }
 
@@ -429,7 +463,7 @@ final class PickerCanvas: NSView {
 }
 
 @MainActor
-private final class PickerMenuItem: NSMenuItem {
+final class PickerMenuItem: NSMenuItem {
     let perform: () -> Void
 
     init(_ title: String, key: String = "", perform: @escaping () -> Void) {

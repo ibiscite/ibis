@@ -49,10 +49,10 @@ fn sections_count_the_untruncated_search_and_fill_recent_sections() {
     assert_eq!(
         selected.bylines,
         [
-            "Mira Vale · No date · Journal of Imaginary Lanterns",
-            "Mira Vale · No date",
-            "Vale · No date",
-            "No date"
+            "Mira Vale · Journal of Imaginary Lanterns",
+            "Vale · Journal of Imaginary Lanterns",
+            "Mira Vale",
+            "Vale",
         ]
     );
     let recents = find(&engine, "", false, std::slice::from_ref(&selected.id), Language::German);
@@ -62,7 +62,58 @@ fn sections_count_the_untruncated_search_and_fill_recent_sections() {
     assert_eq!(recents.sections[1].kind, PickerSectionKind::RecentlyAdded);
     assert_eq!(recents.sections[1].rows.len(), 12);
     assert!(recents.sections[1].rows.iter().all(|row| row.id != selected.id));
-    assert_ne!(recents.sections[0].rows[0].bylines.last(), selected.bylines.last());
+    assert_ne!(recents.sections[0].rows[0].full_byline, selected.full_byline);
+}
+
+#[test]
+fn locator_recovery_names_the_reference_that_needs_editing() {
+    let (_dir, engine) = library(vec![
+        json!({"id":"vale", "citation-key":"vale2024", "title":"Imaginary lanterns", "type":"book"}),
+        json!({"id":"fen", "citation-key":"fen2023", "title":"Invented bridges", "type":"book"}),
+    ]);
+    let entries: Vec<_> = find(&engine, "invent", false, &[], Language::English)
+        .sections
+        .into_iter()
+        .flat_map(|section| section.rows)
+        .map(|row| PickerPreviewEntry {
+            item: row.id,
+            cite: row.cite,
+            form: None,
+            locator: None,
+            prefix: None,
+            suffix: None,
+        })
+        .collect();
+    // Use separate title searches so the two item identities are unambiguous.
+    assert_eq!(entries.len(), 1);
+    let mut other = find(&engine, "lanterns", false, &[], Language::English).sections;
+    let row = other.remove(0).rows.remove(0);
+    let owner = row.id.clone();
+    let mut draft = vec![PickerPreviewEntry {
+        item: row.id,
+        cite: row.cite,
+        form: None,
+        locator: Some(Locator {
+            term: ibis_core::contract::LocatorTerm::Page,
+            value: "17 [appendix]".into(),
+        }),
+        prefix: None,
+        suffix: Some("and compare".into()),
+    }];
+    draft.extend(entries);
+    let result = preview(
+        &engine,
+        PickerPreviewRequest {
+            entries: draft,
+            format: "pandoc".into(),
+            keep_order: false,
+        },
+        Language::English,
+        Cancellation::default(),
+    );
+    let status = result.problem.unwrap();
+    assert!(matches!(status.fix, Some(PickerFix::EditLocator)));
+    assert_eq!(status.item, Some(owner));
 }
 
 #[test]

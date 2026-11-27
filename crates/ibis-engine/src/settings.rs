@@ -13,6 +13,7 @@
 
 use crate::sync::MutexExt;
 pub mod backup;
+pub mod native;
 mod owner;
 pub use owner::{Owner, Pending, Watching};
 pub mod writings;

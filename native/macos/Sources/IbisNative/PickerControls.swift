@@ -10,8 +10,8 @@ struct PickerMetrics {
     var inset: CGFloat { pt(20) }
     var tileCenter: CGFloat { pt(36) }
     var column: CGFloat { pt(64) }
-    var row: CGFloat { pt(density == .compact ? 32 : 44) }
-    var section: CGFloat { pt(28) }
+    var row: CGFloat { pt(density == .compact ? 36 : 48) }
+    var section: CGFloat { pt(23) }
     func font(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
         .systemFont(ofSize: pt(size), weight: weight)
     }
@@ -23,10 +23,6 @@ extension NSColor {
         return NSColor.unemphasizedSelectedContentBackgroundColor.withAlphaComponent(0.45)
     }
 
-    static var pickerTertiaryFill: NSColor {
-        if #available(macOS 14, *) { return .tertiarySystemFill }
-        return NSColor.unemphasizedSelectedContentBackgroundColor.withAlphaComponent(0.7)
-    }
 }
 
 enum PickerArt {
@@ -71,8 +67,10 @@ func pickerLabel(_ text: String = "") -> NSTextField {
     return label
 }
 
+private let pickerLabelAllowance: CGFloat = 6
+
 func pickerWidth(_ text: String, font: NSFont) -> CGFloat {
-    ceil((text as NSString).size(withAttributes: [.font: font]).width) + 6
+    ceil((text as NSString).size(withAttributes: [.font: font]).width) + pickerLabelAllowance
 }
 
 func pickerLine(_ label: NSTextField, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) {
@@ -89,9 +87,48 @@ final class PickerRule: NSView {
 }
 
 @MainActor
+final class PickerSearchField: NSSearchField {
+    var change: ((String) -> Void)?
+
+    init() {
+        super.init(frame: .zero)
+        sendsSearchStringImmediately = true
+        focusRingType = .none
+        target = self
+        action = #selector(reportChange)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func textDidChange(_ notification: Notification) {
+        super.textDidChange(notification)
+        reportChange()
+    }
+
+    @objc private func reportChange() { change?(stringValue) }
+}
+
+@MainActor
+final class PickerDeliveryButton: NSButton {
+    var perform: (() -> Void)?
+
+    init() {
+        super.init(frame: .zero)
+        bezelStyle = .rounded
+        setButtonType(.momentaryPushIn)
+        cell?.lineBreakMode = .byTruncatingTail
+        target = self
+        action = #selector(deliver)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    @objc private func deliver() { perform?() }
+}
+
+@MainActor
 final class PickerField: NSTextField {
     var change: ((String) -> Void)?
-    var beforeEdit: (() -> Void)?
     private let plainFocus: Bool
 
     init(plainFocus: Bool = false) {
@@ -110,7 +147,6 @@ final class PickerField: NSTextField {
 
     override func textDidBeginEditing(_ notification: Notification) {
         super.textDidBeginEditing(notification)
-        beforeEdit?()
         if plainFocus { (currentEditor() as? NSTextView)?.focusRingType = .none }
     }
 
@@ -119,6 +155,9 @@ final class PickerField: NSTextField {
         change?(stringValue)
     }
 
+}
+
+extension NSTextField {
     func show(_ text: String) {
         if stringValue != text {
             stringValue = text
@@ -134,11 +173,19 @@ final class PickerField: NSTextField {
 final class PickerPopup: NSPopUpButton, NSMenuDelegate {
     var change: ((Int) -> Void)?
     private var examples: [String?] = []
+    private let displayItem: NSMenuItem?
 
-    init() {
-        super.init(frame: .zero, pullsDown: false)
+    init(compactTitle: Bool = false) {
+        displayItem = compactTitle ? NSMenuItem() : nil
+        super.init(frame: .zero, pullsDown: compactTitle)
         isBordered = false
-        (cell as? NSPopUpButtonCell)?.arrowPosition = .arrowAtCenter
+        if let cell = cell as? NSPopUpButtonCell {
+            cell.arrowPosition = .arrowAtCenter
+            if let displayItem {
+                cell.usesItemFromMenu = false
+                cell.menuItem = displayItem
+            }
+        }
         imagePosition = .noImage
         target = self
         action = #selector(changed)
@@ -148,13 +195,22 @@ final class PickerPopup: NSPopUpButton, NSMenuDelegate {
 
     required init?(coder: NSCoder) { nil }
 
-    func setOptions(_ titles: [String], selected: Int, examples: [String?] = []) {
+    func setOptions(_ titles: [String], selected: Int, examples: [String?] = [], shortTitle: String? = nil) {
         self.examples = examples
         if itemTitles != titles {
             removeAllItems()
             addItems(withTitles: titles)
         }
         if (0..<numberOfItems).contains(selected) { selectItem(at: selected) }
+        if let shortTitle, let displayItem {
+            displayItem.title = shortTitle
+            displayItem.attributedTitle = NSAttributedString(string: shortTitle, attributes: [
+                .font: font ?? NSFont.systemFont(ofSize: 13),
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ])
+            for (index, item) in itemArray.enumerated() { item.state = index == selected ? .on : .off }
+            needsDisplay = true
+        }
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -184,6 +240,7 @@ final class PickerButton: NSButton {
 
     var perform: (() -> Void)?
     var remove: (() -> Void)?
+    var didFocus: (() -> Void)?
     var text = "" { didSet { caption.stringValue = text } }
     var richText: NSAttributedString? {
         didSet {
@@ -193,22 +250,19 @@ final class PickerButton: NSButton {
     }
     var key = "" { didSet { keyLabel.stringValue = key } }
     var icon: String? { didSet { glyph.image = icon.flatMap(PickerArt.image) } }
-    var accentKey = false
     var medium = false
     var surface: Surface = .control
-    var secondary = false
-    var useWarning = false
     var maxCaption: CGFloat = .greatestFiniteMagnitude
     var metrics = PickerMetrics(scale: 1, density: .compact) { didSet { needsLayout = true } }
 
     private let caption = pickerLabel()
     private let glyph = NSImageView()
-    private let keycap = NSView()
     private let keyLabel = pickerLabel()
     private let removeGlyph = NSImageView()
     private var tracking: NSTrackingArea?
     private var hovered = false { didSet { refreshColors() } }
     private var focused = false { didSet { refreshColors() } }
+    private var pressed = false
 
     init() {
         super.init(frame: .zero)
@@ -222,12 +276,10 @@ final class PickerButton: NSButton {
         wantsLayer = true
         addSubview(caption)
         addSubview(glyph)
-        addSubview(keycap)
-        keycap.addSubview(keyLabel)
+        addSubview(keyLabel)
         addSubview(removeGlyph)
-        keyLabel.alignment = .center
+        keyLabel.alignment = .left
         keyLabel.lineBreakMode = .byClipping
-        keycap.wantsLayer = true
         keyLabel.cell?.wraps = false
         glyph.imageScaling = .scaleProportionallyUpOrDown
         removeGlyph.imageScaling = .scaleProportionallyUpOrDown
@@ -243,13 +295,16 @@ final class PickerButton: NSButton {
         let m = metrics
         if icon != nil, text.isEmpty { return m.pt(28) }
         let pad = surface == .link ? m.pt(4) : m.pt(8)
-        let labelWidth = (richText.map { ceil($0.size().width) } ?? pickerWidth(text, font: captionFont)) + metrics.pt(5)
-        return pad * 2 + min(maxCaption, labelWidth) + (key.isEmpty ? 0 : m.pt(6) + keyWidth)
+        let labelWidth = richText.map { ceil($0.size().width) + m.pt(5) } ?? pickerWidth(text, font: captionFont)
+        return pad * 2 + min(maxCaption, labelWidth) + hintWidth
             + (remove == nil ? 0 : m.pt(13))
     }
 
     private var captionFont: NSFont { metrics.font(13, medium ? .medium : .regular) }
-    private var keyWidth: CGFloat { max(metrics.pt(20), pickerWidth(key, font: metrics.font(11, .medium)) + metrics.pt(10)) }
+    private var keyWidth: CGFloat { pickerWidth(key, font: metrics.font(13)) }
+    private var hintWidth: CGFloat {
+        key.isEmpty ? 0 : keyWidth + metrics.pt(4) - pickerLabelAllowance
+    }
 
     override func layout() {
         super.layout()
@@ -261,15 +316,13 @@ final class PickerButton: NSButton {
         let iconSize = m.pt(18)
         glyph.frame = NSRect(x: (bounds.width - iconSize) / 2, y: (bounds.height - iconSize) / 2,
                              width: iconSize, height: iconSize)
-        keycap.isHidden = key.isEmpty
-        keyLabel.font = m.font(11, .medium)
-        keycap.frame = NSRect(x: bounds.width - pad - keyWidth, y: (bounds.height - m.pt(20)) / 2,
-                              width: keyWidth, height: m.pt(20))
-        pickerLine(keyLabel, x: 0, y: 0, width: keyWidth, height: m.pt(20))
+        keyLabel.isHidden = key.isEmpty
+        keyLabel.font = m.font(13)
+        pickerLine(keyLabel, x: bounds.width - pad - keyWidth, y: 0, width: keyWidth, height: bounds.height)
         let close: CGFloat = remove == nil ? 0 : m.pt(13)
         removeGlyph.frame = NSRect(x: bounds.width - pad - close, y: (bounds.height - close) / 2,
                                    width: close, height: close)
-        pickerLine(caption, x: pad, y: 0, width: bounds.width - pad * 2 - close - (key.isEmpty ? 0 : keyWidth + m.pt(6)),
+        pickerLine(caption, x: pad, y: 0, width: bounds.width - pad * 2 - close - hintWidth,
                    height: bounds.height)
         refreshColors()
     }
@@ -278,7 +331,8 @@ final class PickerButton: NSButton {
         let m = metrics
         let contrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            let fill: NSColor = hovered && isEnabled ? .pickerQuaternaryFill : .clear
+            let fill: NSColor = pressed && isEnabled ? .selectedControlColor
+                : hovered && isEnabled ? .pickerQuaternaryFill : .clear
             let background: NSColor = switch surface {
             case .token: .pickerQuaternaryFill
             case .primary: hovered ? .selectedContentBackgroundColor : .controlAccentColor
@@ -289,17 +343,11 @@ final class PickerButton: NSButton {
             layer?.borderWidth = surface == .token && contrast ? m.line : 0
             layer?.borderColor = NSColor.separatorColor.cgColor
             caption.textColor = !isEnabled ? .disabledControlTextColor
-                : (surface == .primary ? .alternateSelectedControlTextColor
-                    : (secondary || surface == .link ? .secondaryLabelColor : .labelColor))
-            glyph.contentTintColor = useWarning ? .labelColor : .secondaryLabelColor
+                : (surface == .primary ? .alternateSelectedControlTextColor : .labelColor)
+            glyph.contentTintColor = .secondaryLabelColor
             removeGlyph.contentTintColor = .secondaryLabelColor
             removeGlyph.isHidden = remove == nil || !(focused || hovered)
-            let cap: NSColor = accentKey && isEnabled ? .controlAccentColor : .pickerTertiaryFill
-            keyLabel.textColor = accentKey && isEnabled ? .white : .secondaryLabelColor
-            keycap.layer?.backgroundColor = cap.cgColor
-            keycap.layer?.cornerRadius = m.pt(5)
-            keycap.layer?.borderWidth = contrast ? m.line : 0
-            keycap.layer?.borderColor = NSColor.separatorColor.cgColor
+            keyLabel.textColor = isEnabled ? .secondaryLabelColor : .disabledControlTextColor
         }
         needsDisplay = true
     }
@@ -335,7 +383,14 @@ final class PickerButton: NSButton {
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
         focused = accepted
+        if accepted { didFocus?() }
         return accepted
+    }
+
+    override func highlight(_ flag: Bool) {
+        super.highlight(flag)
+        pressed = flag
+        refreshColors()
     }
 
     override func resignFirstResponder() -> Bool {

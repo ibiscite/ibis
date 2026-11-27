@@ -2,12 +2,14 @@
 import Foundation
 
 enum PickerWord {
+    case about
     case add
     case after
     case allowPaste
     case app
     case appearance
     case before
+    case beforeExample
     case best
     case busy
     case changed
@@ -18,12 +20,14 @@ enum PickerWord {
     case cited
     case citedHere
     case clear
+    case closeWindow
     case closest
     case comfortable
     case compact
     case copied
     case copiedPermission
-    case copy
+    case copyCitation
+    case copyCitations
     case copyFailed
     case dark
     case density
@@ -37,10 +41,10 @@ enum PickerWord {
     case formatting
     case invalidFrame
     case keepOrder
+    case largerText
     case library
     case light
     case locatorType
-    case locatorValue
     case missingHint
     case missingShortcut
     case more
@@ -53,10 +57,14 @@ enum PickerWord {
     case openSource
     case openZotero
     case opening
+    case page
+    case pageShort
     case panel
     case paste
+    case pasteCitations
     case pasted
     case peek
+    case pickerPreferences
     case quit
     case recentlyAdded
     case references
@@ -67,6 +75,10 @@ enum PickerWord {
     case resultHint
     case returnKey
     case search
+    case settings
+    case settingsReadFailed
+    case settingsSaveFailed
+    case settingsWindow
     case shorthandExample
     case showAs
     case system
@@ -76,6 +88,7 @@ enum PickerWord {
     case typeCitation
     case undo
     case untitled
+    case windowMenu
     case wrongPeer
 }
 
@@ -92,12 +105,14 @@ enum PickerWords {
 
     private static let words: [Language: [PickerWord: String]] = [
         .ar: [
+            .about: "حول Ibis",
             .add: "إضافة إلى الاستشهاد",
             .after: "نص بعده",
             .allowPaste: "السماح باللصق…",
             .app: "Ibis Native",
             .appearance: "المظهر",
             .before: "نص قبله",
+            .beforeExample: "انظر",
             .best: "أفضل التطابقات",
             .busy: "هناك عملية تسليم أخرى في Ibis.",
             .changed: "تغيّر الاستشهاد. راجعه قبل المحاولة مجددًا.",
@@ -108,12 +123,14 @@ enum PickerWords {
             .cited: "في الاستشهاد",
             .citedHere: "استُشهد بها هنا مؤخرًا",
             .clear: "مسح البحث",
+            .closeWindow: "إغلاق النافذة",
             .closest: "أقرب التطابقات",
             .comfortable: "مريحة",
             .compact: "مضغوطة",
             .copied: "تم النسخ. اضغط ⌘V للصق.",
             .copiedPermission: "تم النسخ. اسمح باللصق من قائمة Ibis لتفعيل اللصق التلقائي.",
-            .copy: "نسخ",
+            .copyCitation: "نسخ الاستشهاد",
+            .copyCitations: "نسخ الاستشهادات ({IBIS_VALUE})",
             .copyFailed: "تغيّرت الحافظة أو تعذّرت الكتابة فيها.",
             .dark: "داكن",
             .density: "الصفوف",
@@ -127,10 +144,10 @@ enum PickerWords {
             .formatting: "جارٍ التنسيق…",
             .invalidFrame: "أرسل محرك Ibis ردًا غير صالح.",
             .keepOrder: "الإبقاء على ترتيبي",
+            .largerText: "نص أكبر",
             .library: "المكتبة",
             .light: "فاتح",
             .locatorType: "نوع الموضع",
-            .locatorValue: "الموضع",
             .missingHint: "ربما نُقل الملف أو تغيّر اسمه.",
             .missingShortcut: "اختصار Ibis Native غير متاح.",
             .more: "المزيد",
@@ -143,10 +160,14 @@ enum PickerWords {
             .openSource: "فتح المصدر",
             .openZotero: "فتح Zotero",
             .opening: "جارٍ فتح المكتبة…",
+            .page: "صفحة",
+            .pageShort: "ص",
             .panel: "Ibis، منتقي الاستشهادات",
             .paste: "لصق في {IBIS_VALUE}",
+            .pasteCitations: "لصق الاستشهادات ({IBIS_COUNT}) في {IBIS_VALUE}",
             .pasted: "القائمة الملصقة",
             .peek: "لمحة عن المرجع",
+            .pickerPreferences: "منتقي الاستشهادات",
             .quit: "إنهاء Ibis Native",
             .recentlyAdded: "أُضيفت مؤخرًا",
             .references: "المراجع",
@@ -157,6 +178,10 @@ enum PickerWords {
             .resultHint: "اكتب عنوانًا أو مؤلفًا أو سنةً أو مفتاحًا.",
             .returnKey: "مفتاح الإدخال",
             .search: "البحث في المراجع",
+            .settings: "الإعدادات…",
+            .settingsReadFailed: "تعذّر على Ibis قراءة إعداداتك؛ أعد فتح الإعدادات للمحاولة مرة أخرى.",
+            .settingsSaveFailed: "تعذّر على Ibis حفظ هذا الخيار؛ تظهر القيمة المحفوظة.",
+            .settingsWindow: "إعدادات Ibis",
             .shorthandExample: "vale 2024 p12; ostrom ch3",
             .showAs: "طريقة العرض",
             .system: "النظام",
@@ -166,15 +191,18 @@ enum PickerWords {
             .typeCitation: "كتابة استشهاد",
             .undo: "تراجع",
             .untitled: "بلا عنوان",
+            .windowMenu: "نافذة",
             .wrongPeer: "تعذّر على Ibis التحقق من محركه المحلي.",
         ],
         .de: [
+            .about: "Über Ibis",
             .add: "Zur Zitation hinzufügen",
             .after: "Text danach",
             .allowPaste: "Einfügen erlauben…",
             .app: "Ibis Native",
             .appearance: "Erscheinungsbild",
             .before: "Text davor",
+            .beforeExample: "siehe",
             .best: "Beste Treffer",
             .busy: "Ibis fügt gerade ein anderes Zitat ein.",
             .changed: "Das Zitat hat sich geändert. Prüfen Sie es vor dem nächsten Versuch.",
@@ -185,12 +213,14 @@ enum PickerWords {
             .cited: "Im Zitat",
             .citedHere: "Hier zuletzt zitiert",
             .clear: "Suche löschen",
+            .closeWindow: "Fenster schließen",
             .closest: "Nächste Treffer",
             .comfortable: "Komfortabel",
             .compact: "Kompakt",
             .copied: "Kopiert. Drücken Sie ⌘V zum Einfügen.",
             .copiedPermission: "Kopiert. Erlauben Sie im Ibis-Menü das automatische Einfügen.",
-            .copy: "Kopieren",
+            .copyCitation: "Zitat kopieren",
+            .copyCitations: "{IBIS_VALUE} Zitate kopieren",
             .copyFailed: "Die Zwischenablage hat sich geändert oder konnte nicht beschrieben werden.",
             .dark: "Dunkel",
             .density: "Zeilen",
@@ -204,10 +234,10 @@ enum PickerWords {
             .formatting: "Wird formatiert…",
             .invalidFrame: "Die Ibis-Engine hat eine ungültige Antwort gesendet.",
             .keepOrder: "Meine Reihenfolge beibehalten",
+            .largerText: "Größerer Text",
             .library: "Bibliothek",
             .light: "Hell",
             .locatorType: "Art der Fundstelle",
-            .locatorValue: "Fundstelle",
             .missingHint: "Die Datei wurde möglicherweise verschoben oder umbenannt.",
             .missingShortcut: "Das Tastenkürzel von Ibis Native ist nicht verfügbar.",
             .more: "Mehr",
@@ -220,10 +250,14 @@ enum PickerWords {
             .openSource: "Quelle öffnen",
             .openZotero: "Zotero öffnen",
             .opening: "Bibliothek wird geöffnet…",
+            .page: "Seite",
+            .pageShort: "S.",
             .panel: "Ibis, Zitationsauswahl",
             .paste: "In {IBIS_VALUE} einfügen",
+            .pasteCitations: "{IBIS_COUNT} Zitate in {IBIS_VALUE} einfügen",
             .pasted: "Eingefügte Liste",
             .peek: "Kurzansicht der Referenz",
+            .pickerPreferences: "Auswahlfenster",
             .quit: "Ibis Native beenden",
             .recentlyAdded: "Zuletzt hinzugefügt",
             .references: "Referenzen",
@@ -234,6 +268,10 @@ enum PickerWords {
             .resultHint: "Geben Sie einen Titel, Autor, ein Jahr oder einen Schlüssel ein.",
             .returnKey: "Eingabetaste",
             .search: "Referenzen suchen",
+            .settings: "Einstellungen…",
+            .settingsReadFailed: "Ibis konnte Ihre Einstellungen nicht lesen; öffnen Sie die Einstellungen erneut, um es noch einmal zu versuchen.",
+            .settingsSaveFailed: "Ibis konnte diese Wahl nicht speichern; der gespeicherte Wert wird angezeigt.",
+            .settingsWindow: "Ibis-Einstellungen",
             .shorthandExample: "vale 2024 Seite12; ostrom Kapitel3",
             .showAs: "Anzeigen als",
             .system: "System",
@@ -243,15 +281,18 @@ enum PickerWords {
             .typeCitation: "Zitat eingeben",
             .undo: "Rückgängig",
             .untitled: "Ohne Titel",
+            .windowMenu: "Fenster",
             .wrongPeer: "Ibis konnte seine lokale Engine nicht überprüfen.",
         ],
         .enUS: [
+            .about: "About Ibis",
             .add: "Add to Citation",
             .after: "Text after",
             .allowPaste: "Allow Paste…",
             .app: "Ibis Native",
             .appearance: "Appearance",
             .before: "Text before",
+            .beforeExample: "see",
             .best: "Best matches",
             .busy: "Another Ibis delivery is in progress.",
             .changed: "The citation changed. Review it before trying again.",
@@ -262,12 +303,14 @@ enum PickerWords {
             .cited: "In citation",
             .citedHere: "Cited here recently",
             .clear: "Clear Search",
+            .closeWindow: "Close Window",
             .closest: "Closest matches",
             .comfortable: "Comfortable",
             .compact: "Compact",
             .copied: "Copied. Press ⌘V to paste.",
             .copiedPermission: "Copied. Allow Paste in the Ibis menu to paste automatically.",
-            .copy: "Copy",
+            .copyCitation: "Copy Citation",
+            .copyCitations: "Copy {IBIS_VALUE} Citations",
             .copyFailed: "The clipboard changed or could not be written.",
             .dark: "Dark",
             .density: "Rows",
@@ -281,10 +324,10 @@ enum PickerWords {
             .formatting: "Formatting…",
             .invalidFrame: "The Ibis engine sent an invalid response.",
             .keepOrder: "Keep My Order",
+            .largerText: "Larger text",
             .library: "Library",
             .light: "Light",
             .locatorType: "Locator type",
-            .locatorValue: "Locator value",
             .missingHint: "It may have moved or been renamed.",
             .missingShortcut: "The Ibis Native shortcut is unavailable.",
             .more: "More",
@@ -297,10 +340,14 @@ enum PickerWords {
             .openSource: "Open Source",
             .openZotero: "Open Zotero",
             .opening: "Opening library…",
+            .page: "Page",
+            .pageShort: "p.",
             .panel: "Ibis, citation picker",
             .paste: "Paste into {IBIS_VALUE}",
+            .pasteCitations: "Paste {IBIS_COUNT} Citations into {IBIS_VALUE}",
             .pasted: "Pasted list",
             .peek: "Peek at Reference",
+            .pickerPreferences: "Picker",
             .quit: "Quit Ibis Native",
             .recentlyAdded: "Recently added",
             .references: "References",
@@ -311,6 +358,10 @@ enum PickerWords {
             .resultHint: "Type a title, author, year or key.",
             .returnKey: "Return",
             .search: "Search references",
+            .settings: "Settings…",
+            .settingsReadFailed: "Ibis could not read your settings; reopen Settings to try again.",
+            .settingsSaveFailed: "Ibis could not save this choice; the saved value is shown.",
+            .settingsWindow: "Ibis Settings",
             .shorthandExample: "vale 2024 p12; ostrom ch3",
             .showAs: "Show as",
             .system: "System",
@@ -320,6 +371,7 @@ enum PickerWords {
             .typeCitation: "Type a Citation",
             .undo: "Undo",
             .untitled: "Untitled",
+            .windowMenu: "Window",
             .wrongPeer: "Ibis could not verify its local engine.",
         ],
     ]

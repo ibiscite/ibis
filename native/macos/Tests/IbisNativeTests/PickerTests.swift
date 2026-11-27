@@ -5,7 +5,7 @@ import XCTest
 
 final class PickerTests: XCTestCase {
     @MainActor
-    func testSelectionAndDrawerUseOnlyTheCurrentPreview() async throws {
+    func testLocatorAndPopoverEditsStayWithTheirReference() async throws {
         let fixture = try Fixture()
         try fixture.identifyDaemon()
         let model = PickerModel(engine: fixture.client(), file: fixture.library)
@@ -19,10 +19,12 @@ final class PickerTests: XCTestCase {
         try await eventually { model.canDeliver }
 
         model.format = "apa"
-        model.details.form = .narrative
-        model.details.term = .page
-        model.details.locator = "12"
-        model.details.prefix = "See "
+        let second = try XCTUnwrap(model.citationItem)
+        model.changeDetails(for: second) {
+            $0.form = .narrative
+            $0.locator = "12"
+            $0.prefix = "See "
+        }
         XCTAssertFalse(model.canDeliver)
         try await eventually { model.canDeliver }
         XCTAssertNil(model.preview?.problem)
@@ -33,12 +35,29 @@ final class PickerTests: XCTestCase {
         XCTAssertFalse(model.canDeliver)
         try await eventually { model.canDeliver && model.rows.count == 1 }
         XCTAssertEqual(model.selected, first)
-        model.showDrawer()
-        XCTAssertTrue(model.escape())
-        XCTAssertNil(model.drawer)
         XCTAssertTrue(model.escape())
         XCTAssertTrue(model.query.isEmpty)
         XCTAssertFalse(model.escape())
+        try await eventually { model.canDeliver && model.rows.count == 2 }
+
+        let firstItem = try XCTUnwrap(first)
+        model.toggleCitation(try XCTUnwrap(model.rows.first { $0.id == firstItem }))
+        model.changeDetails(for: firstItem) { $0.locator = "7" }
+        model.toggleCitation(try XCTUnwrap(model.rows.first { $0.id == second }))
+        XCTAssertEqual(model.citationItem, second)
+        XCTAssertEqual(model.details(for: second).locator, "12")
+        model.changeDetails(for: second) { $0.form = nil }
+        model.beginCitationEdit(firstItem)
+        XCTAssertEqual(model.editingCitation, firstItem)
+        XCTAssertEqual(model.citationItem, firstItem)
+        XCTAssertEqual(model.details(for: firstItem).locator, "7")
+        model.changeDetails(for: firstItem) { $0.suffix = " under glass" }
+        model.endCitationEdit()
+        try await eventually { model.previewEntries.contains { $0.details.suffix == " under glass" } }
+        XCTAssertTrue(model.canDeliver, model.preview?.problem?.text ?? "The group is not ready.")
+        XCTAssertTrue(model.preview?.text.contains("under glass") == true)
+        XCTAssertEqual(model.details(for: second).locator, "12")
+        XCTAssertTrue(model.preview?.text.contains("12") == true)
     }
 
     @MainActor
@@ -72,10 +91,20 @@ final class PickerTests: XCTestCase {
         XCTAssertNotEqual(model.selected, first)
         try send("\r", key: 36, flags: [.shift], to: panel)
         XCTAssertEqual(model.citations.map(\.row.id), [model.selected].compactMap { $0 })
+        try await eventually { model.canDeliver }
+        let beforePopover = try XCTUnwrap(resultTable(in: panel)?.enclosingScrollView?.frame)
         try send("i", key: 34, flags: [.command], to: panel)
-        XCTAssertEqual(model.drawer?.item, model.selected)
+        XCTAssertEqual(model.editingCitation, model.selected)
+        XCTAssertEqual(resultTable(in: panel)?.enclosingScrollView?.frame, beforePopover)
         try send("\u{1b}", key: 53, to: panel)
-        XCTAssertNil(model.drawer)
+        XCTAssertNil(model.editingCitation)
+        try send("l", key: 37, flags: [.command], to: panel)
+        let page = try XCTUnwrap(descendants(of: try XCTUnwrap(panel.contentView))
+            .compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == PickerWords.text(.page) })
+        XCTAssertTrue(page.currentEditor() === panel.firstResponder)
+        XCTAssertEqual(page.stringValue, "")
+        try send("\t", key: 48, to: panel)
+        XCTAssertTrue(panel.searchField?.currentEditor() === panel.firstResponder)
         panel.makeFirstResponder(panel.searchField)
         try send("\u{f700}", key: 126, to: panel) // Up
         XCTAssertEqual(model.selected, first)
@@ -93,11 +122,14 @@ final class PickerTests: XCTestCase {
         let scroll = try XCTUnwrap(views.compactMap { $0 as? NSScrollView }
             .first { $0.documentView is NSTableView })
         let table = try XCTUnwrap(scroll.documentView as? NSTableView)
-        XCTAssertEqual(table.rowHeight, 64)
+        XCTAssertEqual(table.rowHeight, 72)
         XCTAssertGreaterThan(table.rect(ofRow: table.numberOfRows - 1).maxY, scroll.contentView.bounds.height)
-        let buttons = try [PickerWord.library, .copy, .more].map { word in
+        let library = try XCTUnwrap(views.compactMap { $0 as? NSButton }
+            .first { $0.accessibilityLabel() == PickerWords.text(.library) })
+        XCTAssertTrue(library.isHidden)
+        let buttons = try [model.deliveryTitle, PickerWords.text(.more)].map { label in
             try XCTUnwrap(views.compactMap { $0 as? NSButton }
-                .first { $0.accessibilityLabel() == PickerWords.text(word) })
+                .first { $0.accessibilityLabel() == label && !$0.isHidden })
         }
         let placements = buttons.map { $0.convert($0.bounds, to: content) }
         XCTAssertTrue(placements.allSatisfy { $0.height == 56 && content.bounds.contains($0) })
@@ -111,6 +143,11 @@ final class PickerTests: XCTestCase {
     @MainActor
     private func descendants(of view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendants(of: $0) }
+    }
+
+    @MainActor
+    private func resultTable(in panel: PickerPanel) -> NSTableView? {
+        panel.contentView.flatMap { descendants(of: $0).compactMap { $0 as? NSTableView }.first }
     }
 
     @MainActor

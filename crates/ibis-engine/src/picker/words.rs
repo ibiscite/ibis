@@ -5,6 +5,15 @@ use std::collections::BTreeMap;
 pub fn shell_words(language: Language) -> BTreeMap<&'static str, String> {
     let fixed = [
         ("app", "picker-native-app"),
+        ("about", "settings-about"),
+        ("settings", "app-tray-settings"),
+        ("settingsWindow", "app-window-settings"),
+        ("settingsSaveFailed", "settings-choice-failed"),
+        ("settingsReadFailed", "settings-read-failed"),
+        ("largerText", "backup-setting-larger-text"),
+        ("pickerPreferences", "picker-native-settings-picker"),
+        ("windowMenu", "picker-native-window-menu"),
+        ("closeWindow", "picker-native-close-window"),
         ("panel", "picker-native-panel"),
         ("open", "picker-native-open"),
         ("quit", "picker-native-quit"),
@@ -38,10 +47,12 @@ pub fn shell_words(language: Language) -> BTreeMap<&'static str, String> {
         ("formatting", "picker-preview-pending"),
         ("showAs", "citation-details-form"),
         ("locatorType", "picker-native-locator-type"),
-        ("locatorValue", "picker-native-locator-value"),
+        ("page", "locator-page"),
+        ("pageShort", "locator-short-page"),
         ("before", "citation-details-prefix"),
+        ("beforeExample", "picker-native-before-example"),
         ("after", "citation-details-suffix"),
-        ("copy", "key-copy"),
+        ("copyCitation", "picker-native-copy-citation"),
         ("add", "key-add-to-citation"),
         ("remove", "key-remove-from-citation"),
         ("more", "picker-more"),
@@ -74,10 +85,11 @@ pub fn shell_words(language: Language) -> BTreeMap<&'static str, String> {
         ("requestFailed", "picker-native-request-failed"),
     ];
     const VALUE: &str = "{IBIS_VALUE}";
-    let with_args: [(&str, &str, &str, &str); 7] = [
+    let with_args = [
         ("citedHere", "picker-recent-heading", "state", "cited"),
         ("recentlyAdded", "picker-recent-heading", "state", "added"),
         ("paste", "picker-bar-paste", "app", VALUE),
+        ("copyCitations", "picker-native-copy-citations", "count", VALUE),
         ("findLibrary", "picker-native-find-library", "name", VALUE),
         ("token", "picker-native-token", "citation", VALUE),
         ("removeToken", "picker-remove-named", "name", VALUE),
@@ -91,5 +103,13 @@ pub fn shell_words(language: Language) -> BTreeMap<&'static str, String> {
                 .into_iter()
                 .map(|(key, id, name, value)| (key, super::word(language, id, &[(name, value)]))),
         )
+        .chain(std::iter::once((
+            "pasteCitations",
+            super::word(
+                language,
+                "picker-native-paste-citations",
+                &[("count", "{IBIS_COUNT}"), ("app", VALUE)],
+            ),
+        )))
         .collect()
 }

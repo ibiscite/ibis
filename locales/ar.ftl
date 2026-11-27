@@ -223,6 +223,9 @@ app-file-dialog-formats = { -library-formats }
 ## The app’s native windows and dialogs, and its words about other apps.
 
 app-window-settings = إعدادات Ibis
+picker-native-settings-picker = منتقي الاستشهادات
+picker-native-window-menu = نافذة
+picker-native-close-window = إغلاق النافذة
 app-window-notice = إشعار Ibis
 app-open-link-title = فتح الرابط
 app-open-link-copied = تعذّر على Ibis فتح متصفحك. نُسخ الرابط: الصقه في متصفحك.
@@ -2197,7 +2200,6 @@ picker-native-author-others = { $author } { row-et-al }
 picker-native-unmatched-segment = اختر مرجعًا لعبارة «{ $query }».
 picker-native-token = استشهاد: { $citation }
 picker-native-locator-type = نوع الموضع
-picker-native-locator-value = الموضع
 picker-native-return = مفتاح الإدخال
 picker-native-type-citation = كتابة استشهاد
 picker-native-open-source = فتح المصدر
@@ -2215,3 +2217,8 @@ picker-native-engine-launch = تعذّر على Ibis تشغيل محركه ال�
 picker-native-engine-busy = هناك عملية تسليم أخرى في Ibis.
 picker-native-engine-changed = تغيّر الاستشهاد. راجعه قبل المحاولة مجددًا.
 picker-native-request-failed = تعذّر على Ibis إكمال الطلب. حاول مجددًا.
+picker-native-before-example = انظر
+picker-native-form-narrative = الاسم في النص
+picker-native-copy-citation = نسخ الاستشهاد
+picker-native-copy-citations = نسخ الاستشهادات ({ $count })
+picker-native-paste-citations = لصق الاستشهادات ({ $count }) في { $app }

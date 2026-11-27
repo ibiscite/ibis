@@ -8,6 +8,15 @@ pub fn intended_paste(captured: Option<&Captured>, permission: PastePermission) 
     captured.is_some_and(|captured| delivery_decision(captured, permission) == Decision::Paste)
 }
 
+/// Whether to offer a paste. A missing grant can still turn into the
+/// permission-specific copy fallback. This is a label and intent decision.
+pub fn offers_paste(captured: &Captured, permission: PastePermission) -> bool {
+    matches!(
+        delivery_decision(captured, permission),
+        Decision::Paste | Decision::Copy(CopyReason::NoPermission | CopyReason::AccessibilityRequired)
+    )
+}
+
 pub(super) fn delivery_decision(captured: &Captured, permission: PastePermission) -> Decision {
     match policy_decision(captured, permission) {
         // A paste replaces the selection; Ibis never deletes text it did not show.

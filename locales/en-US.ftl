@@ -225,6 +225,9 @@ app-file-dialog-formats = { -library-formats }
 ## The app’s native windows and dialogs, and its words about other apps.
 
 app-window-settings = Ibis Settings
+picker-native-settings-picker = Picker
+picker-native-window-menu = Window
+picker-native-close-window = Close Window
 # Read by screen readers; never the citation.
 app-window-notice = Ibis notice
 app-open-link-title = Open Link
@@ -2112,7 +2115,6 @@ picker-native-author-others = { $author } { row-et-al }
 picker-native-unmatched-segment = Choose a reference for “{ $query }”.
 picker-native-token = Citation: { $citation }
 picker-native-locator-type = Locator type
-picker-native-locator-value = Locator value
 picker-native-return = Return
 picker-native-type-citation = Type a Citation
 picker-native-open-source = Open Source
@@ -2130,3 +2132,8 @@ picker-native-engine-launch = Ibis could not start its local engine.
 picker-native-engine-busy = Another Ibis delivery is in progress.
 picker-native-engine-changed = The citation changed. Review it before trying again.
 picker-native-request-failed = Ibis couldn’t finish this request. Try again.
+picker-native-before-example = see
+picker-native-form-narrative = Name in the text
+picker-native-copy-citation = Copy Citation
+picker-native-copy-citations = Copy { $count } Citations
+picker-native-paste-citations = Paste { $count } Citations into { $app }

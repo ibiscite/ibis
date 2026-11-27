@@ -37,7 +37,7 @@ use capture::Selection;
 #[cfg(target_os = "windows")]
 pub use delivery::key_release_failed;
 use delivery::{DeliveryRequest, Desk, deliver};
-pub use destination::{intended_paste, policy_decision};
+pub use destination::{intended_paste, offers_paste, policy_decision};
 use input_fence::PostResult;
 #[cfg(any(target_os = "macos", test))]
 use input_fence::{InputPress, PendingPost, PostDesk, PostRequest, check_input_since, checked_post};

@@ -32,13 +32,19 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
     }
 
     private let launch = Launch()
-    private lazy var model = PickerModel(
-        engine: EngineClient(binary: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/ibis")),
-        file: launch.file
-    )
-    private lazy var panel = PickerPanel(model: model, sizes: layoutDefaults) { [weak self] missing in
-        self?.chooseLibrary(missing: missing)
+    private let engine = EngineClient(binary: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/ibis"))
+    private lazy var model = PickerModel(engine: engine, file: launch.file)
+    private lazy var panel: PickerPanel = {
+        let panel = PickerPanel(model: model, sizes: layoutDefaults) { [weak self] missing in
+            self?.chooseLibrary(missing: missing)
+        }
+        panel.openSettings = { [weak self] in self?.showSettings() }
+        return panel
+    }()
+    private lazy var settings = NativeSettingsWindow(engine: engine) { [weak self] saved, resetText in
+        self?.model.applySettings(saved, resetTextSize: resetText)
     }
+    private var previousApp: NSRunningApplication?
     private var layoutDefaults: UserDefaults? {
         ProcessInfo.processInfo.environment["IBIS_CONFIG_DIR"] == nil ? .standard : nil
     }
@@ -46,6 +52,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
     private let openItem = NSMenuItem(title: PickerWords.text(.open), action: #selector(toggle), keyEquivalent: "")
     private lazy var hotKey = HotKey { [weak self] in self?.toggle() }
     private var layoutObserver: NSObjectProtocol?
+    private var windowObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let path = Bundle.main.path(forResource: "ibis-menu-bar", ofType: "png"),
@@ -63,8 +70,16 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
         menu.addItem(item(PickerWords.text(.choose), action: #selector(chooseLibraryItem)))
         menu.addItem(item(PickerWords.text(.allowPaste), action: #selector(allowPaste)))
         menu.addItem(.separator())
+        menu.addItem(item(PickerWords.text(.settings), action: #selector(showSettings), key: ","))
+        menu.addItem(item(PickerWords.text(.about), action: #selector(showAbout)))
+        menu.addItem(.separator())
         menu.addItem(item(PickerWords.text(.quit), action: #selector(quit), key: "q"))
         status.menu = menu
+        installAppMenu()
+        windowObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification,
+                                                                 object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.restoreAccessoryWhenPossible() }
+        }
         registerShortcut()
         layoutObserver = DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String),
@@ -77,6 +92,59 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         if let layoutObserver { DistributedNotificationCenter.default().removeObserver(layoutObserver) }
+        if let windowObserver { NotificationCenter.default.removeObserver(windowObserver) }
+    }
+
+    private func installAppMenu() {
+        let menu = NSMenu()
+        menu.addItem(item(PickerWords.text(.about), action: #selector(showAbout)))
+        menu.addItem(.separator())
+        menu.addItem(item(PickerWords.text(.settings), action: #selector(showSettings), key: ","))
+        menu.addItem(.separator())
+        menu.addItem(item(PickerWords.text(.quit), action: #selector(quit), key: "q"))
+        let root = NSMenu()
+        let application = NSMenuItem()
+        application.submenu = menu
+        root.addItem(application)
+        let windows = NSMenu(title: PickerWords.text(.windowMenu))
+        windows.addItem(NSMenuItem(title: PickerWords.text(.closeWindow), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        let windowItem = NSMenuItem()
+        windowItem.submenu = windows
+        root.addItem(windowItem)
+        NSApp.mainMenu = root
+    }
+
+    private func activateAppWindow() {
+        panel.dismiss()
+        if NSApp.activationPolicy() != .regular {
+            previousApp = NSWorkspace.shared.frontmostApplication
+            NSApp.setActivationPolicy(.regular)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func restoreAccessoryWhenPossible() {
+        guard NSApp.activationPolicy() == .regular,
+              !NSApp.windows.contains(where: { $0.isVisible && $0.styleMask.contains(.titled) }) else { return }
+        let front = NSApp.isActive
+        NSApp.setActivationPolicy(.accessory)
+        if front { previousApp?.activate(options: []) }
+        previousApp = nil
+    }
+
+    @objc private func showSettings() {
+        activateAppWindow()
+        settings.showWindow(nil)
+    }
+
+    @objc private func showAbout() {
+        Task {
+            let saved = try? await engine.settings(SettingsRequest(appearance: nil, density: nil, largerText: nil))
+            var options: [NSApplication.AboutPanelOptionKey: Any] = [.applicationName: PickerWords.text(.app)]
+            if let saved { options[.applicationVersion] = saved.version }
+            activateAppWindow()
+            NSApp.orderFrontStandardAboutPanel(options: options)
+        }
     }
 
     private func item(_ title: String, action: Selector, key: String = "") -> NSMenuItem {
