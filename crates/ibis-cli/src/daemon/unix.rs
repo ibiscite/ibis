@@ -40,8 +40,13 @@ impl Address {
         Ok(Self(socket))
     }
 
+    pub fn runtime_dir(&self) -> &Path {
+        // Address::new joins the socket name to an absolute runtime directory.
+        self.0.parent().unwrap_or(&self.0)
+    }
+
     pub fn prepare(&self) -> io::Result<()> {
-        let dir = self.0.parent().ok_or(io::ErrorKind::InvalidInput)?;
+        let dir = self.runtime_dir();
         let parent = dir.parent().ok_or(io::ErrorKind::InvalidInput)?;
         let root = fs::metadata(parent)?;
         // A private parent or a sticky system temp directory protects the

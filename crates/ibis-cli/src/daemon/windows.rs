@@ -73,8 +73,12 @@ impl Address {
         })
     }
 
+    pub fn runtime_dir(&self) -> &Path {
+        &self.locks
+    }
+
     pub fn prepare(&self) -> io::Result<()> {
-        fs::create_dir_all(&self.locks)
+        fs::create_dir_all(self.runtime_dir())
     }
 
     pub fn lock(&self, kind: &str) -> io::Result<Option<File>> {

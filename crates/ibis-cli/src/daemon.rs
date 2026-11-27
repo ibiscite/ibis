@@ -4,7 +4,7 @@ use ibis_engine::{Cancellation, protocol};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::io::{self, BufReader};
+use std::io::{self, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, mpsc};
@@ -27,6 +27,7 @@ const HELLO_TIMEOUT: Duration = Duration::from_secs(2);
 pub(super) const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const IDLE: Duration = Duration::from_secs(60);
 const ACCEPT_WAIT: Duration = Duration::from_secs(2);
+const ACCEPT_RETRY: Duration = Duration::from_millis(100);
 const MAX_CONNECTIONS: usize = 32;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,6 +104,7 @@ enum Welcome {
     Ready(Status),
     DifferentBuild(Build),
     Draining,
+    Busy,
 }
 
 /// An isolated configuration selects its own instance within this user's runtime.
@@ -138,8 +140,11 @@ impl Endpoint {
     }
 
     fn open(&self, mode: Mode, build: &Build) -> io::Result<Connection> {
-        let stream = self.0.connect()?;
-        let mut framed = Framed::hello(stream)?;
+        Self::handshake(self.0.connect()?, mode, build, HELLO_TIMEOUT)
+    }
+
+    fn handshake(stream: Stream, mode: Mode, build: &Build, timeout: Duration) -> io::Result<Connection> {
+        let mut framed = Framed::hello_with_timeout(stream, timeout)?;
         framed.send(&Hello {
             build: build.clone(),
             mode,
@@ -161,6 +166,7 @@ impl Endpoint {
                 "a newer Ibis engine is running",
             )),
             Welcome::Draining => Err(io::ErrorKind::WouldBlock.into()),
+            Welcome::Busy => Err(io::ErrorKind::ResourceBusy.into()),
         }
     }
 
@@ -171,43 +177,56 @@ impl Endpoint {
         let mut pause = Duration::from_millis(10);
         let mut launch: Option<native::Process> = None;
         let mut starter = None;
-        loop {
-            match self.open(mode, build) {
-                Ok(connection) => {
-                    if let Some(child) = launch.take() {
-                        child.reap();
+        let mut launches = 0;
+        let result = (|| {
+            loop {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Err(io::ErrorKind::TimedOut.into());
+                }
+                match self.0.connect() {
+                    Ok(stream) => match Self::handshake(stream, mode, build, remaining.min(HELLO_TIMEOUT)) {
+                        Ok(connection) => return Ok(connection),
+                        Err(error) if unavailable(&error) => {}
+                        Err(error) => return Err(error),
+                    },
+                    Err(error)
+                        if matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused) =>
+                    {
+                        if starter.is_none() {
+                            starter = self.0.lock("start")?;
+                            if starter.is_some() {
+                                // Another starter may have just published its listener.
+                                continue;
+                            }
+                        } else {
+                            if let Some(child) = launch.as_mut()
+                                && child.has_exited()?
+                            {
+                                launch = None;
+                            }
+                            if launch.is_none() {
+                                // Only the daemon takes the lifetime lease. It may
+                                // still be held briefly as a predecessor exits.
+                                if launches == 2 {
+                                    return Err(io::ErrorKind::ConnectionRefused.into());
+                                }
+                                launch = Some(native::Process::spawn(&std::env::current_exe()?)?);
+                                launches += 1;
+                            }
+                        }
                     }
-                    return Ok(connection);
+                    Err(error) if unavailable(&error) => {}
+                    Err(error) => return Err(error),
                 }
-                Err(error) if unavailable(&error) => {}
-                Err(error) => return Err(error),
+                std::thread::sleep(pause.min(deadline.saturating_duration_since(Instant::now())));
+                pause = (pause * 2).min(Duration::from_millis(160));
             }
-            if Instant::now() >= deadline {
-                return Err(if self.0.lock("engine")?.is_none() {
-                    io::ErrorKind::WouldBlock
-                } else {
-                    io::ErrorKind::TimedOut
-                }
-                .into());
-            }
-            if starter.is_none() {
-                starter = self.0.lock("start")?;
-                if starter.is_some() {
-                    // A competitor may have started while we acquired the lock.
-                    continue;
-                }
-            } else if self.0.lock("engine")?.is_some() {
-                if let Some(child) = launch.as_mut() {
-                    if child.has_exited()? {
-                        return Err(io::ErrorKind::ConnectionRefused.into());
-                    }
-                } else {
-                    launch = Some(native::Process::spawn(&std::env::current_exe()?)?);
-                }
-            }
-            std::thread::sleep(pause);
-            pause = (pause * 2).min(Duration::from_millis(160));
+        })();
+        if let Some(child) = launch {
+            child.reap();
         }
+        result
     }
 }
 
@@ -257,8 +276,12 @@ struct Framed {
 }
 
 impl Framed {
-    fn hello(mut stream: Stream) -> io::Result<Self> {
-        stream.set_timeouts(Some(HELLO_TIMEOUT), HELLO_TIMEOUT)?;
+    fn hello(stream: Stream) -> io::Result<Self> {
+        Self::hello_with_timeout(stream, HELLO_TIMEOUT)
+    }
+
+    fn hello_with_timeout(mut stream: Stream, timeout: Duration) -> io::Result<Self> {
+        stream.set_timeouts(Some(timeout), timeout)?;
         Ok(Self {
             reader: BufReader::new(stream.try_clone()?),
             writer: stream,
@@ -356,6 +379,7 @@ pub(super) fn run() -> io::Result<()> {
     let _ = Build::here();
     let endpoint = Endpoint::current()?;
     endpoint.0.prepare()?;
+    std::env::set_current_dir(endpoint.0.runtime_dir())?;
     let _lifetime = endpoint.0.lock("engine")?.ok_or(io::ErrorKind::AlreadyExists)?;
     let mut listener = endpoint.0.listen()?;
     ibis_engine::identity::use_saved_key(true);
@@ -376,32 +400,64 @@ pub(super) fn run() -> io::Result<()> {
         if timeout.is_zero() {
             break;
         }
-        let Some(stream) = listener.accept(timeout)? else {
-            continue;
+        let stream = match listener.accept(timeout) {
+            Ok(Some(stream)) => stream,
+            Ok(None) => continue,
+            Err(error) => {
+                accept_failure("accept", &error);
+                continue;
+            }
         };
         let mut active = clients.active();
         if active.streams.len() >= MAX_CONNECTIONS {
+            drop(active);
+            let _ = reject_busy(stream);
             continue;
         }
+        let control = match stream.try_clone() {
+            Ok(control) => control,
+            Err(error) => {
+                drop(active);
+                accept_failure("clone connection", &error);
+                continue;
+            }
+        };
         serial += 1;
-        active.streams.insert(serial, stream.try_clone()?);
+        active.streams.insert(serial, control);
         drop(active);
         let established = Connected(clients.clone(), serial);
         let host = host.clone();
-        std::thread::Builder::new()
+        if let Err(error) = std::thread::Builder::new()
             .name("ibis-connection".into())
             .spawn(move || {
                 let established = established;
                 let _ = serve(stream, &host, &established.0);
-            })?;
+            })
+        {
+            accept_failure("spawn connection handler", &error);
+        }
     }
-    drop(listener);
     clients.drain();
     drop(
         clients
             .closed
             .wait_while(clients.active(), |active| !active.streams.is_empty()),
     );
+    Ok(())
+}
+
+fn accept_failure(operation: &str, error: &io::Error) {
+    let _ = writeln!(io::stderr(), "ibis daemon: {operation}: {error}");
+    std::thread::sleep(ACCEPT_RETRY);
+}
+
+fn reject_busy(stream: Stream) -> io::Result<()> {
+    let mut framed = Framed::hello(stream)?;
+    if framed.request::<Hello>()?.is_some() {
+        framed.send(&Welcome::Busy)?;
+        // On Windows closing the server end can discard unread pipe bytes.
+        let _ = framed.request::<Value>();
+    }
     Ok(())
 }
 

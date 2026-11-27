@@ -243,6 +243,31 @@ fn read_line(reader: &mut impl BufRead, bytes: &mut Vec<u8>, limit: usize) -> io
     reader.take(limit as u64 + 1).read_until(b'\n', bytes)
 }
 
+/// State to carry into the in-process server if a daemon cannot take over.
+#[derive(Default)]
+pub(crate) struct Resume {
+    initialize: Option<Vec<u8>>,
+    unsent: Vec<u8>,
+}
+
+impl Resume {
+    pub(crate) fn serve(
+        self,
+        engine: &Engine,
+        mut session: mcp::Session,
+        reader: impl BufRead,
+        writer: impl Write + Send,
+    ) -> io::Result<()> {
+        if let Some(initialize) = self.initialize
+            && let Ok(message) = protocol::parse_json(initialize.trim_ascii())
+        {
+            // Restore the session state. The client already received its reply.
+            let _ = mcp::handle(engine, &mut session, &message);
+        }
+        mcp::serve(engine, session, io::Cursor::new(self.unsent).chain(reader), writer)
+    }
+}
+
 pub(crate) fn relay<R: BufRead, W: Write + Send>(
     remote: &mut Remote,
     mut reader: R,
@@ -250,12 +275,15 @@ pub(crate) fn relay<R: BufRead, W: Write + Send>(
     allow_writes: bool,
     library_problem: Option<EngineError>,
     unavailable_writes: impl FnOnce() -> io::Result<()>,
-) -> io::Result<()> {
+) -> io::Result<Option<Resume>> {
     let output = Mutex::new(writer);
     let pending = Pending::default();
     thread::scope(|scope| {
-        let (connection, missing_writes) =
-            Relay::start(scope, remote, &output, &pending, allow_writes, library_problem, None)?;
+        let Ok((connection, missing_writes)) =
+            Relay::start(scope, remote, &output, &pending, allow_writes, library_problem, None)
+        else {
+            return Ok(Some(Resume::default()));
+        };
         let mut connection = Some(connection);
         if missing_writes && let Err(error) = unavailable_writes() {
             if let Some(connection) = connection.take() {
@@ -277,7 +305,7 @@ pub(crate) fn relay<R: BufRead, W: Write + Send>(
                 }
             };
             if read == 0 {
-                return connection.map_or(Ok(()), |connection| connection.finish(true));
+                return connection.map_or(Ok(None), |connection| connection.finish(true).map(|()| None));
             }
             let message = (!oversized)
                 .then(|| protocol::parse_json(line.trim_ascii()).ok())
@@ -287,18 +315,21 @@ pub(crate) fn relay<R: BufRead, W: Write + Send>(
             // write failed partway, the reply pump settles its outstanding id.
             for attempt in 0..2 {
                 if connection.is_none() {
-                    connection = Some(
-                        Relay::start(
-                            scope,
-                            remote,
-                            &output,
-                            &pending,
-                            allow_writes,
-                            library_problem,
-                            initialize.as_deref(),
-                        )?
-                        .0,
-                    );
+                    let Ok((resumed, _)) = Relay::start(
+                        scope,
+                        remote,
+                        &output,
+                        &pending,
+                        allow_writes,
+                        library_problem,
+                        initialize.as_deref(),
+                    ) else {
+                        return Ok(Some(Resume {
+                            initialize,
+                            unsent: line,
+                        }));
+                    };
+                    connection = Some(resumed);
                 }
                 let open = connection.as_mut().ok_or(io::ErrorKind::NotConnected)?;
                 match open.send(&line, message.as_ref()) {
@@ -319,7 +350,10 @@ pub(crate) fn relay<R: BufRead, W: Write + Send>(
                             break;
                         }
                         if attempt == 1 {
-                            return Err(io::ErrorKind::NotConnected.into());
+                            return Ok(Some(Resume {
+                                initialize,
+                                unsent: line,
+                            }));
                         }
                     }
                 }

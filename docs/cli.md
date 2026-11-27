@@ -808,10 +808,13 @@ own library flags. Ibis starts the engine when needed and stops it 60
 seconds after the last client disconnects.
 
 `ibis daemon` is the internal entry point. A same-user local socket or named
-pipe connects the clients. If Ibis cannot start the daemon, these commands
-run in their own process. This also covers Linux sessions without
-`XDG_RUNTIME_DIR`. An older client reports a newer running engine and can
-use the matching `ibis` build. [Architecture](architecture.md#warm-local-engine)
+pipe connects the clients. Commands run in their own process if the engine
+is busy, its connection deadline expires, or it cannot start. This also
+covers Linux sessions without `XDG_RUNTIME_DIR`. Stable and Nightly share
+the endpoint. A newer build can replace the daemon, and an older CLI or MCP
+client uses its own engine when it meets an incompatible newer daemon. An
+MCP client keeps its session and handles requests it has yet to send.
+[Architecture](architecture.md#warm-local-engine)
 
 `ibis serve --stdio` runs its own engine for programs that use the stdio
 contract. `ibis toggle` continues to talk to the desktop app. `ibis doctor`

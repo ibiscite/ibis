@@ -372,20 +372,16 @@ impl Engine {
         let source = observation.source_path().to_path_buf();
         let library = loaded.library.clone();
         cancel.check()?;
-        let already_open = revision.is_some()
-            && self
-                .shared
-                .sources
-                .recover_lock()
-                .slots
-                .values()
-                .any(|slot| slot.path == path && slot.revision == revision)
-            && self
-                .state()?
-                .libraries
-                .get(&library)
-                .is_some_and(|info| info.refresh_error.is_none());
-        if !already_open {
+        let checked = {
+            let registry = self.shared.sources.recover_lock();
+            revision.is_some()
+                && registry
+                    .slots
+                    .values()
+                    .any(|slot| slot.path == path && slot.revision == revision)
+                && self.shared.file_checked(&library)?
+        };
+        if !checked {
             self.install_file(path, loaded, Some(observation), revision, cancel)?;
         }
         drop(operation);
@@ -1000,6 +996,24 @@ impl Engine {
     }
 }
 impl Shared {
+    /// The bytes were checked now even when the warm parse and index still apply.
+    fn file_checked(&self, library: &LibraryId) -> Result<bool, EngineError> {
+        let _publication = self.publication.recover_lock();
+        let old = self.state_view()?;
+        let Some(info) = old.libraries.get(library).filter(|info| info.refresh_error.is_none()) else {
+            return Ok(false);
+        };
+        let checked = now_ms();
+        if checked != info.updated_at_ms {
+            let mut next = (*old).clone();
+            if let Some(info) = next.libraries.get_mut(library) {
+                info.updated_at_ms = checked;
+            }
+            *self.state.write().map_err(|_| error(ErrorCode::Internal))? = Arc::new(next);
+        }
+        Ok(true)
+    }
+
     fn file_changed(
         &self,
         id: u64,
@@ -1082,6 +1096,32 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_warm_file_check_advances_its_successful_read_time_without_reparsing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@article{demo,title={Synthetic widgets}}").unwrap();
+        let loads = Arc::new(ibis_sources::FileLoads::default());
+        let engine = Engine::new().unwrap().with_file_loads(loads.clone());
+        let cancel = Cancellation::default();
+        engine.open_file(&path, &cancel).unwrap();
+        let first = engine.libraries().unwrap().libraries.remove(0);
+        let item = engine.snapshot().unwrap().objects()[0].object.id().clone();
+        let cite = json!({"items":[{"item":item}], "output":{"kind":"preset","name":"pandoc"}});
+        let receipt = |engine: &Engine| {
+            engine.dispatch(Method::Cite, &cite, &cancel).unwrap().data["receipt"]["sources"][0]["last_successful_read_ms"]
+                .as_u64().unwrap()
+        };
+        assert_eq!(receipt(&engine), first.updated_at_ms);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        engine.open_file(&path, &cancel).unwrap();
+        let second = engine.libraries().unwrap().libraries.remove(0);
+        assert!(second.updated_at_ms > first.updated_at_ms);
+        assert_eq!(receipt(&engine), second.updated_at_ms);
+        assert_eq!(second.revision, first.revision);
+        assert_eq!(loads.parses(), 1);
+    }
 
     #[test]
     fn owner_probe_refusal_names_sharing_off_and_the_same_engine_recovers() {

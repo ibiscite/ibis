@@ -45,7 +45,7 @@ impl Home {
         }
     }
 
-    fn connect(&self, program: &Path) -> Connection {
+    fn endpoint(&self) -> Endpoint {
         let root = if cfg!(target_os = "linux") {
             Some(self.0.path().to_path_buf())
         } else if cfg!(windows) {
@@ -53,7 +53,27 @@ impl Home {
         } else {
             None
         };
-        let endpoint = Endpoint::new(&self.config(), root.as_deref()).unwrap();
+        Endpoint::new(&self.config(), root.as_deref()).unwrap()
+    }
+
+    #[cfg(unix)]
+    fn socket_path(&self) -> PathBuf {
+        let digest = ibis_core::contract::Fingerprint::of_bytes(self.config().as_os_str().as_encoded_bytes());
+        let name = format!("{}.sock", &digest.as_str()[..16]);
+        if cfg!(target_os = "linux") {
+            return self.0.path().join("ibis").join(name);
+        }
+        let dir = format!("ibis-{}", nix::unistd::geteuid());
+        let socket = std::env::temp_dir().join(&dir).join(&name);
+        if nix::sys::socket::UnixAddr::new(&socket).is_ok() {
+            socket
+        } else {
+            Path::new("/tmp").join(dir).join(name)
+        }
+    }
+
+    fn connect(&self, program: &Path) -> Connection {
+        let endpoint = self.endpoint();
         let deadline = Instant::now() + WAIT;
         loop {
             match endpoint.connect(program) {
@@ -72,6 +92,24 @@ impl Home {
         )
         .unwrap();
         path
+    }
+
+    fn older_build(&self) -> PathBuf {
+        let older = self.0.path().join("older-ibis.exe");
+        std::fs::copy(IBIS, &older).unwrap();
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.access_mode(0x100); // FILE_WRITE_ATTRIBUTES, with no data write access
+        }
+        options
+            .open(&older)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(100))
+            .unwrap();
+        older
     }
 }
 
@@ -193,6 +231,119 @@ fn simultaneous_cli_and_mcp_clients_share_a_warm_library() {
 }
 
 #[test]
+fn a_daemon_at_capacity_refuses_the_connection_and_the_cli_runs_locally() {
+    let home = Home::new();
+    let path = home.library();
+    let _process = Process(home.command().arg("daemon").spawn().unwrap());
+    let mut held = (0..32).map(|_| home.connect(Path::new(IBIS))).collect::<Vec<_>>();
+    let busy = home.endpoint().connect(Path::new(IBIS)).err().unwrap();
+    assert_eq!(busy.kind(), std::io::ErrorKind::ResourceBusy);
+    assert_eq!(search(search_cli(&home, &path))["hits"].as_array().unwrap().len(), 1);
+    drop(held.pop());
+    let available = home.connect(Path::new(IBIS));
+    assert_eq!(available.status().pid, held[0].status().pid);
+    assert_eq!(available.status().library_loads, 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_listening_daemon_in_transition_is_not_replaced_at_the_connection_deadline() {
+    use std::os::unix::{fs::MetadataExt, net::UnixListener};
+
+    let home = Home::new();
+    let path = home.library();
+    // Prepare the private runtime. An unresponsive listener with no lease
+    // simulates the window where the socket and the lease disagree.
+    assert!(home.endpoint().connect(Path::new(IBIS)).is_err());
+    let socket = home.socket_path();
+    let listener = UnixListener::bind(&socket).unwrap();
+    let inode = std::fs::metadata(&socket).unwrap().ino();
+    let started = Instant::now();
+    let output = search(search_cli(&home, &path));
+    let after = std::fs::metadata(&socket).unwrap().ino();
+    drop(listener);
+    std::fs::remove_file(socket).unwrap();
+    assert_eq!(after, inode, "the client must not replace a listening socket");
+    assert_eq!(output["hits"].as_array().unwrap().len(), 1);
+    assert!(started.elapsed() < WAIT);
+}
+
+#[cfg(unix)]
+#[test]
+fn the_daemon_recovers_after_running_out_of_connection_descriptors() {
+    // Each existing connection holds three descriptors. Exercise each
+    // remaining-budget case so both accept and the initial clone are covered.
+    for limit in [24, 25, 26] {
+        check_descriptor_limit(limit);
+    }
+}
+
+#[cfg(unix)]
+fn check_descriptor_limit(limit: u32) {
+    let home = Home::new();
+    let _process = Process(
+        home.program(Path::new("/bin/sh"))
+            .args([
+                "-c",
+                r#"ulimit -n "$1" && shift && exec "$@""#,
+                "ibis-test",
+                &limit.to_string(),
+                IBIS,
+                "daemon",
+            ])
+            .spawn()
+            .unwrap(),
+    );
+    let mut held = vec![home.connect(Path::new(IBIS))];
+    let pid = held[0].status().pid;
+    let endpoint = home.endpoint();
+    let error = loop {
+        assert!(held.len() < 12, "the descriptor limit should be reached first");
+        match endpoint.connect(Path::new(IBIS)) {
+            Ok(connection) => held.push(connection),
+            Err(error) => break error,
+        }
+    };
+    assert_ne!(error.kind(), std::io::ErrorKind::ResourceBusy);
+    drop(held);
+    assert_eq!(
+        home.connect(Path::new(IBIS)).status().pid,
+        pid,
+        "descriptor limit {limit}"
+    );
+}
+
+#[test]
+fn the_daemon_does_not_use_the_first_clients_working_directory() {
+    let home = Home::new();
+    let path = home.library();
+    let name = path.file_name().unwrap();
+    let search_from_library_folder = home
+        .command()
+        .current_dir(path.parent().unwrap())
+        .args(["search", "lantern", "--json", "--file"])
+        .arg(name)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    assert_eq!(search(search_from_library_folder)["hits"].as_array().unwrap().len(), 1);
+    let mut daemon = home.connect(Path::new(IBIS));
+    let relative = rpc(
+        &mut daemon,
+        Method::Libraries,
+        &json!({"action":"open-file","path":Path::new(name)}),
+    );
+    assert_eq!(relative["error"]["data"]["reason"], "missing-file", "{relative}");
+    let absolute = rpc(
+        &mut daemon,
+        Method::Libraries,
+        &json!({"action":"open-file","path":path}),
+    );
+    assert_eq!(absolute["result"]["libraries"][0]["objects"], 1);
+}
+
+#[test]
 fn the_socket_and_stdio_return_the_generated_methods() {
     let home = Home::new();
     let file = home.library();
@@ -248,6 +399,32 @@ fn the_socket_and_stdio_return_the_generated_methods() {
     }
 }
 
+#[cfg(windows)]
+#[test]
+fn a_single_windows_sharing_violation_keeps_the_last_successful_library_check() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let home = Home::new();
+    let path = home.library();
+    let _process = Process(home.command().arg("daemon").spawn().unwrap());
+    let mut daemon = home.connect(Path::new(IBIS));
+    let opened = rpc(
+        &mut daemon,
+        Method::Libraries,
+        &json!({"action":"open-file","path":path}),
+    );
+    assert_eq!(opened["result"]["libraries"][0]["objects"], 1);
+    let locked = std::fs::OpenOptions::new().read(true).share_mode(0).open(path).unwrap();
+    // The first watch check starts after 250 ms and retries sharing violations
+    // for 100 ms. Release before the independent recheck.
+    std::thread::sleep(Duration::from_millis(425));
+    let while_locked = rpc(&mut daemon, Method::Libraries, &Value::Null);
+    drop(locked);
+    assert_eq!(
+        while_locked["result"]["source_health"]["status"], "ok",
+        "{while_locked}"
+    );
+}
+
 fn comparable(mut reply: Value) -> Value {
     if let Some(libraries) = reply.pointer_mut("/result/libraries").and_then(Value::as_array_mut) {
         for library in libraries {
@@ -269,15 +446,8 @@ fn comparable(mut reply: Value) -> Value {
 fn a_newer_client_drains_the_older_build_and_starts_one_replacement() {
     let home = Home::new();
     let path = home.library();
-    let older = home.0.path().join("older-ibis.exe");
-    std::fs::copy(IBIS, &older).unwrap();
-    std::fs::File::options()
-        .write(true)
-        .open(&older)
-        .unwrap()
-        .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(100))
-        .unwrap();
-    let mut process = Process(home.program(&older).arg("daemon").spawn().unwrap());
+    let older = home.older_build();
+    let mut process = Process(spawn_copy(home.program(&older).arg("daemon")));
     let connection = home.connect(&older);
     assert_eq!(connection.status().pid, process.0.id());
     let found = search(search_cli(&home, &path));
@@ -288,21 +458,44 @@ fn a_newer_client_drains_the_older_build_and_starts_one_replacement() {
     assert!(process.0.try_wait().unwrap().unwrap().success());
 }
 
+fn spawn_copy(command: &mut Command) -> Child {
+    let deadline = Instant::now() + WAIT;
+    loop {
+        match command.spawn() {
+            Ok(child) => return child,
+            // A simultaneous fork can still hold the fd from copying the binary.
+            Err(error) if error.kind() == std::io::ErrorKind::ExecutableFileBusy && Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => panic!("could not run the copied build: {error}"),
+        }
+    }
+}
+
 #[test]
 fn a_connected_mcp_client_recovers_its_session_after_a_crash() {
+    check_mcp_reconnect(false);
+}
+
+#[test]
+fn an_older_mcp_and_cli_keep_working_after_a_newer_client_replaces_the_daemon() {
+    check_mcp_reconnect(true);
+}
+
+fn check_mcp_reconnect(upgrade: bool) {
     let home = Home::new();
     let path = home.library();
-    let mut daemon = Process(home.command().arg("daemon").spawn().unwrap());
-    let before = home.connect(Path::new(IBIS));
-    let mut mcp = Process(
-        home.command()
+    let older = upgrade.then(|| home.older_build());
+    let program = older.as_deref().unwrap_or(Path::new(IBIS));
+    let mut daemon = Process(spawn_copy(home.program(program).arg("daemon")));
+    let before = home.connect(program);
+    let mut mcp = Process(spawn_copy(
+        home.program(program)
             .args(["mcp", "--file"])
             .arg(&path)
             .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap(),
-    );
+            .stdout(Stdio::piped()),
+    ));
     let mut input = mcp.0.stdin.take().unwrap();
     let output = mcp.0.stdout.take().unwrap();
     let (send, receive) = std::sync::mpsc::channel();
@@ -327,8 +520,13 @@ fn a_connected_mcp_client_recovers_its_session_after_a_crash() {
             .contains("Invented Lantern"),
         "{first}"
     );
-    daemon.0.kill().unwrap();
-    daemon.0.wait().unwrap();
+    if upgrade {
+        assert_eq!(search(search_cli(&home, &path))["hits"].as_array().unwrap().len(), 1);
+        assert!(daemon.0.wait().unwrap().success());
+    } else {
+        daemon.0.kill().unwrap();
+        daemon.0.wait().unwrap();
+    }
     writeln!(input, "{}", tool(3)).unwrap();
     let mut after = receive.recv_timeout(WAIT).unwrap();
     if after.get("error").is_some() {
@@ -339,9 +537,68 @@ fn a_connected_mcp_client_recovers_its_session_after_a_crash() {
     }
     assert_eq!(after["result"], first["result"], "{after}");
     assert_ne!(home.connect(Path::new(IBIS)).status().pid, before.status().pid);
+    if upgrade {
+        writeln!(input, "{}", tool(5)).unwrap();
+        assert_eq!(receive.recv_timeout(WAIT).unwrap()["result"], first["result"]);
+        let output = home
+            .program(program)
+            .args(["search", "lantern", "--json", "--file"])
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output.stdout).unwrap()["data"]["hits"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(home.connect(Path::new(IBIS)).status().mcp_sessions, 0);
+    }
     drop(input);
     assert!(mcp.0.wait().unwrap().success());
     reader.join().unwrap();
+}
+
+#[test]
+fn disabled_empty_history_stays_untouched_during_settings_writes() {
+    let home = Home::new();
+    let profile = home.config().join("com.ibiscite.ibis");
+    std::fs::create_dir_all(&profile).unwrap();
+    let history = profile.join("recents.json");
+    std::fs::write(
+        profile.join("settings.json"),
+        r#"{"schema_version":2,"recent_citations":false}"#,
+    )
+    .unwrap();
+    std::fs::write(&history, "[]").unwrap();
+    let before = std::fs::metadata(&history).unwrap();
+    let _daemon = Process(home.command().arg("daemon").spawn().unwrap());
+    let connection = home.connect(Path::new(IBIS));
+    let saves = ["Invented A", "Invented B", "Invented C"].map(|name| {
+        home.command()
+            .args(["projects", "create", name, "--format", "apa", "--json"])
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap()
+    });
+    for save in saves {
+        let saved = save.wait_with_output().unwrap();
+        assert!(saved.status.success(), "{}", String::from_utf8_lossy(&saved.stderr));
+    }
+    let after_writes = home.connect(Path::new(IBIS));
+    assert_eq!(after_writes.status().pid, connection.status().pid);
+    assert_eq!(after_writes.status().cli_connections, 3);
+    std::thread::sleep(Duration::from_secs(3));
+    let after = std::fs::metadata(&history).unwrap();
+    assert_eq!(after.modified().unwrap(), before.modified().unwrap());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(after.ino(), before.ino());
+    }
 }
 
 #[test]

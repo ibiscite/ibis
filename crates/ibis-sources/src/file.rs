@@ -784,6 +784,7 @@ impl SourceWatch {
                 // Windows reports one delete as several directory events: the
                 // same failure is one report until a read succeeds again.
                 let mut reported = None;
+                let mut unavailable_once = false;
                 while events.recv().is_ok() && !stop.load(Ordering::SeqCst) {
                     loop {
                         if stop.load(Ordering::SeqCst) {
@@ -824,8 +825,15 @@ impl SourceWatch {
                         dirty.store(true, Ordering::SeqCst);
                     }
                     if !stop.load(Ordering::SeqCst) {
-                        if matches!(candidate, Err(SourceError::Changing)) {
+                        // A single interrupted observation cannot overturn a
+                        // successful open. Retry even if the OS sends no event
+                        // when a Windows sharing lock or a brief I/O failure ends.
+                        let unavailable = matches!(candidate, Err(SourceError::Unavailable));
+                        let confirm = unavailable && !unavailable_once && reported != Some(SourceError::Unavailable);
+                        unavailable_once = unavailable;
+                        if confirm || matches!(candidate, Err(SourceError::Changing)) {
                             let _ = retry.try_send(());
+                            continue;
                         }
                         match candidate {
                             Ok(Some(loaded)) => {

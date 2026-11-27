@@ -244,14 +244,16 @@ impl Host {
             .entry(path.clone())
             .or_insert_with(|| {
                 let owner = Arc::new(Owner::open(path.clone()));
-                owner.on_publish(move |loaded| {
+                let clear = move |loaded: &ibis_engine::settings::Loaded| {
                     if loaded
                         .cites()
                         .is_ok_and(|settings| !settings.portable.recent_citations())
                     {
                         let _ = ibis_engine::recents::clear_disabled(&path);
                     }
-                });
+                };
+                clear(&owner.view());
+                owner.on_publish(clear);
                 let watch = owner.watch(|_, _| {});
                 Profile { owner, _watch: watch }
             })
@@ -387,23 +389,14 @@ fn request<T: DeserializeOwned>(
 }
 
 impl<'a> Backend<'a> {
-    pub fn new(engine: &'a Engine, daemon: bool) -> Result<Self, Failure> {
-        if daemon {
-            match daemon::Endpoint::client() {
-                Ok(connection) => {
-                    return Ok(Self::Remote(Mutex::new(Remote {
-                        connection: Some(connection),
-                        setup: Vec::new(),
-                    })));
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::Unsupported => {
-                    return Err(EngineError::new(ErrorCode::NewerFormat).into());
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Err(offline().into()),
-                Err(_) => {}
-            }
+    pub fn new(engine: &'a Engine, daemon: bool) -> Self {
+        if daemon && let Ok(connection) = daemon::Endpoint::client() {
+            return Self::Remote(Mutex::new(Remote {
+                connection: Some(connection),
+                setup: Vec::new(),
+            }));
         }
-        Ok(Self::Local(engine))
+        Self::Local(engine)
     }
 
     pub fn select(&self, selection: Selection, transient: bool, read_text: bool) -> Result<(), EngineError> {

@@ -1285,7 +1285,7 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
                 .subcommand_matches("import")
                 .is_some_and(|args| !args.get_flag("dry-run"))
         || name == "projects" && matches!(args.subcommand_name(), Some("create" | "rename" | "remove" | "update"));
-    let backend = Backend::new(engine, defaults == Defaults::App && shared)?;
+    let backend = Backend::new(engine, defaults == Defaults::App && shared);
     if name == "doctor" {
         return Ok(Execution::Result(
             local(doctor::run(engine, matches, mode, defaults)?),
@@ -1352,26 +1352,47 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
             .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
         }
         let allow_writes = args.get_flag("allow-writes");
+        let mut warned = false;
         let mut missing_writes = || {
+            if std::mem::replace(&mut warned, true) {
+                return Ok(());
+            }
             write_stream(errors, b"ibis: proposals are kept beside the app's settings, which cannot be found here, so this server offers no proposal tools\n")
         };
-        let result = match &backend {
+        let resume = match &backend {
             Backend::Remote(remote) => {
                 let problem = startup.as_ref().map(|failure| match failure.error {
                     Diagnostic::Engine(error) => error,
                     Diagnostic::Proposal(_) => EngineError::new(failure.code()),
                 });
                 let mut remote = remote.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                daemon::mcp::relay(&mut remote, input, output, allow_writes, problem, missing_writes)
+                daemon::mcp::relay(
+                    &mut remote,
+                    &mut *input,
+                    &mut *output,
+                    allow_writes,
+                    problem,
+                    &mut missing_writes,
+                )
             }
-            Backend::Local(engine) => {
+            Backend::Local(_) => Ok(Some(daemon::mcp::Resume::default())),
+        };
+        let result = match resume {
+            Ok(Some(resume)) => {
+                let startup = if matches!(backend, Backend::Remote(_)) {
+                    open_libraries(&Backend::Local(engine), matches, name, defaults).err()
+                } else {
+                    startup
+                };
                 let (session, missing) = mcp_session(allow_writes, startup.as_ref().map(Failure::refusal));
                 if missing {
                     missing_writes()
                         .map_err(|error| Failure::new(ErrorCode::Internal, human::write_failure(&error)))?;
                 }
-                ibis_engine::mcp::serve(engine, session, input, output)
+                resume.serve(engine, session, input, output)
             }
+            Ok(None) => Ok(()),
+            Err(error) => Err(error),
         };
         return Ok(Execution::Stdio(if result.is_ok() { 0 } else { 70 }));
     }

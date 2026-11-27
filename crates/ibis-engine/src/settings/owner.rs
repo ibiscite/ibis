@@ -2,6 +2,7 @@
 use crate::sync::MutexExt;
 use crate::sync::attempt;
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 #[cfg(test)]
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
@@ -42,6 +43,14 @@ fn publish(path: &Path, watch: &Mutex<WatchState>) {
     let view = Arc::new(settings::load(path));
     let published = {
         let mut state = watch.recover_lock();
+        if state.view.as_ref().is_some_and(|old| {
+            old.settings == view.settings
+                && old.primary_read == view.primary_read
+                && old.from_backup == view.from_backup
+                && old.problem.as_ref().map(ToString::to_string) == view.problem.as_ref().map(ToString::to_string)
+        }) {
+            return;
+        }
         state.view = Some(Arc::clone(&view));
         state.published.clone()
     };
@@ -172,7 +181,11 @@ fn enqueue(queue: &Mutex<Queue>, work: Work) -> Option<u64> {
     Some(receipt)
 }
 
-fn signal_edit(event: notify::Result<notify::Event>, tracked: &Mutex<Vec<PathBuf>>, signal: &mpsc::SyncSender<()>) {
+fn signal_edit(
+    event: notify::Result<notify::Event>,
+    tracked: &Mutex<BTreeSet<PathBuf>>,
+    signal: &mpsc::SyncSender<()>,
+) {
     if event.is_ok_and(|event| {
         // Inotify reports our own reads as opens. Treating them as edits would
         // make every fingerprint schedule another fingerprint indefinitely.
@@ -181,16 +194,10 @@ fn signal_edit(event: notify::Result<notify::Event>, tracked: &Mutex<Vec<PathBuf
                 event.kind,
                 notify::EventKind::Access(notify::event::AccessKind::Close(notify::event::AccessMode::Write))
             ))
-            && {
-                let folders = tracked.recover_lock();
-                // Native events are hints: an atomic save can name only its
-                // replacement file or directory. The owner compares bytes.
-                event.paths.iter().any(|path| {
-                    folders
-                        .iter()
-                        .any(|folder| path == folder || path.parent() == Some(folder))
-                })
-            }
+            && (event.need_rescan() || {
+                let files = tracked.recover_lock();
+                event.paths.iter().any(|path| files.contains(path))
+            })
     }) {
         let _ = signal.try_send(());
     }
@@ -244,7 +251,7 @@ impl Owner {
     }
 
     /// Reports carry a queue receipt, allocated before the snapshot is read.
-    /// Only the link's directory and its resolved target's directory are watched.
+    /// Watch the settings and backup names, including their symlink targets.
     pub fn watch(&self, edited: impl Fn(u64, Loaded) + Send + Sync + 'static) -> Option<Watching> {
         use notify::Watcher;
         let folder = self.path.parent()?.to_path_buf();
@@ -254,8 +261,9 @@ impl Owner {
         // FSEvents reports canonical paths, including when the file is absent.
         // Resolve the directory without following the settings symlink itself.
         let folder = std::fs::canonicalize(folder).ok()?;
-        let path = self.path.clone();
-        let tracked = Arc::new(Mutex::new(vec![folder.clone()]));
+        let path = folder.join(self.path.file_name()?);
+        let files = [settings::backup_path(&path), path];
+        let tracked = Arc::new(Mutex::new(files.iter().cloned().collect()));
         let relevant = Arc::clone(&tracked);
         let (signal, events) = mpsc::sync_channel::<()>(1);
         let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
@@ -263,8 +271,8 @@ impl Owner {
         })
         .ok()?;
         watcher.watch(&folder, notify::RecursiveMode::NonRecursive).ok()?;
-        let mut target_folder = None;
-        rebind(&path, &folder, &mut target_folder, &mut watcher, &tracked);
+        let mut target_folders = BTreeSet::new();
+        rebind(&files, &folder, &mut target_folders, &mut watcher, &tracked);
         {
             let mut state = self.watch.recover_lock();
             state.edited = Some(Arc::new(edited));
@@ -288,7 +296,7 @@ impl Owner {
                         let Some(watcher) = state.watcher.as_mut() else {
                             return false;
                         };
-                        rebind(&path, &folder, &mut target_folder, watcher, &tracked);
+                        rebind(&files, &folder, &mut target_folders, watcher, &tracked);
                         enqueue(&jobs, Box::new(|_, _| Completion::default())).is_some()
                     },
                 );
@@ -301,9 +309,8 @@ impl Owner {
     pub fn path(&self) -> &Path {
         &self.path
     }
-    /// Call `published` with every view the owner publishes: after each of
-    /// its own turns, a restore included, and after each outside edit it
-    /// observes. One listener; a later call replaces it, and closing drops it.
+    /// Call `published` when a turn or an outside edit changes the loaded view.
+    /// One listener; a later call replaces it, and closing drops it.
     pub fn on_publish(&self, published: impl Fn(&Loaded) + Send + Sync + 'static) {
         self.watch.recover_lock().published = Some(Arc::new(published));
     }
@@ -465,32 +472,40 @@ fn busy() -> SettingsError {
     ))
 }
 fn rebind(
-    path: &Path,
+    files: &[PathBuf],
     folder: &Path,
-    target_folder: &mut Option<PathBuf>,
+    target_folders: &mut BTreeSet<PathBuf>,
     watcher: &mut notify::RecommendedWatcher,
-    tracked: &Mutex<Vec<PathBuf>>,
+    tracked: &Mutex<BTreeSet<PathBuf>>,
 ) {
     use notify::Watcher;
-    let target = std::fs::canonicalize(path).ok();
-    let desired = target
-        .as_ref()
-        .and_then(|target| target.parent())
+    let targets: Vec<_> = files
+        .iter()
+        .filter_map(|path| {
+            std::fs::canonicalize(path).ok().or_else(|| {
+                // Keep observing a symlink's target name while an editor replaces it.
+                let linked = path.parent()?.join(std::fs::read_link(path).ok()?);
+                Some(std::fs::canonicalize(linked.parent()?).ok()?.join(linked.file_name()?))
+            })
+        })
+        .collect();
+    let desired: BTreeSet<_> = targets
+        .iter()
+        .filter_map(|target| target.parent())
         .filter(|parent| *parent != folder)
-        .map(Path::to_path_buf);
-    if &desired != target_folder {
-        if let Some(previous) = target_folder.take() {
-            let _ = watcher.unwatch(&previous);
-        }
-        if let Some(desired) = desired
-            && watcher.watch(&desired, notify::RecursiveMode::NonRecursive).is_ok()
-        {
-            *target_folder = Some(desired);
+        .map(Path::to_path_buf)
+        .collect();
+    // Publish the exact names before registering the watches that can report them.
+    *tracked.recover_lock() = files.iter().cloned().chain(targets).collect();
+    for previous in target_folders.difference(&desired) {
+        let _ = watcher.unwatch(previous);
+    }
+    target_folders.retain(|previous| desired.contains(previous));
+    for added in desired {
+        if !target_folders.contains(&added) && watcher.watch(&added, notify::RecursiveMode::NonRecursive).is_ok() {
+            target_folders.insert(added);
         }
     }
-    *tracked.recover_lock() = std::iter::once(folder.to_path_buf())
-        .chain(target_folder.clone())
-        .collect();
 }
 
 #[cfg(test)]
@@ -622,7 +637,7 @@ mod tests {
     }
 
     #[test]
-    fn every_own_turn_and_outside_edit_is_published_to_the_listener() {
+    fn only_changed_views_are_published_to_the_listener() {
         let (directory, owner) = owner();
         let (sender, published) = mpsc::channel();
         owner.on_publish(move |loaded| {
@@ -643,6 +658,11 @@ mod tests {
         };
         paste(false);
         assert_eq!(seen(), Some(false), "an own write");
+        let _ = owner.read();
+        assert!(
+            published.try_recv().is_err(),
+            "a read must not republish an unchanged view"
+        );
         // An outside edit is observed at the start of the next turn.
         replace(&directory.path().join("settings.json"), br#"{"paste":true}"#);
         assert_eq!(owner.read().settings.portable.paste, Some(true));

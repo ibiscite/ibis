@@ -301,11 +301,13 @@ fn disabled(settings: &std::path::Path) -> bool {
 /// save may have already turned history back on, so check again under its lease.
 pub fn clear_disabled(settings: &std::path::Path) -> io::Result<()> {
     let path = settings.with_file_name("recents.json");
-    if !path.is_file() {
+    let needs_clear =
+        || path.is_file() && !crate::settings::read_regular_bytes(&path).is_ok_and(|bytes| bytes.trim_ascii() == b"[]");
+    if !needs_clear() {
         return Ok(());
     }
     let _writer = crate::settings::writer_lock(settings).map_err(io::Error::other)?;
-    if disabled(settings) {
+    if disabled(settings) && needs_clear() {
         crate::settings::backup::save(&path, "[]", true)?;
     }
     Ok(())
