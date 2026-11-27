@@ -154,7 +154,24 @@ unlocked desktop and the Linux job installs packages with sudo.
 Daily/manual runs add WebKit, two minutes of fuzzing for every parser in the
 [threat model](threat-model.md) (`ibis-fuzz`, with the grown corpus cached between
 nights; seeds run with `cargo test -p ibis-fuzz`) and
-installed journeys against the published nightly; failures update one issue.
+installed journeys against the published nightly. The macOS WebKit job also
+runs ten shuffled desktop Vitest passes with two workers and no retries. It
+logs each fixed seed and Vitest names any failing tests. Any failed pass fails
+qualification. Reproduce a single pass with
+`pnpm -C apps/desktop exec vitest run --sequence.shuffle --sequence.seed SEED --maxWorkers=2 --retry=0`
+or run the first three seeds with `bash scripts/ci-flake-hunt.sh 3`.
+
+The macOS installed job launches the verified nightly with 10,000 generated
+BibTeX references and samples it after four minutes hidden. It sums physical
+footprint across the app and its WebKit helpers and reports idle wake-ups per
+second over the same interval. The step summary and nightly report show both
+against [0032](decisions/0032-release-gates.md)'s 200 MiB and 1 wake-up/s budgets.
+These measurements are report-only. An over-budget or unavailable sample does
+not fail qualification. Hosted runners do not establish shortcut-to-typeable
+latency on a real desktop. The combined memory and summon gate waits for
+phase 2 of [0065](decisions/0065-one-warm-engine-thin-shells.md).
+
+Qualification failures update one issue.
 **CI result** also protects publication: the one nightly a day is built from
 main's head only once its push CI passed, so a red or unfinished main keeps the
 preceding nightly.
