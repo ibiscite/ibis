@@ -55,6 +55,7 @@ private final class PickerRecordCell: NSTableCellView {
     private let icon = NSImageView()
     private let titleLabel = pickerLabel()
     private let byline = pickerLabel()
+    private let explanation = pickerLabel()
     private let date = pickerLabel()
     private let shortcutLabel = pickerLabel()
     private let record: PickerRow
@@ -72,16 +73,18 @@ private final class PickerRecordCell: NSTableCellView {
         titleLabel.font = metrics.font(13)
         titleLabel.textColor = .labelColor
         byline.font = metrics.font(12)
+        explanation.font = NSFontManager.shared.convert(metrics.font(12), toHaveTrait: .italicFontMask)
+        explanation.stringValue = record.matchReasons.joined(separator: " · ")
         date.font = .monospacedDigitSystemFont(ofSize: metrics.pt(12), weight: .regular)
         date.stringValue = record.year ?? PickerWords.text(.noDate)
         date.alignment = .right
         shortcutLabel.font = metrics.font(11, .medium)
         shortcutLabel.alignment = .center
-        [icon, titleLabel, byline, date, shortcutLabel].forEach(addSubview)
+        [icon, titleLabel, byline, explanation, date, shortcutLabel].forEach(addSubview)
         updateForeground()
         setAccessibilityElement(true)
         setAccessibilityRole(.cell)
-        toolTip = ([titleLabel.stringValue, record.fullByline, record.kindLabel] + [record.citationKey].compactMap { $0 })
+        toolTip = (accessibilitySummary + [record.citationKey].compactMap { $0 })
             .joined(separator: "\n")
     }
 
@@ -96,9 +99,14 @@ private final class PickerRecordCell: NSTableCellView {
         let text = selected ? NSColor.alternateSelectedControlTextColor : .labelColor
         titleLabel.textColor = text
         byline.textColor = selected ? text : .secondaryLabelColor
+        explanation.textColor = byline.textColor
         date.textColor = byline.textColor
         shortcutLabel.textColor = byline.textColor
         icon.contentTintColor = selected ? text : .secondaryLabelColor
+    }
+
+    private var accessibilitySummary: [String] {
+        [titleLabel.stringValue, record.fullByline, record.kindLabel] + record.matchReasons
     }
 
     func describe(cited: Bool, shortcut: Int?) {
@@ -106,7 +114,7 @@ private final class PickerRecordCell: NSTableCellView {
         shortcutLabel.isHidden = shortcut == nil
         icon.isHidden = shortcut != nil
         setAccessibilityHelp(shortcut.map { "⌘\($0)" })
-        setAccessibilityLabel(([titleLabel.stringValue, record.fullByline, record.kindLabel]
+        setAccessibilityLabel((accessibilitySummary
             + (cited ? [PickerWords.text(.cited)] : []) + [record.citationKey].compactMap { $0 }).joined(separator: ", "))
     }
 
@@ -125,10 +133,17 @@ private final class PickerRecordCell: NSTableCellView {
         pickerLine(titleLabel, x: m.column, y: baseline + m.pt(15),
                    width: textWidth - dateWidth - m.pt(12), height: m.pt(17))
         pickerLine(date, x: right - dateWidth, y: baseline + m.pt(15), width: dateWidth, height: m.pt(17))
-        pickerLine(byline, x: m.column, y: baseline, width: textWidth, height: m.pt(15))
-        if let font = byline.font {
-            byline.stringValue = record.bylines.first { pickerWidth($0, font: font) <= byline.frame.width } ?? ""
-        }
+        let reasonWidth = explanation.stringValue.isEmpty ? 0
+            : min(textWidth, pickerWidth(explanation.stringValue, font: explanation.font ?? m.font(12)))
+        let gap = reasonWidth > 0 ? m.pt(8) : 0
+        let available = max(0, textWidth - reasonWidth - gap)
+        let font = byline.font ?? m.font(12)
+        byline.stringValue = record.bylines.first { pickerWidth($0, font: font) <= available } ?? ""
+        let bylineWidth = reasonWidth == 0 ? textWidth
+            : (byline.stringValue.isEmpty ? 0 : pickerWidth(byline.stringValue, font: font))
+        let reasonX = m.column + bylineWidth + (bylineWidth > 0 ? gap : 0)
+        pickerLine(byline, x: m.column, y: baseline, width: bylineWidth, height: m.pt(15))
+        pickerLine(explanation, x: reasonX, y: baseline, width: reasonWidth, height: m.pt(15))
     }
 }
 

@@ -9,7 +9,7 @@ final class EngineClientTests: XCTestCase {
         let fixture = try Fixture()
         try fixture.identifyDaemon()
         let settings = fixture.client()
-        let opening = PickerOpenRequest(app: nil, file: nil, language: .enUS, reload: nil)
+        let opening = PickerOpenRequest(app: nil, file: nil, language: .enUS, reload: nil, site: nil)
         let empty = try await settings.open(opening)
         XCTAssertNil(empty.library)
         let saved = try await settings.chooseLibrary(fixture.library)
@@ -50,6 +50,79 @@ final class EngineClientTests: XCTestCase {
         XCTAssertEqual(recovered.library?.name, missing.lastPathComponent)
         let reopened = try await fixture.client().open(opening)
         XCTAssertEqual(reopened.library?.condition, .ready)
+    }
+
+    @MainActor
+    func testFormatChoicesStayWithTheCapturedAppOrSite() async throws {
+        let fixture = try Fixture()
+        try fixture.identifyDaemon()
+        let client = fixture.client()
+        let text = fixture.opening
+        let initial = try await client.open(text).formatScope
+        let stored = try await client.formatScope(
+            PickerChangeFormatRequest(expected: initial, forget: nil, remember: "modern-language-association"), for: text
+        )
+        XCTAssertEqual(stored.format, "modern-language-association")
+        XCTAssertEqual(stored.from, .app)
+        XCTAssertEqual(stored.rememberedFor, text.app)
+
+        func browser(_ site: String) -> PickerOpenRequest {
+            PickerOpenRequest(app: "com.apple.Safari", file: fixture.library.path, language: .enUS, reload: nil, site: site)
+        }
+        let overleaf = browser("overleaf.com")
+        let googleDocs = browser("docs.google.com")
+        let latex = try await client.open(overleaf).formatScope
+        XCTAssertEqual(latex.remembersFor, "overleaf.com")
+        XCTAssertNil(latex.rememberedFor)
+        let savedSite = try await client.formatScope(
+            PickerChangeFormatRequest(expected: latex, forget: nil, remember: "pandoc"), for: overleaf
+        )
+        XCTAssertEqual(savedSite.rememberedFor, "overleaf.com")
+        let docs = try await client.open(googleDocs).formatScope
+        XCTAssertEqual(docs.format, "apa")
+        XCTAssertNil(docs.rememberedFor)
+        do {
+            _ = try await client.formatScope(
+                PickerChangeFormatRequest(expected: savedSite, forget: true, remember: nil), for: overleaf
+            )
+            XCTFail("An earlier opening must never change the new destination.")
+        } catch { }
+
+        let unknown = try await client.open(browser("unlisted.invalid")).formatScope
+        XCTAssertEqual(unknown.remembersFor, "com.apple.Safari")
+        let otherClient = fixture.client()
+        let reopened = try await otherClient.open(overleaf).formatScope
+        XCTAssertEqual(reopened, savedSite)
+        let reset = try await otherClient.formatScope(
+            PickerChangeFormatRequest(expected: reopened, forget: true, remember: nil), for: overleaf
+        )
+        XCTAssertEqual(reset, latex)
+        let originalApp = try await otherClient.open(text).formatScope
+        XCTAssertEqual(originalApp, stored)
+        _ = try await client.open(text)
+        let search = try await client.search(PickerSearchRequest(query: "north", shorthand: false)).result
+        let row = try XCTUnwrap(search.sections.first?.rows.first)
+        let preview = try await client.preview(PickerPreviewRequest(
+            entries: [PickerPreviewEntry(cite: row.cite, form: nil, item: row.id, locator: nil, prefix: nil, suffix: nil)],
+            format: try XCTUnwrap(originalApp.format), keepOrder: false
+        )).result
+        XCTAssertNil(preview.problem)
+        let changed = try await otherClient.formatScope(
+            PickerChangeFormatRequest(expected: originalApp, forget: nil, remember: "apa"), for: text
+        )
+        do {
+            _ = try await client.deliver(
+                PickerDeliverRequest(contentHash: preview.contentHash, paste: false, ticket: preview.ticket)
+            ) { _ in
+                XCTFail("An outdated saved format must never receive a delivery grant.")
+                return 0
+            }
+            XCTFail("The daemon must refuse an outdated preview.")
+        } catch let error as DaemonError {
+            XCTAssertEqual(error, .changed)
+        }
+        let refreshed = try await client.formatScope(.readOnly, for: text)
+        XCTAssertEqual(refreshed, changed)
     }
 
     @MainActor

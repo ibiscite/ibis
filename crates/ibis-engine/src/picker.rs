@@ -1,7 +1,7 @@
 //! Projections for the native picker. The shell measures and presents them.
 use crate::catalogue::{self, Audience, Language};
 use crate::citations::{SessionError, SessionId};
-use crate::{Cancellation, Engine, format, health, outputs, recents, settings};
+use crate::{Cancellation, Engine, health, outputs, recents, settings};
 use ibis_core::contract::*;
 use ibis_core::destination::{AppId, System};
 use ibis_core::summary::Author;
@@ -10,7 +10,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+mod format_scope;
 mod words;
+pub use format_scope::{PickerChangeFormatRequest, PickerFormatScope};
 pub use words::shell_words;
 
 #[derive(Deserialize, JsonSchema)]
@@ -18,6 +20,7 @@ pub use words::shell_words;
 pub struct PickerOpenRequest {
     pub file: Option<String>,
     pub app: Option<String>,
+    pub site: Option<String>,
     pub language: Language,
     #[serde(default)]
     pub reload: bool,
@@ -42,13 +45,21 @@ impl PickerOpenRequest {
             id: id.clone(),
         })
     }
+
+    pub fn site(&self) -> Option<AppId> {
+        let shown = self.site.as_deref()?;
+        self.destination()
+            .as_ref()
+            .filter(|app| ibis_core::destination::is_browser(app))?;
+        ibis_core::destination::site(shown).filter(|site| site.id == shown)
+    }
 }
 
 #[derive(Serialize, JsonSchema)]
 pub struct PickerOpenResult {
     pub library: Option<PickerLibrary>,
     pub status: Vec<PickerStatus>,
-    pub format: String,
+    pub format_scope: PickerFormatScope,
     pub formats: Vec<PickerFormat>,
     pub forms: Vec<PickerForm>,
     pub locators: Vec<PickerLocator>,
@@ -100,6 +111,7 @@ pub struct PickerLocator {
 pub fn open_result(
     path: &Path,
     app: Option<&AppId>,
+    site: Option<&AppId>,
     source: Option<&settings::LibrarySetting>,
     error: Option<EngineError>,
     language: Language,
@@ -108,7 +120,6 @@ pub fn open_result(
     let loaded = settings::load(path);
     let defaults = settings::Settings::default();
     let settings = loaded.cites().unwrap_or(&defaults);
-    let choice = format::usual(settings, app);
     let library = source.map(|source| {
         let (name, kind, file) = match source {
             LibrarySetting::Bibtex(file) => (
@@ -155,7 +166,7 @@ pub fn open_result(
     PickerOpenResult {
         library,
         status,
-        format: choice.id.unwrap_or_else(|| outputs::DEFAULT.to_owned()),
+        format_scope: PickerFormatScope::for_destination(settings, app, site),
         formats: outputs::outputs()
             .iter()
             .filter(|entry| !entry.exports_records && !entry.zotero_items)
@@ -301,6 +312,8 @@ pub struct PickerRow {
     pub full_byline: String,
     /// Author and venue alternatives, best first. The date has its own column.
     pub bylines: Vec<String>,
+    /// Localized explanations of the current query match, most important first.
+    pub match_reasons: Vec<String>,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -424,7 +437,38 @@ fn row(item: &SnapshotObject, language: Language) -> Option<PickerRow> {
             .or_else(|| Some(record.id.key.clone())),
         full_byline,
         bylines,
+        match_reasons: Vec::new(),
     })
+}
+
+fn search_row(hit: &crate::service::SearchHit, language: Language) -> Option<PickerRow> {
+    use ibis_core::search::MatchField::*;
+
+    let mut row = row(&hit.item, language)?;
+    if hit.partial {
+        row.match_reasons.push(word(language, "picker-closest-match", &[]));
+    } else if hit.typo {
+        row.match_reasons.push(word(language, "picker-spelling-match", &[]));
+    }
+    let visible = hit
+        .matched
+        .iter()
+        .any(|field| matches!(field, Citekey | Title | Author | Year));
+    if !visible {
+        let field = match hit.matched.first() {
+            Some(Doi) => Some("doi"),
+            Some(Keyword) => Some("keyword"),
+            Some(Container) => Some("container"),
+            Some(Abstract) => Some("abstract"),
+            Some(Identifier) => Some("identifier"),
+            _ => None,
+        };
+        if let Some(field) = field {
+            row.match_reasons
+                .push(word(language, "picker-matched-in", &[("field", field)]));
+        }
+    }
+    Some(row)
 }
 
 fn source_status(health: health::SourceHealth, language: Language) -> Vec<PickerStatus> {
@@ -551,7 +595,7 @@ pub fn search(
         } else {
             PickerSectionKind::Best
         };
-        let rows = result.hits.iter().filter_map(|hit| row(&hit.item, language)).collect();
+        let rows = result.hits.iter().filter_map(|hit| search_row(hit, language)).collect();
         (vec![PickerSection { kind, rows }], Some(total), result.source_health)
     };
     status.extend(source_status(health, language));
@@ -715,18 +759,23 @@ pub struct PickerDeliverResult {
 
 /// The transport keeps this turn until the native writer finishes. The
 /// publication lock orders library reloads, the checked content orders
-/// previews, and the settings lease orders paste revocation.
+/// previews, and the settings lease keeps the format and paste consent current.
 pub fn deliver<T>(
     engine: &Engine,
     settings_path: &Path,
     request: PickerDeliverRequest,
     paste_at_opening: bool,
+    format_is_current: impl FnOnce(Option<&settings::Settings>) -> bool,
     write: impl FnOnce(PickerDeliverResult) -> T,
 ) -> Result<(T, Vec<ItemRef>), SessionError> {
     let checked = engine
         .citations()
         .commit(SessionId::PICKER, &request.ticket, &request.content_hash)?;
-    settings::with_paste_consent(settings_path, |paste| {
+    settings::with_delivery_settings(settings_path, |saved| {
+        if !format_is_current(saved) {
+            return Err(SessionError::SnapshotChanged);
+        }
+        let paste = saved.is_some_and(|settings| settings.portable.paste());
         let _publication = engine.shared.publication.lock().map_err(|_| ErrorCode::Internal)?;
         let guard = checked.check(engine)?;
         let content = guard.content();

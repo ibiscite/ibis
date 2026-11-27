@@ -3,6 +3,8 @@ import Foundation
 
 enum PickerWord {
     case about
+    case actionStateOff
+    case actionStateOn
     case actionWordsChoose
     case actionWordsDetails
     case actionWordsFocus
@@ -61,6 +63,20 @@ enum PickerWord {
     case findLibrary
     case findSource
     case format
+    case formatCustom
+    case formatDefault
+    case formatForOne
+    case formatForget
+    case formatHeld
+    case formatKeyGroup
+    case formatLibraryUsual
+    case formatProject
+    case formatProjectBlocked
+    case formatRememberFor
+    case formatRemembered
+    case formatStyleGroup
+    case formatSuggestedFor
+    case formatSuggestion
     case formatValue
     case formatting
     case generalSettings
@@ -76,6 +92,7 @@ enum PickerWord {
     case missingShortcut
     case more
     case newerEngine
+    case noActionSelected
     case noActions
     case noDate
     case noEngine
@@ -117,8 +134,15 @@ enum PickerWord {
     case search
     case searchActions
     case settings
+    case settingsAppearanceWords
+    case settingsNoResults
+    case settingsPasteWords
     case settingsReadFailed
     case settingsSaveFailed
+    case settingsSearch
+    case settingsSearchResults
+    case settingsShortcutWords
+    case settingsTextSize
     case settingsWindow
     case shortcutInUse
     case shortcutInvalid
@@ -155,6 +179,8 @@ enum PickerWords {
     private static let words: [Language: [PickerWord: String]] = [
         .ar: [
             .about: "حول Ibis",
+            .actionStateOff: "إيقاف",
+            .actionStateOn: "تشغيل",
             .actionWordsChoose: "مكتبة ملف bib zotero فتح تبديل تغيير",
             .actionWordsDetails: "تعديل صفحة موضع تفاصيل استشهاد",
             .actionWordsFocus: "تركيز رمز مرجع استشهاد",
@@ -213,6 +239,20 @@ enum PickerWords {
             .findLibrary: "البحث عن {IBIS_VALUE}…",
             .findSource: "بحث…",
             .format: "التنسيق",
+            .formatCustom: "تنسيق مخصّص",
+            .formatDefault: "التنسيق الافتراضي",
+            .formatForOne: "هذه المرة فقط",
+            .formatForget: "انسَ تنسيق {IBIS_VALUE}",
+            .formatHeld: "يسري {IBIS_VALUE} على هذه المرة فقط.",
+            .formatKeyGroup: "تنسيقات المفاتيح",
+            .formatLibraryUsual: "استخدم {IBIS_VALUE} مجددًا",
+            .formatProject: "المشروع: {IBIS_VALUE}",
+            .formatProjectBlocked: "افتح {IBIS_VALUE} في منتقي سطح المكتب للتحقق من قائمة المراجع قبل الاستشهاد.",
+            .formatRememberFor: "تذكّر التنسيق لـ {IBIS_VALUE}",
+            .formatRemembered: "محفوظ لـ {IBIS_VALUE}.",
+            .formatStyleGroup: "أنماط الاستشهاد",
+            .formatSuggestedFor: "مقترح لـ {IBIS_VALUE}.",
+            .formatSuggestion: "مقترح إلى أن تختار تنسيقًا.",
             .formatValue: "التنسيق، {IBIS_VALUE}",
             .formatting: "جارٍ التنسيق…",
             .generalSettings: "عام",
@@ -228,6 +268,7 @@ enum PickerWords {
             .missingShortcut: "اختصار Ibis Native غير متاح.",
             .more: "المزيد",
             .newerEngine: "يعمل إصدار أحدث من محرك Ibis. ابنِ التطبيق الأصلي بالإصدار الأحدث.",
+            .noActionSelected: "لم يُحدَّد أي إجراء",
             .noActions: "لا توجد إجراءات مطابقة",
             .noDate: "بلا تاريخ",
             .noEngine: "تعذّر على Ibis تشغيل محركه المحلي.",
@@ -269,8 +310,15 @@ enum PickerWords {
             .search: "البحث في المراجع",
             .searchActions: "ابحث في الإجراءات",
             .settings: "الإعدادات…",
+            .settingsAppearanceWords: "الوضع الداكن داكن فاتح سمة النظام",
+            .settingsNoResults: "لا إعدادات تطابق «{IBIS_VALUE}»",
+            .settingsPasteWords: "لصق نسخ الحافظة Enter",
             .settingsReadFailed: "تعذّر على Ibis قراءة إعداداتك؛ أعد فتح الإعدادات للمحاولة مرة أخرى.",
             .settingsSaveFailed: "تعذّر على Ibis حفظ هذا الخيار؛ تظهر القيمة المحفوظة.",
+            .settingsSearch: "البحث في الإعدادات",
+            .settingsSearchResults: "نتائج البحث",
+            .settingsShortcutWords: "لوحة مفاتيح اختصار مفتاح ربط",
+            .settingsTextSize: "حجم النص",
             .settingsWindow: "إعدادات Ibis",
             .shortcutInUse: "قد يكون هذا الاختصار مستخدمًا من تطبيق آخر أو من النظام. جرّب غيره.",
             .shortcutInvalid: "لا يستطيع Ibis استخدام تركيبة المفاتيح هذه. جرّب اختصارًا آخر.",
@@ -294,6 +342,8 @@ enum PickerWords {
         ],
         .de: [
             .about: "Über Ibis",
+            .actionStateOff: "Aus",
+            .actionStateOn: "Ein",
             .actionWordsChoose: "bibliothek datei bib zotero öffnen wechseln ändern",
             .actionWordsDetails: "bearbeiten seite fundstelle details zitation",
             .actionWordsFocus: "fokus token referenz zitation",
@@ -352,6 +402,20 @@ enum PickerWords {
             .findLibrary: "{IBIS_VALUE} suchen…",
             .findSource: "Suchen…",
             .format: "Format",
+            .formatCustom: "Eigenes Format",
+            .formatDefault: "Standardformat",
+            .formatForOne: "Nur dieses Mal",
+            .formatForget: "Format für {IBIS_VALUE} vergessen",
+            .formatHeld: "{IBIS_VALUE} gilt nur für dieses Mal.",
+            .formatKeyGroup: "Schlüsselformate",
+            .formatLibraryUsual: "Wieder {IBIS_VALUE} verwenden",
+            .formatProject: "Projekt: {IBIS_VALUE}",
+            .formatProjectBlocked: "Öffne {IBIS_VALUE} in der Desktop-Auswahl, um die Bibliografie vor dem Zitieren zu prüfen.",
+            .formatRememberFor: "Für {IBIS_VALUE} merken",
+            .formatRemembered: "Für {IBIS_VALUE} gespeichert.",
+            .formatStyleGroup: "Zitierstile",
+            .formatSuggestedFor: "Für {IBIS_VALUE} empfohlen.",
+            .formatSuggestion: "Vorgeschlagen, bis Sie ein Format wählen.",
             .formatValue: "Format, {IBIS_VALUE}",
             .formatting: "Wird formatiert…",
             .generalSettings: "Allgemein",
@@ -367,6 +431,7 @@ enum PickerWords {
             .missingShortcut: "Das Tastenkürzel von Ibis Native ist nicht verfügbar.",
             .more: "Mehr",
             .newerEngine: "Eine neuere Ibis-Engine läuft. Bauen Sie die native App mit der neueren Version.",
+            .noActionSelected: "Keine Aktion ausgewählt",
             .noActions: "Keine passenden Aktionen",
             .noDate: "Ohne Datum",
             .noEngine: "Ibis konnte seine lokale Engine nicht starten.",
@@ -408,8 +473,15 @@ enum PickerWords {
             .search: "Referenzen suchen",
             .searchActions: "Aktionen suchen",
             .settings: "Einstellungen…",
+            .settingsAppearanceWords: "dunkelmodus dunkel hell thema design system",
+            .settingsNoResults: "Keine Einstellungen zu „{IBIS_VALUE}“",
+            .settingsPasteWords: "einfügen kopieren zwischenablage enter",
             .settingsReadFailed: "Ibis konnte Ihre Einstellungen nicht lesen; öffnen Sie die Einstellungen erneut, um es noch einmal zu versuchen.",
             .settingsSaveFailed: "Ibis konnte diese Wahl nicht speichern; der gespeicherte Wert wird angezeigt.",
+            .settingsSearch: "Suchen",
+            .settingsSearchResults: "Suchergebnisse",
+            .settingsShortcutWords: "tastatur tastenkürzel tastenbelegung kurzbefehl",
+            .settingsTextSize: "Textgröße",
             .settingsWindow: "Ibis-Einstellungen",
             .shortcutInUse: "Eine andere App oder das System verwendet dieses Tastenkürzel womöglich. Versuchen Sie ein anderes.",
             .shortcutInvalid: "Ibis kann diese Tastenkombination nicht verwenden. Versuchen Sie ein anderes Tastenkürzel.",
@@ -433,6 +505,8 @@ enum PickerWords {
         ],
         .enUS: [
             .about: "About Ibis",
+            .actionStateOff: "Off",
+            .actionStateOn: "On",
             .actionWordsChoose: "library file bib zotero open switch change",
             .actionWordsDetails: "edit page locator details citation",
             .actionWordsFocus: "focus token reference citation",
@@ -491,6 +565,20 @@ enum PickerWords {
             .findLibrary: "Find {IBIS_VALUE}…",
             .findSource: "Find…",
             .format: "Format",
+            .formatCustom: "Custom format",
+            .formatDefault: "Default format",
+            .formatForOne: "This paste only",
+            .formatForget: "Forget format for {IBIS_VALUE}",
+            .formatHeld: "{IBIS_VALUE} applies to this paste only.",
+            .formatKeyGroup: "Key formats",
+            .formatLibraryUsual: "Use {IBIS_VALUE} again",
+            .formatProject: "Project: {IBIS_VALUE}",
+            .formatProjectBlocked: "Open {IBIS_VALUE} in the desktop picker to check its bibliography before citing.",
+            .formatRememberFor: "Remember for {IBIS_VALUE}",
+            .formatRemembered: "Remembered for {IBIS_VALUE}.",
+            .formatStyleGroup: "Citation styles",
+            .formatSuggestedFor: "Suggested for {IBIS_VALUE}.",
+            .formatSuggestion: "Suggested until you choose a format.",
             .formatValue: "Format, {IBIS_VALUE}",
             .formatting: "Formatting…",
             .generalSettings: "General",
@@ -506,6 +594,7 @@ enum PickerWords {
             .missingShortcut: "The Ibis Native shortcut is unavailable.",
             .more: "More",
             .newerEngine: "A newer Ibis engine is running. Build the native app with the newer Ibis.",
+            .noActionSelected: "No action selected",
             .noActions: "No matching actions",
             .noDate: "No date",
             .noEngine: "Ibis could not start its local engine.",
@@ -547,8 +636,15 @@ enum PickerWords {
             .search: "Search references",
             .searchActions: "Search actions",
             .settings: "Settings…",
+            .settingsAppearanceWords: "dark mode light theme system",
+            .settingsNoResults: "No settings match ‘{IBIS_VALUE}’",
+            .settingsPasteWords: "paste copy clipboard Enter",
             .settingsReadFailed: "Ibis could not read your settings; reopen Settings to try again.",
             .settingsSaveFailed: "Ibis could not save this choice; the saved value is shown.",
+            .settingsSearch: "Search Settings",
+            .settingsSearchResults: "Search results",
+            .settingsShortcutWords: "keyboard hotkey keybinding",
+            .settingsTextSize: "Text size",
             .settingsWindow: "Ibis Settings",
             .shortcutInUse: "Another app or the system may be using that shortcut. Try another.",
             .shortcutInvalid: "Ibis cannot use that key combination. Try another shortcut.",

@@ -1610,6 +1610,7 @@ palette-peek = لمحة عن المرجع
 palette-actions-title = الإجراءات
 palette-search-actions = ابحث في الإجراءات
 palette-no-actions = لا توجد إجراءات مطابقة
+palette-no-action-selected = لم يُحدَّد أي إجراء
 picker-format-title = التنسيق
 palette-search-formats = ابحث في التنسيقات
 palette-no-formats = لا توجد تنسيقات مطابقة
@@ -2230,3 +2231,9 @@ picker-native-form-narrative = الاسم في النص
 picker-native-copy-citation = نسخ الاستشهاد
 picker-native-copy-citations = نسخ الاستشهادات ({ $count })
 picker-native-paste-citations = لصق الاستشهادات ({ $count }) في { $app }
+
+picker-native-remember-format = تذكّر التنسيق لـ { $app }
+picker-native-format-project = المشروع: { $name }
+picker-native-format-project-blocked = افتح { $name } في منتقي سطح المكتب للتحقق من قائمة المراجع قبل الاستشهاد.
+picker-native-use-usual = استخدم { $format } مجددًا
+picker-native-forget-format = انسَ تنسيق { $app }

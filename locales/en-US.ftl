@@ -1540,6 +1540,7 @@ palette-peek = Peek at Reference
 palette-actions-title = Actions
 palette-search-actions = Search actions
 palette-no-actions = No matching actions
+palette-no-action-selected = No action selected
 picker-format-title = Format
 palette-search-formats = Search formats
 palette-no-formats = No matching formats
@@ -2145,3 +2146,9 @@ picker-native-form-narrative = Name in the text
 picker-native-copy-citation = Copy Citation
 picker-native-copy-citations = Copy { $count } Citations
 picker-native-paste-citations = Paste { $count } Citations into { $app }
+
+picker-native-remember-format = Remember for { $app }
+picker-native-format-project = Project: { $name }
+picker-native-format-project-blocked = Open { $name } in the desktop picker to check its bibliography before citing.
+picker-native-use-usual = Use { $format } again
+picker-native-forget-format = Forget format for { $app }

@@ -114,6 +114,6 @@ private final class AppearanceSampleView: NSView {
         return PickerRow(authorCount: 1, authors: [author], bylines: [byline, author], citationKey: nil,
                          cite: key, firstAuthor: author, fullByline: byline,
                          id: ItemRef(key: key, library: "appearance-preview"), itemType: nil, journal: venue,
-                         kind: .article, kindLabel: "", title: title, year: year)
+                         kind: .article, kindLabel: "", matchReasons: [], title: title, year: year)
     }
 }

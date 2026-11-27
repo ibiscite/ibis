@@ -66,6 +66,35 @@ fn sections_count_the_untruncated_search_and_fill_recent_sections() {
 }
 
 #[test]
+fn search_explains_unexpected_matches_without_labelling_ordinary_rows() {
+    let (_dir, engine) = library(vec![json!({
+        "id": "invented", "title": "Invented lanterns", "type": "article-journal",
+        "abstract": "A fictional catalogue of peregrinations.", "keyword": "pernoctation", "date-added": "2026-01-05"
+    })]);
+    let reasons = |query, language| {
+        find(&engine, query, false, &[], language)
+            .sections
+            .into_iter()
+            .flat_map(|section| section.rows)
+            .next()
+            .unwrap_or_else(|| panic!("no result for {query:?}"))
+            .match_reasons
+    };
+    assert_eq!(
+        reasons("peregrinations", Language::English),
+        ["Matched in the abstract"]
+    );
+    assert_eq!(reasons("peregrinations", Language::German), ["Treffer im Abstract"]);
+    assert_eq!(reasons("lantrns", Language::English), ["Spelling match"]);
+    assert_eq!(
+        reasons("pernoctation unobtainium", Language::English),
+        ["Closest match", "Matched in the keywords"]
+    );
+    assert!(reasons("lanterns peregrinations", Language::English).is_empty());
+    assert!(reasons("", Language::English).is_empty());
+}
+
+#[test]
 fn locator_recovery_names_the_reference_that_needs_editing() {
     let (_dir, engine) = library(vec![
         json!({"id":"vale", "citation-key":"vale2024", "title":"Imaginary lanterns", "type":"book"}),

@@ -157,7 +157,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showPasteSettings() {
-        settings.showGeneral()
+        settings.showPaste()
         showSettings()
     }
 

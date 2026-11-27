@@ -12,6 +12,12 @@ enum PickerOpen: PickerRPC {
     typealias Reply = PickerOpenResult
 }
 
+enum PickerChangeFormat: PickerRPC {
+    static let name = "picker/format"
+    typealias Parameters = PickerChangeFormatRequest
+    typealias Reply = PickerFormatScope
+}
+
 enum PickerSearch: PickerRPC {
     static let name = "picker/search"
     typealias Parameters = PickerSearchRequest
@@ -128,6 +134,13 @@ enum FormUnavailable: String, Codable, Hashable, Sendable {
     case output = "output"
 }
 
+enum FormatFrom: String, Codable, Hashable, Sendable {
+    case writing = "writing"
+    case app = "app"
+    case yours = "yours"
+    case suggestion = "suggestion"
+}
+
 struct ItemRef: Codable, Hashable, Sendable {
     let key: RecordId
     let library: LibraryId
@@ -186,6 +199,12 @@ enum LocatorTerm: String, Codable, Hashable, Sendable {
     case volume = "volume"
 }
 
+struct PickerChangeFormatRequest: Codable, Hashable, Sendable {
+    let expected: PickerFormatScope?
+    let forget: Bool?
+    let remember: String?
+}
+
 struct PickerDeliverRequest: Codable, Hashable, Sendable {
     let contentHash: String
     let paste: Bool
@@ -234,6 +253,26 @@ struct PickerFormat: Codable, Hashable, Sendable {
     }
 }
 
+struct PickerFormatScope: Codable, Hashable, Sendable {
+    let format: String?
+    let from: FormatFrom
+    let project: String?
+    let rememberedFor: String?
+    let remembersFor: String?
+    let requiresBibliography: Bool
+    let usualFormat: String?
+
+    enum CodingKeys: String, CodingKey {
+        case format = "format"
+        case from = "from"
+        case project = "project"
+        case rememberedFor = "remembered_for"
+        case remembersFor = "remembers_for"
+        case requiresBibliography = "requires_bibliography"
+        case usualFormat = "usual_format"
+    }
+}
+
 struct PickerFormsRequest: Codable, Hashable, Sendable {
     let contentHash: String
     let item: UInt64
@@ -276,12 +315,13 @@ struct PickerOpenRequest: Codable, Hashable, Sendable {
     let file: String?
     let language: Language
     let reload: Bool?
+    let site: String?
 }
 
 struct PickerOpenResult: Codable, Hashable, Sendable {
     let appearance: Appearance
     let density: Density
-    let format: String
+    let formatScope: PickerFormatScope
     let formats: [PickerFormat]
     let forms: [PickerForm]
     let largerText: Bool
@@ -294,7 +334,7 @@ struct PickerOpenResult: Codable, Hashable, Sendable {
     enum CodingKeys: String, CodingKey {
         case appearance = "appearance"
         case density = "density"
-        case format = "format"
+        case formatScope = "format_scope"
         case formats = "formats"
         case forms = "forms"
         case largerText = "larger_text"
@@ -358,6 +398,7 @@ struct PickerRow: Codable, Hashable, Sendable {
     let journal: String?
     let kind: PickerRowKind
     let kindLabel: String
+    let matchReasons: [String]
     let title: String?
     let year: String?
 
@@ -374,6 +415,7 @@ struct PickerRow: Codable, Hashable, Sendable {
         case journal = "journal"
         case kind = "kind"
         case kindLabel = "kind_label"
+        case matchReasons = "match_reasons"
         case title = "title"
         case year = "year"
     }

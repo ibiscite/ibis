@@ -124,9 +124,9 @@ The old type slot became a number only while ⌘ was held, and the number
 named a whole record on screen. Compare the visible digits and key targets
 after scrolling past nine hits, with a partial row at each edge. Then repeat
 with an existing draft. Separately, search with an abstract term and a spelling
-variation. The nightly explained those hits in the row. Native currently shows
-the result heading and total, so the individual reason remains an item to test
-when the row can show it.
+variation. The nightly explained those hits in the row. The native row now fits these
+reasons into its second line. Test at narrow widths and with VoiceOver to check
+that both the result and its reason are available.
 [Numbered rows](https://github.com/ibiscite/ibis/blob/3572263e/apps/desktop/src/features/picker/useShownRows.ts)
 · [Match explanations](https://github.com/ibiscite/ibis/blob/3572263e/apps/desktop/src/features/picker/ResultList.tsx#L176)
 

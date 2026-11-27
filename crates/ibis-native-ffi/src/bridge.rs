@@ -1,8 +1,9 @@
 use crate::publish_macos;
 use dispatch2::DispatchQueue;
 use ibis_core::contract::ClipboardContent;
-use ibis_core::destination::{AppId, AppPaste, CopyReason, PastePermission, System};
+use ibis_core::destination::{AppId, AppPaste, CopyReason, PastePermission, System, lookup};
 use ibis_native::paste::{self, Captured, CopiedReason, CopyAttempt, Delivered, LastTarget, capture, macos};
+use ibis_native::site::{self, Front};
 use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSEvent, NSPasteboard, NSWindow};
 use objc2_core_graphics::{
@@ -78,15 +79,46 @@ extern "C" fn ibis_native_command_key(preferred: u16, lower_ascii: u8) -> i32 {
 // SAFETY: The exported symbol has a unique name and takes a window number,
 // not an Objective-C object or caller-owned address.
 #[unsafe(no_mangle)]
-extern "C" fn ibis_native_capture(window_number: isize) {
-    let Some(main) = MainThreadMarker::new() else { return };
+extern "C" fn ibis_native_capture(window_number: isize, expected_pid: i32) -> IbisUtf8 {
+    let empty = IbisUtf8 {
+        data: std::ptr::null(),
+        len: 0,
+    };
+    let Some(main) = MainThreadMarker::new() else {
+        return empty;
+    };
     let app = NSApplication::sharedApplication(main);
     WINDOW.set(app.windowWithWindowNumber(window_number));
     cancel();
     let own = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
-    let captured = capture::captured(System::Macos, macos::frontmost(&Host), own)
-        .unwrap_or_else(|| Captured::unknown(System::Macos));
-    TARGET.begin_presentation(Some(captured));
+    let (front, ()) = site::read(own, || {
+        let captured = capture::captured(System::Macos, macos::frontmost(&Host), own)
+            .unwrap_or_else(|| Captured::unknown(System::Macos));
+        TARGET.begin_presentation(Some(captured));
+        ((), TARGET.captured_window())
+    });
+    let Some(Front::App {
+        app,
+        pid,
+        site: Some(site),
+    }) = front
+    else {
+        return empty;
+    };
+    if pid != expected_pid
+        || !TARGET
+            .with_captured(|captured| {
+                captured.is_some_and(|target| target.pid == Some(pid) && target.target.app.as_ref() == Some(&app))
+            })
+            .unwrap_or(false)
+    {
+        return empty;
+    }
+    // Only a canonical table name leaves this call. Its bytes are static.
+    lookup(&site).map_or(empty, |entry| IbisUtf8 {
+        data: entry.id.as_ptr(),
+        len: entry.id.len(),
+    })
 }
 
 fn cancel() {

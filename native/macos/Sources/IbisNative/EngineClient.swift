@@ -15,6 +15,10 @@ extension SettingsRequest {
     }
 }
 
+extension PickerChangeFormatRequest {
+    static let readOnly = Self(expected: nil, forget: nil, remember: nil)
+}
+
 /// Blocking file descriptors and daemon launches stay on one utility queue.
 /// Read intents may reconnect and replay. Clipboard intents never replay.
 final class EngineClient: @unchecked Sendable {
@@ -37,6 +41,21 @@ final class EngineClient: @unchecked Sendable {
         try await onQueue {
             self.lastOpening = request
             return try self.read(PickerOpen.self, request, restoring: false)
+        }
+    }
+
+    func formatScope(_ request: PickerChangeFormatRequest, for opening: PickerOpenRequest) async throws -> PickerFormatScope {
+        try await onQueue {
+            guard self.lastOpening == opening else { throw DaemonError.changed }
+            if request == .readOnly { return try self.read(PickerChangeFormat.self, request) }
+            do {
+                return try self.exchange(PickerChangeFormat.self, request, on: self.connect(restoring: true))
+            } catch let error as Rejected {
+                throw error
+            } catch {
+                self.socket = nil
+                throw error
+            }
         }
     }
 

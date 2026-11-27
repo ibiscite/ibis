@@ -23,8 +23,12 @@ Quit Ibis Native before running a rebuilt bundle or supplying a new
 Choose a library in the picker or in Settings › General. The engine checks
 the file before remembering it for future launches. The chooser accepts
 BibTeX, BibLaTeX, CSL JSON, RIS and CSV. The command-line `--file` argument
-sets a temporary library. Format changes in the picker last for the current
-run. Search shows the active source, title and byline, with recent citations for the captured
+sets a temporary library. The format menu names the app or site it remembers a
+choice for. Use This Paste Only to hold a format until the picker closes, or
+Forget to remove the named saved choice. Site scope requires existing macOS access to the captured browser window
+and a listed site. Search can
+explain closest, spelling and hidden-field matches. It shows the active source,
+title and byline, with recent citations for the captured
 app or source-added references when the query is empty. Use Up and Down to
 preview a reference or Return to deliver it. Add, ⇧↩ and ⌘-click hold a
 reference in a citation draft, which stays available while you keep searching.
@@ -45,15 +49,18 @@ separately from Ibis and Ibis Nightly. Return to your editor and summon Ibis
 again. With the switch off or paste unavailable, Ibis copies the citation.
 The native build uses its own settings profile in Application Support. Its
 stored recent citation history contains reference identities. Settings also
-saves Appearance, Rows and Larger Text through the engine. Find it in More
-and the Ibis menu bar item, which also opens About Ibis.
+saves Appearance, Rows and Larger Text through the engine. In Settings, ⌘F
+finds a control by its name or task. Return jumps to the actual control, where
+you can read or change the saved setting. The Ibis menu bar item also opens
+About Ibis.
 ⌘+ and ⌘− temporarily scale the picker from 100% to 200%. The window keeps its
 size while you type and remembers edge resizing per display.
 
 The existing nightly sets the functional baseline for the native app
 (maintainer, 2026-11-27). The next Settings work covers launch at login.
-Per-app formats, projects and editor commands are also nightly capabilities
-the native picker needs to regain.
+Project management, project bibliography checks and editor commands remain
+parity work. The repo picker pauses delivery for an active project whose
+bibliography needs checking.
 
 The bundled engine joins a daemon from the same build. If several builds
 use a profile, the newer build wins. Use an absolute `IBIS_CONFIG_DIR` for

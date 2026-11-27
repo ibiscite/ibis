@@ -187,6 +187,28 @@ final class PickerTests: XCTestCase {
     }
 
     @MainActor
+    func testOneTimeFormatKeepsTheDraftAndExpiresAtTheNextOpening() async throws {
+        let fixture = try Fixture()
+        try fixture.identifyDaemon()
+        let model = PickerModel(engine: fixture.client(), file: fixture.library)
+        model.present(app: "com.apple.TextEdit", name: "TextEdit")
+        defer { model.dismiss() }
+        try await eventually { model.canDeliver }
+        let initial = model.format
+        let row = try XCTUnwrap(model.selection)
+        model.toggleCitation(row)
+        model.changeDetails(for: row.id) { $0.locator = "417" }
+        model.useFormatOnce("pandoc")
+        try await eventually { model.canDeliver && model.format == "pandoc" }
+        XCTAssertTrue(model.formatIsHeld)
+        XCTAssertEqual(model.citationItem, row.id)
+        XCTAssertEqual(model.details(for: row.id).locator, "417")
+        model.present(app: "com.apple.TextEdit", name: "TextEdit")
+        try await eventually { model.canDeliver && model.format == initial }
+        XCTAssertFalse(model.formatIsHeld)
+    }
+
+    @MainActor
     func testSearchingActionsPreservesTheQueryAndDraft() async throws {
         guard CGSessionCopyCurrentDictionary() != nil else { throw XCTSkip("A WindowServer session is needed.") }
         _ = NSApplication.shared

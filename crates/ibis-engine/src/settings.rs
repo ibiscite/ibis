@@ -972,12 +972,13 @@ pub(super) fn writer_lock(path: &Path) -> Result<WriterLock, SettingsError> {
 
 /// Keep the current primary settings stable against Ibis writes while a
 /// native client publishes an already checked citation.
-pub(crate) fn with_paste_consent<T>(path: &Path, use_consent: impl FnOnce(bool) -> T) -> Result<T, SettingsError> {
+pub(crate) fn with_delivery_settings<T>(
+    path: &Path,
+    deliver: impl FnOnce(Option<&Settings>) -> T,
+) -> Result<T, SettingsError> {
     let _writer = writer_lock(path)?;
     let loaded = load(path);
-    Ok(use_consent(
-        loaded.cites().is_ok_and(|settings| settings.portable.paste()),
-    ))
+    Ok(deliver(loaded.cites().ok()))
 }
 
 thread_local! {

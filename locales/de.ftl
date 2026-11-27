@@ -1522,6 +1522,7 @@ palette-peek = Kurzansicht der Referenz
 palette-actions-title = Aktionen
 palette-search-actions = Aktionen suchen
 palette-no-actions = Keine passenden Aktionen
+palette-no-action-selected = Keine Aktion ausgewählt
 picker-format-title = Format
 palette-search-formats = Formate suchen
 palette-no-formats = Keine passenden Formate
@@ -2126,3 +2127,9 @@ picker-native-form-narrative = Name im Text
 picker-native-copy-citation = Zitat kopieren
 picker-native-copy-citations = { $count } Zitate kopieren
 picker-native-paste-citations = { $count } Zitate in { $app } einfügen
+
+picker-native-remember-format = Für { $app } merken
+picker-native-format-project = Projekt: { $name }
+picker-native-format-project-blocked = Öffne { $name } in der Desktop-Auswahl, um die Bibliografie vor dem Zitieren zu prüfen.
+picker-native-use-usual = Wieder { $format } verwenden
+picker-native-forget-format = Format für { $app } vergessen

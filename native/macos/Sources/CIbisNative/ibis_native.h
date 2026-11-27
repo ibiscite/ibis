@@ -18,7 +18,8 @@ typedef enum {
 
 // Main thread. Capture the external target before making the panel key.
 int32_t ibis_native_command_key(uint16_t preferred, uint8_t lower_ascii);
-void ibis_native_capture(intptr_t window_number);
+// A canonical site name in static UTF-8 storage, or NULL.
+IbisUtf8 ibis_native_capture(intptr_t window_number, int32_t expected_pid);
 void ibis_native_cancel(void);
 uint32_t ibis_native_begin(void);
 // Borrow UTF-8 for this call only. NULL with length 0 means absent.

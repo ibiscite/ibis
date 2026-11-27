@@ -38,7 +38,7 @@ final class Fixture {
     }
 
     var opening: PickerOpenRequest {
-        PickerOpenRequest(app: "com.apple.TextEdit", file: library.path, language: .enUS, reload: nil)
+        PickerOpenRequest(app: "com.apple.TextEdit", file: library.path, language: .enUS, reload: nil, site: nil)
     }
 
     var settings: URL {

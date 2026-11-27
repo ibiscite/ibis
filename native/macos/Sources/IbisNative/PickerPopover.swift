@@ -13,6 +13,9 @@ final class PickerPopover: NSObject, NSPopoverDelegate {
     private var popover: NSPopover?
     private var editor: CitationEditor?
     private var actionList: PickerActionsView?
+    private weak var actionsAnchor: NSView?
+    private var actionsPlacement: PickerActionsPlacement?
+    private var placementObservers: [NSObjectProtocol] = []
     private var keyMonitor: Any?
     private(set) var subject: Subject?
     var routeKey: ((NSEvent) -> Bool)?
@@ -26,6 +29,7 @@ final class PickerPopover: NSObject, NSPopoverDelegate {
 
     deinit {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        placementObservers.forEach(NotificationCenter.default.removeObserver)
     }
 
     var isOpen: Bool { popover != nil }
@@ -75,14 +79,42 @@ final class PickerPopover: NSObject, NSPopoverDelegate {
             close(restoringFocus: true)
         }
         actionList = controller
-        var size = controller.contentSize
-        if let visible = anchor.window?.screen?.visibleFrame {
-            size.width = min(size.width, visible.width - 24)
-            size.height = min(size.height, visible.height - 24)
+        actionsAnchor = anchor
+        let placement = placement(for: controller, at: anchor)
+        actionsPlacement = placement
+        show(.actions, controller: controller, size: placement.size, at: anchor, edge: placement.edge)
+        if let window = anchor.window { watchPlacement(in: window) }
+        controller.focusSearch()
+    }
+
+    private func placement(for controller: PickerActionsView, at anchor: NSView) -> PickerActionsPlacement {
+        guard let window = anchor.window else { return PickerActionsPlacement(size: controller.contentSize) }
+        let rect = window.convertToScreen(anchor.convert(anchor.bounds, to: nil))
+        let center = NSPoint(x: rect.midX, y: rect.midY)
+        let screen = NSScreen.screens.first { $0.frame.contains(center) } ?? window.screen
+        guard let screen else { return PickerActionsPlacement(size: controller.contentSize) }
+        return controller.placement(around: rect, in: screen.visibleFrame)
+    }
+
+    private func watchPlacement(in window: NSWindow) {
+        let center = NotificationCenter.default
+        for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification, NSWindow.didChangeScreenNotification,
+                     NSApplication.didChangeScreenParametersNotification] {
+            let object: Any? = name == NSApplication.didChangeScreenParametersNotification ? nil : window
+            placementObservers.append(center.addObserver(forName: name, object: object, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshActionsPlacement() }
+            })
         }
-        show(.actions, controller: controller, size: size, at: anchor)
-        controller.view.window?.acceptsMouseMovedEvents = true
-        controller.view.window?.makeFirstResponder(controller.search)
+    }
+
+    private func refreshActionsPlacement() {
+        guard let actionList, let actionsAnchor, let popover, popover.isShown else { return }
+        let next = placement(for: actionList, at: actionsAnchor)
+        guard next != actionsPlacement else { return }
+        let edgeChanged = next.edge != actionsPlacement?.edge
+        actionsPlacement = next
+        if popover.contentSize != next.size { popover.contentSize = next.size }
+        if edgeChanged { popover.show(relativeTo: actionsAnchor.bounds, of: actionsAnchor, preferredEdge: next.edge) }
     }
 
     func handleActionKey(_ event: NSEvent) -> Bool {
@@ -104,7 +136,8 @@ final class PickerPopover: NSObject, NSPopoverDelegate {
         return actionList.handleKey(event)
     }
 
-    private func show(_ subject: Subject, controller: NSViewController, size: NSSize, at anchor: NSView) {
+    private func show(_ subject: Subject, controller: NSViewController, size: NSSize, at anchor: NSView,
+                      edge: NSRectEdge = .maxY) {
         let popover = NSPopover()
         popover.appearance = anchor.effectiveAppearance
         popover.behavior = .transient
@@ -114,7 +147,7 @@ final class PickerPopover: NSObject, NSPopoverDelegate {
         popover.delegate = self
         self.subject = subject
         self.popover = popover
-        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: edge)
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak popover] event in
             let handled = MainActor.assumeIsolated {
                 guard let window = popover?.contentViewController?.view.window, window === event.window else {
@@ -137,7 +170,9 @@ final class PickerPopover: NSObject, NSPopoverDelegate {
             if let size = editor?.configure(metrics), popover?.contentSize != size { popover?.contentSize = size }
         case let .peek(item):
             if item != model.selected { close() }
-        case .actions, nil:
+        case .actions:
+            refreshActionsPlacement()
+        case nil:
             break
         }
     }
@@ -160,7 +195,12 @@ final class PickerPopover: NSObject, NSPopoverDelegate {
         keyMonitor = nil
         popover = nil
         editor = nil
+        actionList?.cancelAnnouncement()
         actionList = nil
+        placementObservers.forEach(NotificationCenter.default.removeObserver)
+        placementObservers.removeAll()
+        actionsAnchor = nil
+        actionsPlacement = nil
         self.subject = nil
         if case .citation = subject { model.endCitationEdit() }
     }

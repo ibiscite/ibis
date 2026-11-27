@@ -74,8 +74,15 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
             ?? NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
             ?? NSScreen.main
         if let display { place(on: display) }
-        model.present(app: target?.bundleIdentifier, name: target?.localizedName, pid: target?.processIdentifier)
-        ibis_native_capture(windowNumber)
+        let app = target.flatMap { app in
+            app.processIdentifier == ProcessInfo.processInfo.processIdentifier || app.bundleIdentifier == "com.apple.loginwindow"
+                ? nil : app
+        }
+        model.present(app: app?.bundleIdentifier, name: app?.localizedName, pid: app?.processIdentifier) {
+            let site = ibis_native_capture(windowNumber, app?.processIdentifier ?? 0)
+            guard let data = site.data else { return nil }
+            return String(decoding: UnsafeBufferPointer(start: data, count: site.len), as: UTF8.self)
+        }
         contentView?.layoutSubtreeIfNeeded()
         invalidateShadow()
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion

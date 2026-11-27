@@ -5,7 +5,9 @@ use ibis_core::contract::{EngineError, ErrorCode, ItemRef};
 use ibis_core::destination::{AppId, PASTE_DEADLINE};
 use ibis_engine::catalogue::Language;
 use ibis_engine::citations::SessionId;
-use ibis_engine::picker::{self, PickerLibraryCondition, PickerOpenRequest};
+use ibis_engine::picker::{
+    self, PickerChangeFormatRequest, PickerFormatScope, PickerLibraryCondition, PickerOpenRequest,
+};
 use ibis_engine::recents::{List, SessionReferences};
 use ibis_engine::settings::native::SettingsRequest;
 use ibis_engine::{Cancellation, Engine, PickerMethod, protocol, rpc, settings};
@@ -114,6 +116,8 @@ struct Picker<'a> {
     engine: Engine,
     source: Option<settings::LibrarySetting>,
     target: Option<AppId>,
+    site: Option<AppId>,
+    format_scope: Option<PickerFormatScope>,
     language: Language,
     paste_at_opening: bool,
 }
@@ -122,6 +126,8 @@ impl Picker<'_> {
     fn open(&mut self, request: PickerOpenRequest) -> Result<picker::PickerOpenResult, EngineError> {
         self.engine.citations().invalidate(SessionId::PICKER);
         self.paste_at_opening = false;
+        self.format_scope = None;
+        self.site = request.site();
         self.target = request.destination();
         self.language = request.language;
         let source = request.library(&self.settings)?;
@@ -148,10 +154,12 @@ impl Picker<'_> {
         let result = picker::open_result(
             &self.settings,
             self.target.as_ref(),
+            self.site.as_ref(),
             source.as_ref(),
             error,
             self.language,
         );
+        self.format_scope = Some(result.format_scope.clone());
         self.paste_at_opening = result.paste_enabled
             && result
                 .library
@@ -179,6 +187,8 @@ pub(super) fn serve(
         engine: host.cli_engine().map_err(|_| io::Error::other("engine unavailable"))?,
         source: None,
         target: None,
+        site: None,
+        format_scope: None,
         language: Language::default(),
         paste_at_opening: false,
     };
@@ -198,6 +208,15 @@ pub(super) fn serve(
         let params = request.params;
         let result = match request.method {
             PickerMethod::Open => decode(params).and_then(|params| encode(picker.open(params)?)),
+            PickerMethod::ChangeFormat => decode::<PickerChangeFormatRequest>(params).and_then(|request| {
+                let owner = host.settings_for(picker.settings.clone(), |_| {});
+                let scope = request.answer(&owner, picker.target.as_ref(), picker.site.as_ref())?;
+                if picker.format_scope.as_ref() != Some(&scope) {
+                    picker.engine.citations().invalidate(SessionId::PICKER);
+                }
+                picker.format_scope = Some(scope.clone());
+                encode(scope)
+            }),
             PickerMethod::Settings => decode::<Option<SettingsRequest>>(params).and_then(|params| {
                 let owner = host.settings_for(picker.settings.clone(), |_| {});
                 let saved = params.unwrap_or_default().answer(&owner, |path| {
@@ -218,6 +237,14 @@ pub(super) fn serve(
                     &Cancellation::default(),
                 )?)
             }),
+            PickerMethod::Preview
+                if !picker
+                    .format_scope
+                    .as_ref()
+                    .is_some_and(|scope| !scope.requires_bibliography) =>
+            {
+                Err(ErrorCode::BadInput.into())
+            }
             PickerMethod::Preview => decode(params).and_then(|params| {
                 encode(picker::preview(
                     &picker.engine,
@@ -245,6 +272,11 @@ pub(super) fn serve(
                         &picker.settings,
                         params,
                         picker.paste_at_opening,
+                        |saved| {
+                            picker.format_scope.as_ref().is_some_and(|scope| {
+                                scope.is_current(saved, picker.target.as_ref(), picker.site.as_ref())
+                            })
+                        },
                         |grant| {
                             framed.send(&rpc::success(&id, serde_json::to_value(grant)?))?;
                             // The client keeps the restart fence until its last native effect.

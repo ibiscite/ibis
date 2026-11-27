@@ -39,6 +39,8 @@ final class PickerModel: ObservableObject {
             prepare()
         }
     }
+    @Published private(set) var formatScope: PickerFormatScope?
+    @Published private(set) var isChangingFormat = false
     @Published var appearance: Appearance = .system
     @Published var density: Density = .compact
     @Published var textPercent = 100
@@ -63,6 +65,8 @@ final class PickerModel: ObservableObject {
 
     var file: URL?
     private let engine: EngineClient
+    private var formatTask: Task<Void, Never>?
+    private var heldFormat: String?
     private var openingTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var previewTask: Task<Void, Never>?
@@ -102,7 +106,36 @@ final class PickerModel: ObservableObject {
         return citationRows.last?.id
     }
     var libraryReady: Bool { catalog?.library?.condition == .ready }
-    private var chosenFormat: PickerFormat? { catalog?.formats.first { $0.id == format } }
+    var chosenFormat: PickerFormat? { catalog?.formats.first { $0.id == format } }
+    var formatIsHeld: Bool { heldFormat != nil }
+    var formatName: String { chosenFormat?.name ?? PickerWords.text(.formatCustom) }
+    var formatOwner: String? { name(for: formatScope?.remembersFor) }
+    var rememberedFormatOwner: String? { name(for: formatScope?.rememberedFor) }
+    var canChooseFormat: Bool {
+        libraryReady && formatScope?.requiresBibliography == false && !isOpening && !isChangingFormat && !isDelivering
+    }
+    var formatContext: String {
+        guard let scope = formatScope else { return "" }
+        if formatIsHeld { return PickerWords.text(.formatHeld, formatName) }
+        if let project = scope.project {
+            return PickerWords.text(scope.requiresBibliography ? .formatProjectBlocked : .formatProject, project)
+        }
+        switch scope.from {
+        case .app:
+            return rememberedFormatOwner.map { PickerWords.text(.formatRemembered, $0) } ?? ""
+        case .suggestion:
+            return formatOwner.map { PickerWords.text(.formatSuggestedFor, $0) } ?? PickerWords.text(.formatSuggestion)
+        case .yours: return PickerWords.text(.formatDefault)
+        case .writing: return ""
+        }
+    }
+
+    private func name(for owner: String?) -> String? {
+        guard let owner else { return nil }
+        if owner.caseInsensitiveCompare(opening?.app ?? "") == .orderedSame { return targetName ?? owner }
+        return owner
+    }
+
     var canKeepOrder: Bool { citations.count > 1 && chosenFormat?.canKeepOrder == true }
     var forms: [PickerForm] {
         guard let catalog, let choice = chosenFormat else { return [] }
@@ -161,8 +194,9 @@ final class PickerModel: ObservableObject {
         if !hasTemporaryTextSize { textPercent = settings.largerText ? 150 : 100 }
     }
 
-    func present(app: String?, name: String? = nil, pid: Int32? = nil) {
+    func present(app: String?, name: String? = nil, pid: Int32? = nil, captureSite: () -> String? = { nil }) {
         dismiss()
+        let site = captureSite()
         if lastShown.map({ Date().timeIntervalSince($0) >= 60 }) ?? true { query = "" }
         lastShown = Date()
         selected = nil
@@ -173,13 +207,13 @@ final class PickerModel: ObservableObject {
         targetName = name
         targetPID = pid
         pasteDestination = nil
-        opening = PickerOpenRequest(app: app, file: file?.path, language: PickerWords.language, reload: nil)
+        opening = PickerOpenRequest(app: app, file: file?.path, language: PickerWords.language, reload: nil, site: site)
         loadLibrary()
     }
 
     func reload() {
         guard let opening else { return }
-        self.opening = PickerOpenRequest(app: opening.app, file: file?.path, language: opening.language, reload: true)
+        self.opening = PickerOpenRequest(app: opening.app, file: file?.path, language: opening.language, reload: true, site: opening.site)
         loadLibrary()
     }
 
@@ -192,11 +226,63 @@ final class PickerModel: ObservableObject {
         searchReply = nil
         selected = nil
         notice = nil
-        self.opening = PickerOpenRequest(app: opening.app, file: nil, language: opening.language, reload: nil)
+        self.opening = PickerOpenRequest(app: opening.app, file: nil, language: opening.language, reload: nil, site: opening.site)
         loadLibrary()
     }
 
     func reportLibraryChoice(_ error: Error) { notice = pickerError(error) }
+
+    func useFormatOnce(_ id: String?) {
+        guard canChooseFormat, let formatScope,
+              id == nil || catalog?.formats.contains(where: { $0.id == id }) == true else { return }
+        heldFormat = id
+        applyFormat(formatScope)
+    }
+
+    func rememberFormat(_ id: String) { changeFormat(remember: id, forget: nil) }
+    func forgetFormat() { changeFormat(remember: nil, forget: true) }
+
+    private func changeFormat(remember: String?, forget: Bool?) {
+        guard canChooseFormat, let opening, let scope = formatScope,
+              scope.project == nil, scope.remembersFor != nil else { return }
+        isChangingFormat = true
+        retirePreview()
+        let request = PickerChangeFormatRequest(expected: scope, forget: forget, remember: remember)
+        formatTask = Task {
+            do {
+                let next = try await engine.formatScope(request, for: opening)
+                try Task.checkCancellation()
+                isChangingFormat = false
+                heldFormat = nil
+                applyFormat(next)
+            } catch {
+                guard !Task.isCancelled else { return }
+                let saved = try? await engine.formatScope(.readOnly, for: opening)
+                guard !Task.isCancelled else { return }
+                isChangingFormat = false
+                let confirmed = saved.map { current in
+                    if let remember {
+                        return current.format == remember && current.rememberedFor == scope.remembersFor
+                    }
+                    return current.rememberedFor != scope.rememberedFor
+                } ?? false
+                if confirmed { heldFormat = nil }
+                if !confirmed { notice = pickerError(error) }
+                applyFormat(saved ?? scope)
+            }
+        }
+    }
+
+    private func applyFormat(_ scope: PickerFormatScope) {
+        formatScope = scope
+        let next = heldFormat ?? scope.format ?? ""
+        if format == next { prepare() }
+        else { format = next }
+        if scope.requiresBibliography || next.isEmpty {
+            preview = nil
+            previewEntries = []
+        }
+    }
 
     private func loadLibrary() {
         guard let request = opening else { return }
@@ -213,7 +299,7 @@ final class PickerModel: ObservableObject {
                 appearance = opened.appearance
                 density = opened.density
                 if !hasTemporaryTextSize { textPercent = opened.largerText ? 150 : 100 }
-                format = opened.format
+                applyFormat(opened.formatScope)
                 let destination = ibis_native_paste_destination(opened.pasteEnabled)
                 pasteDestination = destination > 0 && destination == targetPID ? targetName : nil
                 isOpening = false
@@ -234,6 +320,10 @@ final class PickerModel: ObservableObject {
     func dismiss(forDelivery: Bool = false) {
         if opening != nil { lastShown = Date() }
         opening = nil
+        formatTask?.cancel()
+        isChangingFormat = false
+        heldFormat = nil
+        formatScope = nil
         openingTask?.cancel()
         searchTask?.cancel()
         answeredQuery = nil
@@ -336,7 +426,8 @@ final class PickerModel: ObservableObject {
     private func prepare() {
         retirePreview()
         if let editingCitation, !containsCitation(editingCitation) { endCitationEdit() }
-        guard opening != nil, libraryReady, !isOpening, !format.isEmpty else { return }
+        guard opening != nil, libraryReady, !isOpening, !isChangingFormat,
+              formatScope?.requiresBibliography != true, !format.isEmpty else { return }
         // In normal search the draft has its own inputs. Shorthand still waits
         // for the query, which can itself add references and locator details.
         if !hasDraft || shorthand {
@@ -535,6 +626,12 @@ final class PickerModel: ObservableObject {
             } catch {
                 guard delivery == attempt else { return }
                 notice = pickerError(error)
+                retirePreview()
+                if let opening, let saved = try? await engine.formatScope(.readOnly, for: opening), delivery == attempt {
+                    if saved.requiresBibliography { heldFormat = nil }
+                    applyFormat(saved)
+                }
+                guard delivery == attempt else { return }
                 search(refreshDraft: true)
             }
             if delivery == attempt {

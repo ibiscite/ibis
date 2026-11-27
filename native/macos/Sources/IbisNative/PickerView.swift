@@ -19,7 +19,7 @@ final class PickerCanvas: NSView {
     let search = PickerSearchField()
     private let header = PickerDragView()
     private let bird = NSImageView()
-    private let format = PickerPopup()
+    private let format = PickerButton()
     private let mode = PickerCapsule()
     private let modeLabel = pickerLabel(PickerWords.text(.citation))
     private let headerRule = PickerRule()
@@ -62,10 +62,10 @@ final class PickerCanvas: NSView {
         bird.unregisterDraggedTypes()
         search.setAccessibilityLabel(PickerWords.text(.search))
         search.change = { [weak model] in model?.query = $0 }
-        format.change = { [weak model] index in
-            guard let model, let formats = model.catalog?.formats, formats.indices.contains(index) else { return }
-            model.format = formats[index].id
-        }
+        format.surface = .link
+        format.key = "⌄"
+        format.setAccessibilityRole(.popUpButton)
+        format.perform = { [weak self] in self?.openFormat() }
         heading.setAccessibilityElement(true)
         count.alignment = .right
         count.setAccessibilityElement(true)
@@ -168,14 +168,16 @@ final class PickerCanvas: NSView {
         bird.frame = NSRect(x: m.tileCenter - markSize / 2, y: (m.header - markSize) / 2, width: markSize, height: markSize)
         headerRule.frame = NSRect(x: 0, y: m.header, width: width, height: m.line)
 
-        let formats = model.catalog?.formats ?? []
-        let selected = formats.firstIndex(where: { $0.id == model.format }) ?? 0
-        let name = formats.indices.contains(selected) ? formats[selected].name : ""
-        format.font = m.font(13)
+        let name = model.formatName
+        format.metrics = m
+        format.maxCaption = width * 0.28
         format.isHidden = !model.libraryReady
-        if !format.isHidden { format.setOptions(formats.map(\.name), selected: selected) }
+        format.isEnabled = model.canChooseFormat
+        format.text = name
         format.setAccessibilityLabel(PickerWords.text(.formatValue, name))
-        let buttonWidth = format.isHidden ? 0 : min(width * 0.33, pickerWidth(name, font: m.font(13)) + m.pt(24))
+        format.setAccessibilityHelp(model.formatContext)
+        format.toolTip = model.formatContext
+        let buttonWidth = format.isHidden ? 0 : format.preferredWidth
         let formatX = width - m.inset - buttonWidth
         format.frame = NSRect(x: formatX, y: m.pt(12), width: buttonWidth, height: m.pt(28))
 
@@ -199,7 +201,9 @@ final class PickerCanvas: NSView {
     private func arrangeHeading(width: CGFloat, y: CGFloat, metrics m: PickerMetrics) -> Bool {
         let status = model.isOpening || !model.libraryReady ? nil
             : (model.preview?.problem ?? model.searchReply?.status.first ?? model.catalog?.status.first)
-        let notice = model.isOpening ? PickerWords.text(.opening) : model.notice
+        let notice = if model.isOpening { PickerWords.text(.opening) }
+            else if model.formatScope?.requiresBibliography == true { model.formatContext }
+            else { model.notice }
         let label = notice ?? status?.text ?? model.sections.first?.kind.label
         let countText = model.searchReply?.countLabel ?? ""
         let isStatus = notice != nil || status != nil
@@ -338,7 +342,63 @@ final class PickerCanvas: NSView {
         if numbers != show { numbers = show; refresh() }
     }
 
-    func openFormat() { if !format.isHidden { format.performClick(nil) } }
+    func openFormat() {
+        guard model.canChooseFormat, let scope = model.formatScope, let formats = model.catalog?.formats else { return }
+        let menu = NSMenu()
+        menu.addItem(formatHeading(model.formatContext))
+        let remember = scope.project == nil && model.formatOwner != nil
+        if model.formatIsHeld {
+            let usual = formats.first { $0.id == scope.format }?.name ?? PickerWords.text(.formatDefault)
+            menu.addItem(PickerMenuItem(PickerWords.text(.formatLibraryUsual, usual)) { [weak model] in
+                model?.useFormatOnce(nil)
+            })
+        }
+        if let owner = model.rememberedFormatOwner {
+            let forget = PickerMenuItem(PickerWords.text(.formatForget, owner)) { [weak model] in model?.forgetFormat() }
+            if let usual = formats.first(where: { $0.id == scope.usualFormat }) {
+                forget.toolTip = PickerWords.text(.formatLibraryUsual, usual.name)
+            }
+            menu.addItem(forget)
+        }
+        if remember, let owner = model.formatOwner {
+            let once = NSMenu()
+            once.autoenablesItems = false
+            addFormats(formats, to: once, remembering: false)
+            let action = NSMenuItem(title: PickerWords.text(.formatForOne), action: nil, keyEquivalent: "")
+            action.submenu = once
+            menu.addItem(action)
+            menu.addItem(.separator())
+            menu.addItem(formatHeading(PickerWords.text(.formatRememberFor, owner)))
+        } else {
+            menu.addItem(.separator())
+            menu.addItem(formatHeading(PickerWords.text(.formatForOne)))
+        }
+        addFormats(formats, to: menu, remembering: remember)
+        open(menu, at: format)
+    }
+
+    private func addFormats(_ formats: [PickerFormat], to menu: NSMenu, remembering: Bool) {
+        for styles in [false, true] {
+            let group = formats.filter { $0.canKeepOrder == styles }
+            guard !group.isEmpty else { continue }
+            menu.addItem(formatHeading(PickerWords.text(styles ? .formatStyleGroup : .formatKeyGroup)))
+            for option in group {
+                let item = PickerMenuItem(option.name) { [weak model] in
+                    if remembering { model?.rememberFormat(option.id) }
+                    else { model?.useFormatOnce(option.id) }
+                }
+                item.state = model.format == option.id && (remembering ? !model.formatIsHeld : model.formatIsHeld || model.formatOwner == nil)
+                    ? .on : .off
+                menu.addItem(item)
+            }
+        }
+    }
+
+    private func formatHeading(_ name: String) -> NSMenuItem {
+        let item = NSMenuItem(title: name, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
+    }
 
     func toggleSelectionMembership() {
         if let row = model.selection { model.toggleCitation(row) }
@@ -495,7 +555,8 @@ final class PickerCanvas: NSView {
 
     private func canRun(_ command: PickerCommand) -> Bool {
         switch command {
-        case .format, .typeCitation, .openSource: model.libraryReady
+        case .format: model.canChooseFormat
+        case .typeCitation, .openSource: model.libraryReady
         case .peek: model.selection != nil
         case .membership: model.canChangeSelectionMembership
         case .page, .details, .focusCitation: model.citationItem != nil

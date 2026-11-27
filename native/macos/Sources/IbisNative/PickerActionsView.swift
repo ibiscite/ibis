@@ -1,7 +1,49 @@
 import AppKit
 
+struct PickerActionsPlacement: Equatable {
+    let size: NSSize
+    let edge: NSRectEdge
+
+    init(size: NSSize, edge: NSRectEdge = .maxY) {
+        self.size = size
+        self.edge = edge
+    }
+
+    init(size: NSSize, anchor: NSRect, visibleFrame: NSRect, minimumWidth: CGFloat, minimumHeight: CGFloat) {
+        let display = visibleFrame.insetBy(dx: 12, dy: 12)
+        // Leave room between the control and the content for AppKit's popover arrow.
+        let arrow: CGFloat = 16
+        let above = display.maxY - anchor.maxY - arrow
+        let below = anchor.minY - display.minY - arrow
+        let left = anchor.minX - display.minX - arrow
+        let right = display.maxX - anchor.maxX - arrow
+        let verticalRoom = max(above, below)
+        let horizontalRoom = max(left, right)
+
+        if verticalRoom < minimumHeight, horizontalRoom >= minimumWidth {
+            self.init(size: NSSize(width: min(size.width, horizontalRoom), height: max(1, min(size.height, display.height))),
+                      edge: left >= right ? .minX : .maxX)
+        } else {
+            self.init(size: NSSize(width: max(1, min(size.width, display.width)), height: max(1, min(size.height, verticalRoom))),
+                      edge: above >= below ? .maxY : .minY)
+        }
+    }
+}
+
 @MainActor
 final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+    private enum Layout {
+        static let inset: CGFloat = 12
+        static let searchHeight: CGFloat = 28
+        static let listGap: CGFloat = 4
+        static let footerHeight: CGFloat = 38
+        static let groupHeight: CGFloat = 24
+        static let rowHeight: CGFloat = 30
+
+        // Keep the search, both footer actions, one heading and four entire rows when space allows.
+        static let minimumHeight = 2 * inset + searchHeight + 2 * listGap + 2 + footerHeight + groupHeight + 4 * rowHeight
+    }
+
     private enum Row {
         case heading(String)
         case action(PickerAction)
@@ -21,6 +63,9 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
     private let empty = pickerLabel(PickerWords.text(.noActions))
     private var rows: [Row] = []
     private var filteredQuery: String?
+    private var viewportHeight: CGFloat = 0
+    private var announcement: Task<Void, Never>?
+    private var lastAnnounced: String?
 
     init(actions: [PickerAction], metrics: PickerMetrics) {
         self.actions = actions
@@ -29,6 +74,11 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
     }
 
     required init?(coder: NSCoder) { nil }
+
+    func placement(around anchor: NSRect, in visibleFrame: NSRect) -> PickerActionsPlacement {
+        PickerActionsPlacement(size: contentSize, anchor: anchor, visibleFrame: visibleFrame,
+                               minimumWidth: metrics.pt(240), minimumHeight: metrics.pt(Layout.minimumHeight))
+    }
 
     override func loadView() {
         let content = NSView(frame: NSRect(origin: .zero, size: contentSize))
@@ -58,6 +108,7 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
         table.setAccessibilityLabel(PickerWords.text(.actionsTitle))
         table.pointed = { [weak self] row in
             guard let self, action(at: row) != nil, row != table.selectedRow else { return }
+            cancelAnnouncement()
             select(row, reveal: false)
         }
         column.minWidth = 0
@@ -69,7 +120,6 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
         let runLabel = PickerWords.text(.runAction)
         run.attributedTitle = NSAttributedString(string: runLabel + "  ↩", attributes: [.font: metrics.font(13, .medium)])
         run.setAccessibilityLabel(runLabel)
-        run.setAccessibilityHelp(PickerWords.text(.returnKey))
         run.perform = { [weak self] in self?.chooseSelected() }
         back.metrics = metrics
         back.surface = .link
@@ -86,32 +136,33 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
             $0.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview($0)
         }
-        let inset = metrics.pt(12)
+        let inset = metrics.pt(Layout.inset)
         NSLayoutConstraint.activate([
             search.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
             search.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
             search.topAnchor.constraint(equalTo: content.topAnchor, constant: inset),
-            search.heightAnchor.constraint(equalToConstant: metrics.pt(28)),
+            search.heightAnchor.constraint(equalToConstant: metrics.pt(Layout.searchHeight)),
             rule.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             rule.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             rule.topAnchor.constraint(equalTo: search.bottomAnchor, constant: inset),
             rule.heightAnchor.constraint(equalToConstant: metrics.line),
             scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: rule.bottomAnchor, constant: metrics.pt(4)),
-            scroll.bottomAnchor.constraint(equalTo: footerRule.topAnchor, constant: -metrics.pt(4)),
+            scroll.topAnchor.constraint(equalTo: rule.bottomAnchor, constant: metrics.pt(Layout.listGap)),
+            scroll.bottomAnchor.constraint(equalTo: footerRule.topAnchor, constant: -metrics.pt(Layout.listGap)),
             empty.leadingAnchor.constraint(equalTo: search.leadingAnchor),
             empty.trailingAnchor.constraint(equalTo: search.trailingAnchor),
             empty.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
             footerRule.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             footerRule.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             footerRule.heightAnchor.constraint(equalToConstant: metrics.line),
-            footerRule.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -metrics.pt(38)),
+            footerRule.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -metrics.pt(Layout.footerHeight)),
             back.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
             back.widthAnchor.constraint(equalToConstant: back.preferredWidth),
             back.heightAnchor.constraint(equalToConstant: metrics.pt(26)),
             back.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -metrics.pt(6)),
             run.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
+            run.leadingAnchor.constraint(greaterThanOrEqualTo: back.trailingAnchor, constant: metrics.pt(8)),
             run.heightAnchor.constraint(equalTo: back.heightAnchor),
             run.bottomAnchor.constraint(equalTo: back.bottomAnchor)
         ])
@@ -122,6 +173,23 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
     override func viewDidLayout() {
         super.viewDidLayout()
         table.sizeLastColumnToFit()
+        let height = scroll.contentView.bounds.height
+        if height != viewportHeight {
+            viewportHeight = height
+            revealSelectionIfClipped()
+        }
+    }
+
+    func focusSearch() {
+        guard let window = view.window else { return }
+        window.acceptsMouseMovedEvents = true
+        window.makeFirstResponder(search)
+        announceSelection(after: .milliseconds(300))
+    }
+
+    func cancelAnnouncement() {
+        announcement?.cancel()
+        lastAnnounced = nil
     }
 
     func handleKey(_ event: NSEvent) -> Bool {
@@ -142,9 +210,11 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
             select(event.specialKey == .home ? available.first : available.last)
         case .carriageReturn, .enter:
             if !event.isARepeat { chooseSelected() }
+            return true
         default:
             return false
         }
+        announceSelection(after: .milliseconds(100))
         return true
     }
 
@@ -160,25 +230,10 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
     }
 
     private func rebuild(query: String, preserving previous: PickerAction?, selectFirst: Bool) {
-        let words = folded(query).split(whereSeparator: \.isWhitespace)
-        let normalized = words.joined(separator: " ")
-        guard !selectFirst || filteredQuery != normalized else { return }
-        filteredQuery = normalized
-        let matches: [PickerAction]
-        if words.isEmpty {
-            matches = actions
-        } else {
-            matches = actions.compactMap { action -> (action: PickerAction, rank: Int)? in
-                let title = folded(action.title)
-                let searchable = title + " " + folded(action.aliases)
-                guard words.allSatisfy({ searchable.contains($0) }) else { return nil }
-                let rank: Int
-                if title == normalized { rank = 0 }
-                else if title.hasPrefix(normalized) { rank = 1 }
-                else { rank = words.allSatisfy { title.contains($0) } ? 2 : 3 }
-                return (action, rank)
-            }.sorted { $0.rank < $1.rank }.map(\.action)
-        }
+        let query = SearchQuery(query)
+        guard !selectFirst || filteredQuery != query.normalized else { return }
+        filteredQuery = query.normalized
+        let matches = query.ranked(actions, title: \.title, aliases: \.aliases)
         var group: String?
         rows = matches.flatMap { action -> [Row] in
             guard !action.group.isEmpty, action.group != group else { return [.action(action)] }
@@ -188,14 +243,20 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
         table.reloadData()
         scroll.isHidden = rows.isEmpty
         empty.isHidden = !rows.isEmpty
-        select(rows.indices.first { index in
+        let selected = rows.indices.first { index in
             guard let action = action(at: index) else { return false }
             return selectFirst || action == previous
-        })
-    }
-
-    private func folded(_ text: String) -> String {
-        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        }
+        // Start a fresh query at the heading above the first match. This also
+        // avoids scrolling the first match into an as-yet unsized viewport.
+        select(selected, reveal: !selectFirst)
+        if selectFirst {
+            table.rememberPointer()
+            scroll.contentView.scroll(to: .zero)
+            scroll.reflectScrolledClipView(scroll.contentView)
+            revealSelectionIfClipped()
+        }
+        announceSelection(after: .milliseconds(300))
     }
 
     private func action(at row: Int) -> PickerAction? {
@@ -216,10 +277,43 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
         refreshRun()
     }
 
+    private func revealSelectionIfClipped() {
+        let row = table.selectedRow
+        let visible = table.visibleRect
+        guard row >= 0, visible.height > 0 else { return }
+        let frame = table.rect(ofRow: row)
+        guard frame.minY < visible.minY || frame.maxY > visible.maxY else { return }
+        table.rememberPointer()
+        table.scrollRowToVisible(row)
+    }
+
     private func refreshRun() {
-        let canRun = action(at: table.selectedRow) != nil
-        run.isEnabled = canRun
-        run.isHidden = !canRun
+        let selected = action(at: table.selectedRow)
+        run.isEnabled = selected != nil
+        run.isHidden = selected == nil
+        run.setAccessibilityHelp(selected.map { [PickerWords.text(.returnKey), spokenName($0)].joined(separator: ". ") })
+    }
+
+    private func spokenName(_ action: PickerAction) -> String {
+        guard let checked = action.checked else { return action.title }
+        return [action.title, PickerWords.text(checked ? .actionStateOn : .actionStateOff)].joined(separator: ". ")
+    }
+
+    private func announceSelection(after delay: Duration) {
+        announcement?.cancel()
+        let fallback = PickerWords.text(rows.isEmpty ? .noActions : .noActionSelected)
+        let message = action(at: table.selectedRow).map(spokenName) ?? fallback
+        guard message != lastAnnounced else { return }
+        announcement = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self, let window = search.window, window.isVisible,
+                  let responder = window.firstResponder,
+                  responder === search || responder === search.currentEditor() else { return }
+            lastAnnounced = message
+            // The actual focus stays in Search so arrowing can be followed by typing.
+            NSAccessibility.post(element: search, notification: .announcementRequested,
+                                 userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+        }
     }
 
     @objc private func chooseClicked() {
@@ -241,7 +335,7 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool { action(at: row) == nil }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        metrics.pt(action(at: row) == nil ? 24 : 30)
+        metrics.pt(action(at: row) == nil ? Layout.groupHeight : Layout.rowHeight)
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -251,6 +345,7 @@ final class PickerActionsView: NSViewController, NSTableViewDataSource, NSTableV
             label.font = metrics.font(11, .semibold)
             label.textColor = .secondaryLabelColor
             label.setAccessibilityElement(true)
+            label.setAccessibilityRole(.staticText)
             let heading = NSView()
             label.translatesAutoresizingMaskIntoConstraints = false
             heading.addSubview(label)
@@ -319,7 +414,10 @@ private final class PickerActionCell: NSTableCellView {
         shortcut.alignment = .right
         check.font = metrics.font(12, .medium)
         check.isHidden = action.checked != true
-        [title, shortcut, check].forEach(addSubview)
+        for label in [title, shortcut, check] {
+            label.setAccessibilityHidden(true)
+            addSubview(label)
+        }
         setAccessibilityElement(true)
         setAccessibilityRole(action.checked == nil ? .button : .checkBox)
         setAccessibilityLabel(action.title)

@@ -76,7 +76,7 @@
     },
     {
       "text": "A native picker for macOS",
-      "note": "The repo build remembers your library and keeps your draft while you search references or actions (⌘K). Appearance settings preview picker changes live."
+      "note": "The repo build remembers your library and keeps your draft while you search references or actions (⌘K). Search Settings with ⌘F and choose a format to remember for an app or known browser site."
     },
     {
       "text": "Search Zotero highlights and notes, with the page they came from."
