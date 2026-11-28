@@ -424,6 +424,51 @@ searches reuse its loaded library and index.
 RSS was sampled with `ps` after the same search and counts shared pages in
 each process. The daemon exited 60.1 seconds after its last client disconnected.
 
+### App measurements
+
+These are the Tauri app's numbers against
+[0032](decisions/0032-release-gates.md)'s budgets. Each native shell has to
+beat them on the same system.
+
+On Linux, the nightly from 2026-11-27 (`d03da33f`) ran with 10,000 references
+from the generator in
+[`macos-nightly-budget.swift`](../scripts/macos-nightly-budget.swift), so all
+three systems use the same library. It used a disposable profile with update
+checks off. The protocol is the same as on the Mac: start, wait 15 s, hide,
+then sample over 240 s.
+
+The machine is a 4-core, 8-thread i7-4770 with 15 GiB of RAM, running Ubuntu
+26.04 and WebKitGTK 2.52. The app ran under Xvfb and Openbox on X11, with
+software rendering and the accessibility bridge on, at load averages below
+1.3. Memory is the summed PSS of the app and every child process, including
+the WebKit web, network and sandbox helpers. Wake-ups are context switches
+summed over all threads, so they are an upper bound.
+
+| Measurement | Linux 10k | Linux 50k | Budget |
+| --- | --- | --- | --- |
+| Hidden memory (PSS) | 413–425 MiB | 730 MiB | ≤ 200 MiB |
+| Hidden idle CPU | 0.27% of a core | 0.29% | ≤ 0.2% |
+| Hidden wake-ups | 24.7/s | 24.8/s | ≤ 1/s |
+| Shortcut to keyboard focus, p50 / p95 | 62 / 86 ms | p95 86 ms | p95 ≤ 100 ms |
+
+- **Memory:** at 10k, `ibis-desktop` uses 221 MiB, about 90 MiB of it for the
+  library. The WebKit page uses 167–180 MiB and the network process 19 MiB.
+- **Wake-ups:** about 20 a second are on the app's main thread, which matches
+  a 50 ms timer.
+- **Opening:** the figures time Ctrl+Shift+Y to the app holding X keyboard
+  focus and include up to 23 ms of probe overhead. "avery", typed at that
+  moment, arrived whole 5 times out of 5. A full accessibility check that
+  Search has focus adds an AT-SPI tree walk of 90–180 ms, which is too slow to
+  judge a 100 ms budget.
+- **100k:** not measured, because 100k generated references exceed the app's
+  64 MiB library file limit.
+- **Windows:** pending.
+
+On macOS, the installed nightly from 2026-11-26 used 255 MB of physical
+footprint after four hours hidden with a real library
+([0065](decisions/0065-one-warm-engine-thin-shells.md)), against the same
+200 MiB budget.
+
 ## Vocabulary
 
 A **deep module** hides much behaviour behind a small **interface**; a **seam**
