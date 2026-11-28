@@ -1,11 +1,16 @@
 # Design
 
-Ibis follows Apple's macOS Human Interface Guidelines: when in doubt, do what a
-stock macOS app does (Spotlight, Finder, System Settings). Every value lives
-once in [`apps/desktop/src/tokens.css`](../apps/desktop/src/tokens.css), in three
+Each system gets its own native app built from that system's parts
+([decision 0066](decisions/0066-native-shells-use-system-parts.md)): the Mac app
+(`native/macos`) uses AppKit and SwiftUI controls, system colours and SF Symbols,
+following Apple's Human Interface Guidelines and
+[The native recipe](design/macos.md); Windows and Linux follow when their native
+apps are built. The rest of this page also governs the Tauri app while it
+remains: there every value lives once in
+[`apps/desktop/src/tokens.css`](../apps/desktop/src/tokens.css), in three
 layers (primitives → semantic roles → component values), and every part lives
 once as a shared component in [`apps/desktop/src/ui/`](../apps/desktop/src/ui/);
-screens never restyle a part. The design canvas is generated from the app
+screens never restyle a part. Its design canvas is generated from the app
 (`apps/desktop/gallery/canvas.mjs`), so this page names a token or component
 instead of repeating its pixels. [Decisions](decisions.md) win over this page.
 Tags such as [C12] are cited by code and tests; keep each beside its rule.
@@ -29,7 +34,7 @@ has its own page; read only the one your change touches:
 ## Principles
 
 1. **One anatomy everywhere.** Search, the list with its heading line, then the delivery bar (the citation, the one action, More), in that order, at every size; layouts fold, never reorder. Details opened on purpose rise from the bar in a drawer between them.
-2. **One design, macOS first.** Every system uses the macOS design; only correctness follows the system (see [Per platform](design/foundations.md#per-platform)).
+2. **Native on each system, one behaviour everywhere.** Each system's app looks like that system and is built from its own parts (decision 0066); what Ibis does, its words and its keys stay the same across systems. The Tauri app keeps one macOS-first design until each system's native app replaces it (see [Per platform](design/foundations.md#per-platform)).
 3. **Readable first.** Nothing smaller than 12 px; secondary text (helper lines, the bar, a row's byline) passes 4.5:1 on every surface, in light and dark, and with Increase Contrast.
 4. **Easy to hit.** Every target is at least 32 px, 44 px under `pointer: coarse`, whatever the drawn size.
 5. **Show less, reveal more.** Things appear when useful and fold one key away; no modes, no "advanced" switch. A search jump waits for its control to load and yields when the person moves elsewhere.
@@ -111,6 +116,8 @@ The approved, final list; no new delights until the next design pass. Each lives
 How planned features fit these pages is in [ROADMAP.md](../ROADMAP.md).
 
 ## How the design changes
+
+In the native Mac app a change goes through the system's own controls and the shared views in `native/macos/Sources/IbisNative/Shared/`, and is reviewed in the running app (`scripts/native-macos.sh dev` and `shots`). The rules below are the Tauri app's.
 
 - Change `tokens.css` or the shared component in `src/ui/`, never one screen; fix a visual bug in the rule or component that allowed it, with a regression test.
 - **Layout is decided once**: tokens cover values, and where things sit is a token too. `tokens.css` names the layout once: one window inset (`--inset`) on both sides of every band and body, one gutter (`--gutter`), the header and footer heights, the icon slot (`--tile`), the compact and comfortable row heights, the section heading's offset (`--heading-offset`) and one content width for sheets (`--content-max`). The layout parts in `src/ui/` own all spacing: `ViewFrame` (header, body, footer), `Section` (heading and content), `Group` (the card) and `Row` (label, description, accessory and an inline Use Default action), with the picker's rows, headings and bands on `ui/Band` and its shell in `ui/Window.css`. Palettes and sheets share `ViewFrame`; screens supply content and actions. Left edges line up by construction: a card sits on the inset; headings, descriptions and a row's words start on the heading offset; in the picker every word starts on the title column.
