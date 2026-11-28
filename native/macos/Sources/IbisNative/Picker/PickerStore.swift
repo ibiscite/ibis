@@ -314,6 +314,12 @@ final class PickerStore: ObservableObject {
             } catch {
                 guard !Task.isCancelled else { return }
                 notice = pickerError(error)
+                // The engine started a new session: show it rather than a citation it no longer holds.
+                if error as? DaemonError == .changed, let opening {
+                    open(PickerOpenRequest(app: opening.app, file: opening.file, keepQuery: true,
+                                           language: opening.language, reload: nil, site: opening.site))
+                    return
+                }
             }
         }
         pump = nil

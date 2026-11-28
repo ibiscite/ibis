@@ -288,9 +288,19 @@ final class EngineClientTests: XCTestCase {
         _ = try await client.open(fixture.opening)
         let before = try await client.typed("north")
 
+        _ = try await client.act(.add)
         fixture.stop(signal: SIGKILL)
         try await Task.sleep(for: .milliseconds(30))
-        // The reconnect replays the opening, so the reply describes a whole session.
+        // The added reference went with the old session: an intent is refused
+        // rather than applied to a new, empty one, until the shell opens again.
+        do {
+            _ = try await client.typed("north")
+            XCTFail("An intent replayed into a new session.")
+        } catch {
+            XCTAssertEqual(error as? DaemonError, .changed)
+        }
+        let reopened = try await client.open(fixture.opening)
+        XCTAssertTrue(reopened.state.citation.allSatisfy { !$0.added })
         let recovered = try await client.typed("north")
         XCTAssertEqual(recovered.sections, before.sections)
         let restarted = try fixture.identifyDaemon()

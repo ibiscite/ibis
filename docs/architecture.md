@@ -345,7 +345,9 @@ effect is in flight. Drain lets an admitted delivery finish. An acknowledgement 
 bounds the guard at two seconds. EOF also releases it. The C ABI writes the engine's plain text, HTML and RTF in the app
 with the Accessibility grant. It then uses the existing focus, clipboard and
 timing proofs in [0029](decisions/0029-native-calls.md) to paste after the
-panel hides. A lost delivery reply is never replayed.
+panel hides. A lost delivery reply is never replayed. Nor is a picker intent:
+a reconnect starts a new, empty session, so the shell refuses the intent and
+opens again rather than change a citation the engine no longer holds.
 
 The native bundle has its own settings profile and Accessibility grant.
 The Reader remains planned as a separate, isolated web view under

@@ -20,7 +20,8 @@ extension PickerChangeFormatRequest {
 }
 
 /// Blocking file descriptors and daemon launches stay on one utility queue.
-/// Read intents may reconnect and replay. Clipboard intents never replay.
+/// Reads may reconnect and replay the opening. Picker intents and clipboard
+/// writes never replay.
 final class EngineClient: @unchecked Sendable {
     private let binary: URL
     private let configuration: URL?
@@ -29,6 +30,9 @@ final class EngineClient: @unchecked Sendable {
     private let decoder = JSONDecoder()
     private var socket: DaemonSocket?
     private var lastOpening: PickerOpenRequest?
+    /// A reconnect replays the opening into a new, empty picker session. Until
+    /// the shell opens again, its citation describes a session that is gone.
+    private var restoredSession = false
     private var nextID: UInt64 = 0
 
     init(binary: URL, configuration: URL? = nil) {
@@ -39,14 +43,31 @@ final class EngineClient: @unchecked Sendable {
     func open(_ request: PickerOpenRequest) async throws -> PickerOpenResult {
         try await onQueue {
             self.lastOpening = request
-            return try self.read(PickerOpenMethod.self, request, restoring: false)
+            let opened = try self.read(PickerOpenMethod.self, request, restoring: false)
+            self.restoredSession = false
+            return opened
         }
     }
 
-    /// One intent to the engine's picker session. After a reconnect the
-    /// opening is replayed first, so the reply always describes a session.
+    /// One intent to the engine's picker session. An intent changes the
+    /// citation the shell shows, so it never replays, and it is refused once
+    /// a reconnect has started a new session: the shell must open again.
     func act(_ intent: PickerIntent) async throws -> PickerState {
-        try await onQueue { try self.read(PickerActMethod.self, intent) }
+        try await onQueue {
+            if !self.restoredSession, let socket = self.socket {
+                do {
+                    return try self.exchange(PickerActMethod.self, intent, on: socket)
+                } catch let error as Rejected {
+                    throw error
+                } catch {
+                    self.socket = nil
+                }
+            }
+            // A new connection holds a new, empty session. Connect now, so an
+            // engine that must not be replaced says so, then open again.
+            _ = try self.connect(restoring: true)
+            throw DaemonError.changed
+        }
     }
 
     func changeFormat(_ request: PickerChangeFormatRequest, for opening: PickerOpenRequest) async throws -> PickerState {
@@ -105,7 +126,7 @@ final class EngineClient: @unchecked Sendable {
         write: @escaping @MainActor @Sendable (PickerDeliverResult) -> UInt32
     ) async throws -> IbisDelivery? {
         try await onQueue {
-            guard let socket = self.socket else { throw DaemonError.changed }
+            guard let socket = self.socket, !self.restoredSession else { throw DaemonError.changed }
             do {
                 return try socket.withDeliveryFence {
                     let grant = try self.exchange(PickerDeliverMethod.self, request, on: socket)
@@ -162,6 +183,7 @@ final class EngineClient: @unchecked Sendable {
         let connected = try DaemonSocket(DaemonEndpoint(binary: binary, configuration: configuration))
         if restoring, let opening = lastOpening {
             _ = try exchange(PickerOpenMethod.self, opening, on: connected)
+            restoredSession = true
         }
         socket = connected
         return connected
