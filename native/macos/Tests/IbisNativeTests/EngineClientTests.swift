@@ -44,6 +44,9 @@ final class EngineClientTests: XCTestCase {
         try FileManager.default.moveItem(at: fixture.library, to: missing)
         let moved = try await settings.settings(.readOnly)
         XCTAssertEqual(moved.library?.missing, true)
+        // The picker reads the moved file as missing from the open error, so it offers to find it.
+        let lost = try await fixture.client().open(opening)
+        XCTAssertEqual(lost.library?.condition, .missing)
         let recovered = try await settings.chooseLibrary(missing)
         XCTAssertEqual(recovered.library?.name, missing.lastPathComponent)
         let reopened = try await fixture.client().open(opening)
