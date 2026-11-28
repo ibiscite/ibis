@@ -20,11 +20,20 @@ enum ReviewState: String, CaseIterable {
     }
 
     func run(panel: PickerPanel, settings: NativeSettingsWindow) async {
+        // Every shot on the built-in display, at its 2x scale.
+        let screen = NSScreen.screens.first { screen in
+            (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID)
+                .map { CGDisplayIsBuiltin($0) != 0 } ?? false
+        } ?? NSScreen.main
         switch self {
         case .settingsGeneral, .settingsAppearance, .settingsLibrary:
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
             settings.show(self == .settingsGeneral ? .general : self == .settingsAppearance ? .appearance : .library)
+            if let window = settings.window, let area = screen?.visibleFrame {
+                window.setFrameOrigin(NSPoint(x: area.midX - window.frame.width / 2,
+                                              y: area.midY - window.frame.height / 2))
+            }
             await pause(900)
             guard let window = settings.window else { return }
             report("\(window.windowNumber)")
@@ -32,6 +41,10 @@ enum ReviewState: String, CaseIterable {
         default: break
         }
         let store = panel.store
+        // An invented app to paste into, never the one in front.
+        let textEdit = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.TextEdit")
+        store.pinnedDestination = ("TextEdit", textEdit.map { NSWorkspace.shared.icon(forFile: $0.path) })
+        panel.pinned = ("com.apple.TextEdit", "TextEdit", screen)
         panel.summon()
         backdrop(behind: panel)
         await settle(store)
@@ -104,11 +117,14 @@ enum ReviewState: String, CaseIterable {
         fflush(stdout)
     }
 
+    /// Waits up to 15 s for the engine to catch up, and says so when it never does.
     private func settle(_ store: PickerStore) async {
         await pause(150)
-        for _ in 0..<100 where !store.settled || store.isChangingFormat {
+        for _ in 0..<300 {
+            if store.settled && !store.isChangingFormat { return }
             await pause(50)
         }
+        FileHandle.standardError.write(Data("settle timeout \(rawValue)\n".utf8))
     }
 
     private func pause(_ milliseconds: Int) async { try? await Task.sleep(for: .milliseconds(milliseconds)) }
