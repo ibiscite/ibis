@@ -20,7 +20,7 @@ esac
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 package="$root/native/macos"
-app="$root/target/native-macos/Ibis Native.app"
+app="$root/target/native-macos/Ibis.app"
 export CARGO_TARGET_DIR="$root/target"
 export CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-0}"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-3}"

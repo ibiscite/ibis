@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key>
-    <string>Ibis Native</string>
+    <string>Ibis</string>
     <key>CFBundleExecutable</key>
     <string>IbisNative</string>
     <key>CFBundleIconFile</key>
@@ -11,7 +11,7 @@
     <key>CFBundleIdentifier</key>
     <string>com.ibiscite.ibis.native</string>
     <key>CFBundleName</key>
-    <string>Ibis Native</string>
+    <string>Ibis</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleVersion</key>

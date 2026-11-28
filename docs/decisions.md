@@ -161,3 +161,6 @@ the anchor older links use.
 
 ## 0066 Native shells use the system's own parts
 [0066](decisions/0066-native-shells-use-system-parts.md): a native shell is layout over the platform's own controls, materials, symbols, menus and accent and draws nothing the system draws; on macOS SwiftUI first with AppKit for the panel, glass, menus and exact focus; SF Symbols replace the picker's icon copies; the engine owns words, status and next the command table, and the picker session too, so the native WinUI 3 (Windows) and then GTK 4 with libadwaita (Linux) apps, which follow Mac parity (2026-11-28), render the same picker; the Mac app targets macOS 15 and later, with Liquid Glass on 26.
+
+## 0067 Ibis uses whatever people have, and needs nothing
+[0067](decisions/0067-whatever-people-have.md): Ibis works on its own with one file or a folder of PDFs and takes full advantage of any manager present; Word citations as close to Zotero's and as robust as evidence allows; AI optional with everything in the CLI and MCP and nothing in the default flow; coauthors an open design question; the name is always Ibis.
