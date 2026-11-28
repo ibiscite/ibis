@@ -103,6 +103,23 @@ pub fn open_private(path: &Path) -> io::Result<File> {
     options.open(path)
 }
 
+/// Take `lock` exclusively, waiting at most `limit`. A holder that stays
+/// longer, such as a suspended process, gives `WouldBlock`: the caller fails
+/// that one change and can try again, instead of waiting forever.
+pub fn lock_within(lock: &File, limit: std::time::Duration) -> io::Result<()> {
+    let deadline = std::time::Instant::now() + limit;
+    loop {
+        match lock.try_lock() {
+            Ok(()) => return Ok(()),
+            Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Err(fs::TryLockError::WouldBlock) => return Err(io::ErrorKind::WouldBlock.into()),
+            Err(fs::TryLockError::Error(error)) => return Err(error),
+        }
+    }
+}
+
 fn private_options() -> fs::OpenOptions {
     let mut options = fs::OpenOptions::new();
     options.write(true);

@@ -234,3 +234,70 @@ fn an_existing_temporary_symlink_is_never_truncated() -> io::Result<()> {
     assert_eq!(fs::read_to_string(occupied)?, "synthetic existing data");
     Ok(())
 }
+
+#[test]
+fn a_store_that_disappears_never_turns_copy_only_into_a_paste() -> io::Result<()> {
+    let directory = tempfile::tempdir()?;
+    let grants = grants_in(&directory);
+    // A new profile has no store yet: Word pastes by default.
+    assert_eq!(grants.paste_for(&word(), None), Ok(None));
+    grants.set_choice(&word(), AppPaste::CopyOnly, None)?;
+    fs::remove_file(directory.path().join("apps.json"))?;
+    // The lost store may have said Copy only, so nothing pastes unasked.
+    assert_eq!(grants.paste_for(&word(), None), Err(CopyReason::PasteUnavailable));
+    grants.set_choice(&word(), AppPaste::CopyOnly, None)?;
+    assert_eq!(grants.paste_for(&word(), None), Ok(Some(AppPaste::CopyOnly)));
+    assert_eq!(
+        grants.paste_for(&mac("com.apple.iwork.pages"), None),
+        Err(CopyReason::PasteUnavailable),
+        "every other app is asked again"
+    );
+    Ok(())
+}
+
+#[test]
+fn a_choice_the_reader_would_refuse_is_never_written() -> io::Result<()> {
+    let directory = tempfile::tempdir()?;
+    let grants = grants_in(&directory);
+    let unlisted = mac("org.example.writer");
+    grants.set_choice(&unlisted, AppPaste::CopyOnly, None)?;
+    for bad in ["short", &"g".repeat(64), &"a".repeat(65)] {
+        let refused = grants.set_choice(&unlisted, AppPaste::Paste, Some(bad.to_owned()));
+        assert_eq!(
+            refused.map_err(|error| error.kind()),
+            Err(io::ErrorKind::InvalidInput),
+            "{bad}"
+        );
+    }
+    assert!(grants.set_choice(&mac("bad\nid"), AppPaste::CopyOnly, None).is_err());
+    assert!(!grants.take_plugin_note(&mac("")));
+    assert_eq!(
+        grants.paste_for(&unlisted, None),
+        Ok(Some(AppPaste::CopyOnly)),
+        "the file still reads"
+    );
+    Ok(())
+}
+
+#[test]
+fn a_change_waits_a_bounded_time_for_another_process() -> io::Result<()> {
+    let directory = tempfile::tempdir()?;
+    let grants = grants_in(&directory);
+    grants.set_choice(&word(), AppPaste::CopyOnly, None)?;
+    // Another process holds the lock and never lets go, as a suspended one would.
+    let held = open_private(&directory.path().join("apps.json.lock"))?;
+    held.lock()?;
+    let started = std::time::Instant::now();
+    let refused = grants.set_choice(&word(), AppPaste::Paste, None);
+    assert_eq!(refused.map_err(|error| error.kind()), Err(io::ErrorKind::WouldBlock));
+    assert!(started.elapsed() < LOCK_WAIT * 2);
+    assert_eq!(
+        grants.paste_for(&word(), None),
+        Ok(Some(AppPaste::CopyOnly)),
+        "reads never wait"
+    );
+    drop(held);
+    grants.set_choice(&word(), AppPaste::Paste, None)?;
+    assert_eq!(grants.paste_for(&word(), None), Ok(Some(AppPaste::Paste)));
+    Ok(())
+}

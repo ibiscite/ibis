@@ -41,6 +41,16 @@ pub trait Host: Clone + Send + Sync + 'static {
         id: &ibis_core::destination::AppId,
         identity: Option<&str>,
     ) -> Option<(Option<ibis_core::destination::AppPaste>, bool)>;
+    /// The saved per-app choice, read again just before a paste posts.
+    /// `None` for a host that keeps no per-app choices, so the one frozen
+    /// with the copy stands.
+    fn current_paste(
+        &self,
+        _id: &ibis_core::destination::AppId,
+        _identity: Option<&str>,
+    ) -> Option<Result<Option<ibis_core::destination::AppPaste>, CopyReason>> {
+        None
+    }
 }
 
 pub(super) mod diagnostics;
@@ -315,6 +325,15 @@ impl<H: Host> Desk for Mac<H> {
             diagnostics::stage("lifecycle");
             safety::stamp()
         })
+    }
+
+    fn app_choice(&self, captured: &super::Captured) -> Result<Option<ibis_core::destination::AppPaste>, CopyReason> {
+        let Some(id) = &captured.target.app else {
+            return captured.paste;
+        };
+        self.host
+            .current_paste(id, captured.app_identity.as_deref())
+            .unwrap_or(captured.paste)
     }
 
     fn may_post(&self) -> bool {
