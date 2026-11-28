@@ -59,7 +59,7 @@ else
   parts=("$@")
 fi
 for part in "${parts[@]}"; do
-  [[ " ${ALL[*]} " == *" $part "* ]] || { echo "Unknown part: $part (parts: ${ALL[*]})"; exit 2; }
+  declare -F "part_${part//-/_}" >/dev/null || { echo "Unknown part: $part (parts: build ${ALL[*]})"; exit 2; }
   printf '\n== %s\n' "$part"
   "part_${part//-/_}"
 done

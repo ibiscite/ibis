@@ -102,7 +102,7 @@ regression at the layer that owns the cause.
 ## Where checks run
 
 [`check.sh`](../scripts/check.sh) holds the commands of CI's checks as named
-parts (`identities`, `scripts`, `interface`, `format`, `brand`, `lint`,
+parts (`identities`, `scripts`, `build`, `interface`, `format`, `brand`, `lint`,
 `lint-app`, `test`, `test-app`, `fidelity`, `generated`, `csl`). CI's jobs call
 these parts, and with no arguments the script runs the parts that
 `ci-plan.mjs --local` selects for the branch against `origin/main`, so a machine
