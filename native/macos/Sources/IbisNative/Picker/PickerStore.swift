@@ -226,6 +226,8 @@ final class PickerStore: ObservableObject {
         pump = nil
         outbox.removeAll()
         isOpening = true
+        // Text typed while the library opens is the person's and must survive the reply.
+        let queryAtOpen = query
         openingTask = Task {
             do {
                 let opened = try await engine.open(request)
@@ -237,8 +239,10 @@ final class PickerStore: ObservableObject {
                 let destination = ibis_native_paste_destination(opened.pasteEnabled)
                 pasteDestination = destination > 0 && destination == targetPID ? targetName : nil
                 isOpening = false
+                let typed = query != queryAtOpen ? query : nil
                 query = opened.state.query
                 apply(opened.state)
+                if let typed { type(typed) }
             } catch {
                 guard !Task.isCancelled else { return }
                 isOpening = false

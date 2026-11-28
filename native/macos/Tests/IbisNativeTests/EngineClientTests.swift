@@ -57,9 +57,10 @@ final class EngineClientTests: XCTestCase {
         let client = fixture.client()
         let text = fixture.opening
         let initial = try await client.open(text).formatScope
-        let stored = try XCTUnwrap(try await client.changeFormat(
+        let storedReply = try await client.changeFormat(
             PickerChangeFormatRequest(expected: initial, forget: nil, remember: "modern-language-association"), for: text
-        ).formatScope)
+        )
+        let stored = try XCTUnwrap(storedReply.formatScope)
         XCTAssertEqual(stored.format, "modern-language-association")
         XCTAssertEqual(stored.from, .app)
         XCTAssertEqual(stored.rememberedFor, text.app)
@@ -72,9 +73,10 @@ final class EngineClientTests: XCTestCase {
         let latex = try await client.open(overleaf).formatScope
         XCTAssertEqual(latex.remembersFor, "overleaf.com")
         XCTAssertNil(latex.rememberedFor)
-        let savedSite = try XCTUnwrap(try await client.changeFormat(
+        let savedSiteReply = try await client.changeFormat(
             PickerChangeFormatRequest(expected: latex, forget: nil, remember: "pandoc"), for: overleaf
-        ).formatScope)
+        )
+        let savedSite = try XCTUnwrap(savedSiteReply.formatScope)
         XCTAssertEqual(savedSite.rememberedFor, "overleaf.com")
         let docs = try await client.open(googleDocs).formatScope
         XCTAssertEqual(docs.format, "apa")
@@ -91,9 +93,10 @@ final class EngineClientTests: XCTestCase {
         let otherClient = fixture.client()
         let reopened = try await otherClient.open(overleaf).formatScope
         XCTAssertEqual(reopened, savedSite)
-        let reset = try XCTUnwrap(try await otherClient.changeFormat(
+        let resetReply = try await otherClient.changeFormat(
             PickerChangeFormatRequest(expected: reopened, forget: true, remember: nil), for: overleaf
-        ).formatScope)
+        )
+        let reset = try XCTUnwrap(resetReply.formatScope)
         XCTAssertEqual(reset, latex)
         let originalApp = try await otherClient.open(text).formatScope
         XCTAssertEqual(originalApp, stored)
@@ -102,9 +105,10 @@ final class EngineClientTests: XCTestCase {
         XCTAssertEqual(search.format, originalApp.format)
         let preview = try XCTUnwrap(search.preview)
         XCTAssertNil(preview.problem)
-        let changed = try XCTUnwrap(try await otherClient.changeFormat(
+        let changedReply = try await otherClient.changeFormat(
             PickerChangeFormatRequest(expected: originalApp, forget: nil, remember: "apa"), for: text
-        ).formatScope)
+        )
+        let changed = try XCTUnwrap(changedReply.formatScope)
         do {
             _ = try await client.deliver(
                 PickerDeliverRequest(contentHash: preview.contentHash, paste: false, ticket: preview.ticket)
@@ -223,7 +227,8 @@ final class EngineClientTests: XCTestCase {
         let copyOnly = try await client.open(fixture.opening)
         XCTAssertFalse(copyOnly.pasteEnabled)
         _ = try await client.act(.useFormat(id: "apa"))
-        let copyPreview = try XCTUnwrap(try await client.act(.details(details: details, item: row.id)).preview)
+        let copyPreviewReply = try await client.act(.details(details: details, item: row.id))
+        let copyPreview = try XCTUnwrap(copyPreviewReply.preview)
         let enabled = try await preferences.settings(
             .patch(paste: true)
         )
