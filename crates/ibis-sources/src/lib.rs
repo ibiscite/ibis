@@ -255,6 +255,12 @@ pub enum SourceCapability {
 }
 
 impl SourceCapability {
+    /// Whether serving this takes the source itself, not only the records
+    /// read from it, so a library handed over without its source cannot
+    /// offer it.
+    pub fn needs_source(self) -> bool {
+        matches!(self, Self::AttachmentText | Self::Proposals | Self::OriginalEntries)
+    }
     /// Records handed to the engine whole, with no source behind them.
     pub const SNAPSHOT: &'static [Self] = &[Self::BibliographicRecords];
     /// A folder's kept `.bib`: BibTeX's, except proposals, since Ibis is that
