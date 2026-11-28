@@ -533,8 +533,10 @@ final class PickerStore: ObservableObject {
         let attempt = UUID()
         delivery = attempt
         isDelivering = true
-        let request = PickerDeliverRequest(contentHash: preview.contentHash, paste: !copyOnly && pasteDestination != nil,
-                                           ticket: preview.ticket)
+        // The engine pastes only on the first claim of this id, in any process.
+        let request = PickerDeliverRequest(contentHash: preview.contentHash,
+                                           delivery: attempt.uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
+                                           paste: !copyOnly && pasteDestination != nil, ticket: preview.ticket)
         Task { [self] in
             do {
                 let result = try await engine.deliver(request) { [weak self] grant in

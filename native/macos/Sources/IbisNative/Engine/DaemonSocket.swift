@@ -58,19 +58,97 @@ struct DaemonEndpoint {
     }
 }
 
-/// One authenticated fd and one ordered, bounded stream of frames. Its owner
-/// closes it on any malformed or incomplete reply.
-final class DaemonSocket {
+/// One ordered stream of picker turns: the daemon's socket, or the pipes of
+/// an engine the app started for itself. Its owner drops it on any malformed
+/// or incomplete reply.
+protocol EngineLink: AnyObject {
+    func send(_ body: Data) throws
+    func receive() throws -> Data
+    var peerIsOpen: Bool { get }
+    /// Hold what keeps a replacement engine from starting during a native effect.
+    func withDeliveryFence<T>(_ body: () throws -> T) throws -> T
+}
+
+/// The engine's Content-Length frames, bounded, over a descriptor to read and
+/// one to write (the same one for a socket).
+final class Frames {
     private static let separator = Data("\r\n\r\n".utf8)
     private static let header = "Content-Length: "
+    private let input: Int32
+    private let output: Int32
+    private var buffer = Data()
+    /// How long one read waits, in milliseconds; `nil` leaves it to the
+    /// descriptor's own timeout, as a socket's.
+    var readLimit: Int32?
+
+    init(input: Int32, output: Int32) {
+        self.input = input
+        self.output = output
+    }
+
+    func send(_ body: Data) throws {
+        guard (1...1024 * 1024).contains(body.count) else { throw DaemonError.invalidFrame }
+        var frame = Data("\(Self.header)\(body.count)\r\n\r\n".utf8)
+        frame.append(body)
+        try frame.withUnsafeBytes { bytes in
+            guard let base = bytes.baseAddress else { throw DaemonError.invalidFrame }
+            var sent = 0
+            while sent < bytes.count {
+                let count = Darwin.write(output, base.advanced(by: sent), bytes.count - sent)
+                if count < 0, errno == EINTR { continue }
+                guard count > 0 else { throw DaemonError.disconnected }
+                sent += count
+            }
+        }
+    }
+
+    func receive() throws -> Data {
+        func readMore() throws {
+            if let readLimit {
+                var event = pollfd(fd: input, events: Int16(POLLIN), revents: 0)
+                var ready: Int32
+                repeat { ready = poll(&event, 1, readLimit) } while ready < 0 && errno == EINTR
+                guard ready > 0 else { throw DaemonError.disconnected }
+            }
+            var chunk = [UInt8](repeating: 0, count: 8192)
+            let capacity = chunk.count
+            var count: Int
+            repeat { count = Darwin.read(input, &chunk, capacity) } while count < 0 && errno == EINTR
+            guard count > 0 else { throw DaemonError.disconnected }
+            buffer.append(contentsOf: chunk.prefix(count))
+        }
+
+        while buffer.range(of: Self.separator) == nil {
+            guard buffer.count < 8192 else { throw DaemonError.invalidFrame }
+            try readMore()
+        }
+        guard let separator = buffer.range(of: Self.separator),
+              separator.upperBound - buffer.startIndex <= 8192,
+              let line = String(data: buffer[..<separator.lowerBound], encoding: .ascii),
+              line.hasPrefix(Self.header),
+              let length = Int(line.dropFirst(Self.header.count)),
+              (1...16 * 1024 * 1024).contains(length) else {
+            throw DaemonError.invalidFrame
+        }
+        buffer.removeSubrange(..<separator.upperBound)
+        while buffer.count < length { try readMore() }
+        let body = Data(buffer.prefix(length))
+        buffer.removeFirst(length)
+        return body
+    }
+}
+
+/// One authenticated fd to the daemon.
+final class DaemonSocket: EngineLink {
     private let fd: Int32
     private let lockPath: String
-    private var buffer = Data()
+    private let frames: Frames
     private(set) var pid: Int32 = 0
 
     private init(fd: Int32, lockPath: String) {
         self.fd = fd
         self.lockPath = lockPath
+        frames = Frames(input: fd, output: fd)
     }
 
     convenience init(_ endpoint: DaemonEndpoint) throws {
@@ -87,6 +165,10 @@ final class DaemonSocket {
     }
 
     deinit { close(fd) }
+
+    func send(_ body: Data) throws { try frames.send(body) }
+
+    func receive() throws -> Data { try frames.receive() }
 
     private static func connect(_ path: String) throws -> Int32 {
         var info = stat()
@@ -135,51 +217,6 @@ final class DaemonSocket {
         }
     }
 
-    func send(_ body: Data) throws {
-        guard (1...1024 * 1024).contains(body.count) else { throw DaemonError.invalidFrame }
-        var frame = Data("\(Self.header)\(body.count)\r\n\r\n".utf8)
-        frame.append(body)
-        try frame.withUnsafeBytes { bytes in
-            guard let base = bytes.baseAddress else { throw DaemonError.invalidFrame }
-            var sent = 0
-            while sent < bytes.count {
-                let count = Darwin.write(fd, base.advanced(by: sent), bytes.count - sent)
-                if count < 0, errno == EINTR { continue }
-                guard count > 0 else { throw DaemonError.disconnected }
-                sent += count
-            }
-        }
-    }
-
-    func receive() throws -> Data {
-        func readMore() throws {
-            var chunk = [UInt8](repeating: 0, count: 8192)
-            let capacity = chunk.count
-            var count: Int
-            repeat { count = Darwin.read(fd, &chunk, capacity) } while count < 0 && errno == EINTR
-            guard count > 0 else { throw DaemonError.disconnected }
-            buffer.append(contentsOf: chunk.prefix(count))
-        }
-
-        while buffer.range(of: Self.separator) == nil {
-            guard buffer.count < 8192 else { throw DaemonError.invalidFrame }
-            try readMore()
-        }
-        guard let separator = buffer.range(of: Self.separator),
-              separator.upperBound - buffer.startIndex <= 8192,
-              let line = String(data: buffer[..<separator.lowerBound], encoding: .ascii),
-              line.hasPrefix(Self.header),
-              let length = Int(line.dropFirst(Self.header.count)),
-              (1...16 * 1024 * 1024).contains(length) else {
-            throw DaemonError.invalidFrame
-        }
-        buffer.removeSubrange(..<separator.upperBound)
-        while buffer.count < length { try readMore() }
-        let body = Data(buffer.prefix(length))
-        buffer.removeFirst(length)
-        return body
-    }
-
     var peerIsOpen: Bool {
         var event = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
         guard poll(&event, 1, 0) >= 0 else { return false }
@@ -200,4 +237,67 @@ final class DaemonSocket {
         guard flock(file, LOCK_EX | LOCK_NB) == 0 else { throw DaemonError.busy }
         return try body()
     }
+}
+
+/// An engine of the app's own on its standard streams (`ibis __picker_stdio`),
+/// for when no daemon can be started or reached. It serves only this app and
+/// works on the same files, so nothing can take over from it during a
+/// delivery and it needs no fence; each Return still pastes at most once.
+final class PrivateEngine: EngineLink {
+    private let process: Process
+    private let toEngine: FileHandle
+    private let fromEngine: FileHandle
+    private let frames: Frames
+
+    init(binary: URL, configuration: URL?) throws {
+        let input = Pipe()
+        let output = Pipe()
+        let process = Process()
+        process.executableURL = binary
+        process.arguments = ["__picker_stdio"]
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        if let configuration {
+            var environment = ProcessInfo.processInfo.environment
+            environment["IBIS_CONFIG_DIR"] = configuration.path
+            process.environment = environment
+        }
+        let toEngine = input.fileHandleForWriting
+        let fromEngine = output.fileHandleForReading
+        for fd in [toEngine.fileDescriptor, fromEngine.fileDescriptor] {
+            guard fcntl(fd, F_SETFD, FD_CLOEXEC) == 0 else { throw DaemonError.noEngine }
+        }
+        // A write after the engine exits fails instead of signalling the app.
+        guard fcntl(toEngine.fileDescriptor, F_SETNOSIGPIPE, 1) == 0 else { throw DaemonError.noEngine }
+        do {
+            try process.run()
+        } catch {
+            throw DaemonError.noEngine
+        }
+        // The engine holds the other ends; ours close so its exit reads as an end.
+        try? input.fileHandleForReading.close()
+        try? output.fileHandleForWriting.close()
+        let frames = Frames(input: fromEngine.fileDescriptor, output: toEngine.fileDescriptor)
+        frames.readLimit = 30_000
+        self.process = process
+        self.toEngine = toEngine
+        self.fromEngine = fromEngine
+        self.frames = frames
+    }
+
+    /// Closing its input ends the engine; one that does not answer is stopped.
+    deinit {
+        try? toEngine.close()
+        if process.isRunning { process.terminate() }
+        try? fromEngine.close()
+    }
+
+    func send(_ body: Data) throws { try frames.send(body) }
+
+    func receive() throws -> Data { try frames.receive() }
+
+    var peerIsOpen: Bool { process.isRunning }
+
+    func withDeliveryFence<T>(_ body: () throws -> T) throws -> T { try body() }
 }

@@ -158,6 +158,38 @@ impl PickerSession {
         self.refresh(engine)
     }
 
+    pub(super) fn added(&self) -> impl Iterator<Item = &(PickerRow, PickerDetails)> {
+        self.added.iter()
+    }
+
+    pub(super) fn keeps_order(&self) -> bool {
+        self.keep_order
+    }
+
+    pub(super) fn held_format(&self) -> Option<&str> {
+        self.held.as_deref()
+    }
+
+    pub(super) fn language(&self) -> Language {
+        self.language
+    }
+
+    /// A saved citation comes back: only formats Ibis offers, and forms that format has.
+    pub(super) fn restored(&mut self, added: Vec<(PickerRow, PickerDetails)>, keep_order: bool, held: Option<String>) {
+        self.held = held.filter(|id| outputs::outputs().iter().any(|output| &output.id == id));
+        let forms = self.forms();
+        self.added = added
+            .into_iter()
+            .map(|(row, mut details)| {
+                details.form = details.form.filter(|form| forms.contains(form));
+                (row, details)
+            })
+            .collect();
+        self.keep_order = keep_order;
+        self.undo = None;
+        self.rendered = None;
+    }
+
     /// After a delivery: nothing is kept for the next opening but the query.
     pub fn delivered(&mut self) {
         self.added.clear();

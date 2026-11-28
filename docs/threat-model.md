@@ -114,6 +114,16 @@ before it queues the post. Tests: `grants/tests.rs` and, for the wait,
 `a_choice_changed_while_the_app_comes_back_stops_the_paste` in
 `crates/ibis-native/src/paste/tests.rs`.
 
+**One paste per Return.** A shell names each Return with a random
+`DeliveryId`. Before any engine grants the paste, it records the ID in
+`deliveries.json` under a lock every Ibis process shares. A request carrying
+an ID already recorded, from the same or another engine, can only copy.
+Expiry uses the wall clock: an ID is forgotten after an hour or 64 newer
+Returns. An
+unreadable file lets nothing paste until it is replaced. Like the approvals it
+guards against mistakes, not against a program running as the person. Tests:
+`delivered/tests.rs` and, across two engines, `crates/ibis-cli/tests/daemon.rs`.
+
 The **editor endpoint** (decision 0008) is the one TCP socket: off
 until switched on in Settings, it binds a TCP port on 127.0.0.1 only
 (`apps/desktop/src-tauri/src/editor_endpoint.rs`) so an editor can ask for a

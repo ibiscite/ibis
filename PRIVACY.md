@@ -106,6 +106,16 @@ yourself in the app. It has no account or crash-upload service. This page descri
   them; obsolete WebView citation history is removed rather than imported.
 - **Cited since opening:** identities and undo stay in memory. Copy/export
   writes a bibliography only when requested.
+- **The citation being built:** while Recent citations is on, the native
+  picker keeps the references it has added, with their pages, prefixes,
+  suffixes and forms, in `picker-draft.json`, so an engine that restarts picks
+  up the citation where it was. Never the typed search or citation text. The
+  file is removed when the citation is delivered or emptied, when the picker
+  opens afresh, or when Recent citations is turned off, and it is
+  ignored after ten minutes.
+- **Deliveries:** `deliveries.json` holds random IDs and times of the last 64
+  Returns, none older than an hour, so a Return pastes at most once. It holds
+  nothing about the citation, the app or the document.
 - **Start at login:** enabling it creates a macOS login item, Windows startup
   value or Linux autostart file. Disabling it removes the launch entry.
 

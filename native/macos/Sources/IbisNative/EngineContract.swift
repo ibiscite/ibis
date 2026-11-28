@@ -57,6 +57,8 @@ enum CitationForm: String, Codable, Hashable, Sendable {
     case bibliographyOnly = "bibliography-only"
 }
 
+typealias DeliveryId = String
+
 enum Density: String, Codable, Hashable, Sendable {
     case compact = "compact"
     case comfortable = "comfortable"
@@ -201,11 +203,13 @@ struct PickerChangeFormatRequest: Codable, Hashable, Sendable {
 
 struct PickerDeliverRequest: Codable, Hashable, Sendable {
     let contentHash: String
+    let delivery: DeliveryId
     let paste: Bool
     let ticket: String
 
     enum CodingKeys: String, CodingKey {
         case contentHash = "content_hash"
+        case delivery = "delivery"
         case paste = "paste"
         case ticket = "ticket"
     }

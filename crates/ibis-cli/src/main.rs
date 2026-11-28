@@ -53,6 +53,13 @@ fn main() -> std::process::ExitCode {
         };
         termination.exit(status);
     }
+    if arguments.len() == 2 && arguments[1] == "__picker_stdio" {
+        let status = if ibis::daemon::picker_stdio().is_ok() { 0 } else { 5 };
+        #[cfg(unix)]
+        termination.exit(status);
+        #[cfg(not(unix))]
+        return std::process::ExitCode::from(status);
+    }
     if arguments.len() == 2 && arguments[1] == "daemon" {
         let status = ibis::run_daemon();
         #[cfg(unix)]

@@ -300,6 +300,10 @@ fn disabled(settings: &std::path::Path) -> bool {
 /// Apply a saved privacy choice even when the app is closed. A later settings
 /// save may have already turned history back on, so check again under its lease.
 pub fn clear_disabled(settings: &std::path::Path) -> io::Result<()> {
+    if disabled(settings) {
+        // The citation being built is kept under the same switch.
+        crate::picker::Drafts::beside(settings).save(&crate::picker::PickerDraft::default())?;
+    }
     let path = settings.with_file_name("recents.json");
     let needs_clear =
         || path.is_file() && !crate::settings::read_regular_bytes(&path).is_ok_and(|bytes| bytes.trim_ascii() == b"[]");

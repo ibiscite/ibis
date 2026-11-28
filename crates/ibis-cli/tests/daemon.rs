@@ -708,7 +708,8 @@ fn picker_releases_a_delivery_whose_acknowledgement_stops_mid_frame() {
         4,
         "picker/deliver",
         json!({
-            "ticket":preview["ticket"],"content_hash":preview["content_hash"],"paste":false
+            "ticket":preview["ticket"],"content_hash":preview["content_hash"],"paste":false,
+            "delivery":"00000000000000000000000000000001"
         }),
     );
     assert_eq!(grant["text"], preview["text"]);
@@ -717,4 +718,136 @@ fn picker_releases_a_delivery_whose_acknowledgement_stops_mid_frame() {
     assert!(read_response_frame(&mut reader).unwrap().is_none());
     assert!(start.elapsed() >= std::time::Duration::from_millis(ibis_core::destination::PASTE_DEADLINE_MS));
     assert!(start.elapsed() < Duration::from_secs(5));
+}
+
+/// One picker opening in an engine a shell started for itself over its
+/// standard streams, as when the daemon cannot be reached: open, type, then
+/// deliver with `delivery` and report the write as done.
+/// An engine a shell started for itself, answering picker turns on its
+/// standard streams as when no daemon can be reached.
+struct PrivateEngine {
+    child: std::process::Child,
+    input: std::process::ChildStdin,
+    output: BufReader<std::process::ChildStdout>,
+    next: u64,
+}
+
+impl PrivateEngine {
+    fn start(home: &Home) -> Self {
+        let mut child = home
+            .command()
+            .arg("__picker_stdio")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let input = child.stdin.take().unwrap();
+        let output = BufReader::new(child.stdout.take().unwrap());
+        Self {
+            child,
+            input,
+            output,
+            next: 1,
+        }
+    }
+
+    fn call(&mut self, method: &str, params: Value) -> Value {
+        let id = self.next;
+        self.next += 1;
+        write_frame(
+            &mut self.input,
+            &json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}),
+        )
+        .unwrap();
+        let response = read_response_frame(&mut self.output).unwrap().unwrap();
+        assert_eq!(response["id"], id, "{response}");
+        assert!(response["result"].is_object(), "{response}");
+        response["result"].clone()
+    }
+
+    fn close(self) {
+        let Self { mut child, input, .. } = self;
+        drop(input);
+        assert!(child.wait().unwrap().success());
+    }
+}
+
+fn deliver_from_a_private_engine(home: &Home, library: &Path, delivery: &str) -> Value {
+    let mut engine = PrivateEngine::start(home);
+    engine.call("picker/open", json!({"app":null,"file":library,"language":"en-US"}));
+    let state = engine.call("picker/act", json!({"intent":"type","query":"lantern"}));
+    let preview = state["preview"].clone();
+    assert!(preview["ticket"].is_string(), "{state}");
+    let grant = engine.call(
+        "picker/deliver",
+        json!({
+            "ticket":preview["ticket"],"content_hash":preview["content_hash"],
+            "paste":true,"delivery":delivery
+        }),
+    );
+    assert_eq!(grant["text"], preview["text"]);
+    write_frame(&mut engine.input, &json!(true)).unwrap();
+    engine.close();
+    grant
+}
+
+/// The citation being built outlives the engine holding it: the next engine
+/// takes it back when the shell reopens soon after, and a new opening, or a
+/// delivery, leaves nothing behind.
+#[test]
+fn a_citation_being_built_survives_its_engine() {
+    let home = Home::new();
+    let library = home.library();
+    let open = |keep_query: bool| json!({"app":null,"file":library,"language":"en-US","keep_query":keep_query});
+    let added = |state: &Value| {
+        state["citation"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|entry| entry["added"] == true)
+            .count()
+    };
+    let mut first = PrivateEngine::start(&home);
+    first.call("picker/open", open(false));
+    first.call("picker/act", json!({"intent":"type","query":"lantern"}));
+    let state = first.call("picker/act", json!({"intent":"add"}));
+    assert_eq!(added(&state), 1, "{state}");
+    first.close();
+
+    // A reconnecting shell replays its opening, then opens again.
+    let mut second = PrivateEngine::start(&home);
+    let replayed = second.call("picker/open", open(true));
+    assert_eq!(added(&replayed["state"]), 1, "{replayed}");
+    let reopened = second.call("picker/open", open(true));
+    assert_eq!(added(&reopened["state"]), 1, "{reopened}");
+    let preview = reopened["state"]["preview"].clone();
+    let grant = second.call(
+        "picker/deliver",
+        json!({
+            "ticket":preview["ticket"],"content_hash":preview["content_hash"],
+            "paste":false,"delivery":"abcdef0123456789abcdef0123456789"
+        }),
+    );
+    assert_eq!(grant["text"], preview["text"]);
+    write_frame(&mut second.input, &json!(true)).unwrap();
+    second.close();
+
+    let mut third = PrivateEngine::start(&home);
+    let after = third.call("picker/open", open(true));
+    assert_eq!(added(&after["state"]), 0, "a delivered citation is not kept: {after}");
+    third.close();
+}
+
+/// A Return pastes at most once whichever engine answers it. A shell that lost
+/// the reply and asks again of another engine, as after a crash or with no
+/// daemon, gets the citation to copy, never a second paste.
+#[test]
+fn a_delivery_asked_for_again_of_another_engine_never_pastes_twice() {
+    let home = Home::new();
+    let library = home.library();
+    let once = "0123456789abcdef0123456789abcdef";
+    assert_eq!(deliver_from_a_private_engine(&home, &library, once)["paste"], true);
+    assert_eq!(deliver_from_a_private_engine(&home, &library, once)["paste"], false);
+    let next = "fedcba9876543210fedcba9876543210";
+    assert_eq!(deliver_from_a_private_engine(&home, &library, next)["paste"], true);
 }

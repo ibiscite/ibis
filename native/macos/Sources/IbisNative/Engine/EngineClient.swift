@@ -30,7 +30,7 @@ final class EngineClient: @unchecked Sendable {
     private let queue = DispatchQueue(label: "Ibis engine", qos: .userInitiated)
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
-    private var socket: DaemonSocket?
+    private var socket: (any EngineLink)?
     private var lastOpening: PickerOpenRequest?
     /// A reconnect replays the opening into a new, empty picker session. Until
     /// the shell opens again, its citation describes a session that is gone.
@@ -180,11 +180,21 @@ final class EngineClient: @unchecked Sendable {
         }
     }
 
-    private func connect(restoring: Bool) throws -> DaemonSocket {
+    private func connect(restoring: Bool) throws -> any EngineLink {
         if let socket { return socket }
-        let connected = try DaemonSocket(DaemonEndpoint(binary: binary, configuration: configuration))
+        let connected: any EngineLink
+        do {
+            connected = try DaemonSocket(DaemonEndpoint(binary: binary, configuration: configuration))
+        } catch DaemonError.noEngine, DaemonError.disconnected {
+            // No daemon to be had: an engine of the app's own serves the same
+            // turns and files. A newer engine or a wrong peer is never bypassed.
+            connected = try PrivateEngine(binary: binary, configuration: configuration)
+        }
         if restoring, let opening = lastOpening {
-            _ = try exchange(PickerOpenMethod.self, opening, on: connected)
+            // The same opening continues, so the new engine takes back the saved citation.
+            let continued = PickerOpenRequest(app: opening.app, file: opening.file, keepQuery: true,
+                                              language: opening.language, reload: opening.reload, site: opening.site)
+            _ = try exchange(PickerOpenMethod.self, continued, on: connected)
             restoredSession = true
         }
         socket = connected
@@ -211,7 +221,7 @@ final class EngineClient: @unchecked Sendable {
         var errorDescription: String? { message }
     }
 
-    private func exchange<M: PickerRPC>(_ method: M.Type, _ params: M.Parameters, on socket: DaemonSocket) throws -> M.Reply {
+    private func exchange<M: PickerRPC>(_ method: M.Type, _ params: M.Parameters, on socket: any EngineLink) throws -> M.Reply {
         nextID += 1
         let request = Request(id: nextID, method: method.name, params: params)
         try socket.send(encoder.encode(request))

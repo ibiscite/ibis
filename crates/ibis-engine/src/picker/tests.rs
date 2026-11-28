@@ -2,7 +2,7 @@ use super::*;
 use crate::format::FormatFrom;
 use serde_json::json;
 
-fn library(records: Vec<serde_json::Value>) -> (tempfile::TempDir, Engine) {
+pub(super) fn library(records: Vec<serde_json::Value>) -> (tempfile::TempDir, Engine) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("invented.csljson");
     std::fs::write(&path, serde_json::to_vec(&records).unwrap()).unwrap();
@@ -27,17 +27,17 @@ fn scope(format: &str) -> PickerFormatScope {
     }
 }
 
-fn session(engine: &Engine, format: &str) -> PickerSession {
+pub(super) fn session(engine: &Engine, format: &str) -> PickerSession {
     let mut session = PickerSession::default();
     session.open(engine, true, scope(format), Vec::new(), Language::English, false);
     session
 }
 
-fn act(session: &mut PickerSession, engine: &Engine, intent: serde_json::Value) -> PickerState {
+pub(super) fn act(session: &mut PickerSession, engine: &Engine, intent: serde_json::Value) -> PickerState {
     session.act(engine, serde_json::from_value(intent).unwrap()).unwrap()
 }
 
-fn two_books() -> (tempfile::TempDir, Engine) {
+pub(super) fn two_books() -> (tempfile::TempDir, Engine) {
     library(vec![
         json!({"id":"vale", "citation-key":"vale2024", "title":"Imaginary lanterns", "type":"article-journal",
             "author":[{"family":"Vale","given":"Mira"}], "issued":{"date-parts":[[2024]]}}),
