@@ -52,7 +52,8 @@ if [ "$#" -eq 0 ]; then
   case "$plan" in *rust=true*) parts+=(lint-app);; esac
   case "$plan" in *workspace=true*) parts+=(test);; esac
   case "$plan" in *rust=true*) parts+=(test-app);; esac
-  case "$plan" in *workspace=true*) parts+=(fidelity);; esac
+  # Linux only, as on CI, where Pandoc is installed for it.
+  case "$plan" in *workspace=true*) [ "$(uname -s)" != Linux ] || parts+=(fidelity);; esac
   case "$plan" in *rust=true*) parts+=(generated);; esac
   case "$plan" in *csl=true*) parts+=(csl);; esac
   case "$plan" in *pictures=true*) echo "The picture gate runs on CI; render locally with: pnpm -C apps/desktop canvas";; esac

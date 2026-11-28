@@ -138,9 +138,11 @@ unless the formatter or one of its workspace dependencies changes. Linux release
 checks (release mode, minimum Rust, performance) run if a workspace crate can
 change. Any other, generated or shared
 path (Cargo files, toolchain, `build.rs`, `fixtures/`, `.github/`, `scripts/`,
-`locales/`, `website/`, `plugins/`, `brand/`) and anything it cannot read runs the
-full suite, as do main, schedules, manual runs, the `ci:full` label (then push
-again) and the repository variable `CI_SELECTION=full`. **CI result** checks each
+`locales/`, `website/`, the other `plugins/`, `brand/`) and anything it cannot
+read runs the full suite, as do main, schedules, manual runs, the `ci:full`
+label (then push again) and the repository variable `CI_SELECTION=full`. The
+Pandoc and Obsidian plugins run the command line's checks, whose tests drive
+them. **CI result** checks each
 planned job as selected-and-passed or not-selected-and-skipped.
 Fork PRs skip every job, so their **CI result** fails; they keep read-only title
 feedback.

@@ -135,8 +135,10 @@ test("a workspace crate change tests every crate that depends on it", () => {
 });
 
 test("an editor plugin change runs the command line's tests, which run the plugin", () => {
-  assert.deepEqual(selected(["plugins/pandoc/_extensions/ibis/ibis.lua", "plugins/obsidian/main.js"]), { rust: true, workspace: true, pictures: false, csl: false, full: false });
-  assert.match(plan(["plugins/obsidian/main.js"], workspace).reason, /ibis, ibis-fuzz/);
+  for (const path of ["plugins/pandoc/_extensions/ibis/ibis.lua", "plugins/obsidian/main.js"]) {
+    assert.deepEqual(selected([path]), { rust: true, workspace: true, pictures: false, csl: false, full: false }, path);
+    assert.match(plan([path], workspace).reason, /\bibis\b/, path);
+  }
 });
 
 test("the CSL suite runs for changes to the formatter and its dependencies", () => {
