@@ -472,18 +472,43 @@ mod offline_tests {
 
 #[cfg(test)]
 mod parser_tests {
-    /// Documents are parsed only in the command line's `ibis __document`
-    /// child (decision 0060): the readers must not be built into the app.
+    /// Documents and PDFs are parsed only in the command line's children
+    /// (decisions 0055 and 0060), so the app's own build turns on none of the
+    /// readers' parser features. Asked of Cargo for the app alone: a test
+    /// binary built with the whole workspace has them unified in.
     #[test]
-    fn the_app_is_built_without_document_readers() {
-        assert!(!std::hint::black_box(ibis_core::syntax::DOCUMENT_READERS));
-    }
-
-    /// PDFs are parsed only in the command line's `ibis __extract-pdf` child
-    /// (decision 0055).
-    #[test]
-    fn the_app_is_built_without_the_pdf_parser() {
-        assert!(!std::hint::black_box(ibis_engine::PDF_READER));
+    fn the_app_is_built_without_the_document_and_pdf_parsers() {
+        let manifest = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+        let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+        let output = std::process::Command::new(cargo)
+            .args([
+                "tree",
+                "--locked",
+                "--offline",
+                "-e",
+                "normal,features",
+                "--prefix",
+                "none",
+            ])
+            .args(["--manifest-path", manifest])
+            .output()
+            .unwrap();
+        let tree = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            output.status.success() && tree.contains("ibis-sources v"),
+            "cargo tree: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        for line in tree.lines() {
+            for feature in ["documents", "endnote", "pdf-reader"] {
+                let turned_on = format!("feature \"{feature}\"");
+                assert!(
+                    !(line.starts_with("ibis-") && line.contains(&turned_on)),
+                    "the app builds a parser: {line}"
+                );
+            }
+            assert!(!line.starts_with("lopdf "), "the app builds the PDF parser: {line}");
+        }
     }
 }
 
