@@ -149,7 +149,9 @@ pub fn write_frame(writer: &mut impl Write, message: &Value) -> Result<(), Frame
         .map_err(|_| FrameError::Io)
 }
 
-pub(crate) fn validate_shape(message: &Value) -> Result<(), FrameError> {
+/// Refuse a message nested or sized past what a request may be, before
+/// anything reads it.
+pub fn validate_shape(message: &Value) -> Result<(), FrameError> {
     validate_shape_with_limit(message, MAX_REQUEST_BYTES)
 }
 pub(crate) fn validate_shape_with_limit(message: &Value, limit: usize) -> Result<(), FrameError> {

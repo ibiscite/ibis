@@ -5,17 +5,17 @@
 use super::Formats;
 use super::errors::ToolProblem;
 use super::view;
-use crate::catalogue::Audience;
-use crate::health::{Checked, SourceFinding, SourceHealth};
-use crate::outputs;
-use crate::request::{RecordsRequest, SearchRequest, ShowRequest, StylesRequest};
-use crate::{Cancellation, Engine};
 use ibis_core::citable::CitableFields;
 use ibis_core::contract::{
     CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, EngineError, ErrorCode, ItemOutcome,
     LibraryObject, OutputSpec, Script, Snapshot, SnapshotObject, TextRun,
 };
 use ibis_core::destination::destination;
+use ibis_engine::catalogue::Audience;
+use ibis_engine::health::{Checked, SourceFinding, SourceHealth};
+use ibis_engine::outputs;
+use ibis_engine::request::{RecordsRequest, SearchRequest, ShowRequest, StylesRequest};
+use ibis_engine::{Cancellation, Engine};
 use serde_json::{Map, Value, json};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -120,7 +120,7 @@ fn entry(tool: &Tool) -> Value {
     json!({
         "name": tool.name,
         "title": tool.title,
-        "description": crate::catalogue::text(tool.description, None, &[]).unwrap_or_else(|| tool.description.into()),
+        "description": ibis_engine::catalogue::text(tool.description, None, &[]).unwrap_or_else(|| tool.description.into()),
         "inputSchema": (tool.input)(),
         "outputSchema": output_schema((tool.output)()),
         "annotations": annotations,
@@ -167,7 +167,7 @@ impl Refusal {
     fn from_problem(code: ErrorCode, problem: ibis_core::contract::Problem) -> Self {
         Self {
             code,
-            advice: crate::catalogue::problem(&problem, Audience::Agent).into(),
+            advice: ibis_engine::catalogue::problem(&problem, Audience::Agent).into(),
             problem: Box::new(problem),
             strict_cause: None,
         }
@@ -177,14 +177,14 @@ impl Refusal {
     pub fn startup(error: EngineError) -> Self {
         let mut refusal = Self::from(error);
         let cause = if refusal.problem.info.recovery() == ibis_core::contract::Recovery::Retry {
-            crate::catalogue::text(&refusal.problem.info.message.id, None, &[]).unwrap_or_default()
+            ibis_engine::catalogue::text(&refusal.problem.info.message.id, None, &[]).unwrap_or_default()
         } else {
             refusal.advice.to_string()
         };
         refusal.problem.info =
             ibis_core::contract::RecoveryInfo::new("mcp-startup-failed", ibis_core::contract::Recovery::RestartSession)
                 .argument("error", cause);
-        refusal.advice = crate::catalogue::problem(&refusal.problem, Audience::Agent).into();
+        refusal.advice = ibis_engine::catalogue::problem(&refusal.problem, Audience::Agent).into();
         refusal
     }
 
@@ -194,8 +194,8 @@ impl Refusal {
     }
 }
 
-impl From<crate::write::WriteError> for Refusal {
-    fn from(error: crate::write::WriteError) -> Self {
+impl From<ibis_engine::write::WriteError> for Refusal {
+    fn from(error: ibis_engine::write::WriteError) -> Self {
         Self::from_problem(error.category(), error.into())
     }
 }
@@ -204,7 +204,7 @@ impl From<EngineError> for Refusal {
     fn from(error: EngineError) -> Self {
         Self {
             code: error.code,
-            advice: crate::catalogue::error(&error, Audience::Agent).into(),
+            advice: ibis_engine::catalogue::error(&error, Audience::Agent).into(),
             problem: Box::new(error.into()),
             strict_cause: error.strict_cause,
         }
@@ -220,7 +220,7 @@ pub(super) fn call(
     tool: &Tool,
     arguments: &Value,
     cancel: &Cancellation,
-    submission: Option<&crate::citations::SubmittedCitation>,
+    submission: Option<&ibis_engine::citations::ReservedCitation>,
     writing: Option<&Writing<'_>>,
 ) -> Value {
     let answered = answer(engine, problem, formats, tool, arguments, cancel, submission, writing).and_then(|data| {
@@ -250,7 +250,7 @@ pub(super) fn tool_error(
     }: Refusal,
 ) -> Value {
     let name = serde_json::to_value(code).unwrap_or(Value::Null);
-    let text = crate::catalogue::text(
+    let text = ibis_engine::catalogue::text(
         "mcp-tool-error",
         None,
         &[("code", name.as_str().unwrap_or("internal")), ("reason", &advice)],
@@ -271,7 +271,7 @@ fn answer(
     tool: &Tool,
     arguments: &Value,
     cancel: &Cancellation,
-    submission: Option<&crate::citations::SubmittedCitation>,
+    submission: Option<&ibis_engine::citations::ReservedCitation>,
     writing: Option<&Writing<'_>>,
 ) -> Result<Value, Refusal> {
     cancel.check()?;
@@ -619,7 +619,7 @@ fn cite_input() -> Value {
             "locale": {"type": "string", "description": "A style's language, such as de-DE."},
             "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "narrative: one reference, one author in APA-like styles, no numbered styles. bibliography-only: entries."},
             "keep_order": {"type": "boolean", "description": "Keep this order where a style would sort."},
-            "strict": {"type": "boolean", "description": crate::catalogue::text("mcp-strict-help", None, &[]).unwrap_or_default()},
+            "strict": {"type": "boolean", "description": ibis_engine::catalogue::text("mcp-strict-help", None, &[]).unwrap_or_default()},
             "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable: use the output Ibis uses there."},
             "include_receipt": {"type": "boolean", "description": "Add the audit receipt: hashes of the request, formatter and sources."}
         },
@@ -683,7 +683,7 @@ fn cite_submitted(
     formats: &Formats,
     arguments: &Map<String, Value>,
     cancel: &Cancellation,
-    submission: Option<&crate::citations::SubmittedCitation>,
+    submission: Option<&ibis_engine::citations::ReservedCitation>,
 ) -> Result<Value, Refusal> {
     if arguments.contains_key("records") {
         return cite_records(engine, arguments, cancel);
@@ -707,25 +707,26 @@ fn cite_submitted(
             // a format or style named here stands in for your usual one.
             let settings = match formats {
                 Formats::File(path) => {
-                    let loaded = crate::settings::load(path);
+                    let loaded = ibis_engine::settings::load(path);
                     loaded
                         .cites()
                         .map_err(|problem| {
-                            Refusal::from_problem(crate::settings_backup::settings_code(problem), problem.into())
+                            Refusal::from_problem(ibis_engine::settings_backup::settings_code(problem), problem.into())
                         })?
                         .clone()
                 }
                 Formats::Unavailable(problem) => return Err(problem.clone()),
-                Formats::Defaults => crate::settings::Settings::default(),
+                Formats::Defaults => ibis_engine::settings::Settings::default(),
             };
             let named = (arguments.contains_key("format") || arguments.contains_key("style")).then_some(&output);
-            let destination = destination(app, crate::SYSTEM, |app| {
-                crate::format::choose_with(&settings, Some(app), named)
+            let destination = destination(app, ibis_engine::SYSTEM, |app| {
+                ibis_engine::format::choose_with(&settings, Some(app), named)
             });
-            writing = destination
-                .writing
-                .as_ref()
-                .and_then(|selected| crate::settings::writings::find(&settings, &selected.name).ok().cloned());
+            writing = destination.writing.as_ref().and_then(|selected| {
+                ibis_engine::settings::writings::find(&settings, &selected.name)
+                    .ok()
+                    .cloned()
+            });
             Some(destination)
         }
         None => None,
@@ -749,7 +750,7 @@ fn cite_submitted(
         .enumerate()
         .map(|(index, item)| {
             citation_item(engine, item, cancel).map_err(|refusal| Refusal {
-                advice: crate::catalogue::text(
+                advice: ibis_engine::catalogue::text(
                     "mcp-item-error",
                     None,
                     &[("number", &(index + 1).to_string()), ("reason", &refusal.advice)],
@@ -971,11 +972,12 @@ fn refusal(result: &CitationResult) -> Refusal {
         .iter()
         .filter_map(|outcome| match outcome {
             ItemOutcome::Refused { item, error } => {
-                let reference = crate::catalogue::text("mcp-item-name", None, &[("number", &(item + 1).to_string())])
-                    .unwrap_or_default();
-                let output = crate::catalogue::text("mcp-output-name", None, &[]).unwrap_or_default();
+                let reference =
+                    ibis_engine::catalogue::text("mcp-item-name", None, &[("number", &(item + 1).to_string())])
+                        .unwrap_or_default();
+                let output = ibis_engine::catalogue::text("mcp-output-name", None, &[]).unwrap_or_default();
                 let args = [("reference", reference.as_str()), ("output", output.as_str())];
-                Some(crate::catalogue::citation(*error, Audience::Agent, &args))
+                Some(ibis_engine::catalogue::citation(*error, Audience::Agent, &args))
             }
             ItemOutcome::Rendered { .. } | ItemOutcome::Unknown => None,
         })

@@ -1,6 +1,6 @@
 //! One queue owns every settings operation and every outside-edit report.
-use crate::sync::MutexExt;
-use crate::sync::attempt;
+use ibis_os::sync::MutexExt;
+use ibis_os::sync::attempt;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 #[cfg(test)]

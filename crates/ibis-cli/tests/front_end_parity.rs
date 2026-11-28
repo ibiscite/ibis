@@ -327,13 +327,13 @@ fn source_health_is_identical_through_every_front_end_and_mcp() -> Result {
         ("show", json!({"ref":"lantern"})),
         ("cite", json!({"items":[{"ref":"lantern"}],"format":"pandoc"})),
     ] {
-        let answer = ibis_engine::mcp::handle(
+        let answer = ibis::mcp::handle(
             &engine,
-            &mut ibis_engine::mcp::Session::default(),
+            &mut ibis::mcp::Session::default(),
             &json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
                 "name":tool,"arguments":arguments,
                 "_meta":{
-                    "io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,
+                    "io.modelcontextprotocol/protocolVersion":ibis::mcp::PROTOCOL_VERSION,
                     "io.modelcontextprotocol/clientCapabilities":{}
                 }
             }}),

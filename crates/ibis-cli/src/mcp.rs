@@ -10,8 +10,8 @@
 //! private links or other libraries' data. Long values are cut short and every
 //! answer has a size bound. Nothing here opens a network connection.
 
-use crate::sync::MutexExt;
-use crate::{Cancellation, Engine, protocol};
+use ibis_engine::{Cancellation, Engine, protocol};
+use ibis_os::sync::MutexExt;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
@@ -61,7 +61,7 @@ struct ToolRequest {
     cancel: Arc<Cancellation>,
     session: Session,
     message: Value,
-    citation: Option<crate::citations::SubmittedCitation>,
+    citation: Option<ibis_engine::citations::ReservedCitation>,
 }
 
 fn request_key(id: &Value) -> Option<String> {
@@ -192,7 +192,7 @@ fn serve_with<R: BufRead, W: Write + Send>(
                                             Some(
                                                 engine
                                                     .citations()
-                                                    .submit(
+                                                    .reserve(
                                                         session
                                                             .citations
                                                             .as_ref()
@@ -280,19 +280,19 @@ fn skip_line(reader: &mut impl BufRead) -> io::Result<()> {
 pub struct Session {
     initialized: bool,
     citations: Option<Arc<ConnectionCitations>>,
-    submission: Option<Arc<crate::citations::SubmittedCitation>>,
+    submission: Option<Arc<ibis_engine::citations::ReservedCitation>>,
     library_problem: Option<Refusal>,
     /// Where the app's settings are read for the format each app uses.
     formats: Formats,
     /// Where proposals are kept, when the server was started with `--allow-writes`.
-    proposals: Option<crate::write::Proposals>,
+    proposals: Option<ibis_engine::write::Proposals>,
     /// The name the client gave itself, for the proposals it makes.
     client: Option<String>,
 }
 
 struct ConnectionCitations {
     engine: Engine,
-    id: crate::citations::SessionId,
+    id: ibis_engine::citations::SessionId,
 }
 impl std::fmt::Debug for ConnectionCitations {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -305,7 +305,7 @@ impl Drop for ConnectionCitations {
     }
 }
 impl Session {
-    fn ensure_citations(&mut self, engine: &Engine) -> Result<(), crate::citations::SessionError> {
+    fn ensure_citations(&mut self, engine: &Engine) -> Result<(), ibis_engine::citations::SessionError> {
         if self.citations.is_none() {
             self.citations = Some(Arc::new(ConnectionCitations {
                 engine: engine.clone(),
@@ -332,7 +332,7 @@ impl Session {
 
     /// Offer the tools that propose library changes, kept in `proposals`
     /// for the person to apply or reject in Ibis (decision 0055).
-    pub fn allowing_writes(mut self, proposals: crate::write::Proposals) -> Self {
+    pub fn allowing_writes(mut self, proposals: ibis_engine::write::Proposals) -> Self {
         self.proposals = Some(proposals);
         self
     }
@@ -367,7 +367,7 @@ pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option
         }
         session.submission = engine
             .citations()
-            .submit(session.citations.as_ref()?.id, cancel.clone())
+            .reserve(session.citations.as_ref()?.id, cancel.clone())
             .ok()
             .map(Arc::new);
     }
@@ -383,7 +383,7 @@ fn handle_with_cancellation(
     let mut reply = handle_message(engine, session, message, cancel)?;
     // Every reply, including early protocol errors, shares the transport limit.
     // Count the terminating newline without allocating an oversized serialization.
-    if crate::wire::serialized_size(&reply, MAX_ANSWER - 1).is_err() {
+    if ibis_engine::wire::serialized_size(&reply, MAX_ANSWER - 1).is_err() {
         if let Some(result) = reply.get_mut("result").filter(|result| result.get("isError").is_some()) {
             let mut refused = tools::tool_error(
                 ibis_core::contract::EngineError::new(ibis_core::contract::ErrorCode::ResourceLimit).into(),

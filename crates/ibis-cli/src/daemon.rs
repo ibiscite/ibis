@@ -488,7 +488,7 @@ fn serve(stream: Stream, host: &crate::headless::Host, connections: &Connections
     }))?;
     framed.session()?;
     match hello.mode {
-        Mode::Rpc => ibis_engine::server::serve(host.rpc_engine(), framed.reader, framed.writer).map_err(frame_error),
+        Mode::Rpc => crate::server::serve(host.rpc_engine(), framed.reader, framed.writer).map_err(frame_error),
         Mode::Cli => {
             connections.cli_connections.fetch_add(1, Ordering::Relaxed);
             serve_cli(framed, host, connections)

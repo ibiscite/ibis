@@ -62,13 +62,13 @@ fn records_cite_the_same_through_every_front_end() -> Result {
         (code, String::from_utf8(plain)?),
         (0, "(Fen, 2023; Vale, 2024)\n".to_owned())
     );
-    let answer = ibis_engine::mcp::handle(
+    let answer = ibis::mcp::handle(
         &engine,
-        &mut ibis_engine::mcp::Session::default(),
+        &mut ibis::mcp::Session::default(),
         &json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
             "name": "cite", "arguments": {"records": records(), "format": "apa", "include_receipt": true},
             "_meta": {
-                "io.modelcontextprotocol/protocolVersion": ibis_engine::mcp::PROTOCOL_VERSION,
+                "io.modelcontextprotocol/protocolVersion": ibis::mcp::PROTOCOL_VERSION,
                 "io.modelcontextprotocol/clientCapabilities": {}
             }
         }}),
@@ -166,13 +166,13 @@ fn strict_records_refuse_warnings_through_cli_and_mcp() -> Result {
     assert_eq!(refused["error"]["reason"], "strict-citation");
     assert!(refused.get("data").is_none());
     let engine = Engine::new().map_err(|_| "engine")?;
-    let answer = ibis_engine::mcp::handle(
+    let answer = ibis::mcp::handle(
         &engine,
-        &mut ibis_engine::mcp::Session::default(),
+        &mut ibis::mcp::Session::default(),
         &json!({
             "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
                 "name":"cite","arguments":{"records":sent,"format":"apa","strict":true},
-                "_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,
+                "_meta":{"io.modelcontextprotocol/protocolVersion":ibis::mcp::PROTOCOL_VERSION,
                     "io.modelcontextprotocol/clientCapabilities":{}}
             }
         }),

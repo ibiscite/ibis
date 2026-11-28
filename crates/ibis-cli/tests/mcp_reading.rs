@@ -1,10 +1,11 @@
 //! The attachment tools are offered only for libraries the person named in
 //! settings, and every answer labels the text it copies as data.
 #![cfg(test)]
-#[path = "support/zotero.rs"]
+#[path = "../../ibis-engine/tests/support/zotero.rs"]
 #[allow(dead_code)]
 mod fixture;
-use ibis_engine::{Cancellation, Engine, Method, mcp};
+use ibis::mcp;
+use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::{Value, json};
 
 fn modern(id: u64, method: &str, mut params: Value) -> Value {

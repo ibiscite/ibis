@@ -1,7 +1,7 @@
 //! A project `.bib` beside the libraries, never among them: its keys are
 //! compared exactly as the citation would emit them, and it owns no records.
 use super::*;
-use crate::sync::MutexExt;
+use ibis_os::sync::MutexExt;
 use std::path::{Path, PathBuf};
 
 const MAX_KEYS: usize = 1000;
@@ -130,7 +130,9 @@ impl Engine {
         self.writing_prepared(writing, &request, &prepared, cancel)
     }
 
-    pub(crate) fn writing_prepared(
+    /// Check a citation already prepared for `request` against `writing`, as
+    /// [`Engine::cite_writing`] does once it has prepared one.
+    pub fn writing_prepared(
         &self,
         writing: &crate::settings::writings::Writing,
         request: &CitationRequest,
