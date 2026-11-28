@@ -155,11 +155,11 @@ impl Proposals {
                     let excess = backups.len().saturating_sub(MAX_BACKUPS);
                     for (_, path) in backups.into_iter().take(excess) {
                         if fs::remove_file(path).is_err() {
-                            crate::sync::log(format_args!("Ibis could not remove an old library backup"));
+                            ibis_os::sync::log(format_args!("Ibis could not remove an old library backup"));
                         }
                     }
                 }
-                Err(_) => crate::sync::log(format_args!("Ibis could not list old library backups")),
+                Err(_) => ibis_os::sync::log(format_args!("Ibis could not list old library backups")),
             }
         }
     }

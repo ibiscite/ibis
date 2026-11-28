@@ -47,15 +47,12 @@ pub const SYSTEM: System = if cfg!(target_os = "macos") {
 };
 pub mod discovery;
 mod method;
-mod sync;
 pub use method::PickerMethod;
 pub use method::{Method, Needs, Network, Row, Selection, methods};
 
 pub mod cayw;
 
 pub mod catalogue;
-
-pub mod mcp;
 
 /// Which format a citation uses (decision 0042).
 pub mod format;
@@ -73,8 +70,6 @@ pub mod protocol;
 
 pub mod request;
 
-pub mod rpc;
-
 mod service;
 pub use ibis_sources::identity;
 /// The file names a library chooser offers, and whether a dropped file is one.
@@ -89,8 +84,6 @@ pub use ibis_core::syntax::MAX_CITATION_ITEMS;
 pub use ibis_core::search::without_filters;
 
 pub mod wire;
-
-pub mod server;
 
 pub mod recents;
 

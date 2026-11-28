@@ -1,5 +1,4 @@
 //! Typed services retain an immutable snapshot while refresh prepares its replacement.
-use crate::sync::MutexExt;
 use crate::{Method, request::*};
 use ibis_core::{
     citable::{CitableFields, FieldProjection},
@@ -9,6 +8,7 @@ use ibis_core::{
 pub use ibis_csl::{
     LocaleEntry as LocaleInfo, Release as UpstreamRelease, StyleEntry as StyleInfo, StylePage as StylesResult,
 };
+use ibis_os::sync::MutexExt;
 pub use ibis_sources::FileLoads;
 pub use ibis_sources::{LibraryKind, SourceCapability, SourceWarning, WarningCause, WarningCode};
 use schemars::JsonSchema;

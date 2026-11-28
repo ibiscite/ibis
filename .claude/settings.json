@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash scripts/land.sh)",
+      "Bash(bash scripts/land.sh --title *)",
+      "Bash(gh api -X PUT repos/ibiscite/ibis/pulls/*/ccr/auto_merge -f merge_method=squash)"
+    ]
+  }
+}

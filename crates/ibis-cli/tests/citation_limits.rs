@@ -1,6 +1,7 @@
 //! Contract 1 keeps each input's machine codes while sharing the limit's words.
+use ibis::{mcp, rpc};
 use ibis_core::contract::GoldenCase;
-use ibis_engine::{Cancellation, Engine, Method, catalogue, mcp, protocol, request::KeyCitationRequest, rpc};
+use ibis_engine::{Cancellation, Engine, Method, catalogue, protocol, request::KeyCitationRequest};
 use serde_json::{Value, json};
 use std::{io::Cursor, sync::Arc};
 
@@ -84,7 +85,7 @@ fn over_limit_inputs_preserve_contract_one_codes_across_front_ends() -> Result<(
                 &json!({"jsonrpc":"2.0", "id":1, "method":method, "params":params}),
             )?;
             let mut reply = vec![];
-            ibis_engine::server::serve(engine.clone(), Cursor::new(frame), &mut reply)?;
+            ibis::server::serve(engine.clone(), Cursor::new(frame), &mut reply)?;
             protocol::read_response_frame(&mut Cursor::new(reply))?.ok_or("RPC reply")?
         };
         assert_eq!(rpc["error"]["code"], rpc_code, "{input}");

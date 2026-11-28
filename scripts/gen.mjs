@@ -18,7 +18,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 /** The ignored test in each crate that writes its generated files. */
 export const WRITERS = [
   ["ibis-core", ["--test", "engine_contract"], "write_schema_snapshot"],
-  ["ibis-engine", ["--lib"], "mcp::tools::write_tool_list"],
+  ["ibis", ["--lib"], "mcp::tools::write_tool_list"],
   ["ibis", ["--lib"], "generated::write_generated"],
   ["ibis-desktop", ["--bin", "ibis-desktop"], "bindings::tests::export_contract"],
 ];

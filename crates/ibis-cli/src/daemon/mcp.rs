@@ -3,8 +3,9 @@
 //! on both Unix streams and Windows pipes.
 use super::{Framed, HELLO_TIMEOUT, Stream, WRITE_TIMEOUT};
 use crate::headless::{Intent, Remote};
+use crate::{mcp, rpc};
 use ibis_core::contract::{EngineError, ErrorCode};
-use ibis_engine::{Engine, mcp, protocol, rpc};
+use ibis_engine::{Engine, protocol};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io::{self, BufRead, BufReader, Read, Write};

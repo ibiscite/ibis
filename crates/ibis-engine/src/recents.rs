@@ -1,7 +1,7 @@
 //! Bounded recent identities on disk; session references and undo only in memory.
 use crate::MAX_CITATION_ITEMS;
-use crate::sync::MutexExt;
 use ibis_core::contract::{ItemRef, LibraryObject, Snapshot, SnapshotObject};
+use ibis_os::sync::MutexExt;
 use std::{
     io::{self, Read},
     path::PathBuf,

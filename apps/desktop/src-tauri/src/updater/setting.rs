@@ -97,7 +97,11 @@ fn save(app: &AppHandle, on: bool) {
 }
 
 /// Apply an explicit live-file choice without another save or consent prompt.
+/// A build that cannot update itself ignores it, as it ignores Settings.
 pub(crate) fn apply_file_setting(app: &AppHandle, saved: Option<bool>) {
+    if !available(app) {
+        return;
+    }
     app.state::<Updates>().question.store(false, Ordering::SeqCst);
     set_automatic(app, saved.unwrap_or(false));
     for window in ["main", crate::settings_window::LABEL] {

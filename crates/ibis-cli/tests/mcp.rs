@@ -1,6 +1,7 @@
 //! `ibis mcp` from a synthetic `.bib` file to the text an agent receives.
 #![cfg(test)]
-use ibis_engine::{Cancellation, Engine, Method, mcp};
+use ibis::mcp;
+use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::{Value, json};
 
 const BIB: &str = r"@article{demo2026,

@@ -6,6 +6,9 @@
     virtualization): Ibis's settings, which the ibis command shares, and the
     agent apps' files Ibis connects. Windows 10 ignores this, so the package
     needs Windows 11; Windows 10 keeps the installer.
+  - That settings folder is the installer copy's too, so switching keeps every
+    choice; the installer's uninstaller keeps it while this package is
+    installed, even with "Delete app data" ticked (packaging/path.nsh).
   - The Store updates the package; src-tauri/src/store.rs turns the updater off.
   - The startup task starts Ibis at login and starts off; Settings asks for it.
   - The app execution alias puts the ibis command on PATH.

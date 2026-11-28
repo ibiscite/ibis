@@ -23,6 +23,15 @@ on another desktop.
 | macOS | Apple silicon and Intel | macOS 15 Apple silicon hosted runner. Intel is cross-built, without an installed-app test. Open at Login uses macOS 13+ APIs. |
 | Linux | x64, built on Ubuntu 22.04 | Ubuntu 24.04, Xvfb/Openbox: `.deb` picker smoke and extracted AppImage startup. Native Wayland desktops are not qualified. |
 
+On Windows 11 the same app is also built as a Microsoft Store package; it is
+not in the Store yet. That copy updates through the Store, starts at login
+through Windows' startup task and puts `ibis` on PATH itself, so About says the
+updater is off. Both copies keep one settings folder, so switching keeps your
+choices. From Ibis 0.4.0, uninstalling the installer copy leaves that folder in
+place when the Store copy is already installed; install the Store copy first.
+With an older installer copy, leave "Delete app data" unticked when you
+uninstall it. Windows 10 keeps the installer.
+
 Windows needs Microsoft Edge WebView2. The installer downloads it when
 missing; that step needs internet access. Its Microsoft update service is
 separate from Ibis's update consent. Install WebView2 in advance for offline

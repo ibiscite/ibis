@@ -2,7 +2,8 @@
 //! library lacks it, a citation must say what was asked for, and library text
 //! stays data. All data here is invented.
 #![cfg(test)]
-use ibis_engine::{Cancellation, Engine, Method, mcp};
+use ibis::mcp;
+use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 

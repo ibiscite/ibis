@@ -11,7 +11,7 @@
 //! files in the home folder are written as `~/…`, and the opening shortcut is
 //! kept per system. [`backup`] makes and restores a backup file from it.
 
-use crate::sync::MutexExt;
+use ibis_os::sync::MutexExt;
 pub mod backup;
 pub mod native;
 mod owner;

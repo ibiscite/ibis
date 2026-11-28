@@ -673,7 +673,7 @@ fn termination_at_eof() {
                 input,
                 "{}",
                 json!({"jsonrpc":"2.0","id":1,"method":"initialize",
-                "params":{"protocolVersion":ibis_engine::mcp::INITIALIZE_VERSIONS[0],
+                "params":{"protocolVersion":ibis::mcp::INITIALIZE_VERSIONS[0],
                 "capabilities":{},"clientInfo":{"name":"invented","version":"1"}}})
             )
             .unwrap();

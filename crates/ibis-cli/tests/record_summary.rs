@@ -2,7 +2,8 @@
 //! search rows and MCP's search hits show the same title, authors, year and key
 //! status for `fixtures/record-summary.json`. The picker's rows read the same
 //! fixture in `apps/desktop/src-tauri/src/library/search/tests.rs`.
-use ibis_engine::{Cancellation, Engine, Method, mcp};
+use ibis::mcp;
+use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, io::Cursor};
 

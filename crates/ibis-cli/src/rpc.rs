@@ -1,6 +1,6 @@
 //! JSON-RPC message semantics. Only fixed diagnostics leave the dispatcher.
-use crate::{Method, protocol};
 use ibis_core::contract::{EngineError, ErrorCode};
+use ibis_engine::{Method, protocol};
 use serde_json::{Number, Value, json};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

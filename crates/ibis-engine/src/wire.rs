@@ -57,7 +57,7 @@ pub fn encode(value: &Value, limit: usize) -> Result<Vec<u8>, FrameError> {
 }
 
 /// Count serialized bytes without copying a library object or building JSON.
-pub(crate) fn serialized_size(value: &impl Serialize, limit: usize) -> Result<usize, FrameError> {
+pub fn serialized_size(value: &impl Serialize, limit: usize) -> Result<usize, FrameError> {
     struct Counter {
         bytes: usize,
         limit: usize,

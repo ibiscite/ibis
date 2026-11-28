@@ -500,7 +500,7 @@ impl Engine {
     }
 
     /// Find the target for an open library, if its source supports proposals.
-    pub(crate) fn proposal_target(&self, library: &LibraryId) -> Result<Option<Target>, WriteError> {
+    pub fn proposal_target(&self, library: &LibraryId) -> Result<Option<Target>, WriteError> {
         let info = self
             .libraries()
             .map_err(|_| WriteProblem::UnknownLibrary)?
@@ -772,7 +772,7 @@ fn label(record: &ibis_core::contract::Record) -> String {
 }
 
 /// The client's own name, short and on one line.
-pub(crate) fn client_name(name: &str) -> String {
+pub fn client_name(name: &str) -> String {
     let name = display(&Value::String(name.to_owned()));
     let name: String = name.chars().take(64).collect();
     if name.is_empty() {
