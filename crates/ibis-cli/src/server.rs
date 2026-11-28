@@ -1,4 +1,5 @@
 //! Ordered JSON-RPC execution. The reader can cancel running or queued requests.
+#![forbid(unsafe_code)]
 use crate::rpc::{self, Message, RequestId};
 use ibis_core::contract::{EngineError, ErrorCode};
 use ibis_engine::{

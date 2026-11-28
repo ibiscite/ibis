@@ -139,6 +139,7 @@ impl Engine {
         prepared: &super::PreparedCitation,
         cancel: &Cancellation,
     ) -> Result<WritingCitation, EngineError> {
+        crate::settings::writings::validate(std::slice::from_ref(writing)).map_err(|_| error(ErrorCode::BadInput))?;
         let source_health = prepared.source_health().clone();
         let mut assessment = None;
         let mut evidence = CitationProjectCheck {

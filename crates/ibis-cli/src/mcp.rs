@@ -9,6 +9,7 @@
 //! notes or annotations, a record's `note` or `annote` fields, file locations,
 //! private links or other libraries' data. Long values are cut short and every
 //! answer has a size bound. Nothing here opens a network connection.
+#![forbid(unsafe_code)]
 
 use ibis_engine::{Cancellation, Engine, protocol};
 use ibis_os::sync::MutexExt;
