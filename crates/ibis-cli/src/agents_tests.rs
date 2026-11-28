@@ -144,7 +144,7 @@ fn known_command(home: &mut Home) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&command, fs::Permissions::from_mode(0o755)).unwrap();
     }
-    home.ibis = Some(command.clone());
+    home.ibis = Some(ibis_engine::agent_apps::IbisCommand::Installed(command.clone()));
     command
 }
 
