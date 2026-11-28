@@ -475,6 +475,13 @@ mod parser_tests {
     fn the_app_is_built_without_document_readers() {
         assert!(!std::hint::black_box(ibis_core::syntax::DOCUMENT_READERS));
     }
+
+    /// PDFs are parsed only in the command line's `ibis __extract-pdf` child
+    /// (decision 0055).
+    #[test]
+    fn the_app_is_built_without_the_pdf_parser() {
+        assert!(!std::hint::black_box(ibis_engine::PDF_READER));
+    }
 }
 
 #[cfg(test)]

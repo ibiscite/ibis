@@ -76,6 +76,9 @@ pub mod rpc;
 
 mod service;
 pub use ibis_sources::identity;
+/// Whether this build holds the PDF parser; only the `ibis` command's child
+/// should (decision 0055).
+pub use ibis_sources::pdf::READER as PDF_READER;
 /// The file names a library chooser offers, and whether a dropped file is one.
 pub use ibis_sources::{library_file_extensions, names_a_library};
 pub use service::*;
