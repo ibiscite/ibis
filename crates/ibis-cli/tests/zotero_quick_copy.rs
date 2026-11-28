@@ -24,20 +24,10 @@ const FIXTURE: &str = "../../fixtures/zotero/quick-copy";
 /// difference Ibis makes on purpose, or one it does not cover yet (marked).
 fn fold(html_or_text: &str) -> String {
     let mut text = html_or_text.to_owned();
-    // Not yet: Zotero links each URL and DOI in its HTML (wrap_url_and_doi).
-    while let Some(start) = text.find("<a href=\"") {
-        let Some(open_end) = text[start..].find('>').map(|at| start + at + 1) else {
-            break;
-        };
-        let Some(close) = text[open_end..].find("</a>").map(|at| open_end + at) else {
-            break;
-        };
-        text = format!("{}{}{}", &text[..start], &text[open_end..close], &text[close + 4..]);
-    }
     // The same characters, which Zotero writes again through a browser DOM:
-    // `&amp;` for the processor's `&#38;`, and no layout styles (those are
-    // compared in the Word evidence instead).
-    text = text.replace("&#38;", "&amp;");
+    // `&amp;` for the processor's `&#38;`, `&nbsp;` for its own character,
+    // and no layout styles (those are compared in the Word evidence instead).
+    text = text.replace("&#38;", "&amp;").replace("&nbsp;", "\u{a0}");
     while let Some(start) = text.find(" style=\"") {
         let Some(end) = text[start + 8..].find('"').map(|at| start + 8 + at + 1) else {
             break;
@@ -71,6 +61,22 @@ fn entry_html(html: &str, numeric: bool) -> String {
     } else {
         html
     }
+}
+
+/// A bibliography's layout: each block's inline style, in order. A numeric
+/// entry has no number in Ibis, so only the layout around it compares.
+fn layout(html: &str, numeric: bool) -> String {
+    let mut styles = vec![];
+    for (at, _) in html.match_indices("<div class=\"") {
+        let tag = html[at + 12..].split('>').next().unwrap_or_default();
+        if let Some((class, style)) = tag.split_once("\" style=\"") {
+            styles.push(format!("{class}: {}", style.trim_end_matches('"')));
+        }
+    }
+    if numeric {
+        styles.truncate(1);
+    }
+    styles.join(" | ")
 }
 
 /// The number in a numeric bibliography's margin, as text.
@@ -107,11 +113,12 @@ fn zotero_views(case: &Value, numeric: bool) -> Option<Views> {
     }
     views.insert("bibliography text", entry);
     views.insert("bibliography html", entry_html);
+    views.insert("bibliography layout", layout(html, numeric));
     Some(views)
 }
 
 /// What Ibis copies, view by view, or why it copies nothing.
-fn ibis_views(engine: &Engine, item: &Value, style: &str) -> TestResult<Result<Views, String>> {
+fn ibis_views(engine: &Engine, item: &Value, style: &str, numeric: bool) -> TestResult<Result<Views, String>> {
     let mut views = BTreeMap::new();
     for (form, text, html) in [
         ("normal", "citation text", "citation html"),
@@ -128,10 +135,11 @@ fn ibis_views(engine: &Engine, item: &Value, style: &str) -> TestResult<Result<V
             return Ok(Err(format!("refused: {:?}", result.outcomes)));
         }
         views.insert(text, fold(&result.text));
-        views.insert(
-            html,
-            fold(&entry_html(result.html.as_deref().unwrap_or_default(), false)),
-        );
+        let copied = result.html.as_deref().unwrap_or_default();
+        views.insert(html, fold(&entry_html(copied, false)));
+        if form == "bibliography-only" {
+            views.insert("bibliography layout", layout(copied, numeric));
+        }
     }
     Ok(Ok(views))
 }
@@ -261,7 +269,7 @@ fn compare(style: &str) -> TestResult {
         };
         for reader in &readers {
             let Some(item) = reader.items.get(name) else { continue };
-            let ibis = ibis_views(&reader.engine, item, style)?;
+            let ibis = ibis_views(&reader.engine, item, style, numeric)?;
             let before = differences.len();
             let mut differ = |view: &str, zotero: Value, ibis: Value| {
                 differences

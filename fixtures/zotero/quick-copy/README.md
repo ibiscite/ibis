@@ -36,12 +36,12 @@ bibliography entry, and compares text and HTML after these named differences:
 
 - **Numbers outside a document.** Ibis copies a numeric style's reference entry,
   without its number, where Zotero copies `[1]`: Ibis cannot know the number.
-- **Layout.** Zotero wraps a bibliography in blocks with line height, hanging
-  indent and margin styles. The entry's content is compared here; the layout
-  belongs to the Word evidence.
-- **The same characters.** `&amp;` and `&#38;`, and a line break inside a field,
-  which Ibis writes as a space.
-- **Not yet: links.** Zotero links URLs and DOIs in HTML; Ibis does not yet.
+- **The same characters.** `&amp;` and `&#38;`, `&nbsp;` and its character,
+  and a line break inside a field, which Ibis writes as a space.
+
+A bibliography's layout, the inline styles that give a pasted bibliography its
+line height, hanging indent, spacing and margins, is compared on its own as
+`bibliography layout`; for a numeric style, only the block around the entry.
 
 Each style's `differences/STYLE.json` lists every remaining case where Ibis's
 output differs, with both texts, and the records Ibis refuses because they have
@@ -53,22 +53,24 @@ on Linux, where it takes about a minute.
 
 ## What it shows (28 November 2026)
 
-Of 4,394 comparisons, 3,482 match exactly and 668 are refusals of records with
-no title or author. The other 244 are:
+Of 4,394 comparisons, 3,505 match exactly and 668 are refusals of records with
+no title or author. The other 221 are:
 
 - **Ibis is right and Zotero is not.** citeproc-js prints the first year range a
   style renders with the date's affixes twice: `(2021–(2023))`. Zotero shows it
   in Nature and GB/T; Ibis fixes it in its bridge. Zotero also fails on a date
   range whose two ends have different precision, where Ibis prints the range.
+  Zotero links a URL without a scheme to doi.org; Ibis leaves it as text.
 - **Deliberate.** Ibis reads Extra-field dates with Unicode line separators as
   the dates they are; it refuses records a style cannot print
   (`[CSL STYLE ERROR: reference with no printed form.]` in Zotero).
-- **To fix.** Quoted family names such as `"de Synthetic"` are parsed into a
-  particle again because Ibis lets citeproc parse names, so Chicago prints
-  `Synthetic, Example de` where Zotero prints `de Synthetic, Example`. Rendering
-  text, HTML and RTF from one registration trips a citeproc state bug when an
-  author and a translator share a family name and initial, so Harvard and GB/T
-  author-date refuse those items. Links, above.
+- **To fix.** Rendering text, HTML and RTF from one registration trips a
+  citeproc state bug when an author and a translator share a family name and
+  initial, so Harvard and GB/T author-date refuse those items.
 
-The first run also caught the CSL-JSON reader skipping `part-number` and
-`license`, which it now reads.
+The first runs also caught the CSL-JSON reader skipping `part-number` and
+`license`, quoted family names such as `"de Synthetic"` parsed into a particle
+again, URLs and DOIs printed without links, and bibliographies copied without
+Zotero's layout. Ibis now sets up citeproc as Zotero does (links on, names
+never parsed again) and lays out a copied bibliography as Zotero does, in HTML
+and in RTF, where Zotero's own paragraph settings are used.

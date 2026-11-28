@@ -14,6 +14,10 @@ function fixture(t) {
   copyFileSync(fileURLToPath(new URL("./pr-lint.mjs", import.meta.url)), join(root, "scripts/pr-lint.mjs"));
   copyFileSync(fileURLToPath(new URL("./pr-lint.mjs", import.meta.url)), join(root, "checkout/scripts/pr-lint.mjs"));
   writeFileSync(join(root, "supplied-body"), "Caller supplied body.\n");
+  writeFileSync(join(root, "checkout/scripts/check.sh"), `printf 'check %s\\n' "$*" >> "$CALLS"
+if [ "$MOVE_HEAD" = 1 ]; then touch "$ROOT/changed"; fi
+[ "$FAIL_CHECK" != check ]
+`);
   for (const [name, body] of Object.entries({
     git: `if [ "$1" = -C ]; then shift 2; fi
     case "$1" in
@@ -31,7 +35,6 @@ function fixture(t) {
     pnpm: `[ "$*" != "$FAIL_CHECK" ]`,
     node: `case "$1" in
       *pr-lint.mjs) exec "$REAL_NODE" "$@";;
-      scripts/gen.mjs) if [ "$MOVE_HEAD" = 1 ]; then touch "$ROOT/changed"; fi;;
     esac
     [ "$*" != "$FAIL_CHECK" ]`,
     gh: `case "$1 $2" in
@@ -56,13 +59,11 @@ function fixture(t) {
   };
 }
 
-test("fast checks precede push and a new PR requests hosted auto-merge", posix, (t) => {
+test("CI's local checks precede push and a new PR requests hosted auto-merge", posix, (t) => {
   const result = fixture(t)({ HAS_PR: "0" });
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  for (const command of ["cargo fmt --all --check", "cargo check --workspace --all-targets --locked", "pnpm -C apps/desktop exec tsc --noEmit", "pnpm -C apps/desktop lint", "node scripts/gen.mjs --check"]) {
-    assert.ok(result.calls.includes(command), result.calls);
-    assert.ok(result.calls.indexOf(command) < result.calls.indexOf("git push"));
-  }
+  assert.ok(result.calls.includes("check \n"), result.calls);
+  assert.ok(result.calls.indexOf("check \n") < result.calls.indexOf("git push"));
   assert.match(result.calls, new RegExp(`git push -q -u origin ${sha}:refs/heads/ci/synthetic`));
   assert.match(result.calls, new RegExp(`gh pr merge .*--auto --squash --body-file .* --match-head-commit ${sha}`));
   assert.doesNotMatch(result.calls, /ssh |statuses\/|--admin|--delete-branch|cargo (clippy|test|deny)|vitest|pnpm .* install/);
@@ -108,11 +109,9 @@ test("start claims a branch in a worktree and end removes only a clean merged he
 
 test("each failed local check stops before push or PR changes", posix, (t) => {
   const run = fixture(t);
-  for (const FAIL_CHECK of ["fmt --all --check", "check --workspace --all-targets --locked", "-C apps/desktop exec tsc --noEmit", "-C apps/desktop lint", "scripts/gen.mjs --check"]) {
-    const result = run({ FAIL_CHECK });
-    assert.notEqual(result.status, 0, result.stdout + result.stderr);
-    assert.doesNotMatch(result.calls, /git push|gh pr (create|edit|ready|merge)/);
-  }
+  const result = run({ FAIL_CHECK: "check" });
+  assert.notEqual(result.status, 0, result.stdout + result.stderr);
+  assert.doesNotMatch(result.calls, /git push|gh pr (create|edit|ready|merge)/);
   assert.equal(run({}, ["--skip", "mac"]).status, 2);
 });
 

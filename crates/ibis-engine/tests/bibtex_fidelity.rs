@@ -43,23 +43,44 @@ fn format(formatter: &Formatter, source: &Snapshot, style: &str) -> CitationResu
     formatter.format(source, &request).unwrap()
 }
 
-fn paste(result: &CitationResult, text: &str, html: &str, rtf: &str) {
+/// A style's bibliography layout in copied HTML and RTF, as Zotero writes it.
+struct Layout {
+    html: &'static str,
+    rtf: &'static str,
+}
+const APA: Layout = Layout {
+    html: "line-height: 2; margin-left: 2em; text-indent:-2em;",
+    rtf: r"\li720 \fi-720 \sl480 \slmult1 \sa0 ",
+};
+const IEEE: Layout = Layout {
+    html: "line-height: 1.35; ",
+    rtf: r"\li0 \fi0 \sl240 \slmult1 \sa0 ",
+};
+
+fn paste(result: &CitationResult, layout: &Layout, text: &str, html: &str, rtf: &str) {
     assert_eq!(result.text, text);
-    assert_eq!(result.html.as_deref(), Some(html));
+    let html = format!("<div class=\"csl-bib-body\" style=\"{}\">{html}</div>", layout.html);
+    assert_eq!(result.html.as_deref(), Some(html.as_str()));
     assert_eq!(
         result.rtf,
         Some(format!(
-            "{{\\rtf1\\ansi\\deff0{{\\fonttbl{{\\f0 Times New Roman;}}}}\\f0\n{rtf}\n}}"
+            "{{\\rtf1\\ansi\\deff0{{\\fonttbl{{\\f0 Times New Roman;}}}}\\f0 {}\n{rtf}\n}}",
+            layout.rtf
         ))
     );
     assert!(result.copy_content(result.outcomes.len()).is_some());
 }
 
+/// `tail` is "" or " URL"; HTML links the URL, as Zotero does.
 fn apa_article(result: &CitationResult, plain: &str, html: &str, rtf: &str, tail: &str) {
+    let linked = tail
+        .strip_prefix(' ')
+        .map_or_else(String::new, |url| format!(" <a href=\"{url}\">{url}</a>"));
     paste(
         result,
+        &APA,
         &format!("Okafor, A. (2026). {plain}. Invented Journal.{tail}"),
-        &format!("<div class=\"csl-entry\">Okafor, A. (2026). {html}. <i>Invented Journal</i>.{tail}</div>"),
+        &format!("<div class=\"csl-entry\">Okafor, A. (2026). {html}. <i>Invented Journal</i>.{linked}</div>"),
         &format!("Okafor, A. (2026). {rtf}. {{\\i{{}}Invented Journal}}.{tail}"),
     );
 }
@@ -79,6 +100,7 @@ fn stored_proper_nouns_acronyms_and_protected_braces_keep_their_case() {
             apa_article(&format(&formatter, source, "apa"), &plain, &plain, &plain, "");
             paste(
                 &format(&formatter, source, "ieee"),
+                &IEEE,
                 &format!("A. Okafor, “{plain},” Invented Journal, 2026."),
                 &format!("<div class=\"csl-entry\">A. Okafor, “{plain},” <i>Invented Journal</i>, 2026.</div>"),
                 &format!("A. Okafor, \\uc0\\u8220{{}}{plain},\\uc0\\u8221{{}} {{\\i{{}}Invented Journal}}, 2026."),

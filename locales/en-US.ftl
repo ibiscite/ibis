@@ -627,7 +627,7 @@ about-source = Source Code
 about-problem = Report a Problem
 about-licences = Licences
 about-free = Free software under the AGPL 3.0
-about-unavailable = This build does not update itself.
+about-unavailable = This copy does not update itself. Updates come from where you installed it, such as the Microsoft Store.
 
 
 # Settings window pages and visual choices.

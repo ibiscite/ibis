@@ -133,10 +133,9 @@ class CiResultTest(unittest.TestCase):
 
     def test_selected_conformance_job_runs_the_suite(self):
         steps = self.workflow["jobs"]["conformance"]["steps"]
-        for command in ["node scripts/csl-suite.mjs", "cargo test --locked -p ibis-csl --lib conformance -- --ignored"]:
-            step = next(step for step in steps if step.get("run") == command)
-            self.assertNotIn("if", step)
-            self.assertFalse(step.get("continue-on-error", False))
+        step = next(step for step in steps if step.get("run") == "bash scripts/check.sh csl")
+        self.assertNotIn("if", step)
+        self.assertFalse(step.get("continue-on-error", False))
 
     def test_dependency_rules_and_identities_remain_in_confirmation(self):
         jobs = self.workflow["jobs"]
@@ -156,7 +155,7 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(reporter["env"]["BLOCKING"], "${{ steps.advisory_policy.outputs.blocking }}")
         self.assertFalse(reporter.get("continue-on-error", False))
         identity = next(step for step in steps if step.get("name") == "Public commit identities")
-        self.assertEqual(identity["run"], "node scripts/check-agent-identity.mjs")
+        self.assertEqual(identity["run"], "bash scripts/check.sh identities")
         self.assertNotIn("if", identity)
 
     def test_weekly_advisory_run_reuses_the_dependency_job(self):
