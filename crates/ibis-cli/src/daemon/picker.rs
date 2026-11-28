@@ -1,13 +1,14 @@
 //! A native picker's ordered RPC turns. A delivery turn ends with the
 //! shell's acknowledgment, or with its connection closing.
 use super::{Connections, Endpoint, Framed, Stream, WRITE_TIMEOUT, decode as decode_frame};
+use crate::rpc;
 use ibis_core::contract::{EngineError, ErrorCode, ItemRef};
 use ibis_core::destination::{AppId, PASTE_DEADLINE_MS};
 use ibis_engine::citations::SessionId;
 use ibis_engine::picker::{self, PickerChangeFormatRequest, PickerLibraryCondition, PickerOpenRequest, PickerSession};
 use ibis_engine::recents::{List, SessionReferences};
 use ibis_engine::settings::native::SettingsRequest;
-use ibis_engine::{Cancellation, Engine, PickerMethod, protocol, rpc, settings};
+use ibis_engine::{Cancellation, Engine, PickerMethod, protocol, settings};
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::io::{self, BufRead, BufReader, Read};
