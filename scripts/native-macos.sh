@@ -8,10 +8,11 @@ fi
 
 mode=${1:-}
 case "$mode" in
-  build|test|run|dev|shots) shift ;;
+  build|test|run|dev|install|shots) shift ;;
   *)
     printf '%s\n' 'Usage: scripts/native-macos.sh build|test|run [--file LIBRARY] [--show]' \
-      '       scripts/native-macos.sh dev     rebuild, quit the running copy, open the picker on the review library' \
+      '       scripts/native-macos.sh install  rebuild, replace /Applications/Ibis.app and open it' \
+      '       scripts/native-macos.sh dev      install, then open the picker on the review library' \
       '       scripts/native-macos.sh shots [DIR]  screenshot every review state in light and dark' >&2
     exit 2
     ;;
@@ -73,10 +74,44 @@ codesign --verify --strict "$app"
 printf 'Built %s\n' "$app"
 
 review="$package/Review.csljson"
+installed=/Applications/Ibis.app
+lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+
+# The copy people use lives in /Applications and is the only one that claims
+# the bundle id, so the hot key and the menu bar item always come from it.
+install_app() {
+  local staging="/Applications/.Ibis.app.new" previous="/Applications/.Ibis.app.old"
+  rm -rf "$staging" "$previous"
+  ditto "$app" "$staging"
+  codesign --verify --strict "$staging"
+  pkill -x IbisNative 2>/dev/null || true
+  for _ in $(seq 50); do pgrep -x IbisNative >/dev/null || break; sleep 0.1; done
+  # Two renames on one volume: the old copy is never half replaced.
+  if [[ -e "$installed" ]]; then mv "$installed" "$previous"; fi
+  mv "$staging" "$installed"
+  rm -rf "$previous"
+  # Forget every other copy that claims the bundle id, built here or earlier.
+  local bundle_id other
+  bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$installed/Contents/Info.plist")
+  "$lsregister" -dump 2>/dev/null \
+    | awk -v id="$bundle_id" '/^path:/ {sub(/^path: */, ""); sub(/ \(0x[0-9a-f]+\)$/, ""); path = $0}
+                             $1 == "identifier:" && $2 == id {print path}' \
+    | sort -u | while IFS= read -r other; do
+        [[ "$other" == "$installed" ]] || "$lsregister" -u "$other" 2>/dev/null || true
+      done
+  "$lsregister" -f "$installed"
+  printf 'Installed %s\n' "$installed"
+}
+
+if [[ "$mode" == install ]]; then
+  install_app
+  open "$installed"
+  exit
+fi
 
 if [[ "$mode" == dev ]]; then
-  pkill -x IbisNative 2>/dev/null && sleep 0.5 || true
-  open -a "$app" --args --file "$review" --show
+  install_app
+  open -a "$installed" --args --file "$review" --show
   exit
 fi
 
@@ -120,7 +155,8 @@ if [[ "$mode" == shots ]]; then
 fi
 
 if [[ "$mode" == run ]]; then
-  launch=(-a "$app")
+  install_app
+  launch=(-a "$installed")
   if [[ -n "${IBIS_CONFIG_DIR:-}" ]]; then
     launch+=(--env "IBIS_CONFIG_DIR=$IBIS_CONFIG_DIR")
   fi

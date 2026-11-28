@@ -6,7 +6,8 @@ It targets macOS 15 and later, with Liquid Glass on macOS 26 ([decision 0066](..
 and uses the workspace Rust toolchain and Xcode 26 or its Command Line Tools.
 
 ```sh
-scripts/native-macos.sh dev      # rebuild, quit the running copy, open the picker on Review.csljson
+scripts/native-macos.sh install  # rebuild, replace /Applications/Ibis.app and open it
+scripts/native-macos.sh dev      # install, then open the picker on Review.csljson
 scripts/native-macos.sh shots    # screenshot every review state in light and dark
 scripts/native-macos.sh test
 scripts/native-macos.sh run --file apps/desktop/src-tauri/resources/samples.csljson --show
