@@ -616,7 +616,7 @@ about-source = Quellcode
 about-problem = Problem melden
 about-licences = Lizenzen
 about-free = Freie Software unter der AGPL 3.0
-about-unavailable = Diese Version aktualisiert sich nicht selbst.
+about-unavailable = Diese Kopie aktualisiert sich nicht selbst. Updates kommen von dort, wo Sie sie installiert haben, etwa aus dem Microsoft Store.
 
 
 # Settings window pages and visual choices.

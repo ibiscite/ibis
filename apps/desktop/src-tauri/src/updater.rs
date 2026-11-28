@@ -99,10 +99,11 @@ impl InstallationFailure {
     }
 }
 
-/// Builds without the update key cannot update themselves. Settings and the
-/// menu check explain this; the automatic-checks question is left out.
+/// Builds without the update key cannot update themselves, and the Store
+/// updates its own copy. Settings and the menu check explain this; the
+/// automatic-checks question is left out.
 pub(crate) fn available(app: &AppHandle) -> bool {
-    has_update_key(app.config().plugins.0.get("updater"))
+    !crate::store::installed() && has_update_key(app.config().plugins.0.get("updater"))
 }
 
 fn has_update_key(config: Option<&serde_json::Value>) -> bool {

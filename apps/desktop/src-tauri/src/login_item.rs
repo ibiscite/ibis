@@ -7,7 +7,8 @@
 //!
 //! - macOS 13 and later: `SMAppService.mainApp`, listed under Open at Login.
 //! - Windows: a value in the current user's `Run` key, named after the app;
-//!   Task Manager's switch for it counts.
+//!   Task Manager's switch for it counts. The Store copy uses its package's
+//!   startup task instead (`store.rs`).
 //! - Linux: a per-channel XDG autostart file named after the app identifier.
 //!
 //! Ibis and Ibis Nightly have different names and identifiers, so each has
@@ -226,6 +227,9 @@ fn platform_entry(_app: &AppHandle, name: &str) -> Option<Box<dyn Entry>> {
 
 #[cfg(target_os = "windows")]
 fn platform_entry(_app: &AppHandle, name: &str) -> Option<Box<dyn Entry>> {
+    if crate::store::installed() {
+        return Some(Box::new(crate::store::StartupTask));
+    }
     windows_entry(name, &std::env::current_exe().ok()?).map(|entry| Box::new(SystemEntry(entry)) as Box<dyn Entry>)
 }
 
@@ -277,7 +281,7 @@ impl Entry for SystemEntry {
 
 /// Whether the Windows or Linux login entry started this process.
 pub(crate) fn launched_at_login(args: impl IntoIterator<Item = std::ffi::OsString>) -> bool {
-    args.into_iter().skip(1).any(|arg| arg == AT_LOGIN_ARG)
+    args.into_iter().skip(1).any(|arg| arg == AT_LOGIN_ARG) || crate::store::started_at_login()
 }
 
 /// Keep the picker hidden until the shortcut or the menu opens it.

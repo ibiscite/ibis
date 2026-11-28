@@ -104,7 +104,7 @@ dunce = "=1.0.5"
 # Already locked through the clipboard plugin. Writes plain text, HTML Format
 # (with its byte offsets) and RTF in one clipboard opening (#26).
 clipboard-win = "5.4.3"
-windows = { version = "0.62.2", features = ["Foundation", "System_Power", "System_Profile", "UI_ViewManagement", "Storage", "Storage_FileProperties", "Storage_Streams", "Storage_Search", "ApplicationModel", "System_UserProfile", "Foundation_Collections"] }
+windows = { version = "0.62.2", features = ["Foundation", "System_Power", "System_Profile", "UI_ViewManagement", "Storage", "Storage_FileProperties", "Storage_Streams", "Storage_Search", "ApplicationModel", "ApplicationModel_Activation", "System_UserProfile", "Foundation_Collections"] }
 # Safe Win32 bindings for pasting (#1133): the window in front, its process,
 # name and rights, and one SendInput. No raw native calls in Ibis (decision 0029).
 winsafe = { version = "0.0.29", features = ["user", "advapi", "version", "comctl"] }

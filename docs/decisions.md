@@ -97,7 +97,7 @@ the anchor older links use.
 [0045](decisions/0045-citation-line-token-field.md): each reference in the delivery bar's citation is a token whose details open in a drawer rising from the bar; the side panel keeps the Reader and warnings.
 
 ## 0046 Official names and listings
-[0046](decisions/0046-official-names-and-listings.md): useful MIT clients under `ibiscite`, official listings before 1.0, build provenance, and the name and logo owner and contact.
+[0046](decisions/0046-official-names-and-listings.md): useful MIT clients under `ibiscite`, official listings before 1.0 (the Microsoft Store among them: amended 2026-11-28), build provenance, and the name and logo owner and contact.
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 [0027](decisions/0027-process-until-1-0.md): agents' merge authority and the testing rhythm.

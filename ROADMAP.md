@@ -123,9 +123,10 @@ support claim has proof.
   text where a dependency ships no file; every package is verified on its system
   before publishing; parsers are fuzzed nightly; releases carry provenance and
   SBOMs, and stable ones cannot change.
-- **Distribution:** Nix and the project's own Homebrew tap. Until signing is
-  decided near 1.0, macOS uses the self-signed identity and Windows installers
-  are unsigned, so the official Homebrew cask waits.
+- **Distribution:** Nix, the project's own Homebrew tap and the Microsoft
+  Store, which signs its copy for free. Until signing is decided near 1.0, macOS
+  uses the self-signed identity and the Windows installer is unsigned, so the
+  official Homebrew cask waits.
 - **Help:** a documentation site covering install (with pictures of each
   system's first-launch block), first use, privacy and troubleshooting; an
   offline Copy Diagnostics for bug reports instead of telemetry; help
