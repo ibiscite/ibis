@@ -237,11 +237,11 @@ fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Er
         .spawn()?;
     let mut stdin = child.stdin.take().ok_or("stdin")?;
     for message in [
-        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":ibis_engine::mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":ibis::mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
         json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
         json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"ref":"accents2021"}],"format":"pandoc"}}}),
         // A 2026-07-28 client in the same process: no handshake, the revision in `_meta`.
-        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"ref":"accents2021"}],"format":"pandoc"},"_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,"io.modelcontextprotocol/clientCapabilities":{}}}}),
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"ref":"accents2021"}],"format":"pandoc"},"_meta":{"io.modelcontextprotocol/protocolVersion":ibis::mcp::PROTOCOL_VERSION,"io.modelcontextprotocol/clientCapabilities":{}}}}),
     ] {
         writeln!(stdin, "{message}")?;
     }
@@ -256,7 +256,7 @@ fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Er
     assert_eq!(replies.len(), 3);
     assert_eq!(
         replies[0]["result"]["protocolVersion"],
-        ibis_engine::mcp::INITIALIZE_VERSIONS[0]
+        ibis::mcp::INITIALIZE_VERSIONS[0]
     );
     assert_eq!(replies[1]["result"]["structuredContent"]["text"], "[@accents2021]");
     assert_eq!(replies[2]["result"]["structuredContent"]["text"], "[@accents2021]");
@@ -278,7 +278,7 @@ fn mcp_that_cannot_open_its_library_still_starts_and_says_why() -> Result<(), Bo
         .spawn()?;
     let mut stdin = child.stdin.take().ok_or("stdin")?;
     for message in [
-        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":ibis_engine::mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":ibis::mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
         json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search","arguments":{"query":"lantern"}}}),
         json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"styles","arguments":{}}}),
     ] {

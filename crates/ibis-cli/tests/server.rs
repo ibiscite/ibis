@@ -1,7 +1,7 @@
+use ibis::server::serve;
 use ibis_engine::{
     Engine,
     protocol::{read_frame, write_frame},
-    server::serve,
 };
 use serde_json::json;
 use std::io::{BufReader, Cursor};

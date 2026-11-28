@@ -303,7 +303,7 @@ impl Engine {
     }
     /// `every_library` when the items were found by key: a lookup by key reads
     /// every library, so each one's health bears on the answer.
-    pub(crate) fn prepare_consulting(
+    pub fn prepare_consulting(
         &self,
         request: &CitationRequest,
         every_library: bool,

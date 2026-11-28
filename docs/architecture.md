@@ -14,13 +14,13 @@ uses it alone, and `cargo test` runs it.
 | --- | --- | --- |
 | Core | `ibis-core` | The nouns and pure rules: no file, socket, process, clock or platform branch |
 | Readers and formatter | `ibis-sources`, `ibis-csl` | A library file or Zotero read into a snapshot; a snapshot formatted with a CSL style |
-| Engine | `ibis-engine` | One `Engine` answering every method of the table, in process |
-| Background engine | `ibis daemon` in `ibis-cli` | The same methods over a same-user socket ([below](#warm-local-engine)) |
+| Engine | `ibis-engine` | One `Engine` answering every method of the table and holding citation sessions, in process |
+| Transports and background engine | `ibis serve`, `ibis mcp` and `ibis daemon` in `ibis-cli` | The same methods over JSON-RPC, MCP and a same-user socket ([below](#warm-local-engine)) |
 | Apps | `ibis-cli`, the desktop app, `ibis-native` | The `ibis` command, the picker, native paste |
 
 `ibis-os` sits beside core under everything else: the operating system calls
 the layers share (private atomic writes, bounded filesystem work, contained
-parser panics, the `ibis` command's place on the system), so core stays pure.
+parser and worker panics, the `ibis` command's place on the system), so core stays pure.
 The versioned surface is the contract's JSON ([the CLI reference](cli.md#output-for-scripts-and-agents));
 the Rust crates are not published and their APIs may change before 1.0
 ([0056](decisions/0056-open-layer-for-research-material.md)).
@@ -30,11 +30,11 @@ the Rust crates are not published and their APIs may change before 1.0
 | Location | Responsibility |
 | --- | --- |
 | `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search and delivery rules. |
-| `crates/ibis-os` | Whole-file private writes, the bounded filesystem worker, parser panic containment, and installing the `ibis` command and its toggle receipt. Depends on no Ibis crate. |
+| `crates/ibis-os` | Whole-file private writes, the bounded filesystem worker, parser and worker panic containment, and installing the `ibis` command and its toggle receipt. Depends on no Ibis crate. |
 | `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API and its rules, the closed database and Better BibTeX), discovery, database snapshots and file watches. Includes the built-in EndNote [source adapter](source-adapters.md) and, behind the `pdf-reader` feature, the PDF parser that only `ibis __extract-pdf` runs. Each reader declares what its library offers. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
-| `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
-| `crates/ibis-cli` | The `ibis` executable, its same-user daemon and the child processes for PDFs, documents and built-in source adapters. Depends on core and engine, and enables the EndNote reader, the document readers and the PDF reader in `ibis-sources` for those processes. |
+| `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations and citation sessions, settings owner, recents, frame and result budgets. Speaks no transport. |
+| `crates/ibis-cli` | The `ibis` executable, its JSON-RPC server and MCP runtime over the engine's public calls, its same-user daemon and the child processes for PDFs, documents and built-in source adapters. Depends on core and engine, and enables the EndNote reader, the document readers and the PDF reader in `ibis-sources` for those processes. |
 | `crates/ibis-native` | Native paste with no window toolkit: the target capture, its proofs and their platform calls, and every `unsafe` block they need. The host supplies windows, the paste setting and the keyboard layout. Depends on core only. |
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste delivery through `ibis-native`, shortcuts, settings dialogs and updates. Depends on core, engine, native and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |

@@ -1,12 +1,15 @@
-//! Recover engine state after a contained worker panic.
+//! Recover shared state after a contained worker panic, and keep the panic's
+//! message for diagnosis.
 use std::io::Write;
 use std::sync::{LockResult, Mutex, MutexGuard};
 
-pub(crate) fn recover<T>(result: LockResult<T>) -> T {
+/// The value behind a lock, whether or not a contained panic poisoned it.
+pub fn recover<T>(result: LockResult<T>) -> T {
     result.unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-pub(crate) trait MutexExt<T> {
+/// Lock a mutex whether or not a contained panic poisoned it.
+pub trait MutexExt<T> {
     fn recover_lock(&self) -> MutexGuard<'_, T>;
 }
 impl<T> MutexExt<T> for Mutex<T> {
@@ -18,8 +21,8 @@ impl<T> MutexExt<T> for Mutex<T> {
 }
 
 /// Contain a panic and retain its message for diagnosis.
-pub(crate) fn attempt<T>(work: impl FnOnce() -> T) -> std::thread::Result<T> {
-    ibis_os::panic_guard::attempt(work).inspect_err(|payload| {
+pub fn attempt<T>(work: impl FnOnce() -> T) -> std::thread::Result<T> {
+    crate::panic_guard::attempt(work).inspect_err(|payload| {
         let message = payload
             .downcast_ref::<&str>()
             .copied()
@@ -30,6 +33,6 @@ pub(crate) fn attempt<T>(work: impl FnOnce() -> T) -> std::thread::Result<T> {
 }
 
 /// Diagnostics must never turn a recovered panic or a committed write into a failure.
-pub(crate) fn log(message: std::fmt::Arguments<'_>) {
+pub fn log(message: std::fmt::Arguments<'_>) {
     let _ = writeln!(std::io::stderr(), "{message}");
 }

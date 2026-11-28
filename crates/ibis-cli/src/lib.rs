@@ -21,6 +21,8 @@ mod generated;
 mod headless;
 mod human;
 mod keys;
+/// The MCP face of the engine, served by `ibis mcp` and the daemon.
+pub mod mcp;
 mod out;
 pub mod pdf_text;
 
@@ -42,6 +44,10 @@ pub fn run_daemon() -> u8 {
     }
 }
 mod proposals;
+/// JSON-RPC messages, for `ibis serve` and the daemon.
+pub mod rpc;
+/// Ordered JSON-RPC execution with cancellation.
+pub mod server;
 mod settings_backup;
 mod sources;
 mod toggle;
@@ -909,7 +915,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
             error: Diagnostic::Engine(error),
             ..
         }) if matches.subcommand_name() == Some("serve") => {
-            if protocol::write_frame(&mut output, &ibis_engine::rpc::failure(None, error)).is_err() {
+            if protocol::write_frame(&mut output, &crate::rpc::failure(None, error)).is_err() {
                 70
             } else {
                 error.code.exit_code().value()
@@ -1116,9 +1122,9 @@ impl Failure {
         }
     }
     /// What an agent reads when its libraries did not open. Agents never see paths.
-    fn refusal(&self) -> ibis_engine::mcp::Refusal {
+    fn refusal(&self) -> crate::mcp::Refusal {
         match &self.error {
-            Diagnostic::Engine(error) => ibis_engine::mcp::Refusal::startup(*error),
+            Diagnostic::Engine(error) => crate::mcp::Refusal::startup(*error),
             Diagnostic::Proposal(error) => error.clone().into(),
         }
     }
@@ -1404,7 +1410,7 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     }
     if name == "serve" {
         return Ok(Execution::Stdio(
-            match ibis_engine::server::serve(engine.clone(), input, output) {
+            match crate::server::serve(engine.clone(), input, output) {
                 Ok(()) => 0,
                 Err(protocol::FrameError::Io) => 70,
                 Err(_) => 3,
@@ -1423,11 +1429,8 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     run_method(&backend, matches, name, args, names, input, mode)
 }
 
-fn mcp_session(allow_writes: bool, startup: Option<ibis_engine::mcp::Refusal>) -> (ibis_engine::mcp::Session, bool) {
-    let session = startup.map_or_else(
-        ibis_engine::mcp::Session::default,
-        ibis_engine::mcp::Session::without_libraries,
-    );
+fn mcp_session(allow_writes: bool, startup: Option<crate::mcp::Refusal>) -> (crate::mcp::Session, bool) {
+    let session = startup.map_or_else(crate::mcp::Session::default, crate::mcp::Session::without_libraries);
     // `for_app` follows the same settings as `cite --for-app`. Proposals live beside them.
     match settings_backup::settings_file(false) {
         Ok((_, path)) if allow_writes => (
@@ -2488,12 +2491,12 @@ mod tests {
             ErrorCode::SourceUnavailable,
             ErrorReason::SettingsReadTimeout,
         ));
-        let mut session = ibis_engine::mcp::Session::without_libraries(failure.refusal());
+        let mut session = crate::mcp::Session::without_libraries(failure.refusal());
         let engine = Engine::new().unwrap_or_else(|error| panic!("{error:?}"));
-        let reply = ibis_engine::mcp::handle(&engine, &mut session, &json!({
+        let reply = crate::mcp::handle(&engine, &mut session, &json!({
             "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{
                 "name":"show", "arguments":{"ref":"invented"},
-                "_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION, "io.modelcontextprotocol/clientCapabilities":{}}
+                "_meta":{"io.modelcontextprotocol/protocolVersion":crate::mcp::PROTOCOL_VERSION, "io.modelcontextprotocol/clientCapabilities":{}}
             }
         })).unwrap_or_default();
         let problem = &reply["result"]["structuredContent"]["error"];

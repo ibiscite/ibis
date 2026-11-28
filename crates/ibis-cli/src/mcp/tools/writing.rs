@@ -4,8 +4,8 @@
 //! own approval of a tool call is never enough. Without the flag they are not
 //! listed and a call is an unknown tool.
 use super::*;
-use crate::write::{Proposals, ProposeRequest, Source, Via, WriteError, WriteProblem};
 use ibis_core::contract::{ItemRef, LibraryId};
+use ibis_engine::write::{Proposals, ProposeRequest, Source, Via, WriteError, WriteProblem};
 
 /// What a server started with `--allow-writes` knows to record a proposal.
 pub(in crate::mcp) struct Writing<'a> {
@@ -72,7 +72,7 @@ pub(super) fn full_list() -> Value {
 
 fn refused(error: WriteError) -> Refusal {
     let mut refusal = Refusal::from(error);
-    if let Some(advice) = crate::catalogue::text("mcp-error-proposal", None, &[("reason", &refusal.advice)]) {
+    if let Some(advice) = ibis_engine::catalogue::text("mcp-error-proposal", None, &[("reason", &refusal.advice)]) {
         refusal.advice = advice.into();
     }
     refusal
@@ -110,7 +110,7 @@ fn change_input() -> Value {
 }
 
 fn tags_input() -> Value {
-    let tags = json!({"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": crate::write::MAX_TAG_CHARS}, "maxItems": crate::write::MAX_TAGS});
+    let tags = json!({"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": ibis_engine::write::MAX_TAG_CHARS}, "maxItems": ibis_engine::write::MAX_TAGS});
     json!({
         "type": "object",
         "properties": {"ref": {"type": "string", "description": "A ref from search."}, "add": tags, "remove": tags},
@@ -178,11 +178,11 @@ fn proposed(engine: &Engine, writing: &Writing<'_>, request: ProposeRequest) -> 
     let mut answer = json!({
         "proposal": proposal.id,
         "status": proposal.status,
-        "summary": crate::catalogue::message(&crate::write::summary(&proposal), crate::catalogue::Audience::Agent),
+        "summary": ibis_engine::catalogue::message(&ibis_engine::write::summary(&proposal), ibis_engine::catalogue::Audience::Agent),
         "next": NOT_YET,
         "provenance": PROVENANCE,
     });
-    if let crate::write::Change::Add { key, fields } = &proposal.change
+    if let ibis_engine::write::Change::Add { key, fields } = &proposal.change
         && let Some(entry) = ibis_core::syntax::bibtex_entry(key, &CitableFields::new(fields.clone()))
     {
         answer["bibtex"] = json!(entry);
@@ -251,13 +251,13 @@ fn proposals(
         .list()
         .map_err(Refusal::from)?
         .into_iter()
-        .filter(|proposal| proposal.source.client == crate::write::client_name(writing.client))
+        .filter(|proposal| proposal.source.client == ibis_engine::write::client_name(writing.client))
         .take(MAX_HITS)
         .map(|proposal| {
             json!({
                 "proposal": proposal.id,
                 "status": proposal.status,
-                "summary": crate::catalogue::message(&crate::write::summary(&proposal), crate::catalogue::Audience::Agent),
+                "summary": ibis_engine::catalogue::message(&ibis_engine::write::summary(&proposal), ibis_engine::catalogue::Audience::Agent),
             })
         })
         .collect();
