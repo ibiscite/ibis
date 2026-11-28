@@ -270,58 +270,20 @@ struct ResultRow: View {
     var actions = RowActions()
     @State private var hovered = false
 
+    // Each piece has its own type, so the compiler checks the row quickly.
+    private var ink: Color {
+        emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : Color(nsColor: .labelColor)
+    }
+    private var quiet: Color { emphasized ? ink.opacity(0.82) : Color(nsColor: .secondaryLabelColor) }
+    private var accent: Color { emphasized ? ink : Color.accentColor }
+
     var body: some View {
-        let ink = emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : Color(nsColor: .labelColor)
-        let quiet = emphasized ? ink.opacity(0.82) : Color(nsColor: .secondaryLabelColor)
         HStack(spacing: 0) {
-            Group {
-                if let number {
-                    Text(verbatim: "\(number)").font(grid.font(13, .medium)).monospacedDigit().foregroundStyle(quiet)
-                } else if added {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(grid.font(16))
-                        .foregroundStyle(emphasized ? ink : Color.accentColor)
-                } else {
-                    Image(systemName: row.kind.symbol).font(grid.font(15)).foregroundStyle(quiet)
-                }
-            }
-            .frame(width: grid.icon)
-            .anchor(.rowIcon, if: marksColumns)
-            .padding(.trailing, grid.title - grid.edge - grid.icon)
-            VStack(alignment: .leading, spacing: (density == .compact ? 1 : 3) * grid.s) {
-                Text(row.title ?? PickerWords.text(.untitled))
-                    .font(grid.font(14, .medium))
-                    .foregroundStyle(ink)
-                    .lineLimit(1)
-                    .anchor(.rowTitle, if: marksColumns)
-                HStack(spacing: 0) {
-                    Byline(options: row.bylines)
-                    Text(verbatim: " · " + (row.year ?? PickerWords.text(.noDate))).fixedSize()
-                    if let note {
-                        Text(verbatim: " · ").fixedSize()
-                        Text(note).fontWeight(.medium).foregroundStyle(emphasized ? ink : Color.accentColor).fixedSize()
-                    }
-                    if !row.matchReasons.isEmpty {
-                        Text(verbatim: "  " + row.matchReasons.joined(separator: " · ")).italic().lineLimit(1)
-                    }
-                }
-                .font(grid.font(12))
-                .foregroundStyle(quiet)
-            }
+            icon
+            lines
             Spacer(minLength: 8 * grid.s)
-            if hovered {
-                HStack(spacing: 6 * grid.s) {
-                    if let toggle = actions.toggle {
-                        HoverButton(symbol: added ? "minus" : "plus", label: added ? .remove : .add, ink: ink,
-                                    grid: grid, perform: toggle)
-                    }
-                    if let peek = actions.peek { HoverButton(symbol: "eye", label: .peek, ink: ink, grid: grid, perform: peek) }
-                }
-            }
-            if emphasized {
-                Text(verbatim: "↩").font(grid.font(12, .medium)).foregroundStyle(quiet).padding(.leading, 6 * grid.s)
-                    .accessibilityHidden(true)
-            }
+            if hovered { hoverButtons }
+            if emphasized { returnKey }
         }
         .padding(.leading, grid.edge - grid.rowInset)
         .padding(.trailing, 12 * grid.s)
@@ -330,24 +292,103 @@ struct ResultRow: View {
         .padding(.horizontal, grid.rowInset)
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
-        .help(([row.title ?? "", row.fullByline] + row.matchReasons + [row.citationKey ?? ""])
-            .filter { !$0.isEmpty }.joined(separator: "\n"))
+        .help(tooltip)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(([row.title ?? PickerWords.text(.untitled), row.fullByline, row.kindLabel]
-            + row.matchReasons + (added ? [PickerWords.text(.cited)] : []) + [note, row.citationKey].compactMap { $0 })
-            .joined(separator: ", "))
+        .accessibilityLabel(spokenLabel)
         .accessibilityHint(number.map { "⌘\($0)" } ?? "")
         .accessibilityAddTraits(highlighted ? [.isSelected, .isButton] : .isButton)
-        .accessibilityActions {
-            if let toggle = actions.toggle { Button(PickerWords.text(added ? .remove : .add), action: toggle) }
-            if let peek = actions.peek { Button(PickerWords.text(.peek), action: peek) }
+        .accessibilityActions { accessibilityButtons }
+    }
+
+    /// The icon column: a number while ⌘ is held, a check once added, else the kind.
+    @ViewBuilder private var symbol: some View {
+        if let number {
+            Text(verbatim: "\(number)").font(grid.font(13, .medium)).monospacedDigit().foregroundStyle(quiet)
+        } else if added {
+            Image(systemName: "checkmark.circle.fill").font(grid.font(16)).foregroundStyle(accent)
+        } else {
+            Image(systemName: row.kind.symbol).font(grid.font(15)).foregroundStyle(quiet)
         }
+    }
+
+    private var icon: some View {
+        symbol
+            .frame(width: grid.icon)
+            .anchor(.rowIcon, if: marksColumns)
+            .padding(.trailing, grid.title - grid.edge - grid.icon)
+    }
+
+    private var lines: some View {
+        VStack(alignment: .leading, spacing: (density == .compact ? 1 : 3) * grid.s) {
+            Text(row.title ?? PickerWords.text(.untitled))
+                .font(grid.font(14, .medium))
+                .foregroundStyle(ink)
+                .lineLimit(1)
+                .anchor(.rowTitle, if: marksColumns)
+            RowByline(row: row, note: note, accent: accent)
+                .font(grid.font(12))
+                .foregroundStyle(quiet)
+        }
+    }
+
+    private var hoverButtons: some View {
+        HStack(spacing: 6 * grid.s) {
+            if let toggle = actions.toggle {
+                HoverButton(symbol: added ? "minus" : "plus", label: added ? .remove : .add, ink: ink,
+                            grid: grid, perform: toggle)
+            }
+            if let peek = actions.peek { HoverButton(symbol: "eye", label: .peek, ink: ink, grid: grid, perform: peek) }
+        }
+    }
+
+    private var returnKey: some View {
+        Text(verbatim: "↩").font(grid.font(12, .medium)).foregroundStyle(quiet).padding(.leading, 6 * grid.s)
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private var accessibilityButtons: some View {
+        if let toggle = actions.toggle { Button(PickerWords.text(added ? .remove : .add), action: toggle) }
+        if let peek = actions.peek { Button(PickerWords.text(.peek), action: peek) }
+    }
+
+    private var tooltip: String {
+        let parts: [String] = [row.title ?? "", row.fullByline] + row.matchReasons + [row.citationKey ?? ""]
+        return parts.filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+
+    private var spokenLabel: String {
+        var parts: [String] = [row.title ?? PickerWords.text(.untitled), row.fullByline, row.kindLabel]
+        parts += row.matchReasons
+        if added { parts.append(PickerWords.text(.cited)) }
+        parts += [note, row.citationKey].compactMap { $0 }
+        return parts.joined(separator: ", ")
     }
 
     private var fill: Color {
         if emphasized { return Color(nsColor: .selectedContentBackgroundColor) }
         if highlighted { return Color(nsColor: .unemphasizedSelectedContentBackgroundColor) }
         return hovered ? Color.primary.opacity(0.06) : .clear
+    }
+}
+
+/// Who, when, any page, and why the row matched, on the row's second line.
+private struct RowByline: View {
+    let row: PickerRow
+    let note: String?
+    let accent: Color
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Byline(options: row.bylines)
+            Text(verbatim: " · " + (row.year ?? PickerWords.text(.noDate))).fixedSize()
+            if let note {
+                Text(verbatim: " · ").fixedSize()
+                Text(note).fontWeight(.medium).foregroundStyle(accent).fixedSize()
+            }
+            if !row.matchReasons.isEmpty {
+                Text(verbatim: "  " + row.matchReasons.joined(separator: " · ")).italic().lineLimit(1)
+            }
+        }
     }
 }
 

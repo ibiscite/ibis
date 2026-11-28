@@ -329,29 +329,7 @@ private struct SettingsSidebar: View {
                     .foregroundStyle(.secondary)
             }
             ForEach(preferences.search.matches) { row in
-                let highlighted = row == preferences.search.highlighted
-                Button { reveal(row) } label: {
-                    HStack(spacing: 8) {
-                        PaneIcon(pane: row.pane)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(row.title)
-                            if row.title != row.pane.title {
-                                Text(row.pane.title).font(.caption).opacity(0.7)
-                            }
-                        }
-                    }
-                    .foregroundStyle(highlighted ? Color(nsColor: .alternateSelectedControlTextColor) : .primary)
-                    .padding(.vertical, 2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text(row.title))
-                .accessibilityValue(Text(row.pane.title))
-                .accessibilityAddTraits(highlighted ? .isSelected : [])
-                .listRowBackground(highlighted
-                    ? RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .selectedContentBackgroundColor)).padding(.horizontal, 10)
-                    : nil)
+                SearchResultRow(row: row, highlighted: row == preferences.search.highlighted) { reveal(row) }
             }
         }
         .listStyle(.sidebar)
@@ -587,6 +565,46 @@ private struct NativeSettingsForm: View {
                     .toggleStyle(.switch)
                 }
             }
+        }
+    }
+}
+
+/// One setting a search found, with its pane; Return or a click goes there.
+private struct SearchResultRow: View {
+    let row: SettingsSearchRow
+    let highlighted: Bool
+    let reveal: () -> Void
+
+    var body: some View {
+        Button(action: reveal) { label }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(row.title))
+            .accessibilityValue(Text(row.pane.title))
+            .accessibilityAddTraits(highlighted ? .isSelected : [])
+            .listRowBackground(background)
+    }
+
+    private var ink: Color { highlighted ? Color(nsColor: .alternateSelectedControlTextColor) : .primary }
+
+    private var label: some View {
+        HStack(spacing: 8) {
+            PaneIcon(pane: row.pane)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(row.title)
+                if row.title != row.pane.title {
+                    Text(row.pane.title).font(.caption).opacity(0.7)
+                }
+            }
+        }
+        .foregroundStyle(ink)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder private var background: some View {
+        if highlighted {
+            RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .selectedContentBackgroundColor)).padding(.horizontal, 10)
         }
     }
 }
