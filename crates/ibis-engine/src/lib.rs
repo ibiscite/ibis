@@ -60,6 +60,9 @@ pub mod mcp;
 pub mod format;
 pub mod outputs;
 
+/// Per-app paste choices in `apps.json`, shared by every delivering process.
+pub mod grants;
+
 pub mod settings;
 pub mod settings_backup;
 /// Open an item's PDF in Zotero rather than the item, when it has one.

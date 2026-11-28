@@ -86,7 +86,7 @@ impl ibis_native::paste::macos::Host for Host {
     fn paste_choice(&self, id: &AppId, identity: Option<&str>) -> Option<(Option<AppPaste>, bool)> {
         let preference = self
             .0
-            .state::<crate::destination::AppMemory>()
+            .state::<ibis_engine::grants::Grants>()
             .paste_for(id, identity)
             .ok()?;
         Some((preference, paste_setting(&self.0)?))
@@ -209,7 +209,7 @@ fn paste_policy(app: &AppHandle, enabled: bool, choosing: bool) -> bool {
                 Some(AppPaste::Paste)
             } else {
                 let Ok(preference) = captured.map_or(Ok(None), |target| {
-                    app.state::<crate::destination::AppMemory>().for_capture(target)
+                    crate::destination::paste_for_capture(&app.state(), target)
                 }) else {
                     return false;
                 };
@@ -234,7 +234,7 @@ pub(crate) fn begin_copy(app: &AppHandle, replaces: &[String]) -> CopyAttempt {
     app.state::<LastTarget>().begin_copy(
         || app.state::<crate::picker::PickerGeneration>().current(),
         replaces,
-        |captured| app.state::<crate::destination::AppMemory>().for_capture(captured),
+        |captured| crate::destination::paste_for_capture(&app.state(), captured),
     )
 }
 
