@@ -735,7 +735,8 @@ fn parse_html(html: &str) -> Result<Parsed, FormatError> {
         if let Some(after) = rest.strip_prefix('<') {
             let end = after.find('>').ok_or(FormatError::Runtime)?;
             let tag = &after[..end];
-            if tag.len() > 256 {
+            // A link's address may be as long as the output allows.
+            if tag.len() > 256 && !tag.starts_with("a href=\"") {
                 return Err(FormatError::Runtime);
             }
             if let Some(closing) = tag.strip_prefix('/') {

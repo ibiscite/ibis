@@ -92,6 +92,10 @@
   // at build time, affixes included; only after its first range does it reopen
   // with the affix-free copy. So the first year range a compiled style prints
   // gets the affixes twice: "(2020–(2026))". Open with the copy from the start.
+  // A range's second date reopens with the copy of whichever date the style
+  // built last, so a citation borrowed the bibliography's bold: "2021–**2024**".
+  // The date's own level already formats the whole range, so the copy left for
+  // that reopening formats nothing.
   const buildDate = CSL.Node.date.build;
   CSL.Node.date.build = function (state, target) {
     if (this.tokentype !== CSL.START && this.tokentype !== CSL.SINGLETON) return buildDate.call(this, state, target);
@@ -99,30 +103,43 @@
     state.dateput.openLevel = function (token) {
       return CSL.Output.Queue.prototype.openLevel.call(this, token === node ? state.tmp.date_token : token);
     };
-    try { return buildDate.call(this, state, target); } finally { delete state.dateput.openLevel; }
+    try { return buildDate.call(this, state, target); } finally {
+      delete state.dateput.openLevel;
+      state.tmp.date_token = CSL.Util.cloneToken(state.tmp.date_token);
+      state.tmp.date_token.decorations = [];
+    }
   };
   let literalLessThan = null;
   const checkedText = (text) => literalLessThan && text ? text.split(literalLessThan).join("<") : text;
-  const encodeDoiForUrl = CSL.Util.encodeDoiForUrl;
-  // With links on, the processor encodes a DOI after a doi.org prefix twice in
-  // a row, once to print it and once to link it: "%3C" became "%253C". The
-  // second call gets exactly the first call's answer, which is kept as it is.
-  let encodedDoi = null;
-  CSL.Util.encodeDoiForUrl = (doi) => {
-    if (doi === encodedDoi) return doi;
-    encodedDoi = encodeDoiForUrl(checkedText(doi));
-    return encodedDoi;
+  // A DOI is encoded for a URL exactly once, as the record is read
+  // (`doiForUrl` below): the processor encodes one DOI up to three times on
+  // its way to a link, so its own encoding does nothing.
+  CSL.Util.encodeDoiForUrl = (doi) => doi;
+  // The processor links every URL and DOI by prefixing doi.org to anything
+  // without a lower-case scheme, and builds the link from the escaped text.
+  // Here a web address or a DOI links, with the address taken back from the
+  // text; anything else that is not a plain address stays unlinked text.
+  const link = (state, text) => {
+    const shown = text.replace(/&#(38|60|62);/g, (_, code) => String.fromCharCode(Number(code)));
+    const target = /^https?:\/\//i.test(shown) ? shown : /^10\./.test(shown) ? `https://doi.org/${shown}` : null;
+    if (!target || !/^[\x21-\x7e]+$/.test(target) || /["<>\\^`{|}]/.test(target)) return text;
+    return `<a href="${target.replace(/&/g, "&#38;")}">${text}</a>`;
   };
-  // The processor links every URL and DOI through this one decoration, and
-  // puts doi.org before anything without a scheme, so Zotero links a bare
-  // "www.example.org" to doi.org. Only a web address or a DOI links here.
-  const linkDoi = CSL.Output.Formats.html["@DOI/true"];
-  CSL.Output.Formats.html["@DOI/true"] = (state, text) =>
-    /^(https?:\/\/|10\.)/i.test(text) ? linkDoi(state, text) : text;
+  CSL.Output.Formats.html["@DOI/true"] = link;
+  CSL.Output.Formats.html["@URL/true"] = link;
   for (const format of ["text", "html", "rtf"]) {
     const escape = CSL.Output.Formats[format].text_escape;
     CSL.Output.Formats[format].text_escape = (text) => escape(checkedText(text));
   }
+  // A record's DOI, bare and encoded once for a URL. A doi.org address is
+  // read back to its DOI first; another address is left as it is.
+  const doiForUrl = (doi) => {
+    const resolver = /^https?:\/\/(dx\.)?doi\.org\//i.exec(doi);
+    if (!resolver && /^https?:\/\//i.test(doi)) return doi;
+    let bare = resolver ? doi.slice(resolver[0].length) : doi;
+    if (resolver) try { bare = decodeURIComponent(bare); } catch { /* kept as written */ }
+    return bare.replace(/[\u0000- "#%<>?[\\\]^`{|}\u007F-\u009F]/g, encodeURIComponent);
+  };
   const processorItems = (request) => {
     // One unused symbol protects literal less-than signs in every text scalar.
     const used = new Set(JSON.stringify(request));
@@ -142,7 +159,7 @@
       return value;
     };
     return request.items.map(({ ["ibis-rich-text"]: rich = {}, ...item }) => ({
-      ...literal(item),
+      ...literal(typeof item.DOI === "string" ? { ...item, DOI: doiForUrl(item.DOI) } : item),
       ...Object.fromEntries(Object.entries(rich).map(([field, parts]) => [field,
         parts.map((part) => part.text === undefined ? part.markup : literal(part.text)).join("")
       ])),

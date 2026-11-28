@@ -85,7 +85,8 @@ fn family_prefix(value: &str) -> Option<usize> {
         .map(|(index, c)| index + c.len_utf8())
 }
 
-fn particles(name: &mut BTreeMap<String, Value>, family: &str, given: &str) {
+/// Split a name's particles and suffix as Zotero does before it cites a name.
+pub(crate) fn particles(name: &mut BTreeMap<String, Value>, family: &str, given: &str) {
     let mut remaining = family;
     let mut end = 0;
     let last_family_break = family.rfind(['\r', '\n', '\u{2028}', '\u{2029}']);

@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use thiserror::Error;
 
 mod creators;
+pub(crate) use creators::particles;
 mod dates;
 mod extra;
 mod rich_text;
