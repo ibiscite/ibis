@@ -73,6 +73,17 @@ plan for a native feel on every system later. It refines the shell part of
    repo build keeps its own bundle ID (`com.ibiscite.ibis.native`) and
    settings profile so it runs beside the Tauri app.
 
+7. **The bar is the best app on its system** (the maintainer, 2026-11-28:
+   using Ibis should be a no-brainer, and hold up for the long term). Each
+   native app is judged against that system's own first-party apps and its
+   guidelines (Apple's HIG, Fluent, the GNOME HIG), not against the other
+   Ibis apps. It uses every system integration that helps citing (on the Mac
+   Spotlight, Shortcuts, Services and Control Center; on Windows search,
+   Share and the Store; on GNOME the shell search provider and portals),
+   works fully with the system's screen reader, keyboard conventions, text
+   size and contrast settings, and beats the Tauri baseline in point 4. A
+   screen that a stock app on that system does better is not finished.
+
 ## Consequences
 
 - The Mac shell's custom drawing, the picker PDF icon set and the scarlet

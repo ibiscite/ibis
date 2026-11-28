@@ -34,7 +34,7 @@ has its own page; read only the one your change touches:
 ## Principles
 
 1. **One anatomy everywhere.** Search, the list with its heading line, then the delivery bar (the citation, the one action, More), in that order, at every size; layouts fold, never reorder. Details opened on purpose rise from the bar in a drawer between them.
-2. **Native on each system, one behaviour everywhere.** Each system's app looks like that system and is built from its own parts (decision 0066); what Ibis does, its words and its keys stay the same across systems. The Tauri app keeps one macOS-first design until each system's native app replaces it (see [Per platform](design/foundations.md#per-platform)).
+2. **Native on each system, one behaviour everywhere.** Each system's app looks like that system and is built from its own parts (decision 0066); what Ibis does, its words and its keys stay the same across systems. Each app's bar is the best app on its system, judged against that system's own apps ([0066](decisions/0066-native-shells-use-system-parts.md) point 7). The Tauri app keeps one macOS-first design until each system's native app replaces it (see [Per platform](design/foundations.md#per-platform)).
 3. **Readable first.** Nothing smaller than 12 px; secondary text (helper lines, the bar, a row's byline) passes 4.5:1 on every surface, in light and dark, and with Increase Contrast.
 4. **Easy to hit.** Every target is at least 32 px, 44 px under `pointer: coarse`, whatever the drawn size.
 5. **Show less, reveal more.** Things appear when useful and fold one key away; no modes, no "advanced" switch. A search jump waits for its control to load and yields when the person moves elsewhere.
