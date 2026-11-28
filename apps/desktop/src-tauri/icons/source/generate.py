@@ -3,6 +3,7 @@
 from pathlib import Path
 import argparse
 import importlib.util
+import re
 import struct
 import subprocess
 import tempfile
@@ -41,11 +42,41 @@ def gnome():
     return brand.doc(128, 128, "", front + inset(tile(), 12, 10, 104))
 
 
+def tile_mark(svg, share=0.6):
+    """The Windows mark centred at SHARE of a square, for the Store's medium tile."""
+    head, rest = svg.split(">", 1)
+    view = re.search(r'viewBox="([^"]+)"', head).group(1)
+    content = rest.rsplit("</svg>", 1)[0]
+    edge = (1 - share) * 50
+    return brand.doc(100, 100, "", f'<svg x="{edge:g}" y="{edge:g}" width="{share * 100:g}" '
+                     f'height="{share * 100:g}" viewBox="{view}">{content}</svg>')
+
+
+def store_assets():
+    """The MSIX package's images (packaging/msix): file name, size and art.
+    makepri indexes the scale and target-size names; the taskbar and Start
+    use the unplated target sizes."""
+    assets = []
+    for size in [16, 24, 32, 48, 256]:
+        art = "windows-small.svg" if size < 48 else "windows.svg"
+        for plate in ["", "_altform-unplated"]:
+            assets.append((f"Square44x44Logo.targetsize-{size}{plate}.png", size, art))
+    for scale in [100, 200]:
+        factor = scale // 100
+        assets += [
+            (f"Square44x44Logo.scale-{scale}.png", 44 * factor, "windows-small.svg" if factor == 1 else "windows.svg"),
+            (f"Square150x150Logo.scale-{scale}.png", 150 * factor, "windows-tile.svg"),
+            (f"StoreLogo.scale-{scale}.png", 50 * factor, "windows.svg"),
+        ]
+    return assets
+
+
 def sources():
     return {
         "full.svg": tile(), "small.svg": tile(True),
         "windows.svg": brand.mark(brand.GRADIENT, "m"),
         "windows-small.svg": brand.favicon(brand.SCARLET_MID),
+        "windows-tile.svg": tile_mark(brand.mark(brand.GRADIENT, "m")),
         "macos.svg": macos(), "macos-small.svg": macos(True), "gnome.svg": gnome(),
         **{f"{identifier}-symbolic.svg": brand.favicon("currentColor").replace(
             'width="32" height="32"', 'width="16" height="16"')
@@ -88,6 +119,10 @@ def main(root=ROOT):
                                    len(data), 6 + len(images) * 16 + len(payload))
             payload += data
         (root / "icon.ico").write_bytes(struct.pack("<HHH", 0, 1, len(images)) + entries + payload)
+
+        (root / "windows").mkdir(exist_ok=True)
+        for name, size, art in store_assets():
+            render(root, art, size, root / "windows" / name)
 
         payload = bytearray()
         for kind, size in [("icp4", 16), ("icp5", 32), ("icp6", 64), ("ic07", 128),

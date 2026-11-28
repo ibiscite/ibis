@@ -17,7 +17,8 @@ requests a milestone version. Do not edit versions manually.
 | Ibis update feed | `stable` | Fixed-tag pre-release for permanent download URLs. |
 
 Stable and Nightly have separate app IDs and Linux executable/icon names.
-Windows ships one NSIS installer. Nightly omits RPM. Packages use stable names
+Windows ships one NSIS installer, and the same files go to the Microsoft Store
+as an MSIX package (see [The Microsoft Store](#the-microsoft-store)). Nightly omits RPM. Packages use stable names
 such as `Ibis-macOS-Apple-silicon.dmg` and `Ibis-Windows-setup.exe`. CLI archives
 contain `ibis`, `LICENSE`, `NOTICE.md` and `THIRD-PARTY-NOTICES.txt`; every app
 package carries the same three files in its `notices` resource folder. Preview's
@@ -76,6 +77,24 @@ release-mode/MSRV checks and bounded fuzzing; failures update one issue. Run
 `ci.yml` with `workflow_dispatch` on main for qualification before a stable release.
 Manual Preview with publication disabled retains artifacts for 14 days. The
 daily installed-update check still uses the previous nightly; see [testing](docs/testing.md#native-journeys-and-installed-updates).
+
+## The Microsoft Store
+
+Every Windows build also makes `Ibis-Windows.msix` (`scripts/build-msix.ps1`):
+the installer's files, the Store images in `apps/desktop/src-tauri/icons/windows`
+and [`AppxManifest.xml`](apps/desktop/src-tauri/packaging/msix/AppxManifest.xml).
+The build installs a copy signed with a throwaway certificate, runs `ibis
+--version` through its alias, starts the app from Start and removes it
+(`scripts/test-msix.ps1`). The package is a workflow artifact
+(`ibis-store-x86_64-pc-windows-msvc`, kept 90 days), never a release asset: it
+is unsigned, and the Store signs what it receives. Only a numbered release's
+package (product "Ibis") goes to the Store. In Partner Center, open the app,
+start an update submission, replace the package under Packages and submit. The
+Store copy updates through the Store, so its updater is off; its startup task
+and command alias replace the Run key and PATH entry (`src-tauri/src/store.rs`).
+
+The identity in `scripts/build-msix.ps1` must match Partner Center's
+Product identity page (package name, publisher and publisher display name).
 
 ## Verifying a download
 
