@@ -30,8 +30,6 @@ pub(crate) mod inheritance;
 
 #[path = "pdf/details.rs"]
 mod details;
-/// Whether this build holds the PDF parser, which only `ibis` should.
-pub const READER: bool = cfg!(feature = "pdf-reader");
 /// The child's side: a PDF's bytes parsed into text, labels and what it says
 /// about itself. Only the `pdf-reader` feature builds it.
 #[cfg(feature = "pdf-reader")]
