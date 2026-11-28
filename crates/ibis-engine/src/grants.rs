@@ -84,7 +84,7 @@ impl Grants {
     /// refused rather than asked.
     pub fn paste_for(&self, app: &AppId, identity: Option<&str>) -> Result<Option<AppPaste>, CopyReason> {
         let app = normalized(app);
-        let file = self.current();
+        let file = self.current().map_err(|_| CopyReason::PasteUnavailable)?;
         let entry = file.apps.iter().find(|entry| entry.app == app);
         let paste = entry.and_then(|entry| entry.paste).filter(|paste| {
             *paste != AppPaste::Paste
@@ -128,7 +128,7 @@ impl Grants {
     /// depends only on the app ID. Saying yes records it, so it shows once; a
     /// failed save says no, and the next paste tries again.
     pub fn take_plugin_note(&self, app: &AppId) -> bool {
-        if !has_citation_plugins(app) || self.current().recovery {
+        if !has_citation_plugins(app) || self.current().is_ok_and(|file| file.recovery) {
             return false;
         }
         let app = normalized(app);
@@ -152,15 +152,18 @@ impl Grants {
         .is_ok()
     }
 
-    /// The saved file, or an empty one that needs recovery when it cannot be read.
-    fn current(&self) -> File {
+    /// The saved file, or an empty one that needs recovery when what is saved
+    /// is not a file Ibis wrote. A read that fails for another reason, such as
+    /// a moment's sharing violation on Windows, is an error and changes nothing.
+    fn current(&self) -> io::Result<File> {
         match read(&self.path) {
-            Ok(file) => file,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => File::default(),
-            Err(_) => File {
+            Ok(file) => Ok(file),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(File::default()),
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => Ok(File {
                 recovery: true,
                 ..File::default()
-            },
+            }),
+            Err(error) => Err(error),
         }
     }
 
@@ -172,7 +175,7 @@ impl Grants {
         }
         let lock = open_private(&self.path.with_extension("json.lock"))?;
         lock.lock()?;
-        let mut file = self.current();
+        let mut file = self.current()?;
         change(&mut file.apps)?;
         let excess = file.apps.len().saturating_sub(MAX_APPS);
         file.apps.drain(..excess);

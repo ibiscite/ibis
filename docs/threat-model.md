@@ -88,17 +88,17 @@ started them. MCP tools are read-only; their results mark library text as data
 so an agent does not act on it.
 
 The **warm engine** (`ibis daemon`, [decision 0065](decisions/0065-one-warm-engine-thin-shells.md))
-listens on a same-user local socket and never on the network. The CLI, each
-`ibis mcp` session and native shells connect to it when it is available and
-start it on demand; without it every command runs in its own process. On Linux
+listens on a same-user local socket and never on the network. The CLI and
+each `ibis mcp` session connect to it when it is available and start it on
+demand; without it every command runs in its own process. On Linux
 and macOS the socket sits in a directory of mode `0700` that the person owns,
 and each end checks the other's user ID (`SO_PEERCRED`, `getpeereid`). On
 Windows it is a named pipe created as the first instance, refusing remote
 clients, with a DACL for the person's SID and a token check on each end. Every
 connection starts with a handshake naming the protocol and build; at most 32
 connections are served at once. It answers the same method table as
-`ibis serve --stdio`, so it can do nothing a program running the `ibis` command
-as the person could not. Another user's session cannot reach it. Tests:
+`ibis serve --stdio` and the requests the `ibis` command itself makes, so it
+can do nothing a program running the `ibis` command as the person could not. Another user's session cannot reach it. Tests:
 `daemon/unix.rs` and `daemon/windows.rs` (another user's peer, a shared socket
 directory, a second first instance) and `crates/ibis-cli/tests/daemon.rs`
 (capacity, crashes, build changes, the same answers as stdio).
