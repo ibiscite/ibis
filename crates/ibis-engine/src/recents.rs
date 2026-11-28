@@ -32,32 +32,19 @@ pub struct List {
     pub revision: u32,
     /// This run's citations per app, in the order first cited there; memory only.
     here: Vec<(String, Vec<ItemRef>)>,
+    /// Apps this process recorded since it read the file. A save keeps every
+    /// other app's list as the file holds it, so two engines never drop each
+    /// other's history.
+    touched: Vec<String>,
 }
 
 impl List {
     pub fn open(path: PathBuf, enabled: bool) -> Self {
-        let entries = (|| {
-            if !enabled || !path.is_file() {
-                return None;
-            }
-            let mut reader = std::fs::File::open(&path).ok()?.take(MAX_BYTES as u64 + 1);
-            let entries: Vec<(String, Vec<ItemRef>)> = serde_json::from_reader(io::BufReader::new(&mut reader)).ok()?;
-            if reader.limit() == 0 {
-                return None;
-            }
-            (entries.len() <= 20
-                && entries.iter().enumerate().all(|(i, (app, items))| {
-                    valid(app)
-                        && entries[..i].iter().all(|(other, _)| other != app)
-                        && items.len() <= 30
-                        && items
-                            .iter()
-                            .enumerate()
-                            .all(|(i, item)| valid(&item.key) && !items[..i].contains(item))
-                }))
-            .then_some(entries)
-        })()
-        .unwrap_or_default();
+        let entries = if enabled {
+            read_entries(&path).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         Self {
             path: Some(path),
             entries: Arc::new(entries),
@@ -93,6 +80,7 @@ impl List {
         self.epoch = Arc::new(());
         self.entries = Arc::default();
         self.here.clear();
+        self.touched.clear();
         self.forget_failed = true;
     }
     fn note_here(&mut self, app: &str, items: &[ItemRef]) {
@@ -133,6 +121,9 @@ impl List {
         entries.retain(|(id, _)| id != app);
         entries.insert(0, (app.into(), recent));
         entries.truncate(20);
+        if !self.touched.iter().any(|id| id == app) {
+            self.touched.push(app.into());
+        }
     }
     pub fn add(&mut self, cited: impl IntoIterator<Item = ItemRef>) {
         for item in cited {
@@ -210,12 +201,15 @@ impl Default for SessionReferences {
         let state = Arc::clone(&list);
         std::thread::spawn(move || {
             while let Ok(reply) = work.recv() {
-                let (path, observed) = {
+                let (path, observed, merge) = {
                     let current = state.recover_lock();
-                    (current.path.clone(), Arc::clone(&current.entries))
+                    // A forgotten or disabled history replaces the file; otherwise
+                    // only the apps recorded here replace their lists in it.
+                    let merge = (!current.forget_failed).then(|| current.touched.clone());
+                    (current.path.clone(), Arc::clone(&current.entries), merge)
                 };
                 let mut entries = (*observed).clone();
-                let saved = save(path, &mut entries);
+                let saved = save(path, &mut entries, merge.as_deref());
                 let mut current = state.recover_lock();
                 if Arc::ptr_eq(&observed, &current.entries) {
                     current.forget_failed &= saved.is_err();
@@ -267,7 +261,33 @@ fn valid(value: &str) -> bool {
     !value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
 }
 
-fn save(path: Option<PathBuf>, entries: &mut Vec<(String, Vec<ItemRef>)>) -> io::Result<()> {
+/// The saved lists, or nothing when the file is missing, too large or not one Ibis wrote.
+fn read_entries(path: &std::path::Path) -> Option<Vec<(String, Vec<ItemRef>)>> {
+    if !path.is_file() {
+        return None;
+    }
+    let mut reader = std::fs::File::open(path).ok()?.take(MAX_BYTES as u64 + 1);
+    let entries: Vec<(String, Vec<ItemRef>)> = serde_json::from_reader(io::BufReader::new(&mut reader)).ok()?;
+    if reader.limit() == 0 {
+        return None;
+    }
+    (entries.len() <= 20
+        && entries.iter().enumerate().all(|(i, (app, items))| {
+            valid(app)
+                && entries[..i].iter().all(|(other, _)| other != app)
+                && items.len() <= 30
+                && items
+                    .iter()
+                    .enumerate()
+                    .all(|(i, item)| valid(&item.key) && !items[..i].contains(item))
+        }))
+    .then_some(entries)
+}
+
+/// Writes the history under the settings writer lock. With `merge`, the apps it
+/// names come from memory and every other app's list from the file, so another
+/// Ibis engine's newer history survives.
+fn save(path: Option<PathBuf>, entries: &mut Vec<(String, Vec<ItemRef>)>, merge: Option<&[String]>) -> io::Result<()> {
     #[cfg(test)]
     tests::before_save(path.as_deref());
     let Some(path) = path else { return Ok(()) };
@@ -282,6 +302,11 @@ fn save(path: Option<PathBuf>, entries: &mut Vec<(String, Vec<ItemRef>)>) -> io:
         .map_err(io::Error::other)?;
     if settings.as_deref().is_some_and(disabled) {
         entries.clear();
+    } else if let Some(touched) = merge {
+        entries.retain(|(app, _)| touched.contains(app));
+        let others = read_entries(&path).unwrap_or_default();
+        entries.extend(others.into_iter().filter(|(app, _)| !touched.contains(app)));
+        entries.truncate(20);
     }
     let mut text = serde_json::to_string(entries)?;
     while text.len() > MAX_BYTES {

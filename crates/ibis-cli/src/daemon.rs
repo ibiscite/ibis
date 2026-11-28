@@ -110,18 +110,34 @@ enum Welcome {
     Busy,
 }
 
-/// An isolated configuration selects its own instance within this user's runtime.
+/// Each installed Ibis keeps its own warm engine: the instance is chosen by the
+/// configuration and by the folder the program lives in, so the Nightly's
+/// command and the native app never refuse each other, while an upgrade in
+/// place still drains the older build. Every instance shares the same files.
 #[derive(Clone)]
 pub struct Endpoint(Address);
 
 impl Endpoint {
-    pub fn new(config: &Path, runtime_root: Option<&Path>) -> io::Result<Self> {
-        let digest = Fingerprint::of_bytes(config.as_os_str().as_encoded_bytes());
-        Address::new(&digest.as_str()[..16], runtime_root).map(Self)
+    pub fn new(config: &Path, program: &Path, runtime_root: Option<&Path>) -> io::Result<Self> {
+        Address::new(&Self::namespace(config, program), runtime_root).map(Self)
+    }
+
+    /// Sixteen hex digits of the configuration and the program's resolved
+    /// folder, so a socket path stays short and a pipe name stays valid. A
+    /// command linked elsewhere, such as `~/.local/bin/ibis`, resolves to the
+    /// folder it lives in and joins that installation's engine.
+    pub fn namespace(config: &Path, program: &Path) -> String {
+        let program = std::fs::canonicalize(program).unwrap_or_else(|_| program.to_path_buf());
+        let folder = program.parent().unwrap_or(&program);
+        let mut key = config.as_os_str().as_encoded_bytes().to_vec();
+        key.push(0);
+        key.extend_from_slice(folder.as_os_str().as_encoded_bytes());
+        Fingerprint::of_bytes(&key).as_str()[..16].to_owned()
     }
 
     pub fn current() -> io::Result<Self> {
         let config = ibis_engine::identity::config_dir().ok_or(io::ErrorKind::NotFound)?;
+        let program = std::env::current_exe()?;
         let root = if cfg!(target_os = "linux") {
             std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from)
         } else if cfg!(windows) {
@@ -129,7 +145,7 @@ impl Endpoint {
         } else {
             None
         };
-        Self::new(&std::path::absolute(config)?, root.as_deref())
+        Self::new(&std::path::absolute(config)?, &program, root.as_deref())
     }
 
     /// Connect to an existing daemon's public method-table transport.

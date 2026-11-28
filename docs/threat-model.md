@@ -90,7 +90,9 @@ so an agent does not act on it.
 The **warm engine** (`ibis daemon`, [decision 0065](decisions/0065-one-warm-engine-thin-shells.md))
 listens on a same-user local socket and never on the network. The CLI and
 each `ibis mcp` session connect to it when it is available and start it on
-demand; without it every command runs in its own process. On Linux
+demand; without it every command runs in its own process. Each installed
+Ibis has its own instance, named by a hash of the configuration directory and
+the program's folder, with the same checks. On Linux
 and macOS the socket sits in a directory of mode `0700` that the person owns,
 and each end checks the other's user ID (`SO_PEERCRED`, `getpeereid`). On
 Windows it is a named pipe created as the first instance, refusing remote

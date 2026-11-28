@@ -24,7 +24,9 @@ nothing that macOS already draws.
 
 - **Window:** a non-activating `NSPanel` on Liquid Glass (`NSGlassEffectView`)
   on macOS 26, the HUD material (`NSVisualEffectView`) on macOS 15, and an
-  opaque window under Reduce Transparency. Its corners are 26 pt. Increase
+  opaque window under Reduce Transparency. Like Spotlight it closes when
+  focus leaves it, except while its details popover or the library chooser is
+  open. Its corners are 26 pt. Increase
   Contrast adds a separator outline. The app targets macOS 15 and later: any
   API newer than 15 goes through a shared part with an availability check
   (`SystemGlass`, `.systemGlass(corner:)`), never a screen alone.

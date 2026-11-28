@@ -53,13 +53,12 @@ impl Home {
         } else {
             None
         };
-        Endpoint::new(&self.config(), root.as_deref()).unwrap()
+        Endpoint::new(&self.config(), Path::new(IBIS), root.as_deref()).unwrap()
     }
 
     #[cfg(unix)]
     fn socket_path(&self) -> PathBuf {
-        let digest = ibis_core::contract::Fingerprint::of_bytes(self.config().as_os_str().as_encoded_bytes());
-        let name = format!("{}.sock", &digest.as_str()[..16]);
+        let name = format!("{}.sock", Endpoint::namespace(&self.config(), Path::new(IBIS)));
         if cfg!(target_os = "linux") {
             return self.0.path().join("ibis").join(name);
         }
@@ -94,8 +93,11 @@ impl Home {
         path
     }
 
+    /// An older build of the same installation: a copy beside the program, as
+    /// an update in place leaves it, so both share one engine instance.
     fn older_build(&self) -> PathBuf {
-        let older = self.0.path().join("older-ibis.exe");
+        let name = self.0.path().file_name().unwrap().to_string_lossy();
+        let older = Path::new(IBIS).with_file_name(format!("older-ibis-{name}.exe"));
         std::fs::copy(IBIS, &older).unwrap();
         let mut options = std::fs::OpenOptions::new();
         options.read(true);
@@ -110,6 +112,13 @@ impl Home {
             .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(100))
             .unwrap();
         older
+    }
+}
+
+impl Drop for Home {
+    fn drop(&mut self) {
+        let name = self.0.path().file_name().unwrap().to_string_lossy().into_owned();
+        let _ = std::fs::remove_file(Path::new(IBIS).with_file_name(format!("older-ibis-{name}.exe")));
     }
 }
 
@@ -856,4 +865,31 @@ fn a_delivery_asked_for_again_of_another_engine_never_pastes_twice() {
     assert_eq!(deliver_from_a_private_engine(&home, &library, once)["paste"], false);
     let next = "fedcba9876543210fedcba9876543210";
     assert_eq!(deliver_from_a_private_engine(&home, &library, next)["paste"], true);
+}
+
+#[test]
+fn each_installation_keeps_its_own_engine_and_an_update_in_place_shares_one() {
+    let home = Home::new();
+    let config = home.config();
+    let here = Endpoint::namespace(&config, Path::new(IBIS));
+    assert_eq!(here.len(), 16, "a short name keeps socket paths and pipe names valid");
+    // Another build in the same folder is an update in place: the same engine.
+    assert_eq!(
+        here,
+        Endpoint::namespace(&config, &Path::new(IBIS).with_file_name("ibis-updated"))
+    );
+    // Another installation gets its own engine over the same files.
+    let elsewhere = home.0.path().join("Other Ibis.app/Contents/MacOS/ibis");
+    assert_ne!(here, Endpoint::namespace(&config, &elsewhere));
+    assert_ne!(
+        here,
+        Endpoint::namespace(&home.0.path().join("isolated"), Path::new(IBIS))
+    );
+    // A command linked elsewhere joins the installation it points at.
+    #[cfg(unix)]
+    {
+        let link = home.0.path().join("ibis");
+        std::os::unix::fs::symlink(IBIS, &link).unwrap();
+        assert_eq!(Endpoint::namespace(&config, &link), here);
+    }
 }
