@@ -18,6 +18,9 @@ fetches upstream data at runtime.
 - `cite.js` comes from [zotero/zotero](https://github.com/zotero/zotero/blob/db41b99fddcc52d38897c59c161b6adaca036afb/chrome/content/zotero/xpcom/cite.js),
   part of Zotero under AGPL-3.0-or-later. It supplies the citation-system
   conversion, including URL/access-date suppression for printed articles.
+- `style.js` and `quickCopy.js` come from the same Zotero revision. They run
+  only in `fixtures/zotero/quick-copy/generate.mjs`, to record what Zotero's
+  Quick Copy gives for the invented items.
 
 `fixtures/zotero/mapping/generate.mjs` verifies every hash before invoking the
 pinned conversion code. To change a pin, replace these files from their exact
