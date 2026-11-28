@@ -398,7 +398,7 @@ struct Startup {
 /// handler can find state missing, and setup itself only starts effects.
 fn create_state(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     // Before the first library, so its id lasts and matches `ibis`.
-    ibis_engine::identity::use_saved_key(true);
+    ibis_engine::identity::use_saved_key(true)?;
     let settings_path = app.path().app_config_dir()?.join("settings.json");
     let loaded = settings::load(&settings_path);
     let cites = loaded.cites().ok();
