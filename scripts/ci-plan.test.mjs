@@ -33,7 +33,7 @@ test("crates come from cargo metadata with their workspace dependencies", () => 
 });
 
 test("documentation alone runs no Rust or picture job", () => {
-  assert.deepEqual(selected(["docs/testing.md", "README.md", "docs/design/picker.md", "docs/decisions/0049-local-gate.md", ".agents/skills/verify/SKILL.md", ".claude/skills"]), { rust: false, workspace: false, pictures: false, csl: false, full: false });
+  assert.deepEqual(selected(["docs/testing.md", "README.md", "docs/design/picker.md", "docs/decisions/0049-local-gate.md", ".agents/skills/verify/SKILL.md", ".claude/skills", ".github/pull_request_template.md"]), { rust: false, workspace: false, pictures: false, csl: false, full: false });
 });
 
 test("Windows rejects reserved names, forbidden characters and trailing dots or spaces", () => {
