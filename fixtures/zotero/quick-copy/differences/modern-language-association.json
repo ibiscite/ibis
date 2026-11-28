@@ -1,4 +1,4 @@
-{"style":"modern-language-association","compared":338,"matched":257,"missing_details":["zotero:base-collision-presentation"],"differences":[
+{"style":"modern-language-association","compared":338,"matched":258,"missing_details":["zotero:base-collision-presentation"],"differences":[
 {"ibis":"Invented Date Conversion. 2020–2026.","name":"date-2020-01/2026-10-25","reader":"zotero","view":"outcome","zotero":"error: citeproc-js error: CSL data error: element mismatch in date range input."},
 {"ibis":"refused: [Refused { item: 0, error: UnsupportedForm }]","name":"creator-104","reader":"zotero","view":"outcome","zotero":"Example."},
 {"ibis":"refused: [Refused { item: 0, error: UnsupportedForm }]","name":"isbn-123","reader":"zotero","view":"outcome","zotero":"([CSL STYLE ERROR: reference with no printed form.])"},
@@ -11,7 +11,6 @@
 {"ibis":"Invented Extra Edge. 1800–1801. 2001–2003.","name":"extra-edge-14","reader":"zotero","view":"bibliography text","zotero":"Invented Extra Edge. 2001–1801."},
 {"ibis":"<i>Invented Extra Edge</i>. 1800–1801. 2001–2003.","name":"extra-edge-15","reader":"zotero","view":"bibliography html","zotero":"<i>Invented Extra Edge</i>. 2001–1801."},
 {"ibis":"Invented Extra Edge. 1800–1801. 2001–2003.","name":"extra-edge-15","reader":"zotero","view":"bibliography text","zotero":"Invented Extra Edge. 2001–1801."},
-{"ibis":"de Synthetic, Example.","name":"creator-edge-11","reader":"zotero","view":"bibliography html","zotero":"de&nbsp;Synthetic, Example."},
 {"ibis":"refused: [Refused { item: 0, error: UnsupportedForm }]","name":"isbn-edge-0","reader":"zotero","view":"outcome","zotero":"([CSL STYLE ERROR: reference with no printed form.])"},
 {"ibis":"refused: [Refused { item: 0, error: UnsupportedForm }]","name":"isbn-edge-1","reader":"zotero","view":"outcome","zotero":"([CSL STYLE ERROR: reference with no printed form.])"},
 {"ibis":"refused: [Refused { item: 0, error: UnsupportedForm }]","name":"isbn-edge-2","reader":"zotero","view":"outcome","zotero":"([CSL STYLE ERROR: reference with no printed form.])"},
