@@ -63,7 +63,11 @@ Set-Content (Join-Path $stage 'AppxManifest.xml') $manifest -Encoding utf8NoBOM
 # Index the scale and target-size images, so Windows picks the right one.
 $makepri = Get-SdkTool 'makepri.exe'
 $config = Join-Path $env:RUNNER_TEMP 'priconfig.xml'
-Invoke-Tool $makepri @('createconfig', '/cf', $config, '/dq', 'en-US', '/o')
+Invoke-Tool $makepri @('createconfig', '/cf', $config, '/dq', 'en-US', '/pv', '10.0.0', '/o')
+# One package holds every image: no separate resource packs per scale.
+[xml]$pri = Get-Content $config -Raw
+$pri.resources.packaging | ForEach-Object { $_.ParentNode.RemoveChild($_) | Out-Null }
+$pri.Save($config)
 Invoke-Tool $makepri @('new', '/pr', $stage, '/cf', $config, '/of', (Join-Path $stage 'resources.pri'), '/o')
 
 New-Item -ItemType Directory -Force store | Out-Null
