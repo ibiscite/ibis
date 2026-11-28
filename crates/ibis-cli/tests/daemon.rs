@@ -797,9 +797,7 @@ fn deliver_from_a_private_engine(home: &Home, library: &Path, delivery: &str) ->
 fn a_citation_being_built_survives_its_engine() {
     let home = Home::new();
     let library = home.library();
-    let open = |resume: bool| {
-        json!({"app":null,"file":library,"language":"en-US","keep_query":resume,"resume":resume})
-    };
+    let open = |resume: bool| json!({"app":null,"file":library,"language":"en-US","keep_query":resume,"resume":resume});
     let added = |state: &Value| {
         state["citation"]
             .as_array()
