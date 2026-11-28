@@ -107,11 +107,12 @@ if [[ "$mode" == shots ]]; then
         screencapture -o -x -l "${ready% }" "$out/$appearance-$state.png"
       else
         printf 'No window for %s (%s)\n' "$state" "$appearance" >&2
+        cat "$config/$state.err" >&2
       fi
       kill "$pid" 2>/dev/null || true
       wait "$pid" 2>/dev/null || true
       # A state the engine never caught up with is named, so a flaky shot is visible.
-      grep -h 'settle timeout' "$config/$state.err" >&2 || true
+      grep -h 'settle timeout\|^columns\|column mismatch' "$config/$state.err" >&2 || true
     done
   done
   printf 'Screenshots in %s\n' "$out"

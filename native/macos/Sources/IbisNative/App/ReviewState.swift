@@ -41,6 +41,7 @@ enum ReviewState: String, CaseIterable {
         default: break
         }
         let store = panel.store
+        trace("start")
         // An invented app to paste into, never the one in front.
         let textEdit = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.TextEdit")
         store.pinnedDestination = ("TextEdit", textEdit.map { NSWorkspace.shared.icon(forFile: $0.path) })
@@ -75,6 +76,7 @@ enum ReviewState: String, CaseIterable {
         }
         await settle(store)
         await pause(500)
+        guard columnsLineUp(store) else { exit(1) }
         report(area(of: NSApp.windows.filter {
             $0.isVisible && $0.level >= .floating && $0 !== Self.backdropWindow && !$0.className.contains("StatusBar")
         }))
@@ -113,6 +115,7 @@ enum ReviewState: String, CaseIterable {
     }
 
     private func report(_ place: String) {
+        trace("ready")
         print("ready \(place)")
         fflush(stdout)
     }
@@ -121,11 +124,42 @@ enum ReviewState: String, CaseIterable {
     private func settle(_ store: PickerStore) async {
         await pause(150)
         for _ in 0..<300 {
-            if store.settled && !store.isChangingFormat { return }
+            if store.settled && !store.isChangingFormat {
+                trace("settled")
+                return
+            }
             await pause(50)
         }
+        trace("settle timeout")
         FileHandle.standardError.write(Data("settle timeout \(rawValue)\n".utf8))
     }
+
+    /// The grid holds when the search glyph sits centred over the first row's
+    /// icon and the query starts where its title does, within half a point.
+    private func columnsLineUp(_ store: PickerStore) -> Bool {
+        let anchors = store.anchors
+        guard let icon = anchors[.rowIcon], let title = anchors[.rowTitle], let query = anchors[.query],
+              let field = store.searchField else { return true }
+        // The query's first character sits inside the field by the cell's own inset.
+        let start = query.minX + (field.cell?.titleRect(forBounds: field.bounds).minX ?? 0)
+        let glyph = anchors[.glyph]?.midX ?? icon.midX
+        let line = String(format: "columns %@ glyph=%.1f icon=%.1f query=%.1f title=%.1f\n",
+                          rawValue, glyph, icon.midX, start, title.minX)
+        FileHandle.standardError.write(Data(line.utf8))
+        guard abs(glyph - icon.midX) <= 0.5, abs(start - title.minX) <= 0.5 else {
+            FileHandle.standardError.write(Data("column mismatch \(rawValue)\n".utf8))
+            return false
+        }
+        return true
+    }
+
+    /// Milliseconds since launch beside each step, for a state that stalls.
+    private func trace(_ step: String) {
+        let elapsed = Int(Date().timeIntervalSince(Self.launched) * 1000)
+        FileHandle.standardError.write(Data("trace \(rawValue) +\(elapsed)ms \(step)\n".utf8))
+    }
+
+    private static let launched = Date()
 
     private func pause(_ milliseconds: Int) async { try? await Task.sleep(for: .milliseconds(milliseconds)) }
 }
