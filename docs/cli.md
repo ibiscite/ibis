@@ -584,6 +584,12 @@ Input is one UTF-8 JSON value, read to EOF with a 1 MiB limit. stdout holds
 the citation or `--json` envelope; reasons go to stderr. RPC cancellation
 answers `cancelled` without affecting the next request.
 
+### A reference set
+
+A [reference set](reference-set.md) is a document's records as one CSL-JSON
+file that co-authors and build tools share. `ibis cite KEY… --format csl-json`
+writes its records, and `--file references.json` reads it back as a library.
+
 ### A project's own bibliography
 
 ```sh

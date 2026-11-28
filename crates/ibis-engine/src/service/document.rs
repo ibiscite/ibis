@@ -172,6 +172,8 @@ pub enum Problem {
     NotInSet,
     /// The record changed since the reference set was written.
     Changed,
+    /// The reference set holds this key twice, as a merge can leave it.
+    TwiceInSet,
     /// The record could not be written out to compare it with the set.
     Uncompared,
     /// The key is an old name: the library now calls the reference `current`.
@@ -411,8 +413,8 @@ impl Engine {
         })
     }
 
-    /// The cited keys a reference set lacks, and the records that changed
-    /// since it was written. Both sides go through the same share-safe
+    /// The cited keys a reference set lacks or holds twice, and the records
+    /// that changed since it was written. Both sides go through the same share-safe
     /// CSL-JSON export, so only a change in what would be cited counts.
     fn against_set(
         &self,
@@ -430,6 +432,13 @@ impl Engine {
         let Ok(Value::Array(records)) = serde_json::from_slice::<Value>(&bytes) else {
             return Ok(Err(Refusal::Damaged));
         };
+        let mut keys = HashSet::new();
+        let twice: HashSet<String> = records
+            .iter()
+            .filter_map(|record| record.get("citation-key")?.as_str())
+            .filter(|key| !keys.insert(*key))
+            .map(str::to_owned)
+            .collect();
         let in_set = if records.is_empty() {
             BTreeMap::new()
         } else {
@@ -490,6 +499,7 @@ impl Engine {
                 // A renamed key is compared under the name the set was written with.
                 let Some(&name) = now.get(key.as_str()) else { continue };
                 let problem = match (in_set.get(name), current.get(name)) {
+                    _ if twice.contains(name) => Problem::TwiceInSet,
                     (None, _) => Problem::NotInSet,
                     (Some(_), None) => Problem::Uncompared,
                     (Some(then), Some(now)) if then != now => Problem::Changed,

@@ -254,6 +254,14 @@ fn an_exported_set_locks_the_cited_records() {
             (1, Some("fen2023"), Problem::NotInSet),
         ]
     );
+    // Both co-authors' versions of a record survived a merge.
+    let mut merged: Vec<Value> = serde_json::from_str(&records.text).unwrap();
+    merged.push(
+        serde_json::json!({"id": "vale2024-theirs", "citation-key": "vale2024", "type": "book", "title": "Theirs"}),
+    );
+    let set = changed.file("merged.json", &serde_json::to_string(&merged).unwrap());
+    let read = super::tests::read(changed.check(&draft, Some(&set)));
+    assert_eq!(problems(&read)[0], (1, Some("vale2024"), Problem::TwiceInSet));
     let damaged = changed.file("damaged.json", "{\"not\": \"a set\"}");
     assert_eq!(
         changed.check(&draft, Some(&damaged)),

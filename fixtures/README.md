@@ -27,6 +27,7 @@ node scripts/gen.mjs
 | `updates/` | A synthetic package with unversioned, Stable and Nightly signatures from CLI 2.12.3, a forged trusted comment, and an unrelated public key; throwaway private keys were discarded |
 | `zotero/quick-copy/` | Zotero's own Quick Copy output for every invented mapping item in each curated style, and each style's listed differences from Ibis; see its README |
 | `latex/` | What LaTeX, biblatex and Biber say about Ibis's BibTeX for every invented mapping item, in two styles; see its README |
+| `reference-set/` | An invented reference set in the canonical layout, read back by Ibis unchanged; see its README |
 | `zotero/` | Synthetic Zotero local-API item envelopes (`key`, `links`, `data`, `csljson`); database snapshots for Zotero 7–10, including trashed parents and children, are still planned |
 
 `locators.json` is the trailing-locator fixture set for `ibis_core::locator`,
