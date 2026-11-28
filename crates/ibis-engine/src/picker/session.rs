@@ -166,6 +166,11 @@ impl PickerSession {
         self.query.clear();
     }
 
+    /// A delivery spent its ticket but its write failed: the next state renders a new one.
+    pub fn forget_preview(&mut self) {
+        self.rendered = None;
+    }
+
     pub fn scope(&self) -> Option<&PickerFormatScope> {
         self.scope.as_ref()
     }
@@ -331,6 +336,9 @@ impl PickerSession {
     /// field. With nothing typed to add, Tab takes the highlighted result,
     /// even beside an added citation where Return would not cite it.
     fn add_pending(&mut self, engine: &Engine, highlighted: bool) -> Result<(), EngineError> {
+        if self.blocked() {
+            return Ok(());
+        }
         let mut pending: Vec<_> = self
             .pending()
             .into_iter()
@@ -390,24 +398,31 @@ impl PickerSession {
             entries.iter().any(|(row, _, _)| &row.id == id)
         };
         let segments = self.found.iter().flat_map(|found| &found.segments);
-        for segment in segments.filter(|segment| segment.complete) {
-            if let Some(row) = &segment.row
-                && !has(&entries, &row.id)
+        // A pasted list cites every reference it names, in order, wherever it was typed.
+        for segment in segments.filter(|segment| segment.complete || segment.list.is_some()) {
+            let details = PickerDetails {
+                locator: segment.locator.clone(),
+                prefix: segment.prefix.clone(),
+                ..PickerDetails::default()
+            };
+            for row in segment
+                .list
+                .iter()
+                .flatten()
+                .chain(segment.row.as_ref().filter(|_| segment.complete))
             {
-                let details = PickerDetails {
-                    locator: segment.locator.clone(),
-                    prefix: segment.prefix.clone(),
-                    ..PickerDetails::default()
-                };
-                entries.push((row.clone(), details, false));
+                if !has(&entries, &row.id) {
+                    entries.push((row.clone(), details.clone(), false));
+                }
             }
         }
         let typing = self
             .found
             .as_ref()
             .and_then(|found| found.segments.last())
-            .is_some_and(|segment| !segment.complete);
-        if (typing || entries.is_empty())
+            .is_some_and(|segment| !segment.complete && segment.list.is_none());
+        if !self.blocked()
+            && (typing || entries.is_empty())
             && let Some(row) = self
                 .highlight
                 .as_ref()
@@ -417,6 +432,14 @@ impl PickerSession {
             entries.push((row.clone(), self.typed_details(&row.id), false));
         }
         entries
+    }
+
+    /// Something typed names no reference: nothing is cited or added until it does.
+    fn blocked(&self) -> bool {
+        self.found
+            .iter()
+            .flat_map(|found| &found.segments)
+            .any(|segment| segment.unresolved)
     }
 
     fn format(&self) -> Option<String> {
@@ -486,7 +509,7 @@ impl PickerSession {
         let bibliography = self.scope.as_ref().is_some_and(|scope| scope.requires_bibliography);
         let keep_order = self.keep_order && entries.len() > 1;
         let preview = match &format {
-            Some(format) if !entries.is_empty() && !bibliography => {
+            Some(format) if !entries.is_empty() && !bibliography && !self.blocked() => {
                 let unchanged = self
                     .rendered
                     .as_ref()

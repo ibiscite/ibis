@@ -267,6 +267,9 @@ pub(super) fn serve(
                                     .history()
                                     .record(&picker.settings, picker.target.as_ref(), &items);
                                 picker.session.delivered();
+                            } else {
+                                // The write failed after its ticket was spent: render again.
+                                picker.session.forget_preview();
                             }
                             continue;
                         }
