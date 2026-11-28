@@ -255,3 +255,18 @@ fn a_format_used_once_drops_forms_it_cannot_write() {
             .is_err()
     );
 }
+
+#[test]
+fn a_name_of_many_words_offers_a_few_short_bylines() {
+    let name = "a ".repeat(20_000);
+    let (_dir, engine) = library(vec![
+        json!({"id":"long", "title":"Invented wordy body", "type":"report",
+        "author":[{"literal": name}], "issued":{"date-parts":[[2020]]}}),
+    ]);
+    let found = find(&engine, "wordy", &[], Language::English);
+    let row = &found.sections[0].rows[0];
+    assert!(row.bylines.len() <= 12, "{} bylines", row.bylines.len());
+    let shortened: Vec<_> = row.bylines.iter().filter(|line| line.ends_with('…')).collect();
+    assert!(!shortened.is_empty());
+    assert!(shortened.iter().all(|line| line.len() <= 200));
+}

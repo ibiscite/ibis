@@ -345,6 +345,10 @@ fn kind(item_type: &str) -> PickerRowKind {
     }
 }
 
+/// How many shortened first-author names a row offers, and how long each may be.
+const SHORT_NAME_CUTS: usize = 6;
+const SHORT_NAME_BYTES: usize = 160;
+
 fn bylines(authors: &[Author], year: &str, container: Option<&str>, language: Language) -> (String, Vec<String>) {
     let join = |authors: &str, date, venue| {
         [(!authors.is_empty()).then_some(authors), date, venue]
@@ -384,7 +388,16 @@ fn bylines(authors: &[Author], year: &str, container: Option<&str>, language: La
     }
     if let Some(author) = first {
         choices.push(join(&author.short, None, None));
-        for (end, _) in author.short.char_indices().filter(|(_, c)| c.is_whitespace()).rev() {
+        // Cut a long name at its last few spaces that still fit a row, so a
+        // name of many words never yields a line per word.
+        let cuts: Vec<_> = author
+            .short
+            .char_indices()
+            .take_while(|(end, _)| *end <= SHORT_NAME_BYTES)
+            .filter(|(_, c)| c.is_whitespace())
+            .map(|(end, _)| end)
+            .collect();
+        for end in cuts.into_iter().rev().take(SHORT_NAME_CUTS) {
             choices.push(join(&format!("{}…", author.short[..end].trim_end()), None, None));
         }
     }
