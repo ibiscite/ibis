@@ -2,8 +2,8 @@
 
 This repo build is the picker and delivery from
 [decision 0065](../../docs/decisions/0065-one-warm-engine-thin-shells.md).
-It targets macOS 13 or later and uses the workspace Rust toolchain and
-Xcode Command Line Tools with Swift 5.9 or later.
+It targets macOS 26 and later ([decision 0066](../../docs/decisions/0066-native-shells-use-system-parts.md))
+and uses the workspace Rust toolchain and Xcode 26 or its Command Line Tools.
 
 ```sh
 scripts/native-macos.sh dev      # rebuild, quit the running copy, open the picker on Review.csljson

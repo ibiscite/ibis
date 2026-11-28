@@ -280,7 +280,8 @@ maintainer's Mac.
 Every row of the generated compatibility table has recorded evidence on the
 exact release.
 
-- **Systems:** macOS 13 and later on Apple silicon and Intel; Windows 10 and 11;
+- **Systems:** macOS 26 and later in the native app (older Macs keep the last
+  Tauri release, [0066](docs/decisions/0066-native-shells-use-system-parts.md)); Windows 10 and 11;
   Linux with automatic paste on X11 and on GNOME and KDE Wayland; ARM64 builds.
 - **Sources:** Zotero 7 to 10, running and closed, with and without Better
   BibTeX; `.bib`, CSL-JSON, RIS, EndNote and a folder of PDFs; 10,000
