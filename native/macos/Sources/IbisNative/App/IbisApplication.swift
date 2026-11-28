@@ -40,9 +40,12 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
     private let engine = EngineClient(binary: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/ibis"))
     private lazy var store = PickerStore(engine: engine, file: launch.file)
     private lazy var panel: PickerPanel = {
-        let panel = PickerPanel(store: store) { [weak self] missing in
+        let panel = PickerPanel(store: store, chooseLibrary: { [weak self] missing in
             self?.chooseLibrary(missing: missing)
-        }
+        }, useLibrary: { [weak self] file in
+            guard let self, !self.panel.choosingLibrary, !self.store.isDelivering else { return }
+            self.useLibrary(file, fromSettings: false)
+        })
         panel.openSettings = { [weak self] in self?.showSettings() }
         store.needsPasteAccess = { PermissionHelper.shared.showAtPaste() }
         store.didDeliver = { [weak self] in self?.nod() }
@@ -51,6 +54,8 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
     }()
     private lazy var settings = NativeSettingsWindow(engine: engine, shortcuts: shortcuts, chooseLibrary: {
         [weak self] window, missing in self?.chooseLibrary(missing: missing, in: window)
+    }, libraryInUse: { [weak self] in
+        self?.store.catalog?.library?.file.map(URL.init(fileURLWithPath:)) ?? self?.store.file
     }, applied: { [weak self] saved, resetText in
         self?.store.applySettings(saved, resetTextSize: resetText)
     })
@@ -211,34 +216,40 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
                 self.panel.choosingLibrary = false
                 return
             }
-            if fromSettings { self.settings.setLibraryBusy(true) }
-            Task {
-                defer {
-                    self.panel.choosingLibrary = false
-                    if fromSettings { self.settings.setLibraryBusy(false) }
-                }
-                do {
-                    let saved = try await self.engine.chooseLibrary(file)
-                    self.store.useSavedLibrary()
-                    if fromSettings {
-                        self.settings.didSelectLibrary(saved)
-                    } else if self.panel.pickerIsOpen {
-                        self.panel.focusSearch()
-                    } else {
-                        self.panel.summon()
-                    }
-                } catch {
-                    if fromSettings {
-                        self.settings.didRejectLibrary(error)
-                    } else {
-                        if !self.panel.pickerIsOpen { self.panel.summon() }
-                        self.store.reportLibraryChoice(error)
-                    }
-                }
-            }
+            self.useLibrary(file, fromSettings: fromSettings)
         }
         if let window { chooser.beginSheetModal(for: window, completionHandler: finished) }
         else { chooser.begin(completionHandler: finished) }
+    }
+
+    /// A library file chosen in the chooser or dropped on the picker becomes the saved library.
+    private func useLibrary(_ file: URL, fromSettings: Bool) {
+        panel.choosingLibrary = true
+        if fromSettings { settings.setLibraryBusy(true) }
+        Task {
+            defer {
+                panel.choosingLibrary = false
+                if fromSettings { settings.setLibraryBusy(false) }
+            }
+            do {
+                let saved = try await engine.chooseLibrary(file)
+                store.useSavedLibrary()
+                if fromSettings {
+                    settings.didSelectLibrary(saved)
+                } else if panel.pickerIsOpen {
+                    panel.focusSearch()
+                } else {
+                    panel.summon()
+                }
+            } catch {
+                if fromSettings {
+                    settings.didRejectLibrary(error)
+                } else {
+                    if !panel.pickerIsOpen { panel.summon() }
+                    store.reportLibraryChoice(error)
+                }
+            }
+        }
     }
 
     @objc private func quit() { NSApp.terminate(nil) }

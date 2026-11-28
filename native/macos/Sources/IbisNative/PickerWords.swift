@@ -53,6 +53,7 @@ enum PickerWord {
     case copyCitation
     case copyFailed
     case copyMode
+    case copyShort
     case dark
     case density
     case details
@@ -101,6 +102,7 @@ enum PickerWord {
     case noLibrarySelected
     case noMatches
     case noMatchesHint
+    case noMatchesIn
     case open
     case openLibrary
     case openSource
@@ -112,8 +114,8 @@ enum PickerWord {
     case panel
     case paste
     case pasteNeedsAccess
-    case pasteReady
     case pasteSettings
+    case pasteShort
     case pasteTryAgain
     case pasted
     case peek
@@ -126,6 +128,7 @@ enum PickerWord {
     case reload
     case remove
     case removeToken
+    case removedToken
     case requestFailed
     case restoreShortcut
     case returnKey
@@ -227,6 +230,7 @@ enum PickerWords {
             .copyCitation: "نسخ الاستشهاد",
             .copyFailed: "تغيّرت الحافظة أو تعذّرت الكتابة فيها.",
             .copyMode: "ينسخ Ibis الاستشهادات. اضغط ⌘V للصق.",
+            .copyShort: "نسخ",
             .dark: "داكن",
             .density: "الصفوف",
             .details: "تفاصيل الاستشهاد",
@@ -275,6 +279,7 @@ enum PickerWords {
             .noLibrarySelected: "لم تُختر أي مكتبة",
             .noMatches: "لا مراجع مطابقة",
             .noMatchesHint: "جرّب اسم عائلة أو سنة أو كلمات أقل.",
+            .noMatchesIn: "لا نتائج في {IBIS_VALUE}",
             .open: "فتح Ibis",
             .openLibrary: "فتح المكتبة",
             .openSource: "فتح المصدر",
@@ -286,8 +291,8 @@ enum PickerWords {
             .panel: "Ibis، منتقي الاستشهادات",
             .paste: "لصق في {IBIS_VALUE}",
             .pasteNeedsAccess: "ليلصق بأمان، يحتاج Ibis إلى إذن تسهيلات الاستخدام ليتحقق من النافذة التي تتلقى الكتابة، وإلى إذن بضغط ⌘V. ولا يقرأ أبدًا ما تكتبه.",
-            .pasteReady: "اللصق مفعّل.",
             .pasteSettings: "اللصق",
+            .pasteShort: "لصق",
             .pasteTryAgain: "عُد إلى مستندك وافتح Ibis مجددًا. اضغط Enter للمحاولة مرة أخرى.",
             .pasted: "القائمة الملصقة",
             .peek: "لمحة عن المرجع",
@@ -300,6 +305,7 @@ enum PickerWords {
             .reload: "إعادة تحميل المكتبة",
             .remove: "إزالة من الاستشهاد",
             .removeToken: "إزالة {IBIS_VALUE} من الاستشهاد",
+            .removedToken: "تمت إزالة {IBIS_VALUE}",
             .requestFailed: "تعذّر على Ibis إكمال الطلب. حاول مجددًا.",
             .restoreShortcut: "استخدام الافتراضي",
             .returnKey: "مفتاح الإدخال",
@@ -388,6 +394,7 @@ enum PickerWords {
             .copyCitation: "Zitat kopieren",
             .copyFailed: "Die Zwischenablage hat sich geändert oder konnte nicht beschrieben werden.",
             .copyMode: "Ibis kopiert Zitate. Drücken Sie ⌘V zum Einfügen.",
+            .copyShort: "Kopieren",
             .dark: "Dunkel",
             .density: "Zeilen",
             .details: "Zitationsdetails",
@@ -436,6 +443,7 @@ enum PickerWords {
             .noLibrarySelected: "Keine Bibliothek gewählt",
             .noMatches: "Keine passenden Referenzen",
             .noMatchesHint: "Versuchen Sie einen Nachnamen, ein Jahr oder weniger Wörter.",
+            .noMatchesIn: "Keine Treffer in {IBIS_VALUE}",
             .open: "Ibis öffnen",
             .openLibrary: "Bibliothek öffnen",
             .openSource: "Quelle öffnen",
@@ -447,8 +455,8 @@ enum PickerWords {
             .panel: "Ibis, Zitationsauswahl",
             .paste: "In {IBIS_VALUE} einfügen",
             .pasteNeedsAccess: "Um sicher einzufügen, braucht Ibis Zugriff auf Bedienungshilfen, um zu prüfen, welches Fenster die Tastatur hat, und die Erlaubnis, ⌘V zu drücken. Was Sie tippen, liest Ibis nie.",
-            .pasteReady: "Einfügen ist aktiviert.",
             .pasteSettings: "Einfügen",
+            .pasteShort: "Einfügen",
             .pasteTryAgain: "Kehren Sie zu Ihrem Dokument zurück und öffnen Sie Ibis erneut. Drücken Sie Enter, um es noch einmal zu versuchen.",
             .pasted: "Eingefügte Liste",
             .peek: "Kurzansicht der Referenz",
@@ -461,6 +469,7 @@ enum PickerWords {
             .reload: "Bibliothek neu laden",
             .remove: "Aus Zitation entfernen",
             .removeToken: "{IBIS_VALUE} aus der Zitation entfernen",
+            .removedToken: "{IBIS_VALUE} entfernt",
             .requestFailed: "Ibis konnte die Anfrage nicht abschließen. Versuchen Sie es erneut.",
             .restoreShortcut: "Standard verwenden",
             .returnKey: "Eingabetaste",
@@ -549,6 +558,7 @@ enum PickerWords {
             .copyCitation: "Copy Citation",
             .copyFailed: "The clipboard changed or could not be written.",
             .copyMode: "Ibis copies citations. Press ⌘V to paste.",
+            .copyShort: "Copy",
             .dark: "Dark",
             .density: "Rows",
             .details: "Citation details",
@@ -597,6 +607,7 @@ enum PickerWords {
             .noLibrarySelected: "No library chosen",
             .noMatches: "No matching references",
             .noMatchesHint: "Try a surname, year or fewer words.",
+            .noMatchesIn: "No matches in {IBIS_VALUE}",
             .open: "Open Ibis",
             .openLibrary: "Open Library",
             .openSource: "Open Source",
@@ -608,8 +619,8 @@ enum PickerWords {
             .panel: "Ibis, citation picker",
             .paste: "Paste into {IBIS_VALUE}",
             .pasteNeedsAccess: "To paste safely, Ibis needs Accessibility access to check which window has the keyboard, as well as permission to press ⌘V. It never reads what you type.",
-            .pasteReady: "Pasting is on.",
             .pasteSettings: "Pasting",
+            .pasteShort: "Paste",
             .pasteTryAgain: "Return to your document and open Ibis again. Press Enter to try again.",
             .pasted: "Pasted list",
             .peek: "Peek at Reference",
@@ -622,6 +633,7 @@ enum PickerWords {
             .reload: "Reload Library",
             .remove: "Remove from Citation",
             .removeToken: "Remove {IBIS_VALUE} from citation",
+            .removedToken: "Removed {IBIS_VALUE}",
             .requestFailed: "Ibis couldn’t finish this request. Try again.",
             .restoreShortcut: "Use Default",
             .returnKey: "Return",

@@ -135,10 +135,10 @@ extension PickerStore {
 
     func emptyAction(primary: Bool) {
         switch emptyState {
-        case .choose: if primary { panel?.chooseLibrary() } else { panel?.openSettings?() }
+        case .choose: panel?.chooseLibrary()
         case .unreadable: panel?.chooseLibrary()
         case .missing: panel?.chooseLibrary(locate: primary)
-        case .noMatches: if primary { _ = escape() }
+        case .noMatches: if primary { _ = escape() } else { panel?.openSource() }
         default: break
         }
     }

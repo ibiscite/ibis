@@ -58,6 +58,8 @@ fi
 
 swift build --package-path "$package" --jobs 3 "${link_sdk[@]}"
 swift_bin=$(swift build --package-path "$package" --show-bin-path "${link_sdk[@]}")
+# Resources are copied fresh each build, so a removed file never stays behind.
+rm -rf "$app/Contents/Resources"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$package/Info.plist" "$app/Contents/Info.plist"
 cp "$swift_bin/IbisNative" "$app/Contents/MacOS/IbisNative"
@@ -92,9 +94,9 @@ if [[ "$mode" == shots ]]; then
       args=(--state "$state" --appearance "$appearance")
       [[ "$state" == choose ]] || args+=(--file "$review")
       log="$config/$state.log"
-      IBIS_CONFIG_DIR="$config" "$app/Contents/MacOS/IbisNative" "${args[@]}" >"$log" 2>/dev/null &
+      IBIS_CONFIG_DIR="$config" "$app/Contents/MacOS/IbisNative" "${args[@]}" >"$log" 2>"$config/$state.err" &
       pid=$!
-      for _ in $(seq 100); do grep -q '^ready' "$log" && break; sleep 0.2; done
+      for _ in $(seq 600); do grep -q '^ready' "$log" && break; sleep 0.2; done
       # `ready WINDOW` names one window; `ready rect X,Y,W,H` a screen area
       # holding the picker with its Peek or popover.
       ready=$(awk '/^ready/ {print $2, $3; exit}' "$log")
@@ -107,6 +109,8 @@ if [[ "$mode" == shots ]]; then
       fi
       kill "$pid" 2>/dev/null || true
       wait "$pid" 2>/dev/null || true
+      # A state the engine never caught up with is named, so a flaky shot is visible.
+      grep -h 'settle timeout' "$config/$state.err" >&2 || true
     done
   done
   printf 'Screenshots in %s\n' "$out"

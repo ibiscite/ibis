@@ -2151,6 +2151,8 @@ picker-native-before-example = see
 picker-native-after-example = emphasis added
 picker-native-form-narrative = Name in the text
 picker-native-copy-citation = Copy Citation
+picker-native-paste-short = Paste
+picker-native-no-matches-in = No matches in { $name }
 
 picker-native-remember-format = Remember for { $app }
 picker-native-format-project = Project: { $name }

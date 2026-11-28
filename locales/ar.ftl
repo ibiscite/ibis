@@ -2240,6 +2240,8 @@ picker-native-before-example = انظر
 picker-native-after-example = التشديد مضاف
 picker-native-form-narrative = الاسم في النص
 picker-native-copy-citation = نسخ الاستشهاد
+picker-native-paste-short = لصق
+picker-native-no-matches-in = لا نتائج في { $name }
 
 picker-native-remember-format = تذكّر التنسيق لـ { $app }
 picker-native-format-project = المشروع: { $name }

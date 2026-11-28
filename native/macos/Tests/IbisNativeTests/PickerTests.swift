@@ -129,7 +129,7 @@ final class PickerTests: XCTestCase {
         let engine = fixture.client()
         let store = PickerStore(engine: engine)
         var choseLibrary = false
-        let panel = PickerPanel(store: store, chooseLibrary: { _ in choseLibrary = true })
+        let panel = PickerPanel(store: store, chooseLibrary: { _ in choseLibrary = true }, useLibrary: { _ in })
         panel.summon()
         defer { panel.dismiss() }
         try await eventually { store.catalog != nil }
@@ -197,7 +197,7 @@ final class PickerTests: XCTestCase {
         try JSONSerialization.data(withJSONObject: records).write(to: fixture.library)
         try fixture.identifyDaemon()
         let store = PickerStore(engine: fixture.client(), file: fixture.library)
-        let panel = PickerPanel(store: store, chooseLibrary: { _ in })
+        let panel = PickerPanel(store: store, chooseLibrary: { _ in }, useLibrary: { _ in })
         let owner = NSWorkspace.shared.menuBarOwningApplication?.processIdentifier
         panel.summon()
         defer { panel.dismiss() }
@@ -232,6 +232,7 @@ final class PickerTests: XCTestCase {
         // Delete in an empty field takes back the last added reference.
         try send("\u{7f}", key: 51, to: panel)
         try await eventually { store.settled && store.added.isEmpty }
+        XCTAssertEqual(store.problem?.symbol, "arrow.uturn.backward", "The footer says what left and how to undo it.")
 
         for _ in 0..<10 {
             try send("=", key: 24, flags: [.command], to: panel)
