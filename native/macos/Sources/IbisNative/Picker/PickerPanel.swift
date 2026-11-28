@@ -15,12 +15,15 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     private let peek: PeekPanel
     private let glass: SystemGlass
     private let chooser: (URL?) -> Void
+    private let opener: (URL) -> Void
     private var display: NSScreen?
     private var shown = false
     private var commandHold: Task<Void, Never>?
     private var observers: [NSObjectProtocol] = []
     private var preferences: Set<AnyCancellable> = []
     var openSettings: (() -> Void)?
+    /// Review shots open on one display for an invented app, never the one in front.
+    var pinned: (app: String, name: String, screen: NSScreen?)?
 
     var pickerIsOpen: Bool { shown }
     var searchField: NSTextField? { store.searchField }
@@ -29,9 +32,10 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         set { store.choosingLibrary = newValue }
     }
 
-    init(store: PickerStore, chooseLibrary: @escaping (URL?) -> Void) {
+    init(store: PickerStore, chooseLibrary: @escaping (URL?) -> Void, useLibrary: @escaping (URL) -> Void) {
         self.store = store
         chooser = chooseLibrary
+        opener = useLibrary
         host = NSHostingView(rootView: PickerView(store: store))
         peek = PeekPanel(store: store)
         host.safeAreaRegions = []
@@ -95,6 +99,13 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     override var canBecomeMain: Bool { false }
 
     func summon() {
+        if let pinned {
+            display = pinned.screen ?? NSScreen.main
+            if let display { place(on: display) }
+            store.present(app: pinned.app, name: pinned.name)
+            show()
+            return
+        }
         let target = NSWorkspace.shared.frontmostApplication
         display = focusedDisplay(for: target)
             ?? NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
@@ -112,6 +123,10 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
             return (site.data.map { String(decoding: UnsafeBufferPointer(start: $0, count: site.len), as: UTF8.self) },
                     selection)
         }
+        show()
+    }
+
+    private func show() {
         glass.refresh()
         host.layoutSubtreeIfNeeded()
         // Draw once before showing, so the glass never appears empty.
@@ -236,6 +251,8 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         return CGRect(x: x, y: y, width: width, height: height)
     }
 
+    func useLibrary(_ file: URL) { opener(file) }
+
     func chooseLibrary(locate: Bool = false) {
         let missing = locate ? store.catalog?.library?.file.map { URL(fileURLWithPath: $0) } : nil
         chooser(missing)
@@ -268,6 +285,7 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     }
 
     private func flags(_ flags: NSEvent.ModifierFlags) {
+        store.setOptionHeld(flags.intersection([.command, .option, .control, .shift]) == [.option])
         if flags.contains(.command) {
             guard commandHold == nil else { return }
             commandHold = Task { [weak store] in

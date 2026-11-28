@@ -18,6 +18,13 @@ final class PickerStore: ObservableObject {
 
     enum Anchor: Hashable { case format, citation, actions }
 
+    /// The line above the footer: what went wrong, or what just happened.
+    struct Problem {
+        let text: String
+        let status: PickerStatus?
+        var symbol: String? = nil
+    }
+
     // From the engine.
     @Published private(set) var catalog: PickerOpenResult?
     @Published private(set) var state: PickerState?
@@ -34,6 +41,10 @@ final class PickerStore: ObservableObject {
     @Published private(set) var peek: ItemRef?
     @Published private(set) var numbers = false
     @Published private(set) var isKey = false
+    /// While Option is held, Return copies; the delivery button says so.
+    @Published private(set) var optionHeld = false
+    /// "Vale removed · Undo ⌘Z", for a few seconds after a removal.
+    @Published private(set) var removal: String?
     /// Changes when the keyboard moves the highlight, so only then the list scrolls.
     @Published private(set) var revealed = 0
     @Published var appearance: Appearance = .system
@@ -53,6 +64,8 @@ final class PickerStore: ObservableObject {
     var didDeliver: (() -> Void)?
     /// The citation was copied rather than pasted; the text says what to do next.
     var didCopy: ((String) -> Void)?
+    /// Review shots name an invented app instead of the one in front.
+    var pinnedDestination: (name: String, icon: NSImage?)?
 
     private let engine: EngineClient
     private var opening: PickerOpenRequest?
@@ -69,6 +82,7 @@ final class PickerStore: ObservableObject {
     private var hasTemporaryTextSize = false
     private var announcement: Task<Void, Never>?
     private var formsTask: Task<Void, Never>?
+    private var removalTask: Task<Void, Never>?
 
     init(engine: EngineClient, file: URL? = nil) {
         self.engine = engine
@@ -94,15 +108,24 @@ final class PickerStore: ObservableObject {
         return preview.problem == nil && !preview.ticket.isEmpty && !preview.text.isEmpty
     }
 
+    private var destination: String? { optionHeld ? nil : pinnedDestination?.name ?? pasteDestination }
+
     /// One citation, however many references it holds; the footer counts those.
     var deliveryTitle: String {
-        pasteDestination.map { PickerWords.text(.paste, $0) } ?? PickerWords.text(.copyCitation)
+        destination.map { PickerWords.text(.paste, $0) } ?? PickerWords.text(.copyCitation)
     }
+
+    /// The same action in one word, when the full title does not fit.
+    var deliveryShortTitle: String { PickerWords.text(destination == nil ? .copyShort : .pasteShort) }
+
+    /// The key that delivers: ⌥↩ while Option is held.
+    var deliveryKey: String { optionHeld ? "⌥↩" : "↩" }
 
     /// The app the citation goes to, for its icon beside the delivery button.
     var destinationIcon: NSImage? {
-        guard pasteDestination != nil, let targetPID,
-              let app = NSRunningApplication(processIdentifier: targetPID) else { return nil }
+        guard destination != nil else { return nil }
+        if let pinnedDestination { return pinnedDestination.icon }
+        guard let targetPID, let app = NSRunningApplication(processIdentifier: targetPID) else { return nil }
         return app.icon
     }
 
@@ -140,7 +163,11 @@ final class PickerStore: ObservableObject {
     var showsFooter: Bool { libraryReady && !isOpening && (showsList || !citation.isEmpty) }
 
     var emptyState: EmptyState? {
-        guard rows.isEmpty, citation.isEmpty, !isOpening else { return nil }
+        guard rows.isEmpty, !isOpening else { return nil }
+        // A search that misses says so even beside references already added.
+        if !citation.isEmpty {
+            return libraryReady && !query.trimmingCharacters(in: .whitespaces).isEmpty ? .noMatches : nil
+        }
         guard let catalog else { return notice == nil ? nil : .choose }
         guard let library = catalog.library else { return .choose }
         switch library.condition {
@@ -151,13 +178,17 @@ final class PickerStore: ObservableObject {
     }
 
     /// One line above the footer, only when there is something to say.
-    var problem: (text: String, status: PickerStatus?)? {
-        if formatScope?.requiresBibliography == true { return (formatContext, nil) }
-        if let notice { return (notice, nil) }
+    var problem: Problem? {
+        if formatScope?.requiresBibliography == true { return Problem(text: formatContext, status: nil) }
+        if let notice { return Problem(text: notice, status: nil) }
+        if let removal { return Problem(text: removal, status: nil, symbol: "arrow.uturn.backward") }
         guard libraryReady, emptyState == nil else { return nil }
         let status = state?.preview?.problem ?? state?.status.first ?? catalog?.status.first
-        return status.map { ($0.text, $0) }
+        return status.map { Problem(text: $0.text, status: $0) }
     }
+
+    /// The library being searched, by name, for "No matches in …".
+    var libraryName: String { catalog?.library?.name ?? PickerWords.text(.library) }
 
     /// The panel's height follows its content, as Spotlight's does.
     func height(_ grid: PickerGrid) -> CGFloat {
@@ -263,6 +294,9 @@ final class PickerStore: ObservableObject {
         closeEditing(refocus: false)
         peek = nil
         showNumbers(false)
+        setOptionHeld(false)
+        removalTask?.cancel()
+        removal = nil
         if !forDelivery {
             ibis_native_cancel()
             delivery = nil
@@ -334,7 +368,8 @@ final class PickerStore: ObservableObject {
         let countChanged = next.countLabel != state?.countLabel || next.query != state?.query
         state = next
         if let editing, entry(editing) == nil { closeEditing(refocus: false) }
-        if let peek, !rows.contains(where: { $0.id == peek }) { self.peek = nil }
+        // Peek follows the highlight, as Quick Look follows the selection.
+        if peek != nil { peek = highlight.flatMap { item in rows.contains { $0.id == item } ? item : nil } }
         if let editing { examples(for: editing) }
         if countChanged { announceCount() }
         panel?.fitHeight()
@@ -361,17 +396,40 @@ final class PickerStore: ObservableObject {
 
     func toggle(_ item: ItemRef) {
         let adding = !isAdded(item)
+        if !adding { noteRemoval(item) }
         send(.toggle(item: item))
         if adding { NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now) }
     }
 
     func remove(_ item: ItemRef) {
+        if isAdded(item) { noteRemoval(item) }
         send(.remove(item: item))
         focusSearch()
     }
 
+    /// Says which reference left the citation and how to bring it back.
+    private func noteRemoval(_ item: ItemRef) {
+        guard let row = entry(item)?.row else { return }
+        let name = row.firstAuthor ?? row.title ?? PickerWords.text(.untitled)
+        removal = [PickerWords.text(.removedToken, name), PickerWords.text(.undo) + " ⌘Z"].joined(separator: " · ")
+        removalTask?.cancel()
+        removalTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            self?.removal = nil
+            self?.panel?.fitHeight()
+        }
+        panel?.fitHeight()
+    }
+
+    func setOptionHeld(_ held: Bool) { if optionHeld != held { optionHeld = held } }
+
     func reorder(_ item: ItemRef, by step: Int) { send(.reorder(item: item, step: Int64(step))) }
-    func undo() { send(.undo) }
+    func undo() {
+        removalTask?.cancel()
+        removal = nil
+        send(.undo)
+    }
     func keepOrder(_ on: Bool) { send(.keepOrder(on: on)) }
 
     func changeDetails(_ item: ItemRef, to details: PickerDetails) {
@@ -498,6 +556,19 @@ final class PickerStore: ObservableObject {
     func selectNumber(_ number: Int) -> Bool {
         guard visibleRows.indices.contains(number - 1) else { return false }
         highlight(visibleRows[number - 1])
+        return true
+    }
+
+    /// A click on the citation: one reference opens its details, several their menu.
+    func citationClicked() {
+        if citation.count > 1 { openCitationMenu() } else { edit() }
+    }
+
+    /// A library file dropped on the picker opens as the chooser would open it.
+    func dropLibrary(_ file: URL) -> Bool {
+        let extensions = (catalog?.libraryExtensions ?? []).map { $0.lowercased() }
+        guard extensions.contains(file.pathExtension.lowercased()) else { return false }
+        panel?.useLibrary(file)
         return true
     }
 

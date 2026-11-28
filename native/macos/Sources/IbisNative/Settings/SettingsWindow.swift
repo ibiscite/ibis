@@ -10,9 +10,12 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSSearch
     private weak var searchOpener: NSResponder?
     private var searchAnnouncement: Task<Void, Never>?
 
+    private let libraryInUse: () -> URL?
+
     init(engine: EngineClient, shortcuts: OpeningShortcuts, chooseLibrary: @escaping (NSWindow, URL?) -> Void = { _, _ in },
-         applied: @escaping (SettingsResult, Bool) -> Void) {
+         libraryInUse: @escaping () -> URL? = { nil }, applied: @escaping (SettingsResult, Bool) -> Void) {
         self.shortcuts = shortcuts
+        self.libraryInUse = libraryInUse
         let preferences = NativePreferences(engine: engine) { [weak shortcuts] saved, resetText in
             shortcuts?.restore(saved.shortcut)
             applied(saved, resetText)
@@ -55,6 +58,7 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSSearch
             self.window?.makeFirstResponder(nil)
         }
         preferences.refreshPasteAccess()
+        preferences.inUse = libraryInUse()
         preferences.read()
     }
 
@@ -204,6 +208,8 @@ private final class NativePreferences: ObservableObject {
         didSet { if libraryBusy { libraryProblem = nil } }
     }
     @Published var libraryProblem: String?
+    /// The library the picker has open, as from `--file`, when none is saved.
+    @Published var inUse: URL?
     private let engine: EngineClient
     private let applied: (SettingsResult, Bool) -> Void
 
@@ -285,12 +291,10 @@ private struct NativeSettingsForm: View {
         .navigationSplitViewStyle(.balanced)
     }
 
-    private var sidebar: some View {
-        VStack(spacing: 6) {
-            SettingsSearchHost(field: searchField)
-                .frame(height: 28)
-                .padding(.horizontal, 10)
-                .padding(.top, 6)
+    /// The sidebar column is a sidebar list, so the system draws its own
+    /// sidebar; the search field sits in the list's top inset.
+    @ViewBuilder private var sidebar: some View {
+        Group {
             if preferences.search.isSearching {
                 searchResults.onAppear { flashed = nil }
             } else {
@@ -304,6 +308,12 @@ private struct NativeSettingsForm: View {
                 }
                 .listStyle(.sidebar)
             }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            SettingsSearchHost(field: searchField)
+                .frame(height: 28)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
         }
     }
 
@@ -380,6 +390,8 @@ private struct NativeSettingsForm: View {
                         shortcutSection
                         pasteSection(saved)
                     case .appearance:
+                        // The controls first, then their effect on two rows.
+                        pickerSection(saved)
                         Section {
                             AppearancePreview(appearance: saved.appearance, density: saved.density,
                                               largerText: saved.largerText)
@@ -387,7 +399,6 @@ private struct NativeSettingsForm: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
                         }
-                        pickerSection(saved)
                     case .library:
                         librarySection(saved)
                     }
@@ -426,7 +437,9 @@ private struct NativeSettingsForm: View {
     }
 
     private func librarySection(_ saved: SettingsResult) -> some View {
-        Section {
+        // The library in use shows even when it was opened for this session only.
+        let inUse = saved.library == nil ? preferences.inUse : nil
+        return Section {
             destination(.library) {
                 LabeledContent {
                     control(.library) {
@@ -437,13 +450,14 @@ private struct NativeSettingsForm: View {
                     }
                 } label: {
                     Label {
-                        Text(saved.library?.name ?? PickerWords.text(.noLibrarySelected))
+                        Text(saved.library?.name ?? inUse?.lastPathComponent ?? PickerWords.text(.noLibrarySelected))
                         if let problem = preferences.libraryProblem {
                             Text(problem)
                         } else if let library = saved.library, library.missing {
                             Text(PickerWords.text(.libraryMissing, library.name))
-                        } else if let file = saved.library?.file {
-                            Text(file).truncationMode(.middle)
+                        } else if let file = saved.library?.file ?? inUse?.path {
+                            // Home as ~, as Finder writes it.
+                            Text((file as NSString).abbreviatingWithTildeInPath).truncationMode(.middle)
                         } else if saved.library == nil {
                             Text(PickerWords.text(.chooseHint))
                         }
@@ -493,9 +507,8 @@ private struct NativeSettingsForm: View {
                         get: { preferences.saved?.paste ?? saved.paste }, set: { preferences.change(paste: $0) }
                     )) {
                         Text(SettingsSearchRow.paste.title)
-                        if !saved.paste || preferences.pasteGranted {
-                            Text(PickerWords.text(saved.paste ? .pasteReady : .copyMode))
-                        }
+                        // A healthy switch needs no words; copying instead does.
+                        if !saved.paste { Text(PickerWords.text(.copyMode)) }
                     }
                     .toggleStyle(.switch)
                 }

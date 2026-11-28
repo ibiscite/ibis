@@ -40,8 +40,21 @@ nothing that macOS already draws.
 - **Grid:** one scale multiplies every size, so Larger Text and ⌘+ scale the
   whole picker. The lead column (48 pt) holds the search glyph and kind symbols. Text
   starts after it.
+- **Footer:** the citation in primary text on Peek's reading material; a
+  match not yet added is drawn in secondary text, and the count names only
+  added references. A click opens Details for one reference and the references
+  menu for several. The delivery button falls back to one word ("Paste",
+  "Copy") rather than clip, reads "Copy Citation ⌥↩" while Option is held, and
+  sits beside a labelled "Actions ⌘K". A removal says "Vale removed · Undo ⌘Z"
+  for four seconds.
+- **Empty states:** a search that misses says "No matches in" the library,
+  even beside added references, with Clear Search and Open Library. With no
+  library, Choose Library… is the only action, and a library file dropped from
+  Finder opens as the chooser would open it. Peek follows ↑ and ↓.
 - **Review:** `scripts/native-macos.sh shots` saves every review state in
-  light and dark from the invented [review library](../../native/macos/Review.csljson).
+  light and dark from the invented [review library](../../native/macos/Review.csljson),
+  on the built-in display, pasting into an invented TextEdit target. A state
+  the engine never caught up with prints `settle timeout STATE`.
 
 ### Native app direction
 

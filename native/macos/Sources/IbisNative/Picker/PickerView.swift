@@ -46,7 +46,7 @@ struct PickerView: View {
                 ResultsList(store: store, grid: grid).frame(height: store.listHeight(grid))
             }
             if let problem = store.problem {
-                StatusLine(text: problem.text, status: problem.status, store: store, grid: grid)
+                StatusLine(problem: problem, store: store, grid: grid)
             }
             if store.showsFooter {
                 Divider()
@@ -88,7 +88,7 @@ private struct SearchHeader: View {
 }
 
 /// The search field's glyph, as in Spotlight: the brand stays in the menu bar.
-struct SearchGlyph: View {
+private struct SearchGlyph: View {
     let grid: PickerGrid
 
     var body: some View {
@@ -355,18 +355,20 @@ extension PickerSectionKind {
 // MARK: Status and empty states
 
 private struct StatusLine: View {
-    let text: String
-    let status: PickerStatus?
+    let problem: PickerStore.Problem
     let store: PickerStore
     let grid: PickerGrid
 
     var body: some View {
+        let status = problem.status
         HStack(spacing: 8 * grid.s) {
-            Image(systemName: status?.kind == .citation ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-                .symbolRenderingMode(.multicolor)
+            Image(systemName: problem.symbol
+                ?? (status?.kind == .citation ? "xmark.octagon.fill" : "exclamationmark.triangle.fill"))
+                .symbolRenderingMode(problem.symbol == nil ? .multicolor : .monochrome)
+                .foregroundStyle(.secondary)
                 .font(grid.font(12))
                 .frame(width: 30 * grid.s)
-            Text(text).font(grid.font(12)).foregroundStyle(.secondary).lineLimit(1).help(text)
+            Text(problem.text).font(grid.font(12)).foregroundStyle(.secondary).lineLimit(1).help(problem.text)
             Spacer(minLength: 8 * grid.s)
             if let status, let fix = status.fix {
                 Button(store.fixTitle(fix)) { store.runFix(status) }
@@ -388,7 +390,11 @@ private struct EmptyStateView: View {
     var body: some View {
         let content = self.content
         ContentUnavailableView {
-            Label(content.title, systemImage: content.symbol).foregroundStyle(.primary)
+            if let symbol = content.symbol {
+                Label(content.title, systemImage: symbol).foregroundStyle(.primary)
+            } else {
+                Text(content.title).foregroundStyle(.primary)
+            }
         } description: {
             Text(PickerWords.text(content.hint))
         } actions: {
@@ -401,17 +407,27 @@ private struct EmptyStateView: View {
             }
         }
         .controlSize(grid.s >= 1.4 ? .large : .regular)
+        // A library file dragged from Finder opens as the chooser would open it.
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            guard state == .choose, let provider = providers.first else { return false }
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                DispatchQueue.main.async { _ = store.dropLibrary(url.standardizedFileURL) }
+            }
+            return true
+        }
     }
 
-    private var content: (symbol: String, title: String, hint: PickerWord, primary: String?, secondary: String?) {
+    private var content: (symbol: String?, title: String, hint: PickerWord, primary: String?, secondary: String?) {
         switch state {
         case .newLibrary:
             ("books.vertical", PickerWords.text(.emptyLibrary), .emptyLibraryHint, nil, nil)
         case .noMatches:
-            ("magnifyingglass", PickerWords.text(.noMatches), .noMatchesHint, PickerWords.text(.clear), nil)
+            // The field already shows the search glyph; the message needs none of its own.
+            (nil, PickerWords.text(.noMatchesIn, store.libraryName), .noMatchesHint, PickerWords.text(.clear),
+             PickerWords.text(.openLibrary))
         case .choose:
-            ("books.vertical", PickerWords.text(.chooseTitle), .chooseHint,
-             PickerWords.text(.choose), PickerWords.text(.settings))
+            ("books.vertical", PickerWords.text(.chooseTitle), .chooseHint, PickerWords.text(.choose), nil)
         case let .missing(title, name):
             ("questionmark.folder", title, .missingHint, PickerWords.text(.findLibrary, name), PickerWords.text(.choose))
         case let .unreadable(problem):
@@ -455,26 +471,18 @@ private struct Footer: View {
                     if let item = store.editing { DetailsPopover(store: store, item: item) }
                 }
 
-            Button { store.deliver() } label: {
-                HStack(spacing: 5 * grid.s) {
-                    if let icon = store.destinationIcon {
-                        Image(nsImage: icon).resizable().frame(width: 16 * grid.s, height: 16 * grid.s)
-                            .accessibilityHidden(true)
-                    }
-                    Text(store.deliveryTitle).lineLimit(1)
-                    KeyCap("↩", grid: grid)
-                }
+            // The full title, or one word when Larger Text leaves no room: never clipped.
+            ViewThatFits(in: .horizontal) {
+                deliveryButton(store.deliveryTitle)
+                deliveryButton(store.deliveryShortTitle)
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.primary)
-            .fontWeight(.medium)
-            .fixedSize()
-            .disabled(!store.canDeliver)
-            .accessibilityLabel(store.deliveryTitle)
-            .accessibilityHint(PickerWords.text(.returnKey))
+            .layoutPriority(1)
 
             Button { store.openActionsMenu() } label: {
-                KeyCap("⌘K", grid: grid)
+                HStack(spacing: 5 * grid.s) {
+                    Text(PickerWords.text(.actionsTitle)).lineLimit(1)
+                    KeyCap("⌘K", grid: grid)
+                }
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
@@ -487,32 +495,57 @@ private struct Footer: View {
         .padding(.leading, 18 * grid.s)
         .padding(.trailing, 14 * grid.s)
         .frame(height: grid.footer)
+        // The citation is read, so the footer takes Peek's reading material.
+        .readableMaterial()
+    }
+
+    private func deliveryButton(_ title: String) -> some View {
+        Button { store.deliver(copyOnly: store.optionHeld) } label: {
+            HStack(spacing: 5 * grid.s) {
+                if let icon = store.destinationIcon {
+                    Image(nsImage: icon).resizable().frame(width: 16 * grid.s, height: 16 * grid.s)
+                        .accessibilityHidden(true)
+                }
+                Text(title).lineLimit(1)
+                KeyCap(store.deliveryKey, grid: grid)
+            }
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.primary)
+        .fontWeight(.medium)
+        .fixedSize()
+        .disabled(!store.canDeliver)
+        .accessibilityLabel(store.deliveryTitle)
+        .accessibilityHint(PickerWords.text(.returnKey))
     }
 }
 
-/// The citation exactly as Return delivers it. With several references a
-/// count opens their menu: page, order and removal live there, not in a tray.
+/// The citation exactly as Return delivers it. The match not yet added is
+/// drawn quieter. With several added references a count opens their menu:
+/// page, order and removal live there, not in a tray.
 private struct CitationPreview: View {
     @ObservedObject var store: PickerStore
     let grid: PickerGrid
 
     var body: some View {
-        let citation = store.citation
+        let added = store.added
         HStack(spacing: 8 * grid.s) {
             if let preview = store.state?.preview, !preview.text.isEmpty {
-                Text(CitationText.styled(preview.display, fallback: preview.text, scale: grid.s * 0.92))
-                    .foregroundStyle(.secondary)
+                let provisional = Set(store.citation.indices.filter { !store.citation[$0].added })
+                Text(CitationText.styled(preview.display, fallback: preview.text, scale: grid.s * 0.92,
+                                         quiet: provisional))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .opacity(store.canDeliver ? 1 : 0.6)
                     .help(preview.text)
                     .accessibilityLabel(PickerWords.text(.token, preview.text))
-                    .onTapGesture { store.edit() }
+                    .onTapGesture { store.citationClicked() }
             }
-            if citation.count > 1 {
+            if added.count > 1 {
                 Button { store.openCitationMenu() } label: {
                     HStack(spacing: 2 * grid.s) {
-                        Text(PickerWords.text(.referenceCount, citation.count.formatted()))
+                        Text(PickerWords.text(.referenceCount, added.count.formatted()))
                         Image(systemName: "chevron.up.chevron.down").font(grid.font(8, .semibold))
                     }
                     .fixedSize()
@@ -535,8 +568,11 @@ private struct DetailsPopover: View {
         let options = store.catalog?.locators ?? []
         let term = details.locator?.term ?? .page
         let name = options.first { $0.term == term }?.name ?? PickerWords.text(.page)
+        VStack(alignment: .leading, spacing: 10) {
+        if let title = entry?.row.title {
+            Text(title).font(.headline).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+        }
         Form {
-            if let title = entry?.row.title { Text(title).font(.headline).lineLimit(2) }
             LabeledContent {
                 NativeTextField(
                     text: details.locator?.value ?? "", placeholder: "", label: name, style: .rounded,
@@ -559,6 +595,9 @@ private struct DetailsPopover: View {
                     ForEach(options, id: \.term) { Text($0.name).tag($0.term) }
                 }
                 .labelsHidden()
+                // A borderless pop-up reads as the label column's own text.
+                .pickerStyle(.menu)
+                .buttonStyle(.borderless)
                 .fixedSize()
             }
             TextField(PickerWords.text(.before), text: Binding(
@@ -581,6 +620,7 @@ private struct DetailsPopover: View {
         }
         // One box: the popover is the group, so the form draws none of its own.
         .formStyle(.columns)
+        }
         .padding(16)
         .frame(width: 340)
         .fixedSize(horizontal: false, vertical: true)
@@ -619,11 +659,13 @@ struct KeyCap: View {
 
 /// The engine's rich runs as text: italics, small caps and superscripts kept.
 enum CitationText {
-    static func styled(_ display: DisplayTree, fallback: String, scale: CGFloat) -> AttributedString {
-        let runs = display.nodes.flatMap(\.content)
+    /// Runs owned by a `quiet` entry take the secondary label colour.
+    static func styled(_ display: DisplayTree, fallback: String, scale: CGFloat,
+                       quiet: Set<Int> = []) -> AttributedString {
+        let runs = display.nodes.flatMap { node in node.content.map { (run: $0, item: node.item.map(Int.init)) } }
         guard !runs.isEmpty else { return AttributedString(fallback) }
         var text = AttributedString()
-        for run in runs {
+        for (run, item) in runs {
             let shift = run.script == .superscript ? 1 : (run.script == .`subscript` ? -1 : 0)
             var part = AttributedString(run.text.replacingOccurrences(of: "\n", with: " "))
             var font = Font.system(size: (shift == 0 ? 13 : 10) * scale, weight: run.bold == true ? .semibold : .regular)
@@ -635,6 +677,9 @@ enum CitationText {
             }
             if run.underline == true {
                 part[AttributeScopes.SwiftUIAttributes.UnderlineStyleAttribute.self] = Text.LineStyle.single
+            }
+            if let item, quiet.contains(item) {
+                part[AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute.self] = Color(nsColor: .secondaryLabelColor)
             }
             text += part
         }

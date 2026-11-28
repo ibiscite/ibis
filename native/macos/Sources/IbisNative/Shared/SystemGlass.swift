@@ -90,3 +90,21 @@ extension View {
         }
     }
 }
+
+extension View {
+    /// Peek's reading material behind text inside the picker's glass: the
+    /// popover material, or the window colour with Reduce Transparency.
+    func readableMaterial() -> some View { background(ReadableMaterial()) }
+}
+
+private struct ReadableMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .popover
+        view.blendingMode = .withinWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
