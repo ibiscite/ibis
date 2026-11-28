@@ -21,6 +21,9 @@ const ALWAYS_FULL = [
 ];
 // The web job checks links in prose.
 const DOCS = [/^docs\/.+\.md$/, /^[^/]+\.md$/, /^\.github\/pull_request_template\.md$/, /^\.(agents|claude)\/skills(\/|$)/];
+// Folders outside any crate that a crate's tests run: the CLI's tests run the
+// Pandoc filter and the Obsidian plugin.
+const TESTED_BY = [[/^plugins\/(pandoc|obsidian)\//, "ibis"]];
 // The interface: its own tests, the pictures, and the app that embeds it.
 const INTERFACE = /^apps\/desktop\/(?!src-tauri(?:\/|$))/;
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -117,6 +120,8 @@ export function plan(paths, workspace) {
     if (typeof path !== "string" || path === "" || ALWAYS_FULL.some((rule) => rule.test(path))) return { ...FULL, full: true, reason: `${path} affects more than one part` };
     if (DOCS.some((rule) => rule.test(path))) continue;
     if (INTERFACE.test(path)) { interfaceChanged = true; continue; }
+    const tester = TESTED_BY.find(([rule]) => rule.test(path))?.[1];
+    if (tester) { changed.add(tester); continue; }
     const owner = byDepth.find((crate) => path.startsWith(`${crate.dir}/`));
     if (!owner) return { ...FULL, full: true, reason: `${path} is not mapped to a job` };
     changed.add(owner.name);

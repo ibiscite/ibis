@@ -109,7 +109,9 @@ these parts, and with no arguments the script runs the parts that
 `ci-plan.mjs --local` selects for the branch against `origin/main`, so a machine
 runs CI's checks for its own system. CI alone adds the other systems, the
 picture gate, the native GUI tests, actionlint, `cargo deny` and the release
-checks. Dependencies must already be installed.
+checks. Dependencies must already be installed, Pandoc among them: `fidelity`
+fails without it rather than skip its comparisons, and `lint` and `lint-app`
+fail on warnings, as CI does.
 
 [`land.sh`](../scripts/land.sh) runs `check.sh` from a clean, named branch.
 While main's latest finished push CI failed, it refuses any title but `fix` or

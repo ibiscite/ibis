@@ -120,8 +120,8 @@ are in [testing](testing.md#local-commands).
 
 - Never squash with `git reset --soft origin/main` after `origin/main` moved:
   the commit silently reverts what landed meanwhile. Rebuild on the new base
-  with `git diff OLD_BASE HEAD | git apply --3way`, then check that only your
-  files changed.
+  with `git diff --binary OLD_BASE HEAD | git apply --3way`, then check that
+  only your files changed.
 - Don't force-push a shared branch. To bring a branch up to date, merge
   `origin/main` into it; the squash merge hides the merge commit.
 - A pull request with a merge conflict gets no CI run. Merge `origin/main` and
