@@ -19,7 +19,118 @@ enum Outputs {
         /// Cites whose citation reads the same without their locator.
         #[serde(default)]
         unprinted_locators: Vec<usize>,
+        /// A bibliography's layout, from the processor.
+        #[serde(default)]
+        layout: Option<Layout>,
     },
+}
+
+/// How a style lays out its bibliography, written into the copied HTML and
+/// RTF exactly as Zotero writes it (`Zotero.Cite.makeFormattedBibliography`
+/// and `getBibliographyFormatParameters`), so a pasted bibliography keeps
+/// its hanging indent and spacing.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Layout {
+    hanging_indent: bool,
+    line_spacing: f64,
+    entry_spacing: f64,
+    second_field_align: Option<Align>,
+    max_offset: u32,
+}
+
+#[derive(Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum Align {
+    Flush,
+    Margin,
+}
+
+impl Layout {
+    fn checked(self) -> Result<Self, FormatError> {
+        let spacing = |value: f64| value.is_finite() && (0.0..=10.0).contains(&value);
+        (spacing(self.line_spacing) && spacing(self.entry_spacing) && self.max_offset <= 1000)
+            .then_some(self)
+            .ok_or(FormatError::Runtime)
+    }
+
+    /// Zotero's inline styles around entries whose only tags are the processor's.
+    fn html(&self, entries: &str) -> String {
+        let margins = entries.contains("<div class=\"csl-left-margin\">");
+        let aligned = self.second_field_align.is_some();
+        // Zotero reads both spacings as whole numbers, with a floor on line height.
+        let line = self.line_spacing.trunc().max(1.35);
+        let entry = self.entry_spacing.trunc();
+        let offset = (f64::from(self.max_offset) - 2.0).max(1.0);
+        let hanging = if self.hanging_indent {
+            "padding-left: 2em; text-indent:-2em;"
+        } else {
+            ""
+        };
+        let mut body = format!("line-height: {line}; ");
+        if self.hanging_indent && !margins {
+            body.push_str("margin-left: 2em; text-indent:-2em;");
+        }
+        let count = entries.matches("<div class=\"csl-entry\">").count();
+        let mut out = format!("<div class=\"csl-bib-body\" style=\"{body}\">");
+        for (index, part) in entries.split("<div class=\"csl-entry\">").enumerate() {
+            if index > 0 {
+                let mut style = String::from(if margins { "clear: left; " } else { "" });
+                if entry != 0.0 && index != count {
+                    style.push_str(&format!("margin-bottom: {entry}em;"));
+                }
+                out.push_str(&if style.is_empty() {
+                    "<div class=\"csl-entry\">".into()
+                } else {
+                    format!("<div class=\"csl-entry\" style=\"{style}\">")
+                });
+            }
+            out.push_str(part);
+        }
+        let width = if aligned {
+            format!("text-align: right; width: {offset}em;")
+        } else {
+            String::new()
+        };
+        let inset = if aligned {
+            format!("{}", offset + 0.5)
+        } else {
+            "0".into()
+        };
+        out.replace(
+            "<div class=\"csl-left-margin\">",
+            &format!("<div class=\"csl-left-margin\" style=\"float: left; padding-right: 0.5em;{width}\">"),
+        )
+        .replace(
+            "<div class=\"csl-right-inline\">",
+            &format!("<div class=\"csl-right-inline\" style=\"margin: 0 .4em 0 {inset}em;{hanging}\">"),
+        )
+        .replace(
+            "<div class=\"csl-indent\">",
+            "<div class=\"csl-indent\" style=\"margin: .5em 0 0 2em; padding: 0 0 .2em .5em; border-left: 5px solid #ccc;\">",
+        ) + "</div>"
+    }
+
+    /// Zotero's paragraph settings, in twips, ahead of the first entry.
+    fn rtf(&self, rtf: &str) -> String {
+        let (mut indent, mut first, mut tabs) = (0, 0, String::new());
+        if self.hanging_indent {
+            (indent, first) = (720, -720);
+        } else if let Some(align) = &self.second_field_align {
+            let at = 24 + self.max_offset * 120;
+            first = -i64::from(at);
+            if *align == Align::Margin {
+                tabs = "\\tx0 ".into();
+            } else {
+                indent = at;
+                tabs = format!("\\tx{at} ");
+            }
+        }
+        let line = (240.0 * self.line_spacing).round();
+        let after = (240.0 * self.entry_spacing).round();
+        let settings = format!("{tabs}\\li{indent} \\fi{first} \\sl{line} \\slmult1 \\sa{after} ");
+        rtf.replacen("\\f0\n", &format!("\\f0 {settings}\n"), 1)
+    }
 }
 
 #[derive(Deserialize)]
@@ -229,10 +340,12 @@ pub(crate) fn result(
         coverage,
         spans,
         unprinted_locators,
+        layout,
     } = output
     else {
         return Ok(refused(input, CitationError::UnsupportedForm));
     };
+    let layout = layout.map(Layout::checked).transpose()?;
     let candidates = input
         .outcomes
         .iter()
@@ -348,6 +461,11 @@ pub(crate) fn result(
     if input.missing_details {
         return Ok(refused(input, CitationError::MissingDetails));
     }
+    // The layout goes around the checked output, never into what was checked.
+    let (html, rtf) = match &layout {
+        Some(layout) => (layout.html(&html), layout.rtf(&rtf)),
+        None => (html, rtf),
+    };
     Ok(CitationResult::new(
         text,
         Some(html),

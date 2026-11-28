@@ -37,7 +37,11 @@ the existing pinned oracle. No Zotero process or real profile was used.
 Generation checksums:
 
 - Hand-authored CSL-JSON: `dab8df9d79b2a807847fad13f1db613caa9418c2a517306f26f0ee8afbf8566e`.
-- Raw oracle response: `f8785d89dbeebce0a7ecb166799200eb5e20d64d331a71c121e5fe6cfe4343a3`.
+- Raw oracle response: `2c25a40fa27dd22325c8efa36aeb162999ff86bc448d6cff2794eaa21ebb8c92`.
+
+The bibliography cases were regenerated the same way on 28 November 2026,
+when copied bibliographies gained Zotero's layout (hanging indent and spacing);
+the other cases came out byte for byte as before.
 
 The CLI integration test starts with each source file, then replays all ten
 cases through the engine, human `cite --style` arguments and framed

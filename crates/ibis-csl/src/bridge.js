@@ -503,6 +503,17 @@
           const bibliography = engine.makeBibliography();
           if (!bibliography || bibliography[0].bibliography_errors.length) throw unverified;
           if (format === "text") outputs.text_parts = bibliography[1];
+          if (format === "html") {
+            // How the style lays entries out; the formatter writes it as Zotero does.
+            const [layout] = bibliography;
+            outputs.layout = {
+              hanging_indent: Boolean(layout.hangingindent),
+              line_spacing: layout.linespacing,
+              entry_spacing: layout.entryspacing,
+              second_field_align: layout["second-field-align"] || null,
+              max_offset: layout.maxoffset,
+            };
+          }
           output = bibliography[1].map(oneLine).join("\n");
           if (format === "text") {
             outputs.spans = [];

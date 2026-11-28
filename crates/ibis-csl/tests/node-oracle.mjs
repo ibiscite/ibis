@@ -1,5 +1,6 @@
 // Test-only Node oracle over the exact pinned Zotero processor, styles and adapter.
 import fs from "node:fs";
+import vm from "node:vm";
 import { zstdDecompressSync } from "node:zlib";
 import assert from "node:assert/strict";
 import CSL from "../vendor/citeproc.mjs";
@@ -70,6 +71,35 @@ const observed = requests.map((request) => {
 CSL.Engine.prototype.updateItems = updateItems;
 // Independent transparency check: call the pinned processor without the observer.
 CSL.getCite = unobservedGetCite;
+// A copied bibliography's layout, as Zotero writes it. RTF comes from Zotero's
+// own getBibliographyFormatParameters; HTML transcribes the inline styles of
+// Zotero.Cite.makeFormattedBibliography, which needs a browser DOM and is
+// checked against Zotero itself in fixtures/zotero/quick-copy.
+const zotero = {};
+vm.runInNewContext(fs.readFileSync(new URL("../../ibis-sources/vendor/zotero/cite.js", import.meta.url), "utf8"), { Zotero: zotero });
+const rtfSettings = (bibliography) => {
+  const style = zotero.Cite.getBibliographyFormatParameters(bibliography);
+  return (style.tabStops.length ? "\\tx" + style.tabStops.join(" \\tx") + " " : "")
+    + `\\li${style.indent} \\fi${style.firstLineIndent} \\sl${style.lineSpacing} \\slmult1 \\sa${style.entrySpacing} `;
+};
+const htmlLayout = ([layout], html) => {
+  const margins = html.includes('<div class="csl-left-margin">');
+  const aligned = layout["second-field-align"];
+  const line = Math.max(parseInt(layout.linespacing), 1.35) || 1.35;
+  const entry = parseInt(layout.entryspacing);
+  const offset = Math.max(1, parseInt(layout.maxoffset) - 2);
+  const count = html.split('<div class="csl-entry">').length - 1;
+  let index = 0;
+  return `<div class="csl-bib-body" style="line-height: ${line}; ${layout.hangingindent && !margins ? "margin-left: 2em; text-indent:-2em;" : ""}">`
+    + html.replace(/<div class="csl-entry">/g, () => {
+      const style = (margins ? "clear: left; " : "") + (entry && ++index !== count ? `margin-bottom: ${entry}em;` : "");
+      return style ? `<div class="csl-entry" style="${style}">` : '<div class="csl-entry">';
+    })
+      .replaceAll('<div class="csl-left-margin">', `<div class="csl-left-margin" style="float: left; padding-right: 0.5em;${aligned ? `text-align: right; width: ${offset}em;` : ""}">`)
+      .replaceAll('<div class="csl-right-inline">', `<div class="csl-right-inline" style="margin: 0 .4em 0 ${aligned ? offset + 0.5 : "0"}em;${layout.hangingindent ? "padding-left: 2em; text-indent:-2em;" : ""}">`)
+      .replaceAll('<div class="csl-indent">', '<div class="csl-indent" style="margin: .5em 0 0 2em; padding: 0 0 .2em .5em; border-left: 5px solid #ccc;">')
+    + "</div>";
+};
 const expected = pristine.map((request) => {
   let xml = styles.get(request.style).replace(/disambiguate-add-year-suffix="true"/g, 'disambiguate-add-year-suffix="false"');
   if (request.style === "ieee") xml = xml.replace('<text variable="citation-number" prefix="[" suffix="]"/>', "").replace(' second-field-align="flush"', "");
@@ -85,12 +115,19 @@ const expected = pristine.map((request) => {
     engine.setOutputFormat(format);
     engine.updateItems([]);
     engine.updateItems(request.items.map((item) => item.id));
-    const value = request.bibliography ? engine.makeBibliography()[1].map((text) => text.replace(/\s*\n\s*/g, " ").trim()).join("\n") : engine.makeCitationCluster(request.cites);
-    output[format] = format === "rtf" ? `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${request.bibliography ? value.split("\n").join("\\par\n") : value}\n}` : value;
+    const bibliography = request.bibliography ? engine.makeBibliography() : null;
+    const value = bibliography ? bibliography[1].map((text) => text.replace(/\s*\n\s*/g, " ").trim()).join("\n") : engine.makeCitationCluster(request.cites);
+    output[format] = format === "rtf" ? `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? value.split("\n").join("\\par\n") : value}\n}` : value;
+    if (bibliography) output.layout = bibliography;
   }
   return output;
 });
 for (let index = 0; index < expected.length; index++) {
   for (const format of ["text", "html", "rtf"]) assert.ok(observed[index][format] === expected[index][format], `observer changed canonical ${format}`);
 }
-process.stdout.write(JSON.stringify(expected));
+// What is copied: a bibliography with its layout around the processor's output.
+process.stdout.write(JSON.stringify(expected.map(({ layout, ...output }) => layout ? {
+  ...output,
+  html: htmlLayout(layout, output.html),
+  rtf: output.rtf.replace("\\f0\n", `\\f0 ${rtfSettings(layout)}\n`),
+} : output)));

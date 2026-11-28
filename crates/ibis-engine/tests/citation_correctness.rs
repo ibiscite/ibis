@@ -52,12 +52,27 @@ fn format(formatter: &Formatter, snapshot: &Snapshot, form: CitationForm) -> Cit
     formatter.format(snapshot, &request(snapshot, "apa", form)).unwrap()
 }
 
+/// An APA bibliography is copied with its hanging indent and double spacing,
+/// as Zotero writes them; a citation has no layout.
 fn paste(result: &CitationResult, text: &str, html: &str, rtf_body: &str) {
+    let (html, settings) = if html.starts_with("<div class=\"csl-entry\">") {
+        (
+            format!(
+                "<div class=\"csl-bib-body\" style=\"line-height: 2; margin-left: 2em; text-indent:-2em;\">{html}</div>"
+            ),
+            r" \li720 \fi-720 \sl480 \slmult1 \sa0 ",
+        )
+    } else {
+        (html.to_owned(), "")
+    };
     assert_eq!(result.text, text);
-    assert_eq!(result.html.as_deref(), Some(html));
+    assert_eq!(result.html.as_deref(), Some(html.as_str()));
     assert_eq!(
         result.rtf.as_deref(),
-        Some(format!("{{\\rtf1\\ansi\\deff0{{\\fonttbl{{\\f0 Times New Roman;}}}}\\f0\n{rtf_body}\n}}").as_str())
+        Some(
+            format!("{{\\rtf1\\ansi\\deff0{{\\fonttbl{{\\f0 Times New Roman;}}}}\\f0{settings}\n{rtf_body}\n}}")
+                .as_str()
+        )
     );
     assert!(result.copy_content(result.outcomes.len()).is_some());
 }
@@ -139,7 +154,7 @@ fn only_web_addresses_and_dois_become_links() {
     assert_eq!(
         result.html.as_deref(),
         Some(
-            "<div class=\"csl-entry\">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>. www.example.org/rivers</div>"
+            "<div class=\"csl-bib-body\" style=\"line-height: 2; margin-left: 2em; text-indent:-2em;\"><div class=\"csl-entry\">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>. www.example.org/rivers</div></div>"
         )
     );
 }

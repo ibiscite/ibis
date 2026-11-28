@@ -187,7 +187,8 @@ determine a document's numbering, ibid. or year-letter disambiguation.
 Formatted text is checked against what Zotero's own Quick Copy gives for 297
 invented records in each curated style, read from Zotero and from an exported
 CSL-JSON file; [every difference](../fixtures/zotero/quick-copy/README.md) is
-listed. As in Zotero, URLs and DOIs are links in formatted HTML.
+listed. As in Zotero, URLs and DOIs are links in formatted HTML, and a copied
+bibliography keeps its style's hanging indent and line spacing when pasted.
 Tests prove that Ibis writes the markers the add-on documents
 (`{ prefix | Author, Year | locator | suffix | zu:0:KEY }`, `zg:GROUP:KEY` for a group); they do not
 prove that a scan turns them into live Zotero citations in a particular
