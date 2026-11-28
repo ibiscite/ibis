@@ -59,6 +59,9 @@ fi
 
 swift build --package-path "$package" --jobs 3 "${link_sdk[@]}"
 swift_bin=$(swift build --package-path "$package" --show-bin-path "${link_sdk[@]}")
+# Spotlight would register this build copy as a second app; keep it unindexed.
+mkdir -p "$(dirname "$app")"
+touch "$(dirname "$app")/.metadata_never_index"
 # Resources are copied fresh each build, so a removed file never stays behind.
 rm -rf "$app/Contents/Resources"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -150,6 +153,8 @@ if [[ "$mode" == shots ]]; then
       grep -h 'settle timeout\|^columns\|column mismatch' "$config/$state.err" >&2 || true
     done
   done
+  # Running the build copy registers it; only the installed copy may stay registered.
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$app" 2>/dev/null || true
   printf 'Screenshots in %s\n' "$out"
   exit
 fi

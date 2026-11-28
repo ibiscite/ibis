@@ -11,13 +11,11 @@ struct NativeTextField: NSViewRepresentable {
     var label = ""
     var style = Style.rounded
     var font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-    var isEnabled = true
     var register: (NSTextField) -> Void = { _ in }
-    var began: () -> Void = {}
     let change: (String) -> Void
 
-    func makeNSView(context: Context) -> Field {
-        let field = Field()
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField()
         field.delegate = context.coordinator
         field.usesSingleLineMode = true
         field.lineBreakMode = .byTruncatingTail
@@ -39,13 +37,11 @@ struct NativeTextField: NSViewRepresentable {
         return field
     }
 
-    func updateNSView(_ field: Field, context: Context) {
+    func updateNSView(_ field: NSTextField, context: Context) {
         context.coordinator.parent = self
-        field.began = began
         if field.font != font { field.font = font }
         if field.placeholderString != placeholder { field.placeholderString = placeholder }
         field.setAccessibilityLabel(label.isEmpty ? placeholder : label)
-        field.isEnabled = isEnabled
         if field.stringValue != text {
             field.stringValue = text
             if let editor = field.currentEditor() {
@@ -67,16 +63,6 @@ struct NativeTextField: NSViewRepresentable {
             parent.change(field.stringValue)
         }
     }
-
-    final class Field: NSTextField {
-        var began: () -> Void = {}
-
-        override func becomeFirstResponder() -> Bool {
-            let accepted = super.becomeFirstResponder()
-            if accepted { began() }
-            return accepted
-        }
-    }
 }
 
 extension NSTextField {
@@ -85,16 +71,10 @@ extension NSTextField {
         return window.firstResponder === editor
     }
 
-    func focus(restoring selection: NSRange? = nil, caretAtEnd: Bool = false) {
+    func focus(caretAtEnd: Bool = false) {
         guard let window, isEnabled else { return }
         if !hasFocus { window.makeFirstResponder(self) }
-        guard let editor = currentEditor() else { return }
-        let length = editor.string.utf16.count
-        if let selection {
-            let location = min(selection.location, length)
-            editor.selectedRange = NSRange(location: location, length: min(selection.length, length - location))
-        } else if caretAtEnd {
-            editor.selectedRange = NSRange(location: length, length: 0)
-        }
+        guard caretAtEnd, let editor = currentEditor() else { return }
+        editor.selectedRange = NSRange(location: editor.string.utf16.count, length: 0)
     }
 }

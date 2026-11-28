@@ -29,7 +29,6 @@ enum PickerWord {
     case choose
     case chooseHint
     case chooseTitle
-    case citation
     case cited
     case citedHere
     case clear
@@ -46,7 +45,6 @@ enum PickerWord {
     case density
     case details
     case disconnected
-    case draft
     case editPage
     case emptyLibrary
     case emptyLibraryHint
@@ -84,14 +82,12 @@ enum PickerWord {
     case noDate
     case noEngine
     case noLibrarySelected
-    case noMatches
     case noMatchesHint
     case noMatchesIn
     case open
     case openLibrary
     case openSource
     case openSystemSettings
-    case opening
     case page
     case panel
     case paste
@@ -189,7 +185,6 @@ enum PickerWords {
             .choose: "اختيار المكتبة…",
             .chooseHint: "اختر ملف BibTeX أو CSL JSON أو RIS أو CSV للبحث فيه.",
             .chooseTitle: "اختر مكتبة",
-            .citation: "استشهاد",
             .cited: "في الاستشهاد",
             .citedHere: "استُشهد بها هنا مؤخرًا",
             .clear: "مسح البحث",
@@ -206,7 +201,6 @@ enum PickerWords {
             .density: "الصفوف",
             .details: "تفاصيل الاستشهاد",
             .disconnected: "توقّف محرك Ibis. حاول مجددًا.",
-            .draft: "مسودة الاستشهاد",
             .editPage: "تعديل الصفحة أو الموضع",
             .emptyLibrary: "اكتب للعثور على مرجع",
             .emptyLibraryHint: "ابحث بالعنوان أو المؤلف أو السنة أو المفتاح.",
@@ -244,14 +238,12 @@ enum PickerWords {
             .noDate: "بلا تاريخ",
             .noEngine: "تعذّر على Ibis تشغيل محركه المحلي.",
             .noLibrarySelected: "لم تُختر أي مكتبة",
-            .noMatches: "لا مراجع مطابقة",
             .noMatchesHint: "جرّب اسم عائلة أو سنة أو كلمات أقل.",
             .noMatchesIn: "لا نتائج في {IBIS_VALUE}",
             .open: "فتح Ibis",
             .openLibrary: "فتح المكتبة",
             .openSource: "فتح المصدر",
             .openSystemSettings: "فتح إعدادات النظام",
-            .opening: "جارٍ فتح المكتبة…",
             .page: "صفحة",
             .panel: "Ibis، منتقي الاستشهادات",
             .paste: "لصق في {IBIS_VALUE}",
@@ -336,7 +328,6 @@ enum PickerWords {
             .choose: "Bibliothek wählen…",
             .chooseHint: "Wählen Sie eine BibTeX-, CSL-JSON-, RIS- oder CSV-Datei zum Durchsuchen.",
             .chooseTitle: "Bibliothek auswählen",
-            .citation: "Zitat",
             .cited: "Im Zitat",
             .citedHere: "Hier zuletzt zitiert",
             .clear: "Suche löschen",
@@ -353,7 +344,6 @@ enum PickerWords {
             .density: "Zeilen",
             .details: "Zitationsdetails",
             .disconnected: "Die Ibis-Engine wurde beendet. Versuchen Sie es erneut.",
-            .draft: "Zitatentwurf",
             .editPage: "Seite oder Fundstelle bearbeiten",
             .emptyLibrary: "Tippen, um eine Referenz zu finden",
             .emptyLibraryHint: "Suchen Sie nach Titel, Autor, Jahr oder Schlüssel.",
@@ -391,14 +381,12 @@ enum PickerWords {
             .noDate: "Ohne Datum",
             .noEngine: "Ibis konnte seine lokale Engine nicht starten.",
             .noLibrarySelected: "Keine Bibliothek gewählt",
-            .noMatches: "Keine passenden Referenzen",
             .noMatchesHint: "Versuchen Sie einen Nachnamen, ein Jahr oder weniger Wörter.",
             .noMatchesIn: "Keine Treffer in {IBIS_VALUE}",
             .open: "Ibis öffnen",
             .openLibrary: "Bibliothek öffnen",
             .openSource: "Quelle öffnen",
             .openSystemSettings: "Systemeinstellungen öffnen",
-            .opening: "Bibliothek wird geöffnet…",
             .page: "Seite",
             .panel: "Ibis, Zitationsauswahl",
             .paste: "In {IBIS_VALUE} einfügen",
@@ -483,7 +471,6 @@ enum PickerWords {
             .choose: "Choose Library…",
             .chooseHint: "Choose a BibTeX, CSL JSON, RIS or CSV file to search.",
             .chooseTitle: "Choose a library",
-            .citation: "Citation",
             .cited: "In citation",
             .citedHere: "Cited here recently",
             .clear: "Clear Search",
@@ -500,7 +487,6 @@ enum PickerWords {
             .density: "Rows",
             .details: "Citation details",
             .disconnected: "The Ibis engine stopped. Try again.",
-            .draft: "Citation draft",
             .editPage: "Edit Page or Locator",
             .emptyLibrary: "Type to find a reference",
             .emptyLibraryHint: "Search by title, author, year or key.",
@@ -538,14 +524,12 @@ enum PickerWords {
             .noDate: "No date",
             .noEngine: "Ibis could not start its local engine.",
             .noLibrarySelected: "No library chosen",
-            .noMatches: "No matching references",
             .noMatchesHint: "Try a surname, year or fewer words.",
             .noMatchesIn: "No matches in {IBIS_VALUE}",
             .open: "Open Ibis",
             .openLibrary: "Open Library",
             .openSource: "Open Source",
             .openSystemSettings: "Open System Settings",
-            .opening: "Opening library…",
             .page: "Page",
             .panel: "Ibis, citation picker",
             .paste: "Paste into {IBIS_VALUE}",

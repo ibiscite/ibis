@@ -53,7 +53,7 @@ nothing that macOS already draws.
   added references. A click opens Details for one reference and the references
   menu for several. The delivery button falls back to one word ("Paste",
   "Copy") rather than clip, reads "Copy Citation ⌥↩" while Option is held, and
-  sits beside a labelled "Actions ⌘K". A removal says "Vale removed · Undo ⌘Z"
+  sits beside a labelled "Actions ⌘K". A removal says "Removed Vale · Undo ⌘Z"
   for four seconds.
 - **Empty states:** a search that misses says "No matches in" the library,
   even beside added references, with Clear Search and Open Library. With no

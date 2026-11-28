@@ -288,9 +288,9 @@ extension PickerStore {
 final class PickerMenuItem: NSMenuItem {
     let perform: () -> Void
 
-    init(_ title: String, key: String = "", perform: @escaping () -> Void) {
+    init(_ title: String, perform: @escaping () -> Void) {
         self.perform = perform
-        super.init(title: title, action: #selector(activate), keyEquivalent: key)
+        super.init(title: title, action: #selector(activate), keyEquivalent: "")
         target = self
     }
 

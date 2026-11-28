@@ -161,6 +161,73 @@ final class PickerTests: XCTestCase {
     }
 
     @MainActor
+    func testEarlyReturnRunsOnceAndOnlyForTheQueryItWasPressedOn() async throws {
+        let fixture = try Fixture()
+        try fixture.identifyDaemon()
+        let store = PickerStore(engine: fixture.client(), file: fixture.library)
+        store.present(app: "com.apple.TextEdit", name: "TextEdit")
+        defer { store.dismiss() }
+        // Return while the library opens, then new input before it settles: the press is dropped.
+        store.deliver()
+        XCTAssertTrue(store.returnPending)
+        store.type("zzqxv")
+        XCTAssertFalse(store.returnPending)
+        try await eventually { store.settled && store.catalog != nil }
+        // A refused query does not resubmit, and a later search is not delivered by the earlier press.
+        store.deliver()
+        XCTAssertFalse(store.returnPending)
+        store.type("north")
+        try await eventually { store.settled && store.canDeliver }
+        XCTAssertFalse(store.isDelivering)
+        XCTAssertFalse(store.returnPending)
+    }
+
+    @MainActor
+    func testAPageCorrectedBeforeItsReplyKeepsTheCorrection() async throws {
+        let fixture = try Fixture()
+        try fixture.identifyDaemon()
+        let store = PickerStore(engine: fixture.client(), file: fixture.library)
+        store.present(app: "com.apple.TextEdit", name: "TextEdit")
+        defer { store.dismiss() }
+        try await eventually { store.settled && store.catalog != nil }
+        store.type("north")
+        try await eventually { store.settled && !store.rows.isEmpty }
+        store.add()
+        try await eventually { store.settled && store.added.count == 1 }
+        let item = try XCTUnwrap(store.added.first?.row.id)
+        store.changeLocator(item, value: "1")
+        try await eventually { store.settled && store.entry(item)?.details.locator?.value == "1" }
+        // "2" is typed, then deleted, before its reply: the field and the citation stay on "1".
+        store.changeLocator(item, value: "12")
+        store.changeLocator(item, value: "1")
+        XCTAssertEqual(store.details(for: item).locator?.value, "1")
+        try await eventually { store.settled }
+        XCTAssertEqual(store.entry(item)?.details.locator?.value, "1")
+        XCTAssertEqual(store.details(for: item).locator?.value, "1")
+    }
+
+    @MainActor
+    func testALocatorKindChosenOnABlankValueWaitsForTheValue() async throws {
+        let fixture = try Fixture()
+        try fixture.identifyDaemon()
+        let store = PickerStore(engine: fixture.client(), file: fixture.library)
+        store.present(app: "com.apple.TextEdit", name: "TextEdit")
+        defer { store.dismiss() }
+        try await eventually { store.settled && store.catalog != nil }
+        store.type("north")
+        try await eventually { store.settled && !store.rows.isEmpty }
+        store.add()
+        try await eventually { store.settled && store.added.count == 1 }
+        let item = try XCTUnwrap(store.added.first?.row.id)
+        store.chooseLocatorKind(item, .chapter)
+        XCTAssertTrue(store.settled, "A kind with no value sends nothing.")
+        XCTAssertEqual(store.locatorKind(for: item), .chapter)
+        store.changeLocator(item, value: "3")
+        try await eventually { store.settled && store.entry(item)?.details.locator?.term == .chapter }
+        XCTAssertEqual(store.entry(item)?.details.locator?.value, "3")
+    }
+
+    @MainActor
     func testOneTimeFormatKeepsTheCitationAndExpiresAtTheNextOpening() async throws {
         let fixture = try Fixture()
         try fixture.identifyDaemon()

@@ -97,7 +97,6 @@ private struct SearchHeader: View {
                 style: .plain,
                 font: .systemFont(ofSize: grid.query),
                 register: { store.searchField = $0 },
-                began: {},
                 change: { store.type($0) }
             )
             .anchor(.query)
@@ -622,9 +621,9 @@ private struct DetailsPopover: View {
 
     var body: some View {
         let entry = store.entry(item)
-        let details = entry?.details ?? .empty
+        let details = store.details(for: item)
         let options = store.catalog?.locators ?? []
-        let term = details.locator?.term ?? .page
+        let term = store.locatorKind(for: item)
         let name = options.first { $0.term == term }?.name ?? PickerWords.text(.page)
         VStack(alignment: .leading, spacing: 10) {
         if let title = entry?.row.title {
@@ -636,19 +635,14 @@ private struct DetailsPopover: View {
                     text: details.locator?.value ?? "", placeholder: "", label: name, style: .rounded,
                     font: .systemFont(ofSize: NSFont.systemFontSize),
                     register: { store.locatorField = $0 },
-                    began: {},
-                    change: { value in
-                        store.changeDetails(item, to: details.with(locator: Locator(term: term, value: value)))
-                    }
+                    change: { value in store.changeLocator(item, value: value) }
                 )
                 .frame(width: 120)
             } label: {
                 // The locator's kind is the row's label, so "Page" is said once.
                 Picker(PickerWords.text(.locatorType), selection: Binding(
                     get: { term },
-                    set: { next in
-                        store.changeDetails(item, to: details.with(locator: Locator(term: next, value: details.locator?.value ?? "")))
-                    }
+                    set: { next in store.chooseLocatorKind(item, next) }
                 )) {
                     ForEach(options, id: \.term) { Text($0.name).tag($0.term) }
                 }

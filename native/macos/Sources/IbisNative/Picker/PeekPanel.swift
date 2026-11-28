@@ -5,12 +5,10 @@ import SwiftUI
 /// on the system's glass. It never takes the keyboard, so typing goes on.
 @MainActor
 final class PeekPanel: NSPanel {
-    private let store: PickerStore
     private let host = NSHostingView(rootView: PeekView(row: nil))
     private var row: PickerRow?
 
-    init(store: PickerStore) {
-        self.store = store
+    init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 320, height: 200),
                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         isFloatingPanel = true

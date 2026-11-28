@@ -57,8 +57,8 @@ removes the last. A semicolon separates typed references, and a page or note
 typed with the search ("see shore 417") is read as that reference's details,
 with a hint under the field. ⌘L or a click on the citation opens its page,
 text before, text after and Show as. ⌘Y opens Peek beside the picker. The
-format pop-up names the app or site it remembers a choice for; Use for This
-Citation holds a format until the picker closes. Escape closes what is open,
+format pop-up names the app or site it remembers a choice for; "This paste
+only" holds a format until the picker closes. Escape closes what is open,
 clears the query, then hides the picker. Actions (⌘K) opens a menu of every
 command that can run now.
 

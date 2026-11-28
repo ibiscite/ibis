@@ -45,7 +45,7 @@ final class PickerStore: ObservableObject {
     @Published private(set) var isKey = false
     /// While Option is held, Return copies; the delivery button says so.
     @Published private(set) var optionHeld = false
-    /// "Vale removed · Undo ⌘Z", for a few seconds after a removal.
+    /// "Removed Vale · Undo ⌘Z", for a few seconds after a removal.
     @Published private(set) var removal: String?
     /// Changes when the keyboard moves the highlight, so only then the list scrolls.
     @Published private(set) var revealed = 0
@@ -75,7 +75,14 @@ final class PickerStore: ObservableObject {
     private var openingTask: Task<Void, Never>?
     private var outbox: [PickerIntent] = []
     private var pump: Task<Void, Never>?
-    private var deliverWhenSettled: Bool?
+    /// Return pressed before the engine caught up, bound to the query it was
+    /// pressed on. It runs once, when that query settles; any new input drops it.
+    private var pendingReturn: (copyOnly: Bool, query: String)?
+    /// Each reference's details as last sent, until that intent's own reply
+    /// arrives, so an older reply never overwrites what is being typed.
+    private var sentDetails: [ItemRef: PickerDetails] = [:]
+    /// A locator kind chosen while the value is still blank: nothing is sent yet.
+    private var chosenKind: [ItemRef: LocatorTerm] = [:]
     private var delivery: UUID?
     private var targetName: String?
     private var targetPID: Int32?
@@ -102,6 +109,7 @@ final class PickerStore: ObservableObject {
     var added: [PickerEntry] { citation.filter(\.added) }
     var libraryReady: Bool { catalog?.library?.condition == .ready }
     var settled: Bool { pump == nil && outbox.isEmpty && state?.query == query && !isOpening }
+    var returnPending: Bool { pendingReturn != nil }
 
     func entry(_ item: ItemRef) -> PickerEntry? { citation.first { $0.row.id == item } }
     func isAdded(_ item: ItemRef) -> Bool { added.contains { $0.row.id == item } }
@@ -257,6 +265,8 @@ final class PickerStore: ObservableObject {
         pump?.cancel()
         pump = nil
         outbox.removeAll()
+        sentDetails = [:]
+        chosenKind = [:]
         isOpening = true
         // Text typed while the library opens is the person's and must survive the reply.
         let queryAtOpen = query
@@ -277,10 +287,11 @@ final class PickerStore: ObservableObject {
                 apply(opened.state)
                 // What the person typed wins over the selection read from the app in front.
                 let selection = selectionSearch.take()
-                if let text = typed ?? selection { type(text) }
+                if let text = typed ?? selection { type(text) } else { consumePendingReturn() }
             } catch {
                 guard !Task.isCancelled else { return }
                 isOpening = false
+                pendingReturn = nil
                 notice = pickerError(error)
             }
         }
@@ -293,7 +304,9 @@ final class PickerStore: ObservableObject {
         pump?.cancel()
         pump = nil
         outbox.removeAll()
-        deliverWhenSettled = nil
+        pendingReturn = nil
+        sentDetails = [:]
+        chosenKind = [:]
         isChangingFormat = false
         closeEditing(refocus: false)
         peek = nil
@@ -326,6 +339,7 @@ final class PickerStore: ObservableObject {
     func type(_ text: String) {
         guard text != query else { return }
         query = text
+        pendingReturn = nil
         notice = nil
         send(.type(query: text))
     }
@@ -334,6 +348,9 @@ final class PickerStore: ObservableObject {
     /// only the newest text waits behind the request in flight.
     func send(_ intent: PickerIntent) {
         guard opening != nil, catalog != nil, libraryReady, !isDelivering else { return }
+        // New input replaces whatever an early Return was pressed on.
+        pendingReturn = nil
+        if case let .details(details, item) = intent { sentDetails[item] = details }
         if let last = outbox.last, intent.replaces(last) {
             outbox[outbox.count - 1] = intent
         } else {
@@ -349,13 +366,18 @@ final class PickerStore: ObservableObject {
             do {
                 let next = try await engine.act(intent)
                 guard !Task.isCancelled else { return }
+                // A reply to the newest details sent for a reference ends its wait.
+                if case let .details(_, item) = intent, !outbox.contains(where: { $0.changesDetails(of: item) }) {
+                    sentDetails[item] = nil
+                }
                 apply(next)
             } catch {
                 guard !Task.isCancelled else { return }
                 notice = pickerError(error)
+                pendingReturn = nil
+                if case let .details(_, item) = intent { sentDetails[item] = nil }
                 // The engine started a new session: show it rather than a citation it no longer holds.
                 if error as? DaemonError == .changed, let opening {
-                    deliverWhenSettled = nil
                     open(PickerOpenRequest(app: opening.app, file: opening.file, keepQuery: true,
                                            language: opening.language, reload: nil, site: opening.site))
                     return
@@ -363,10 +385,14 @@ final class PickerStore: ObservableObject {
             }
         }
         pump = nil
-        if let copyOnly = deliverWhenSettled {
-            deliverWhenSettled = nil
-            deliver(copyOnly: copyOnly)
-        }
+        consumePendingReturn()
+    }
+
+    /// An early Return delivers once, and only the query it was pressed on.
+    private func consumePendingReturn() {
+        guard let pending = pendingReturn, settled else { return }
+        pendingReturn = nil
+        if pending.query == query { deliver(copyOnly: pending.copyOnly) }
     }
 
     private func apply(_ next: PickerState) {
@@ -437,11 +463,39 @@ final class PickerStore: ObservableObject {
     }
     func keepOrder(_ on: Bool) { send(.keepOrder(on: on)) }
 
+    /// A reference's details as the popover shows them: what was last sent
+    /// while its reply is on the way, else what the engine holds.
+    func details(for item: ItemRef) -> PickerDetails {
+        sentDetails[item] ?? entry(item)?.details ?? .empty
+    }
+
+    /// The locator kind shown: one chosen on a blank value waits here until a value is typed.
+    func locatorKind(for item: ItemRef) -> LocatorTerm {
+        chosenKind[item] ?? details(for: item).locator?.term ?? .page
+    }
+
     func changeDetails(_ item: ItemRef, to details: PickerDetails) {
-        guard let entry = entry(item), details != entry.details else { return }
+        guard let entry = entry(item), details != self.details(for: item) else { return }
         // Changing a typed or highlighted reference adds it, and the engine clears the field.
         if !entry.added { query = "" }
         send(.details(details: details, item: item))
+    }
+
+    /// A new kind on a blank locator is kept until a value is typed; with a value it is sent.
+    func chooseLocatorKind(_ item: ItemRef, _ term: LocatorTerm) {
+        let current = details(for: item)
+        guard let value = current.locator?.value, !value.isEmpty else {
+            chosenKind[item] = term
+            return
+        }
+        chosenKind[item] = nil
+        changeDetails(item, to: current.with(locator: Locator(term: term, value: value)))
+    }
+
+    func changeLocator(_ item: ItemRef, value: String) {
+        let term = locatorKind(for: item)
+        if !value.isEmpty { chosenKind[item] = nil }
+        changeDetails(item, to: details(for: item).with(locator: Locator(term: term, value: value)))
     }
 
     /// Delete in an empty field takes back the last added reference; ⌘Z returns it.
@@ -469,8 +523,8 @@ final class PickerStore: ObservableObject {
     func deliver(copyOnly: Bool = false) {
         guard opening != nil, !isDelivering else { return }
         if !settled {
-            deliverWhenSettled = copyOnly
             if pump == nil, !isOpening { send(.type(query: query)) }
+            pendingReturn = (copyOnly, query)
             return
         }
         guard canDeliver, let preview = state?.preview else { return }
@@ -500,7 +554,10 @@ final class PickerStore: ObservableObject {
                 case IbisPermissionRequired:
                     didCopy?(PickerWords.text(.copied))
                     needsPasteAccess?()
-                case nil: notice = PickerWords.text(.copyFailed)
+                case nil:
+                    notice = PickerWords.text(.copyFailed)
+                    // The engine drops a preview whose write failed: fetch a new ticket for the next Return.
+                    await refreshState(attempt)
                 default:
                     // 8B: say so only when the citation was copied, not pasted.
                     didCopy?(PickerWords.text(.copied))
@@ -510,16 +567,20 @@ final class PickerStore: ObservableObject {
             } catch {
                 guard delivery == attempt else { return }
                 notice = pickerError(error)
-                if let opening, let saved = try? await engine.changeFormat(.readOnly, for: opening),
-                   delivery == attempt {
-                    apply(saved)
-                }
+                await refreshState(attempt)
             }
             if delivery == attempt {
                 delivery = nil
                 isDelivering = false
             }
         }
+    }
+
+    /// The session as the engine holds it now, read without changing it.
+    private func refreshState(_ attempt: UUID) async {
+        guard let opening, let saved = try? await engine.changeFormat(.readOnly, for: opening),
+              delivery == attempt else { return }
+        apply(saved)
     }
 
     // MARK: Formats
@@ -554,7 +615,7 @@ final class PickerStore: ObservableObject {
 
     func panelKeyChanged(_ key: Bool) { isKey = key }
 
-    func focusSearch(caretAtEnd: Bool = true) { searchField?.focus(caretAtEnd: caretAtEnd) }
+    func focusSearch() { searchField?.focus(caretAtEnd: true) }
 
     func showNumbers(_ show: Bool) { if numbers != show { numbers = show } }
 
@@ -628,6 +689,11 @@ final class PickerStore: ObservableObject {
 }
 
 private extension PickerIntent {
+    func changesDetails(of item: ItemRef) -> Bool {
+        if case let .details(_, changed) = self { return changed == item }
+        return false
+    }
+
     /// Typing, and typing in one reference's details, keep only the newest text.
     func replaces(_ earlier: PickerIntent) -> Bool {
         switch (self, earlier) {

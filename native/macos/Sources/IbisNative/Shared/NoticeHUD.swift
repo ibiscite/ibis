@@ -10,8 +10,8 @@ final class NoticeHUD {
     private var panel: NSPanel?
     private var hide: DispatchWorkItem?
 
-    func show(_ text: String, symbol: String = "doc.on.clipboard") {
-        let host = NSHostingView(rootView: NoticeView(text: text, symbol: symbol))
+    func show(_ text: String) {
+        let host = NSHostingView(rootView: NoticeView(text: text, symbol: "doc.on.clipboard"))
         host.safeAreaRegions = []
         let size = host.fittingSize
         let panel = self.panel ?? Self.makePanel()

@@ -37,7 +37,7 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         chooser = chooseLibrary
         opener = useLibrary
         host = NSHostingView(rootView: PickerView(store: store))
-        peek = PeekPanel(store: store)
+        peek = PeekPanel()
         host.safeAreaRegions = []
         host.sizingOptions = []
         glass = SystemGlass(content: host, corner: 26)
