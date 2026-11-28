@@ -231,6 +231,7 @@ fn setting_label(setting: &str) -> String {
         "menu_bar" => "Menu bar item",
         "recent_citations" => "Recent citations",
         "small_surprises" => "Small surprises",
+        "search_glyph" => "Search field symbol",
         "appearance" => "Appearance",
         "accent" => "Accent colour",
         _ => {

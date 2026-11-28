@@ -335,7 +335,18 @@ impl SnapshotIndex {
         scope: Option<&[LibraryId]>,
         stop: &dyn Fn() -> bool,
     ) -> Option<Vec<RecordHit<'_>>> {
-        let hits = match by_identifier(
+        self.search_with_total(query, limit, scope, stop).map(|(hits, _)| hits)
+    }
+
+    /// The same ranked page, with the match count before truncation.
+    pub fn search_with_total(
+        &self,
+        query: &str,
+        limit: usize,
+        scope: Option<&[LibraryId]>,
+        stop: &dyn Fn() -> bool,
+    ) -> Option<(Vec<RecordHit<'_>>, usize)> {
+        let (hits, total) = match by_identifier(
             self.entries
                 .iter()
                 .map(|entry| (entry, entry.record.identifiers.as_slice())),
@@ -347,7 +358,7 @@ impl SnapshotIndex {
             Some(hits) => hits,
             None => rank(&self.entries, &self.texts, query, limit, scope, stop)?,
         };
-        Some(
+        Some((
             hits.into_iter()
                 .map(|hit| RecordHit {
                     item: &self.snapshot.objects()[hit.reference.position],
@@ -357,6 +368,7 @@ impl SnapshotIndex {
                     partial: hit.partial,
                 })
                 .collect(),
-        )
+            total,
+        ))
     }
 }

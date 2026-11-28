@@ -54,7 +54,7 @@ const IDS = [
 ] as const;
 export type MessageId = typeof IDS[number];
 /** Messages Rust owns: engine codes and the CLI, MCP and native app's words. */
-const RUST = /^(error|reason|refusal|problem|warning|source-warning|loss|notice|form|cause|cli|mcp|app)-/;
+const RUST = /^(error|reason|refusal|problem|warning|source-warning|loss|notice|form|cause|cli|mcp|app|picker-native)-/;
 type Variables = Readonly<Record<string, string | number>>;
 type Audience = "app" | "bibliography" | "settings";
 export type InterfaceMessages = Readonly<{
@@ -83,7 +83,7 @@ export function createInterfaceMessages(source: string, pseudo = false, language
     if (entry.type === "Comment" || entry.type === "GroupComment" || entry.type === "ResourceComment") continue;
     if (entry.type === "Term") continue;
     if (entry.type !== "Message" || !entry.value || ids.has(entry.id.name)) throw invalid();
-    // The engine's and the command line's words are checked by their own tests.
+    // Rust-owned words are checked by the engine's catalogue tests.
     if (RUST.test(entry.id.name)) continue;
     if (entry.attributes.length) throw invalid();
     ids.add(entry.id.name);

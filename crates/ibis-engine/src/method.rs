@@ -6,7 +6,7 @@ use crate::service::{
     Cancellation, DispatchResult, Engine, EntryResult, FindInResult, LibrariesResult, OutlineResult, ProjectResult,
     ReadResult, Reply, SearchResult, ShareResult, StylesResult, answers, parameters,
 };
-use ibis_core::contract::{CitationRequest, CitationResult, EngineError, ErrorCode, SnapshotObject};
+use ibis_core::contract::{CitationRequest, CitationResult, EngineError, ErrorCode, FormDetails, SnapshotObject};
 use ibis_sources::SourceCapability;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -334,6 +334,44 @@ rows! {
         network: AsCalled,
         palette: [],
     }
+}
+
+// These methods require a handshaken picker connection. In particular, the
+// delivery reply is held open through the native write and its acknowledgment.
+// They do not become CLI commands or public stdio methods.
+macro_rules! picker_rows {
+    ($($variant:ident $name:literal: $params:ty => $result:ty;)*) => {
+        #[derive(Clone, Copy)]
+        pub enum PickerMethod { $($variant,)* }
+
+        impl PickerMethod {
+            pub fn parse(name: &str) -> Option<Self> {
+                match name {
+                    $($name => Some(Self::$variant),)*
+                    _ => None,
+                }
+            }
+
+            pub fn schemas() -> Value {
+                serde_json::json!([$({
+                    "method": $name,
+                    "params": schema_for!($params),
+                    "result": schema_for!($result),
+                }),*])
+            }
+        }
+    };
+}
+
+use crate::picker::*;
+use crate::settings::native::{SettingsRequest, SettingsResult};
+picker_rows! {
+    Open "picker/open": PickerOpenRequest => PickerOpenResult;
+    Act "picker/act": PickerIntent => PickerState;
+    ChangeFormat "picker/format": PickerChangeFormatRequest => PickerState;
+    Forms "picker/forms": PickerFormsRequest => FormDetails;
+    Deliver "picker/deliver": PickerDeliverRequest => PickerDeliverResult;
+    Settings "settings": SettingsRequest => SettingsResult;
 }
 
 #[cfg(test)]

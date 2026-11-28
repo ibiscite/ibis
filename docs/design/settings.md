@@ -1,5 +1,17 @@
 # Settings
 
+## Native macOS app
+
+Settings is a resizable native window reached from the Ibis menu, the menu bar item or ⌘,. It is laid out like System Settings: a `NavigationSplitView` with the search field at the top of the sidebar, pane icons as white symbols on coloured tiles, and grouped `Form` cards with switches, pop-ups and a segmented theme control. The sidebar keeps General, Appearance and Library in reach. General groups the shortcut and paste behavior. Appearance has a live preview above its display controls, drawn with the picker's own rows and invented references. Its theme, Rows and Larger Text save through the daemon and update the picker. ⌘+ and ⌘− are temporary picker zoom. The Ibis menu opens the standard About window.
+
+Library shows the saved source and opens the file chooser as a sheet. Ibis checks that a replacement can open before saving the change. If the saved file moves, Find opens the chooser for a replacement. The picker shows the source it is actually searching, including temporary overrides. Press ⌘F to search Settings by name or task. Return reveals the actual control on its page.
+
+Shortcuts shows the working key for Open Ibis. Activate the button and type a new shortcut in the Settings window. Escape, Tab and leaving the recorder cancel. Ibis keeps the working shortcut until macOS has registered the replacement and the daemon has confirmed the saved choice. Use Default restores the repo build's ⌥⇧⌘Y. The menu-bar item follows the active registration.
+
+Pasting has a saved switch and a separate macOS permission status. With the switch off, Ibis copies. With it on, both Accessibility and the ability to post ⌘V must be available before Settings reports that Ibis can paste. The Open System Settings button requests access on demand. Ibis rechecks the grants when Settings regains focus. Return to the document and reopen Ibis to try a paste with the new permission. The shell and daemon still verify consent and the captured destination at delivery.
+
+## Web settings
+
 [C18] Its own window (in the Dock and Alt+Tab while open), opened with **Settings…** (⌘,) from More, the menu bar or tray. A sidebar of pages runs under the window buttons, as in System Settings. Every change applies at once and reaches an open picker.
 
 - **Window**: 920 × 560 by default, minimum 800 × 400, each limited to the screen's work area less a margin, so a small or scaled screen (1440 × 900 at `GDK_SCALE=2` is 720 × 450) never puts a control off it. A two-column shell with a reserved `--titlebar-height` (macOS only, where the window buttons sit over the content); the sidebar background runs full height. Nothing slides behind the title bar; only the page and the sidebar list scroll.

@@ -11,6 +11,8 @@ use std::sync::{Arc, Condvar, Mutex, OnceLock, mpsc};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 pub(crate) mod mcp;
+#[cfg(target_os = "macos")]
+pub(crate) mod picker;
 
 #[cfg(unix)]
 #[path = "daemon/unix.rs"]
@@ -81,6 +83,8 @@ impl Build {
 enum Mode {
     Rpc,
     Cli,
+    #[cfg(target_os = "macos")]
+    Picker,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -337,8 +341,14 @@ struct Connections {
 }
 
 struct Active {
-    streams: BTreeMap<u64, Stream>,
+    streams: BTreeMap<u64, ActiveStream>,
     idle_since: Instant,
+}
+
+struct ActiveStream {
+    stream: Stream,
+    /// A granted native clipboard write must end before closing its reader.
+    delivery: Arc<Mutex<()>>,
 }
 
 impl Default for Active {
@@ -357,8 +367,10 @@ impl Connections {
     fn drain(&self) {
         self.draining.store(true, Ordering::Release);
         let active = self.active();
-        for stream in active.streams.values() {
-            stream.stop_reading();
+        for link in active.streams.values() {
+            if let Ok(_turn) = link.delivery.try_lock() {
+                link.stream.stop_reading();
+            }
         }
     }
 }
@@ -381,7 +393,22 @@ pub(super) fn run() -> io::Result<()> {
     endpoint.0.prepare()?;
     std::env::set_current_dir(endpoint.0.runtime_dir())?;
     let _lifetime = endpoint.0.lock("engine")?.ok_or(io::ErrorKind::AlreadyExists)?;
+    #[cfg(target_os = "macos")]
+    let delivery_fence = {
+        let deadline = Instant::now() + START_TIMEOUT;
+        loop {
+            if let Some(fence) = endpoint.0.lock("delivery")? {
+                break fence;
+            }
+            if Instant::now() >= deadline {
+                return Err(io::ErrorKind::TimedOut.into());
+            }
+            std::thread::sleep(ACCEPT_RETRY);
+        }
+    };
     let mut listener = endpoint.0.listen()?;
+    #[cfg(target_os = "macos")]
+    drop(delivery_fence);
     ibis_engine::identity::use_saved_key(true).map_err(io::Error::other)?;
     #[cfg(unix)]
     ibis_sources::adapter::guard_daemon_children(std::env::current_exe()?);
@@ -423,7 +450,14 @@ pub(super) fn run() -> io::Result<()> {
             }
         };
         serial += 1;
-        active.streams.insert(serial, control);
+        let delivery = Arc::new(Mutex::new(()));
+        active.streams.insert(
+            serial,
+            ActiveStream {
+                stream: control,
+                delivery: delivery.clone(),
+            },
+        );
         drop(active);
         let established = Connected(clients.clone(), serial);
         let host = host.clone();
@@ -431,7 +465,7 @@ pub(super) fn run() -> io::Result<()> {
             .name("ibis-connection".into())
             .spawn(move || {
                 let established = established;
-                let _ = serve(stream, &host, &established.0);
+                let _ = serve(stream, &host, &established.0, &delivery);
             })
         {
             accept_failure("spawn connection handler", &error);
@@ -461,7 +495,12 @@ fn reject_busy(stream: Stream) -> io::Result<()> {
     Ok(())
 }
 
-fn serve(stream: Stream, host: &crate::headless::Host, connections: &Connections) -> io::Result<()> {
+fn serve(
+    stream: Stream,
+    host: &crate::headless::Host,
+    connections: &Connections,
+    _delivery: &Mutex<()>,
+) -> io::Result<()> {
     let mut framed = Framed::hello(stream)?;
     let Some(hello): Option<Hello> = framed.request()? else {
         return Ok(());
@@ -493,7 +532,24 @@ fn serve(stream: Stream, host: &crate::headless::Host, connections: &Connections
             connections.cli_connections.fetch_add(1, Ordering::Relaxed);
             serve_cli(framed, host, connections)
         }
+        #[cfg(target_os = "macos")]
+        Mode::Picker => picker::serve(framed, host, connections, _delivery),
     }
+}
+
+/// Start or join the daemon using the normal locks and skew policy. The app
+/// opens its own authenticated socket with the same build identity.
+#[cfg(target_os = "macos")]
+pub fn picker_endpoint() -> io::Result<()> {
+    let endpoint = Endpoint::current()?;
+    let _connection = endpoint.connect_or_start(Mode::Rpc)?;
+    let socket = endpoint.0.socket_path();
+    let result = serde_json::json!({
+        "socket": socket,
+        "delivery_lock": socket.with_extension("delivery"),
+        "hello": Hello { build: Build::here().clone(), mode: Mode::Picker },
+    });
+    serde_json::to_writer(io::stdout().lock(), &result).map_err(io::Error::other)
 }
 
 fn serve_cli(framed: Framed, host: &crate::headless::Host, connections: &Connections) -> io::Result<()> {

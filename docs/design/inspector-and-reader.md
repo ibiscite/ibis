@@ -6,19 +6,29 @@ The regions that unfold beside the list ([the model](../design.md#the-model), de
 
 [C23] One reference's citation details open from its token (decision 0045), as Zotero's bubbles open theirs: they belong to this citation and are forgotten after the paste.
 
-- **Where**: in the drawer (`ui/Drawer`), which rises from the delivery bar across the window's width, on the window's own surface under a hairline: the list gives it room from its end, so it covers no row and no arrow points over a result, and the highlighted result stays in view above it. What it is about (the title, the byline, its notes) leads; the fields sit beside it where the window has room, under it where it does not. It is not modal: Search, the list and the bar stay live.
-- **Only this citation's details**, on one label column, with no actions: Open the source, Show in Zotero and the rest act on the reference, so they live in More and on its result row; Remove is the token's ×; moves are ⇧← ⇧→ and More.
+### Native macOS picker (repo build)
+
+- **Page** is beside the citation in the delivery bar. Its field starts empty and belongs to the last added or clicked token. Each reference keeps its own value. Choose a locator type from the menu, which lists the CSL terms in the interface language. The field uses that type as its placeholder. ⌘L focuses the value, Tab returns to search, and Return runs the delivery action. To type a whole citation with a locator into Search, enter Type a Citation with ⌘T.
+- Click a token or press ⌘I to open its popover. **Text before** and **Text after** edit the text around that reference. **Show as** offers Name in brackets, Name in the text or Year only when the output supports them. The menu shows each form with the engine’s example for this reference. Escape or a click outside closes the popover and keeps the edits. The results keep their full height.
+- Remove a reference with its × on hover or focus, the token’s context menu, or More. Use ⌘Y to see the highlighted result’s full record in a read-only popover.
+
+See [decision 0063](../decisions/0063-form-follows-function.md) for the placement of these controls.
+
+### Web picker (current desktop release)
+
+- **Where**: in the drawer (`ui/Drawer`), which rises from the delivery bar across the window's width, on the window's own surface under a hairline: the list gives it room from its end, so it covers no row and no arrow points over a result, and the highlighted result stays in view above it. What it is about (the title, the byline, its notes) leads; Its controls begin on the title column below the full byline. Search, the list and the bar stay live.
+- **Citation controls**. One strip holds the Show as pop-up and a locator type joined to its value field. Quiet text links sit below it. Open the source and Show in Zotero live in More. The token’s × removes it and ⇧← or ⇧→ moves it.
   - **Show as**: one pop-up naming the form ("Name in brackets"). Its menu lists the forms this output can print by name, each with the engine's real output for this reference on the same line, cut with "…" ("Name in the sentence  Vale (2021)"); the forms it cannot print are left out, and the menu's note says why once ("Name only and Full reference: Not in this output"). Where none can, one quiet line says why in place of the pop-up. Opening the details closes any other menu or popover, and opening More or a sheet closes them.
   - **Page**: the value field, with the locator type as a quiet pop-up at its start ("p. ▾ 417"), drawn as every pop-up is; its menu lists all 29 CSL locator types and narrows as you type. It takes ranges and lists ("417", "xii–xiv"), a typed label names the type ("ch. 3" sets Chapter), and text that is not a locator stays literal. The engine names any output that cannot print it.
   - **+ Text before** and **+ Text after**: quiet links that reveal the prefix and suffix fields; a field with text stays shown. The engine formats and escapes the text.
   - **Keep My Order** at the foot, only when the style sorts.
-  - A warning about the reference shows in words under its title; a refusal is the bar's own line, never repeated here.
-- **Keys**: focus starts in the Page field. Tab moves through it in order, never trapped. Enter in a field does what the bar's action says. Esc closes an open menu, then the details, and focus returns to the token. Pressing another token moves them; pressing the same one closes them.
+  - A warning about the reference shows in words under its title; the section line reports a refusal.
+- **Keys**: focus starts in the locator value. Tab moves through the type, Show as, Text before and Text after. Enter in a field does what the bar's action says. Esc closes an open menu, then the details, and focus returns to the token. Pressing another token moves them; pressing the same one closes them.
 - Closing or replacing the details stops their examples immediately, keeping the citation available to copy. Abandoned examples must not delay the next citation.
 
 ## Inspector
 
-[C19] The Reader and a citation's warnings are never an overlay. They open in a panel beside the list, as Preview's sidebar does.
+[C19] In the web picker, the Reader and a citation's warnings open in a panel beside the list, as Preview's sidebar does.
 
 - **Where**: in the middle row, on the trailing edge, `--inspector-width` wide, with the shelf running under both. Its divider runs the whole row it splits, as a Mac split view's does: it meets the search bar's divider at the top and the shelf at the bottom, and the content keeps S inside it (checked by `canvas/geometry.ts`). The window stays its one steady size. Search, list, shelf and footer stay where they are and stay live. Below 36 rem wide the panel takes the list's place instead.
 - **Warnings** list what the engine said about the citation, in words.

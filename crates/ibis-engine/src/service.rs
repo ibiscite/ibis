@@ -341,7 +341,7 @@ pub(crate) struct Shared {
     pub(crate) citations: crate::citations::Registry,
     state: RwLock<Arc<State>>,
     /// Serializes publications without blocking readers during index building.
-    publication: Mutex<()>,
+    pub(crate) publication: Mutex<()>,
     subscribers: Mutex<BTreeMap<u64, mpsc::SyncSender<LibraryChange>>>,
     next_subscription: AtomicU64,
     sources: Mutex<sources::Registry>,
@@ -539,6 +539,15 @@ impl Engine {
         })
     }
     pub fn search(&self, request: &SearchRequest, cancel: &Cancellation) -> Result<SearchResult, EngineError> {
+        self.search_with_total(request, &[], cancel).map(|(result, _)| result)
+    }
+
+    pub(crate) fn search_with_total(
+        &self,
+        request: &SearchRequest,
+        locator_labels: &[(String, LocatorTerm)],
+        cancel: &Cancellation,
+    ) -> Result<(SearchResult, usize), EngineError> {
         cancel.check()?;
         if request.query.len() > 64 * 1024
             || request.limit > 1000
@@ -567,7 +576,7 @@ impl Engine {
         // Exact lists win before reading what is typed around the search
         // (`see vale 417`) or closest-match search.
         let read = (request.interpret_locator && pasted.is_none())
-            .then(|| ibis_core::shorthand::read(&request.query))
+            .then(|| ibis_core::shorthand::read_with_labels(&request.query, locator_labels))
             .flatten();
         // The words win when, as typed, they match the library whole: a title's
         // number never silently becomes a page, nor its opening "See" a signal.
@@ -595,21 +604,22 @@ impl Engine {
         let query = shorthand
             .as_ref()
             .map_or(request.query.as_str(), |read| read.search.as_str());
-        let (mut hits, list) = match pasted {
-            Some(list) => (list.hits, Some(PastedList { missing: list.missing })),
-            None => (
-                state
+        let (mut hits, total, list) = match pasted {
+            Some(list) => {
+                let total = list.hits.len();
+                (list.hits, total, Some(PastedList { missing: list.missing }))
+            }
+            None => {
+                let (hits, total) = state
                     .index
-                    .search(query, request.limit + 1, request.libraries.as_deref(), &|| {
+                    .search_with_total(query, request.limit.max(1), request.libraries.as_deref(), &|| {
                         cancel.is_cancelled()
                     })
-                    .ok_or_else(|| error(ErrorCode::Cancelled))?,
-                None,
-            ),
+                    .ok_or_else(|| error(ErrorCode::Cancelled))?;
+                (hits, total, None)
+            }
         };
-        // Pasted lists deliberately return the whole exact selection. Ordinary
-        // searches probe one extra candidate, then expose only the requested page.
-        let complete = list.is_some() || hits.len() <= request.limit;
+        let complete = list.is_some() || total <= request.limit;
         if list.is_none() {
             hits.truncate(request.limit);
         }
@@ -652,24 +662,27 @@ impl Engine {
         ensure_budget(&view)?;
         drop(view);
         cancel.check()?;
-        Ok(SearchResult {
-            complete,
-            snapshot: state.index.snapshot().fingerprints().clone(),
-            list,
-            hits: hits
-                .into_iter()
-                .map(|hit| SearchHit {
-                    item: hit.item.clone(),
-                    score: hit.score,
-                    matched: hit.matched,
-                    typo: hit.typo,
-                    partial: hit.partial,
-                })
-                .collect(),
-            shorthand,
-            kept_words,
-            source_health,
-        })
+        Ok((
+            SearchResult {
+                complete,
+                snapshot: state.index.snapshot().fingerprints().clone(),
+                list,
+                hits: hits
+                    .into_iter()
+                    .map(|hit| SearchHit {
+                        item: hit.item.clone(),
+                        score: hit.score,
+                        matched: hit.matched,
+                        typo: hit.typo,
+                        partial: hit.partial,
+                    })
+                    .collect(),
+                shorthand,
+                kept_words,
+                source_health,
+            },
+            total,
+        ))
     }
     pub fn show(&self, request: &ShowRequest) -> Result<SnapshotObject, EngineError> {
         Ok(self.show_checked(request)?.value)

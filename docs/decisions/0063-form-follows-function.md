@@ -24,8 +24,11 @@ built; this says which parts exist.
      citation. Each finished segment becomes a token, as it does when picked.
    - The engine parses this (`ibis-core`), so the picker, `ibis cite` and the
      MCP tools read the same grammar.
-   - The drawer stays for rarer options only: prefix, suffix and form. The
-     locator menus remain there for people who prefer them.
+   - **No drawer** (the maintainer, 2026-11-26, after seeing the native picker): the page is
+     an always-visible field beside the citation in the bar, empty by default, with a
+     locator-type menu (p., ch., sec. and every CSL term) and ⌘L to focus it; a click on the
+     citation or ⌘I opens a small popover with Text before, Text after and Show as, as
+     Zotero's citation dialog does. The list keeps its full height.
 2. **A format is chosen and remembered only where people cite.**
    - The picker's format control and its palette are the one place: for this
      paste, this app or site, or a project.
@@ -47,8 +50,11 @@ built; this says which parts exist.
      not allowed, a refused format, an update: each shows there as one line
      with at most one fix as a button. Typed messages from the engine name
      the fix.
-   - The delivery bar shows only the citation and its action. The empty
-     list's body may explain at length; it never repeats the line.
+   - The delivery bar shows the citation, delivery action and More
+     (maintainer, 2026-11-26). The native picker also shows Page and moves
+     the library commands into More when the library is healthy. A library
+     that needs attention gets its own control. The empty list can give a
+     longer explanation and a next action.
 
 ## Consequences
 

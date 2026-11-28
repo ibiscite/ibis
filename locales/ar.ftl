@@ -223,6 +223,9 @@ app-file-dialog-formats = { -library-formats }
 ## The app’s native windows and dialogs, and its words about other apps.
 
 app-window-settings = إعدادات Ibis
+picker-native-settings-picker = منتقي الاستشهادات
+picker-native-window-menu = نافذة
+picker-native-close-window = إغلاق النافذة
 app-window-notice = إشعار Ibis
 app-open-link-title = فتح الرابط
 app-open-link-copied = تعذّر على Ibis فتح متصفحك. نُسخ الرابط: الصقه في متصفحك.
@@ -503,7 +506,7 @@ general-paste-drag-fallback = إذا لم يكن Ibis في القائمة، فا
 general-paste-drag-failed = تعذّر سحب نسخة Ibis هذه. استخدم الزر + في إعدادات النظام لإضافتها.
 general-paste-waiting = بانتظار موافقتك…
 general-paste-unreadable = تعذّر على Ibis قراءة هذا الإذن، لذا يبقى اللصق متوقفًا حتى يتمكن من ذلك.
-general-paste-granted = يستطيع Ibis اللصق الآن.
+general-paste-granted = اللصق مفعّل.
 general-paste-return-failed = تعذّرت العودة إلى استشهادك. افتح Ibis باختصارك للمتابعة.
 general-paste-stale = مفعّل بالفعل، لكنه لا يزال ينتظر؟ في إعدادات النظام، أزل { $name } من القائمة، وأضف هذه النسخة مجددًا، ثم فعّلها.
 
@@ -2168,3 +2171,81 @@ ai-apps-kept = تبقى الخوادم والإعدادات الأخرى كما 
 app-failure-agent-apps = { ai-apps-failed }
 app-failure-connect-agent-app = { ai-apps-failed }
 app-failure-disconnect-agent-app = { ai-apps-failed }
+
+# Native macOS picker and menu bar.
+picker-native-app = Ibis
+picker-native-panel = Ibis، منتقي الاستشهادات
+picker-native-open = فتح Ibis
+picker-native-quit = إنهاء Ibis
+picker-native-allow-paste = السماح باللصق…
+picker-native-paste-copy-mode = ينسخ Ibis الاستشهادات. اضغط ⌘V للصق.
+picker-native-open-library = فتح المكتبة
+picker-native-shortcut-unavailable = اختصار Ibis غير متاح.
+picker-native-shortcut-not-saved = تعذّر على Ibis تأكيد حفظ الاختصار.
+picker-native-format = التنسيق
+picker-native-format-value = التنسيق، { $format }
+picker-native-search-hint = ابحث بالعنوان أو المؤلف أو السنة أو المفتاح.
+picker-native-choose-title = اختر مكتبة
+picker-native-choose-hint = اختر ملف BibTeX أو CSL JSON أو RIS أو CSV للبحث فيه.
+picker-native-library-missing = تعذّر العثور على { $name }
+picker-native-missing-hint = ربما نُقل الملف أو تغيّر اسمه.
+picker-native-find-library = البحث عن { $name }…
+picker-native-zotero = Zotero
+picker-native-untitled = بلا عنوان
+picker-native-cited = في الاستشهاد
+picker-native-journal-article = مقال في دورية
+picker-native-other-reference = مرجع
+picker-native-author-others = { $author } { row-et-al }
+picker-native-unmatched-segment = اختر مرجعًا لعبارة «{ $query }».
+picker-native-token = استشهاد: { $citation }
+picker-native-locator-type = نوع الموضع
+picker-native-edit-page = تعديل الصفحة أو الموضع
+picker-native-return = مفتاح الإدخال
+picker-native-open-source = فتح المصدر
+picker-native-text-larger = تكبير النص
+picker-native-text-smaller = تصغير النص
+picker-native-density = الصفوف
+picker-native-copied = تم النسخ. اضغط ⌘V للصق.
+picker-native-access-title = شغّل { $app }
+picker-native-access-drag = إن لم يكن في القائمة، اسحب هذه الأيقونة إليها.
+picker-native-access-wait = تُغلق هذه النافذة وحدها عند التشغيل. حتى ذلك الحين، تُنسخ الاستشهادات للصقها بـ ⌘V.
+picker-native-move-earlier = نقل إلى الأمام
+picker-native-move-later = نقل إلى الخلف
+picker-native-reference-count = { $count } مراجع
+picker-native-read-locator = { $term } { $value }
+picker-native-read-prefix = «{ $text }» قبله
+picker-native-read-more =
+    { $count ->
+        [zero] ثم لا مراجع أخرى
+        [one] ثم مرجع واحد آخر
+        [two] ثم مرجعان آخران
+        [few] ثم { $count } مراجع أخرى
+        [many] ثم { $count } مرجعًا آخر
+       *[other] ثم { $count } مرجع آخر
+    }
+picker-native-copy-failed = تغيّرت الحافظة أو تعذّرت الكتابة فيها.
+picker-native-engine-disconnected = توقّف محرك Ibis. حاول مجددًا.
+picker-native-engine-invalid = أرسل محرك Ibis ردًا غير صالح.
+picker-native-engine-peer = تعذّر على Ibis التحقق من محركه المحلي.
+picker-native-engine-newer = يعمل إصدار أحدث من محرك Ibis. ابنِ التطبيق الأصلي بالإصدار الأحدث.
+picker-native-engine-launch = تعذّر على Ibis تشغيل محركه المحلي.
+picker-native-engine-busy = هناك عملية تسليم أخرى في Ibis.
+picker-native-engine-changed = تغيّر الاستشهاد. راجعه قبل المحاولة مجددًا.
+picker-native-request-failed = تعذّر على Ibis إكمال الطلب. حاول مجددًا.
+picker-native-before-example = انظر
+picker-native-after-example = التشديد مضاف
+picker-native-form-narrative = الاسم في النص
+picker-native-copy-citation = نسخ الاستشهاد
+picker-native-paste-short = لصق
+picker-native-no-matches-in = لا نتائج في { $name }
+picker-native-search-glyph = رمز حقل البحث
+picker-native-search-glyph-bird = طائر Ibis
+picker-native-search-glyph-magnifier = عدسة مكبّرة
+picker-native-search-glyph-none = بلا
+picker-native-search-glyph-words = رمز شعار طائر عدسة شريط البحث
+
+picker-native-remember-format = تذكّر التنسيق لـ { $app }
+picker-native-format-project = المشروع: { $name }
+picker-native-format-project-blocked = افتح { $name } في منتقي سطح المكتب للتحقق من قائمة المراجع قبل الاستشهاد.
+picker-native-use-usual = استخدم { $format } مجددًا
+picker-native-forget-format = انسَ تنسيق { $app }

@@ -1,0 +1,289 @@
+[
+ {
+  "id": "okafor2019",
+  "type": "article-journal",
+  "title": "Shorelines in motion: sediment, memory and the invented coast",
+  "author": [
+   {
+    "family": "Okafor",
+    "given": "Adaeze"
+   },
+   {
+    "family": "Lin",
+    "given": "Wei"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2019
+    ]
+   ]
+  },
+  "container-title": "Journal of Imaginary Coasts"
+ },
+ {
+  "id": "vale2021",
+  "type": "book",
+  "title": "Reading the tide line",
+  "author": [
+   {
+    "family": "Vale",
+    "given": "Mira"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2021
+    ]
+   ]
+  },
+  "publisher": "Harbour Press"
+ },
+ {
+  "id": "aster2026",
+  "type": "report",
+  "title": "Salt marsh field notes from an invented estuary",
+  "author": [
+   {
+    "family": "Aster",
+    "given": "Jon"
+   },
+   {
+    "family": "Brook",
+    "given": "Lena"
+   },
+   {
+    "family": "Calder",
+    "given": "Ivo"
+   },
+   {
+    "family": "Dunmore",
+    "given": "Pia"
+   }
+  ],
+  "publisher": "Estuary Institute"
+ },
+ {
+  "id": "lindqvist2018",
+  "type": "chapter",
+  "title": "Lantern gardens and the rhythm of imaginary cities",
+  "author": [
+   {
+    "family": "Lindqvist",
+    "given": "Sara"
+   }
+  ],
+  "editor": [
+   {
+    "family": "Mbeki",
+    "given": "Thandi"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2018
+    ]
+   ]
+  },
+  "container-title": "Cities That Never Were"
+ },
+ {
+  "id": "schreiber2020",
+  "type": "thesis",
+  "title": "Donaudampfschifffahrtsgesellschaftskapitänsmützen und die Geschichte erfundener Flussreisen",
+  "author": [
+   {
+    "family": "Schreiber",
+    "given": "Konstantin"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2020
+    ]
+   ]
+  },
+  "publisher": "Universität Nirgendwo",
+  "genre": "Dissertation"
+ },
+ {
+  "id": "haddad2022",
+  "type": "article-journal",
+  "title": "خرائط الجزر الهادئة في بحر متخيل",
+  "author": [
+   {
+    "family": "حداد",
+    "given": "ليلى"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2022
+    ]
+   ]
+  },
+  "container-title": "مجلة الجغرافيا المتخيلة"
+ },
+ {
+  "id": "quill2017",
+  "type": "webpage",
+  "title": "A field guide to clockwork clouds",
+  "author": [
+   {
+    "family": "Quill",
+    "given": "Ada"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2017
+    ]
+   ]
+  },
+  "URL": "https://example.org/clockwork-clouds"
+ },
+ {
+  "id": "okafor2019b",
+  "type": "article-journal",
+  "title": "Shorelines in motion: a reply",
+  "author": [
+   {
+    "family": "Okafor",
+    "given": "Adaeze"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2019
+    ]
+   ]
+  },
+  "container-title": "Journal of Imaginary Coasts"
+ },
+ {
+  "id": "north2015",
+  "type": "book",
+  "title": "North of the paper sea",
+  "author": [
+   {
+    "family": "Norrland",
+    "given": "Elin"
+   },
+   {
+    "family": "Park",
+    "given": "Joon"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2015
+    ]
+   ]
+  },
+  "publisher": "Atlas Imprint"
+ },
+ {
+  "id": "ferro2023",
+  "type": "article-journal",
+  "title": "Glass harbours and the economics of light",
+  "author": [
+   {
+    "family": "Ferro",
+    "given": "Luca"
+   },
+   {
+    "family": "Ghosh",
+    "given": "Anita"
+   },
+   {
+    "family": "Holm",
+    "given": "Erik"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2023
+    ]
+   ]
+  },
+  "container-title": "Review of Invented Economies"
+ },
+ {
+  "id": "iwata2016",
+  "type": "chapter",
+  "title": "Paper lanterns over the river of maps",
+  "author": [
+   {
+    "family": "Iwata",
+    "given": "Ren"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2016
+    ]
+   ]
+  },
+  "container-title": "Rivers and Their Readers"
+ },
+ {
+  "id": "jansen2024",
+  "type": "report",
+  "title": "Annual survey of quiet islands",
+  "author": [
+   {
+    "family": "Jansen",
+    "given": "Noor"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2024
+    ]
+   ]
+  },
+  "publisher": "Island Office"
+ },
+ {
+  "id": "kowal2012",
+  "type": "book",
+  "title": "The clockmaker's atlas",
+  "author": [
+   {
+    "family": "Kowalczyk",
+    "given": "Marta"
+   }
+  ],
+  "issued": {
+   "date-parts": [
+    [
+     2012
+    ]
+   ]
+  },
+  "publisher": "Meridian Books"
+ },
+ {
+  "id": "lumen",
+  "type": "webpage",
+  "title": "Notes on an undated lighthouse",
+  "author": [
+   {
+    "family": "Moreau",
+    "given": "Céline"
+   }
+  ],
+  "URL": "https://example.org/lighthouse"
+ }
+]

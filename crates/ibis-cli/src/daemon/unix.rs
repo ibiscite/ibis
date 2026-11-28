@@ -45,6 +45,11 @@ impl Address {
         self.0.parent().unwrap_or(&self.0)
     }
 
+    #[cfg(target_os = "macos")]
+    pub(super) fn socket_path(&self) -> &Path {
+        &self.0
+    }
+
     pub fn prepare(&self) -> io::Result<()> {
         let dir = self.runtime_dir();
         let parent = dir.parent().ok_or(io::ErrorKind::InvalidInput)?;

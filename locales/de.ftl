@@ -223,6 +223,9 @@ app-file-dialog-formats = { -library-formats }
 ## The app’s native windows and dialogs, and its words about other apps.
 
 app-window-settings = Ibis-Einstellungen
+picker-native-settings-picker = Auswahlfenster
+picker-native-window-menu = Fenster
+picker-native-close-window = Fenster schließen
 app-window-notice = Ibis-Hinweis
 app-open-link-title = Link öffnen
 app-open-link-copied = Ibis konnte Ihren Browser nicht öffnen. Der Link wurde kopiert: Fügen Sie ihn in Ihren Browser ein.
@@ -503,7 +506,7 @@ general-paste-drag-fallback = Falls Ibis nicht in der Liste steht, ziehen Sie es
 general-paste-drag-failed = Diese Kopie von Ibis ließ sich nicht ziehen. Fügen Sie sie in den Systemeinstellungen mit der Taste + hinzu.
 general-paste-waiting = Warten auf Ihre Zustimmung…
 general-paste-unreadable = Ibis konnte diese Berechtigung nicht lesen, daher bleibt das Einfügen aus, bis es möglich ist.
-general-paste-granted = Ibis kann jetzt einfügen.
+general-paste-granted = Einfügen ist aktiviert.
 general-paste-return-failed = Rückkehr zu Ihrer Zitation nicht möglich. Öffnen Sie Ibis mit Ihrem Tastenkürzel, um fortzufahren.
 general-paste-stale = Schon aktiviert, aber es wartet noch? Entfernen Sie { $name } in den Systemeinstellungen aus der Liste, fügen Sie diese Kopie erneut hinzu und aktivieren Sie sie.
 
@@ -2064,3 +2067,77 @@ ai-apps-kept = Andere Server und Einstellungen bleiben erhalten. Neben jeder ge�
 app-failure-agent-apps = { ai-apps-failed }
 app-failure-connect-agent-app = { ai-apps-failed }
 app-failure-disconnect-agent-app = { ai-apps-failed }
+
+# Native macOS picker and menu bar.
+picker-native-app = Ibis
+picker-native-panel = Ibis, Zitationsauswahl
+picker-native-open = Ibis öffnen
+picker-native-quit = Ibis beenden
+picker-native-allow-paste = Einfügen erlauben…
+picker-native-paste-copy-mode = Ibis kopiert Zitate. Drücken Sie ⌘V zum Einfügen.
+picker-native-open-library = Bibliothek öffnen
+picker-native-shortcut-unavailable = Das Tastenkürzel von Ibis ist nicht verfügbar.
+picker-native-shortcut-not-saved = Ibis konnte nicht bestätigen, dass das Tastenkürzel gespeichert wurde.
+picker-native-format = Format
+picker-native-format-value = Format, { $format }
+picker-native-search-hint = Suchen Sie nach Titel, Autor, Jahr oder Schlüssel.
+picker-native-choose-title = Bibliothek auswählen
+picker-native-choose-hint = Wählen Sie eine BibTeX-, CSL-JSON-, RIS- oder CSV-Datei zum Durchsuchen.
+picker-native-library-missing = { $name } wurde nicht gefunden
+picker-native-missing-hint = Die Datei wurde möglicherweise verschoben oder umbenannt.
+picker-native-find-library = { $name } suchen…
+picker-native-zotero = Zotero
+picker-native-untitled = Ohne Titel
+picker-native-cited = Im Zitat
+picker-native-journal-article = Zeitschriftenartikel
+picker-native-other-reference = Referenz
+picker-native-author-others = { $author } { row-et-al }
+picker-native-unmatched-segment = Wählen Sie eine Referenz für „{ $query }“.
+picker-native-token = Zitat: { $citation }
+picker-native-locator-type = Art der Fundstelle
+picker-native-edit-page = Seite oder Fundstelle bearbeiten
+picker-native-return = Eingabetaste
+picker-native-open-source = Quelle öffnen
+picker-native-text-larger = Größere Schrift
+picker-native-text-smaller = Kleinere Schrift
+picker-native-density = Zeilen
+picker-native-copied = Kopiert. Drücken Sie ⌘V zum Einfügen.
+picker-native-access-title = { $app } einschalten
+picker-native-access-drag = Falls es nicht in der Liste steht, ziehen Sie dieses Symbol hinein.
+picker-native-access-wait = Dies schließt sich, sobald es eingeschaltet ist. Bis dahin werden Zitate zum Einfügen mit ⌘V kopiert.
+picker-native-move-earlier = Nach vorne
+picker-native-move-later = Nach hinten
+picker-native-reference-count = { $count } Quellen
+picker-native-read-locator = { $term } { $value }
+picker-native-read-prefix = „{ $text }“ davor
+picker-native-read-more =
+    { $count ->
+        [one] dann 1 weitere Quelle
+       *[other] dann { $count } weitere Quellen
+    }
+picker-native-copy-failed = Die Zwischenablage hat sich geändert oder konnte nicht beschrieben werden.
+picker-native-engine-disconnected = Die Ibis-Engine wurde beendet. Versuchen Sie es erneut.
+picker-native-engine-invalid = Die Ibis-Engine hat eine ungültige Antwort gesendet.
+picker-native-engine-peer = Ibis konnte seine lokale Engine nicht überprüfen.
+picker-native-engine-newer = Eine neuere Ibis-Engine läuft. Bauen Sie die native App mit der neueren Version.
+picker-native-engine-launch = Ibis konnte seine lokale Engine nicht starten.
+picker-native-engine-busy = Ibis fügt gerade ein anderes Zitat ein.
+picker-native-engine-changed = Das Zitat hat sich geändert. Prüfen Sie es vor dem nächsten Versuch.
+picker-native-request-failed = Ibis konnte die Anfrage nicht abschließen. Versuchen Sie es erneut.
+picker-native-before-example = siehe
+picker-native-after-example = Hervorhebung hinzugefügt
+picker-native-form-narrative = Name im Text
+picker-native-copy-citation = Zitat kopieren
+picker-native-paste-short = Einfügen
+picker-native-no-matches-in = Keine Treffer in { $name }
+picker-native-search-glyph = Symbol im Suchfeld
+picker-native-search-glyph-bird = Ibis-Vogel
+picker-native-search-glyph-magnifier = Lupe
+picker-native-search-glyph-none = Keins
+picker-native-search-glyph-words = Symbol Logo Vogel Lupe Suchleiste
+
+picker-native-remember-format = Für { $app } merken
+picker-native-format-project = Projekt: { $name }
+picker-native-format-project-blocked = Öffne { $name } in der Desktop-Auswahl, um die Bibliografie vor dem Zitieren zu prüfen.
+picker-native-use-usual = Wieder { $format } verwenden
+picker-native-forget-format = Format für { $app } vergessen

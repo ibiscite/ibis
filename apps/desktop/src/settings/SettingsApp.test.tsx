@@ -138,7 +138,7 @@ test("the paste guide names the list, opens it, notices the grant on its own and
   expect(card.textContent).toContain("remove Ibis Nightly from the list, add this copy again, then turn it on");
   state.permission = { ...state.permission, granted: true };
   await act(async () => { await vi.advanceTimersByTimeAsync(RECHECK_MS); });
-  expect(within(card).getByRole("status").textContent).toBe("Ibis can paste now.");
+  expect(within(card).getByRole("status").textContent).toBe("Pasting is on.");
   expect(within(card).queryByRole("button", { name: "Open System Settings" })).toBeNull();
   expect(card.textContent).not.toContain("remove Ibis Nightly from the list");
   // Once allowed, Settings stops asking every second.

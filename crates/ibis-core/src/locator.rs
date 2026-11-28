@@ -200,6 +200,16 @@ pub fn read_field(term: LocatorTerm, text: &str) -> Result<Locator, FieldError> 
 /// Split a trailing locator off `query`, or `None` when there is none or
 /// nothing would be left to search for.
 pub fn parse_trailing(query: &str) -> Option<TrailingLocator> {
+    trailing(query, None)
+}
+
+/// Explicit citation input accepts joined abbreviations and the interface's
+/// locator names as well as the ordinary locator grammar.
+pub(crate) fn parse_typed(query: &str, labels: &[(String, LocatorTerm)]) -> Option<TrailingLocator> {
+    trailing(query, Some(labels))
+}
+
+fn trailing(query: &str, typed_labels: Option<&[(String, LocatorTerm)]>) -> Option<TrailingLocator> {
     let q = query.trim_end();
     let floor = q.len().saturating_sub(MAX_LOCATOR_LEN);
     let mut previous = None;
@@ -228,7 +238,9 @@ pub fn parse_trailing(query: &str) -> Option<TrailingLocator> {
             .any(|text| find_label(text).is_some_and(|(_, rest)| rest.trim() == "1"));
         let bare =
             (tail.chars().filter(|c| c.is_numeric()).count() >= 2 || tail.contains(['-', '–', '—'])) && !labelled;
-        if let Some(locator) = read(tail, after_comma || bare) {
+        if let Some(locator) =
+            read(tail, after_comma || bare).or_else(|| typed_labels.and_then(|labels| explicit_label(tail, labels)))
+        {
             if continues_before(q, i, floor) {
                 return None;
             }
@@ -240,6 +252,32 @@ pub fn parse_trailing(query: &str) -> Option<TrailingLocator> {
         }
     }
     None
+}
+
+fn explicit_label(tail: &str, names: &[(String, LocatorTerm)]) -> Option<Locator> {
+    for (name, term) in names {
+        let Some(prefix) = tail.get(..name.len()) else { continue };
+        if prefix.to_lowercase() != name.to_lowercase() {
+            continue;
+        }
+        let rest = &tail[name.len()..];
+        if rest.starts_with(|c: char| c.is_whitespace() || c == '.' || c.is_numeric()) {
+            let label = LABELS.iter().find(|label| label.term == *term)?;
+            let value = rest.trim_start_matches('.').trim();
+            if let Some(value) = quoted(value).or_else(|| is_value(value, label.value).then_some(value)) {
+                return Some(Locator {
+                    term: *term,
+                    value: value.to_owned(),
+                });
+            }
+        }
+    }
+    let number = tail.find(char::is_numeric)?;
+    let (name, value) = tail.split_at(number);
+    if name.is_empty() || !name.chars().all(char::is_alphabetic) {
+        return None;
+    }
+    read(&format!("{name} {value}"), false)
 }
 
 /// Whether the locator found at `start` is the end of a longer locator that

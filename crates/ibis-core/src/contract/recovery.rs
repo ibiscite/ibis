@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{EngineError, ErrorCode, ErrorReason};
+use super::{EngineError, ErrorCode, ErrorReason, ItemRef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Message {
@@ -131,6 +131,8 @@ pub enum CitationSurface {
 pub struct RecoveryInfo {
     pub message: Message,
     recovery: Recovery,
+    /// Internal draft context for adapters that can focus a reference.
+    pub item: Option<Box<ItemRef>>,
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -155,6 +157,7 @@ impl From<PresentedRecovery> for RecoveryInfo {
         Self {
             message: info.message,
             recovery: info.recovery,
+            item: None,
         }
     }
 }
@@ -179,10 +182,17 @@ impl RecoveryInfo {
                 context: None,
             },
             recovery,
+            item: None,
         }
     }
     pub fn argument(mut self, name: &str, value: impl Into<String>) -> Self {
         self.message.args.insert(name.into(), value.into());
+        self
+    }
+
+    /// The reference to edit when a recovery belongs to one draft item.
+    pub fn for_item(mut self, item: ItemRef) -> Self {
+        self.item = Some(Box::new(item));
         self
     }
 }

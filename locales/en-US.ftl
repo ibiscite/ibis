@@ -225,6 +225,9 @@ app-file-dialog-formats = { -library-formats }
 ## The app’s native windows and dialogs, and its words about other apps.
 
 app-window-settings = Ibis Settings
+picker-native-settings-picker = Picker
+picker-native-window-menu = Window
+picker-native-close-window = Close Window
 # Read by screen readers; never the citation.
 app-window-notice = Ibis notice
 app-open-link-title = Open Link
@@ -513,7 +516,7 @@ general-paste-drag-fallback = If Ibis is not in the list, drag it there.
 general-paste-drag-failed = Couldn’t drag this copy of Ibis. Use the + button in System Settings to add it.
 general-paste-waiting = Waiting for your OK…
 general-paste-unreadable = Ibis could not read this permission, so pasting stays off until it can.
-general-paste-granted = Ibis can paste now.
+general-paste-granted = Pasting is on.
 general-paste-return-failed = Couldn’t return to your citation. Open Ibis with your shortcut to continue.
 general-paste-stale = Already on, but still waiting? In System Settings, remove { $name } from the list, add this copy again, then turn it on.
 
@@ -2083,3 +2086,77 @@ ai-apps-kept = Other servers and settings are kept. A backup is kept beside each
 app-failure-agent-apps = { ai-apps-failed }
 app-failure-connect-agent-app = { ai-apps-failed }
 app-failure-disconnect-agent-app = { ai-apps-failed }
+
+# Native macOS picker and menu bar.
+picker-native-app = Ibis
+picker-native-panel = Ibis, citation picker
+picker-native-open = Open Ibis
+picker-native-quit = Quit Ibis
+picker-native-allow-paste = Allow Paste…
+picker-native-paste-copy-mode = Ibis copies citations. Press ⌘V to paste.
+picker-native-open-library = Open Library
+picker-native-shortcut-unavailable = The Ibis shortcut is unavailable.
+picker-native-shortcut-not-saved = Ibis could not confirm that the shortcut was saved.
+picker-native-format = Format
+picker-native-format-value = Format, { $format }
+picker-native-search-hint = Search by title, author, year or key.
+picker-native-choose-title = Choose a library
+picker-native-choose-hint = Choose a BibTeX, CSL JSON, RIS or CSV file to search.
+picker-native-library-missing = { $name } can’t be found
+picker-native-missing-hint = It may have moved or been renamed.
+picker-native-find-library = Find { $name }…
+picker-native-zotero = Zotero
+picker-native-untitled = Untitled
+picker-native-cited = In citation
+picker-native-journal-article = Journal article
+picker-native-other-reference = Reference
+picker-native-author-others = { $author } { row-et-al }
+picker-native-unmatched-segment = Choose a reference for “{ $query }”.
+picker-native-token = Citation: { $citation }
+picker-native-locator-type = Locator type
+picker-native-edit-page = Edit Page or Locator
+picker-native-return = Return
+picker-native-open-source = Open Source
+picker-native-text-larger = Larger Text
+picker-native-text-smaller = Smaller Text
+picker-native-density = Rows
+picker-native-copied = Copied. Press ⌘V to paste.
+picker-native-access-title = Switch on { $app }
+picker-native-access-drag = If it’s not in the list, drag this icon in.
+picker-native-access-wait = This closes by itself once it’s on. Until then, citations are copied for ⌘V.
+picker-native-move-earlier = Move Earlier
+picker-native-move-later = Move Later
+picker-native-reference-count = { $count } References
+picker-native-read-locator = { $term } { $value }
+picker-native-read-prefix = “{ $text }” before
+picker-native-read-more =
+    { $count ->
+        [one] then 1 more reference
+       *[other] then { $count } more references
+    }
+picker-native-copy-failed = The clipboard changed or could not be written.
+picker-native-engine-disconnected = The Ibis engine stopped. Try again.
+picker-native-engine-invalid = The Ibis engine sent an invalid response.
+picker-native-engine-peer = Ibis could not verify its local engine.
+picker-native-engine-newer = A newer Ibis engine is running. Build the native app with the newer Ibis.
+picker-native-engine-launch = Ibis could not start its local engine.
+picker-native-engine-busy = Another Ibis delivery is in progress.
+picker-native-engine-changed = The citation changed. Review it before trying again.
+picker-native-request-failed = Ibis couldn’t finish this request. Try again.
+picker-native-before-example = see
+picker-native-after-example = emphasis added
+picker-native-form-narrative = Name in the text
+picker-native-copy-citation = Copy Citation
+picker-native-paste-short = Paste
+picker-native-no-matches-in = No matches in { $name }
+picker-native-search-glyph = Search field symbol
+picker-native-search-glyph-bird = Ibis bird
+picker-native-search-glyph-magnifier = Magnifying glass
+picker-native-search-glyph-none = None
+picker-native-search-glyph-words = icon logo bird magnifier search bar
+
+picker-native-remember-format = Remember for { $app }
+picker-native-format-project = Project: { $name }
+picker-native-format-project-blocked = Open { $name } in the desktop picker to check its bibliography before citing.
+picker-native-use-usual = Use { $format } again
+picker-native-forget-format = Forget format for { $app }

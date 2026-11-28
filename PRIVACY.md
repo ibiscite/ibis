@@ -134,6 +134,7 @@ data. Zotero and MCP keep the data flows listed below.
 | App updates | Until 1.0, automatic checks are on by default, shown as a switch on the welcome screen before any check runs and in Settings › About; Check for Updates… checks on request. GitHub receives IP address and app version, not library data. Downloads require agreement and a valid channel signature. |
 | Windows installation | Downloads Microsoft's WebView2 bootstrapper/runtime if missing. Microsoft's runtime updates are separate. |
 | Feedback | Opens GitHub in your browser with app version and OS; you decide whether to submit. |
+| DOI lookup | Planned for the native Mac app, not in this release ([0069](docs/decisions/0069-doi-lookup.md)). Off until you agree once. Then a pasted DOI that is not in your library can be looked up at `doi.org`: only that DOI is sent, never your library, search or document. |
 | AI clients | `ibis mcp` passes bibliographic fields and citations over stdio to its caller, and attachment text from libraries where you allow it. With `--allow-writes` it also takes proposed changes, kept on this computer as above. That client may send what it receives to its own service. [MCP privacy boundary](docs/cli.md#ai-agents-mcp). |
 
 The web interface has window-scoped native commands rather than file,

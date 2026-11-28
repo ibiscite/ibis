@@ -78,6 +78,10 @@
       "text": "Complete citation forms, with real style previews."
     },
     {
+      "text": "A native picker for macOS",
+      "note": "The repo build keeps Search at the top and groups the citation, Page and Format in a stable delivery tray. Settings has searchable navigation."
+    },
+    {
       "text": "Search Zotero highlights and notes, with the page they came from."
     },
     {

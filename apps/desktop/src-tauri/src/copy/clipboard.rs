@@ -6,6 +6,7 @@ use ibis_core::contract::ClipboardContent;
 
 /// One representation of the citation, in the order it is written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(any(not(target_os = "macos"), test))]
 pub(crate) enum Flavor {
     Text,
     Html,
@@ -15,6 +16,7 @@ pub(crate) enum Flavor {
 /// Publish richer formats before text: Windows recipients can choose the
 /// first supported format in clipboard order. Every flavor comes from the
 /// same result, so they share its content hash.
+#[cfg(any(not(target_os = "macos"), test))]
 pub(crate) fn flavors<'a>(content: &ClipboardContent<'a>) -> Vec<(Flavor, &'a str)> {
     let mut flavors = Vec::with_capacity(3);
     flavors.extend(content.html.map(|html| (Flavor::Html, html)));
@@ -23,6 +25,7 @@ pub(crate) fn flavors<'a>(content: &ClipboardContent<'a>) -> Vec<(Flavor, &'a st
     flavors
 }
 
+#[cfg(not(target_os = "macos"))]
 const FAILED: &str = "The clipboard could not be written.";
 
 /// The system's count of clipboard writes by any app.
@@ -42,14 +45,6 @@ pub(crate) fn sequence() -> Option<i64> {
     None
 }
 
-#[cfg(target_os = "macos")]
-fn macos_html(fragment: &str) -> String {
-    // AppKit's HTML importer otherwise guesses a legacy encoding for UTF-8.
-    format!(
-        r#"<html><head><meta http-equiv="content-type" content="text/html; charset=utf-8"></head><body>{fragment}</body></html>"#
-    )
-}
-
 /// The general pasteboard, cleared once and then given every flavor, under
 /// the clipboard's one owner.
 #[cfg(target_os = "macos")]
@@ -60,38 +55,9 @@ pub(crate) fn write(
 ) -> Result<u32, String> {
     use tauri::Manager;
     app.state::<crate::paste::LastTarget>().write_copy(attempt, || {
-        let count = publish_macos(&objc2_app_kit::NSPasteboard::generalPasteboard(), content)?;
+        let count = ibis_native_ffi::publish_macos(&objc2_app_kit::NSPasteboard::generalPasteboard(), content)?;
         Ok(count.and_then(|count| i64::try_from(count).ok()))
     })
-}
-
-/// Return the count immediately after our last format write. A replacement
-/// during publication invalidates the paste proof, even if writing succeeded.
-#[cfg(target_os = "macos")]
-fn publish_macos(board: &objc2_app_kit::NSPasteboard, content: ClipboardContent<'_>) -> Result<Option<isize>, String> {
-    use objc2_foundation::{NSData, NSString};
-    let owned_count = board.clearContents();
-    for (flavor, value) in flavors(&content) {
-        let written = match flavor {
-            Flavor::Text => board.setString_forType(
-                &NSString::from_str(value),
-                &NSString::from_str("public.utf8-plain-text"),
-            ),
-            Flavor::Html => board.setString_forType(
-                &NSString::from_str(&macos_html(value)),
-                &NSString::from_str("public.html"),
-            ),
-            Flavor::Rtf => board.setData_forType(
-                Some(&NSData::with_bytes(value.as_bytes())),
-                &NSString::from_str("public.rtf"),
-            ),
-        };
-        if !written {
-            return Err(FAILED.into());
-        }
-    }
-    let written_count = board.changeCount();
-    Ok((owned_count == written_count).then_some(written_count))
 }
 
 /// One clipboard write, retried briefly while another app holds it, under
@@ -290,7 +256,7 @@ mod tests {
     fn paste_snapshot_covers_all_formats_and_detects_replacement_without_reading_contents() {
         // A private disposable board; never touches the person's clipboard.
         let board = objc2_app_kit::NSPasteboard::pasteboardWithUniqueName();
-        let result = publish_macos(
+        let result = ibis_native_ffi::publish_macos(
             &board,
             ClipboardContent {
                 text: "[@invented]",
@@ -336,7 +302,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
             .output()?;
         assert!(compiled.status.success(), "native HTML decoder did not compile");
         let decoded = Command::new(decoder)
-            .arg(macos_html("<i>Ŝynthetic 山田</i>"))
+            .arg(ibis_native_ffi::macos_html("<i>Ŝynthetic 山田</i>"))
             .output()?;
         assert!(decoded.status.success(), "native HTML decoder failed");
         assert_eq!(String::from_utf8(decoded.stdout)?, "Ŝynthetic 山田");

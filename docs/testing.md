@@ -125,6 +125,14 @@ nor reports a status. Keep the worktree until the PR merges, then run
 `land.sh end NAME`.
 
 [CI](../.github/workflows/ci.yml) runs on in-repository PRs and pushes to main.
+Push the first testable change to the draft and check the run for its exact
+head before visual signoff or final review. If you add a workspace crate,
+the focused local check is:
+
+```sh
+node --test --test-name-pattern='Release Please bumps every workspace crate' scripts/release-config.test.mjs
+```
+
 **CI result** is the required merge check. The interface build, web and script
 tests, dependency policy and commit identities must pass. When selected, `Rust and desktop` runs
 on Ubuntu, macOS and Windows, with one job per system. A newer push to a PR

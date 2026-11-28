@@ -14,8 +14,11 @@ use std::time::{Duration, Instant};
 
 #[cfg(test)]
 use ibis_core::destination::PastePermission;
-use ibis_core::destination::{AppPaste, CopyReason, System};
+use ibis_core::destination::{AppPaste, CopyReason, PASTE_DEADLINE_MS, System};
 use serde::{Deserialize, Serialize};
+
+/// How old a clipboard write may be when its paste is posted.
+const LATE: Duration = Duration::from_millis(PASTE_DEADLINE_MS);
 
 pub mod capture;
 mod delivery;
@@ -37,7 +40,7 @@ use capture::Selection;
 #[cfg(target_os = "windows")]
 pub use delivery::key_release_failed;
 use delivery::{DeliveryRequest, Desk, deliver};
-pub use destination::{intended_paste, policy_decision};
+pub use destination::{intended_paste, offers_paste, policy_decision};
 use input_fence::PostResult;
 #[cfg(any(target_os = "macos", test))]
 use input_fence::{InputPress, PendingPost, PostDesk, PostRequest, check_input_since, checked_post};
@@ -76,11 +79,10 @@ pub const SYSTEM: System = if cfg!(target_os = "macos") {
 };
 
 /// How long the captured app gets to come back to the front after the picker
-/// hides, in checks and in real time; a paste later than `LATE` never happens.
+/// hides, in checks and in real time.
 const RETURN_LIMIT: Duration = Duration::from_millis(1_000);
 const RETURN_STEP: Duration = Duration::from_millis(25);
 const RETURN_CHECKS: u32 = 40;
-const LATE: Duration = Duration::from_millis(1_500);
 /// Time for the app to give its window the keyboard again.
 const SETTLE: Duration = Duration::from_millis(50);
 #[cfg(any(target_os = "macos", test))]

@@ -78,6 +78,8 @@ and is never waited on.
 | Build the website | `node website/build.mjs` |
 | Rebuild logos and icons from `brand/` | `python3 brand/build.py` |
 | Hands-on check of the newest Nightly on a Mac | `bash scripts/hands-on-macos.sh` |
+| Install the native Mac app you build to /Applications | `bash scripts/native-macos.sh install` |
+| Install it and open the picker on the review library | `bash scripts/native-macos.sh dev` |
 | Run the checks CI would run for this branch | `bash scripts/check.sh` |
 | Land: those checks, push, squash auto-merge | `bash scripts/land.sh` |
 | Remove the session after its PR merges | `bash scripts/land.sh end NAME` |

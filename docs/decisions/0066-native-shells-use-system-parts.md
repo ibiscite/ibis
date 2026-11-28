@@ -1,0 +1,93 @@
+# 0066 Native shells use the system's own parts
+
+**Decided** 2026-11-28 by the maintainer, after testing the native Mac draft
+(#2063): the interface felt "basic, badly emulated". His answers: rebuild
+every screen at once, use real macOS controls with system materials
+(Spotlight-like) rather than a custom-drawn look, review once at the end, and
+plan for a native feel on every system later. It refines the shell part of
+[0065](0065-one-warm-engine-thin-shells.md).
+
+## Why
+
+- The first native picker was AppKit drawn by hand: frames computed in
+  points, custom buttons, capsules, rules, tokens and selection fills, PDF
+  copies of the web icons, a scarlet accent and a 70% tint over the glass.
+  It rebuilt the web view's imitation one level down, so it inherited the
+  same drift.
+- Spotlight, Raycast and Alfred feel native because their parts are the
+  system's: the window material, text, symbols, menus, popovers, focus and
+  accent all come from the OS, and the app only decides layout and content.
+- Every system has one first-party toolkit that owns those parts: SwiftUI and
+  AppKit on macOS, WinUI 3 (Windows App SDK) on Windows, GTK 4 with
+  libadwaita on GNOME. Cross-platform toolkits that draw their own controls
+  (Flutter, Slint, Qt Quick, a web view) reproduce the same imitation problem.
+
+## The decision
+
+1. **A shell is layout over system parts.** It uses the platform's controls,
+   materials, symbols, menus, popovers, focus rings, selection colours and
+   accent at their own metrics. It draws nothing the system already draws.
+   The only custom shapes are the ones the platform has no part for (the
+   citation token, the results selection row), and they take their colours
+   from the system's semantic roles.
+2. **macOS: SwiftUI first, AppKit where SwiftUI has no part.** SwiftUI owns
+   the picker's content and Settings (`Form` with the grouped style, sidebar
+   lists, `Toggle`, `Picker`, buttons, popovers). AppKit owns the
+   non-activating `NSPanel`, its glass (`NSGlassEffectView` on macOS 26,
+   `NSVisualEffectView` before), native `NSMenu` pop-ups, text fields that
+   need exact focus and caret control, the hot key and the menu bar item.
+   Icons are SF Symbols; the bird and the beak stay the brand's.
+3. **The engine owns everything a second shell would otherwise copy.** State
+   projections, words (the Fluent catalogue, generated per language), status
+   and fixes already come from the engine. The command table (names, groups,
+   search words, enablement) moves there next, with key bindings declared per
+   system, so a Windows or Linux shell renders the same commands.
+   **The picker session is the engine's** (the maintainer, 2026-11-28, after
+   the first native build kept its own copy of the citation and raced the
+   engine): one session per picker connection owns the query, the results,
+   the highlighted row, the references added with their pages, prefixes,
+   suffixes and forms, the format and the preview. A shell sends intents
+   (type, move, add, remove, reorder, edit details, choose a format, undo,
+   deliver) and draws the state each reply carries. It keeps only what is its
+   own: windows, focus, hover and keys.
+4. **Native on every system: Mac, then Windows, then Linux** (the
+   maintainer, 2026-11-28). Windows follows Mac parity in WinUI 3 (C#, Mica
+   and Fluent controls, a Store MSIX); Linux follows Windows in GTK 4 with
+   libadwaita (gtk4-rs). Each is a thin client of `ibisd` with the contract
+   generated for its language, and each follows this decision. The Tauri
+   app gets fixes only, no new UI logic. It is not rebuilt as a daemon
+   client: it keeps its in-process engine and shares the engine's files
+   (settings, recents, paste approvals) rather than its memory. Each system
+   drops it once its native app reaches parity on the same user journeys,
+   never on a version number. Measurements of the Tauri app (0032's hidden
+   memory, wake-ups and summon to typeable) are the baseline each native app
+   must beat.
+5. **macOS 15 and later** (the maintainer, 2026-11-28, revising the same
+   day's choice of 26): one app for every supported Mac. It uses Liquid Glass
+   on macOS 26 and the standard materials before it, through availability
+   checks in the shared parts (`SystemGlass`); no API that exists only on 26
+   is used without a fallback. No Tauri build is kept for older Macs; the Mac
+   drops Tauri once the native app reaches parity.
+6. **The app is always called Ibis** (the maintainer, 2026-11-28, replacing
+   the working name "Ibis Native"). Until it replaces the Mac nightly, the
+   repo build keeps its own bundle ID (`com.ibiscite.ibis.native`) and
+   settings profile so it runs beside the Tauri app.
+
+7. **The bar is the best app on its system** (the maintainer, 2026-11-28:
+   using Ibis should be a no-brainer, and hold up for the long term). Each
+   native app is judged against that system's own first-party apps and its
+   guidelines (Apple's HIG, Fluent, the GNOME HIG), not against the other
+   Ibis apps. It uses every system integration that helps citing (on the Mac
+   Spotlight, Shortcuts, Services and Control Center; on Windows search,
+   Share and the Store; on GNOME the shell search provider and portals),
+   works fully with the system's screen reader, keyboard conventions, text
+   size and contrast settings, and beats the Tauri baseline in point 4. A
+   screen that a stock app on that system does better is not finished.
+
+## Consequences
+
+- The Mac shell's custom drawing, the picker PDF icon set and the scarlet
+  accent are deleted. The accent is the person's system accent.
+- Design review on the Mac is the running app, not the web playground; the
+  playground stays for the Tauri shell.
+- [macOS design guide](../design/macos.md) records the native recipe.

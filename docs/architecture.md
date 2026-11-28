@@ -1,6 +1,6 @@
 # Architecture
 
-Ibis has a Rust engine, a command line and a Tauri desktop app. This page
+Ibis has a Rust engine, a command line and two desktop shells. This page
 describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 
 ## Layers
@@ -36,6 +36,8 @@ the Rust crates are not published and their APIs may change before 1.0
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations and citation sessions, settings owner, recents, frame and result budgets. Speaks no transport. |
 | `crates/ibis-cli` | The `ibis` executable, its JSON-RPC server and MCP runtime over the engine's public calls, its same-user daemon and the child processes for PDFs, documents and built-in source adapters. Depends on core and engine, and enables the EndNote reader, the document readers and the PDF reader in `ibis-sources` for those processes. |
 | `crates/ibis-native` | Native paste with no window toolkit: the target capture, its proofs and their platform calls, and every `unsafe` block they need. The host supplies windows, the paste setting and the keyboard layout. Depends on core only. |
+| `crates/ibis-native-ffi` | The Mac picker’s in-process C ABI and the macOS clipboard writer shared by the desktop shells. |
+| `native/macos` | The repo-built macOS picker. AppKit owns the window and shortcut, SwiftUI presents the picker, and the daemon handles the library and citations. |
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste delivery through `ibis-native`, shortcuts, settings dialogs and updates. Depends on core, engine, native and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
 
@@ -63,7 +65,7 @@ failures cannot change it.
 
 ## Warm local engine
 
-The command line and MCP share a background `ibis daemon` process under
+The command line, MCP and native Mac picker share a background `ibis daemon` process under
 [decision 0065](decisions/0065-one-warm-engine-thin-shells.md). A client starts
 it on demand. The public socket protocol uses the same JSON-RPC dispatcher
 and method table as `ibis serve --stdio`. The CLI uses the engine's typed
@@ -343,6 +345,38 @@ the target, picker presentation and clipboard generation:
 
 Paste refusals do not retry; permission recovery needs a fresh summon and
 Enter. Platform coverage is in [compatibility](compatibility.md).
+
+## Native macOS shell
+
+The [repo build](../native/macos/README.md) is an AppKit menu-bar app with a
+key-capable, non-activating `NSPanel`. SwiftUI and AppKit render stock
+controls. The shell owns selection, focus, scrolling and window lifetime.
+The daemon supplies result summaries, recent references, settings, formats
+and citation previews over JSON-RPC. `scripts/gen.mjs` generates the Swift
+request and reply types from the picker rows in `ibis-engine/src/method.rs`.
+
+The bundled `ibis` finds or starts the daemon through its existing startup
+lock and build-skew policy. The app opens its own picker connection with the
+same handshake and verifies the server's effective UID. The connection has
+its own library selection and preview, and shares the daemon's file and
+formatter caches. After a disconnect, reads restore that selection on a new
+connection. Enter always needs a preview from the current connection.
+
+Delivery begins with the shown preview's one-use ticket. The daemon recites
+it and keeps the checked preview, library publication lock and settings
+writer lease through the shell's acknowledgment. The shell holds a local
+file lock that keeps a replacement daemon from starting while the native
+effect is in flight. Drain lets an admitted delivery finish. An acknowledgement deadline
+bounds the guard at two seconds. EOF also releases it. The C ABI writes the engine's plain text, HTML and RTF in the app
+with the Accessibility grant. It then uses the existing focus, clipboard and
+timing proofs in [0029](decisions/0029-native-calls.md) to paste after the
+panel hides. A lost delivery reply is never replayed. Nor is a picker intent:
+a reconnect starts a new, empty session, so the shell refuses the intent and
+opens again rather than change a citation the engine no longer holds.
+
+The native bundle has its own settings profile and Accessibility grant.
+The Reader remains planned as a separate, isolated web view under
+[0036](decisions/0036-reader-trust-boundary.md).
 
 ## Performance checks
 

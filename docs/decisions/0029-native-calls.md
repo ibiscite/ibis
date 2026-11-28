@@ -36,6 +36,10 @@ A boundary with no safe binding gets one scoped module allowance, a crate-level
   macOS with `proc_pid_rusage`.
 - `crates/ibis-native` holds the paste proofs' native calls; the desktop
   binds them to its windows.
+- `crates/ibis-native-ffi/src/bridge.rs` exports the native macOS shell's
+  narrow C ABI. The clipboard call borrows UTF-8 for the call's duration.
+  AppKit windows and focus proof stay on the main thread, and the paste
+  worker consumes a single clipboard receipt.
 - Its `paste/macos/secure_input.rs` reads Carbon's `IsSecureEventInputEnabled`
   on the main thread. It is a system-wide flag, not proof of a password field.
 - Its `paste/macos/focus/native.rs` owns public Accessibility calls and retained

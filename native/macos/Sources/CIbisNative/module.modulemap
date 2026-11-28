@@ -1,0 +1,4 @@
+module CIbisNative [system] {
+    header "ibis_native.h"
+    export *
+}

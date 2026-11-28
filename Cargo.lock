@@ -2211,6 +2211,7 @@ dependencies = [
  "ibis-desktop-macros",
  "ibis-engine",
  "ibis-native",
+ "ibis-native-ffi",
  "ibis-os",
  "image",
  "objc2-app-kit",
@@ -2305,6 +2306,19 @@ dependencies = [
  "uiautomation",
  "windows",
  "winsafe",
+]
+
+[[package]]
+name = "ibis-native-ffi"
+version = "0.3.13"
+dependencies = [
+ "dispatch2",
+ "ibis-core",
+ "ibis-native",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-graphics",
+ "objc2-foundation",
 ]
 
 [[package]]

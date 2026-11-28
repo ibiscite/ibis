@@ -28,7 +28,7 @@ test.each(["Accessibility", "Device Control and Data Access"])("the %s drag is a
   expect(onOpen).toHaveBeenCalledOnce();
   expect(screen.getByRole("status").textContent).toBe("Waiting for your OK…");
   rerender(<PasteGuide name="Ibis Nightly" permission={{ ...denied, list, granted: true }} onOpen={onOpen} onDrag={onDrag} />);
-  expect(screen.getByRole("status").textContent).toBe("Ibis can paste now.");
+  expect(screen.getByRole("status").textContent).toBe("Pasting is on.");
   expect(screen.queryByRole("button")).toBeNull();
   expect(screen.queryByText("If Ibis is not in the list, drag it there.")).toBeNull();
 });
@@ -40,10 +40,10 @@ test("an unavailable drag explains recovery, and retry clears the failure withou
   fireEvent.dragStart(drag);
   expect((await screen.findByRole("alert")).textContent).toBe("Couldn’t drag this copy of Ibis. Use the + button in System Settings to add it.");
   expect(screen.queryByText(/private synthetic detail/)).toBeNull();
-  expect(screen.queryByText("Ibis can paste now.")).toBeNull();
+  expect(screen.queryByText("Pasting is on.")).toBeNull();
   await act(async () => { fireEvent.dragStart(drag); });
   expect(screen.queryByRole("alert")).toBeNull();
-  expect(screen.queryByText("Ibis can paste now.")).toBeNull();
+  expect(screen.queryByText("Pasting is on.")).toBeNull();
 });
 
 test("a failed read does not claim permission was granted", async () => {

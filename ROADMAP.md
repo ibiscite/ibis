@@ -284,7 +284,8 @@ maintainer's Mac.
 Every row of the generated compatibility table has recorded evidence on the
 exact release.
 
-- **Systems:** macOS 13 and later on Apple silicon and Intel; Windows 10 and 11;
+- **Systems:** macOS 15 and later in the native app
+  ([0066](docs/decisions/0066-native-shells-use-system-parts.md)); Windows 10 and 11;
   Linux with automatic paste on X11 and on GNOME and KDE Wayland; ARM64 builds.
 - **Sources:** Zotero 7 to 10, running and closed, with and without Better
   BibTeX; `.bib`, CSL-JSON, RIS, EndNote and a folder of PDFs; 10,000
@@ -324,6 +325,8 @@ exact release.
 - **WebAssembly builds** of the rules and readers: no client needs them yet.
 - **SSH beyond `ssh HOST ibis mcp`:** the person's own SSH covers the first need.
 - **More interface languages:** as translators offer them.
+- **A web version for reading and citing** ([0067](docs/decisions/0067-whatever-people-have.md)):
+  planned after 1.0 over the same engine; nothing before 1.0 may block it.
 
 ## Do not build
 

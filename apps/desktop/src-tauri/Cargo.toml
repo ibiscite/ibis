@@ -47,6 +47,7 @@ x11rb = { version = "0.14.0", default-features = false, features = ["xkb", "rand
 # #198: normal windows cannot enter another app's full-screen Space. This
 # macOS-only adapter provides NSPanel conversion without unsafe app code.
 [target.'cfg(target_os = "macos")'.dependencies]
+ibis-native-ffi = { path = "../../../crates/ibis-native-ffi" }
 tauri-nspanel = "=2.1.1"
 # Already locked through Tauri; converts runtime AppKit icons to bounded PNGs.
 image = { version = "=0.25.10", default-features = false, features = ["png", "tiff"] }

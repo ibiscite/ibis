@@ -1,5 +1,6 @@
 * text=auto eol=lf
 *.bib text eol=lf
+brand/exports/macos-picker/*.pdf binary
 crates/ibis-csl/vendor/** -text
 # Fuzz seeds are bytes, line endings included.
 fuzz/corpus/** -text

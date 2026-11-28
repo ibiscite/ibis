@@ -11,8 +11,181 @@ reviewing a change. Ibis’s product rules and recorded departures are in the
 On the Mac, Ibis is becoming a native AppKit/SwiftUI app
 ([0065](../decisions/0065-one-warm-engine-thin-shells.md), amended
 2026-11-26): there, use Apple's standard controls at their own metrics rather
-than measuring and copying them. The Tauri shell stays on the Mac until the
-native one reaches parity, and on Windows and Linux after that.
+than measuring and copying them. Windows (WinUI 3) and Linux (GTK 4 with
+libadwaita) follow in that order ([0066](../decisions/0066-native-shells-use-system-parts.md));
+each system keeps the Tauri app, with fixes only, until its native app reaches
+parity.
+
+### The native recipe
+
+The [native app](../../native/macos/README.md) is layout over the system's own
+parts ([0066](../decisions/0066-native-shells-use-system-parts.md)). It draws
+nothing that macOS already draws.
+
+- **Window:** a non-activating `NSPanel` on Liquid Glass (`NSGlassEffectView`)
+  on macOS 26, the HUD material (`NSVisualEffectView`) on macOS 15, and an
+  opaque window under Reduce Transparency. Its corners are 26 pt. Increase
+  Contrast adds a separator outline. The app targets macOS 15 and later: any
+  API newer than 15 goes through a shared part with an availability check
+  (`SystemGlass`, `.systemGlass(corner:)`), never a screen alone.
+- **Content:** SwiftUI. It uses standard buttons (`.borderedProminent`,
+  `.borderless` and `.link`), `Menu`, `Picker`, popovers, `ProgressView`,
+  `ContentUnavailableView`, `Form` with the grouped style and
+  `NavigationSplitView`. Text fields that need exact focus and caret control
+  are `NSTextField`s.
+- **Colour and symbols:** semantic system colours and the person's accent.
+  Icons are SF Symbols. The bird is the brand's: the menu bar, the app icon
+  and, by default, the search field. The search field shows the colour bird by
+  default, on the icon column; Settings › Appearance offers the magnifying glass
+  or none (the maintainer, 2026-11-28). More appearance choices later, in the
+  spirit of Alfred's themes.
+- **Menus:** Actions (⌘K), the format menu and row menus are `NSMenu`s, opened
+  at the control that owns them, with system section headers.
+- **Grid:** one scale multiplies every size, so Larger Text and ⌘+ scale the
+  whole picker. One grid (`PickerGrid`) sets every x: icons, section headings
+  and the footer start on `edge` (18 pt); the search glyph, kind symbols and
+  status symbol share the 30 pt icon column; the query, hint, titles and
+  bylines start on `title` (58 pt); the selection fill keeps `rowInset` (8 pt).
+  Review shots fail when the glyph and the first row's icon, or the query and
+  its title, differ by more than half a point.
+- **Footer:** the citation in primary text on the panel's own glass; a
+  match not yet added is drawn in secondary text, and the count names only
+  added references. A click opens Details for one reference and the references
+  menu for several. The delivery button falls back to one word ("Paste",
+  "Copy") rather than clip, reads "Copy Citation ⌥↩" while Option is held, and
+  sits beside a labelled "Actions ⌘K". A removal says "Removed Vale · Undo ⌘Z"
+  for four seconds.
+- **Empty states:** a search that misses says "No matches in" the library,
+  even beside added references, with Clear Search and Open Library. With no
+  library, Choose Library… is the only action, and a library file dropped from
+  Finder opens as the chooser would open it. Peek follows ↑ and ↓.
+- **Review:** `scripts/native-macos.sh shots` saves every review state in
+  light and dark from the invented [review library](../../native/macos/Review.csljson),
+  on the built-in display, pasting into an invented TextEdit target. A state
+  the engine never caught up with prints `settle timeout STATE`.
+
+### Native app direction
+
+The bar is the best app on the Mac ([0066](../decisions/0066-native-shells-use-system-parts.md)
+point 7): each screen is compared with Apple's own apps (Spotlight, Finder,
+System Settings, Preview) and is not finished while one of them does the same
+thing better.
+
+The maintainer chose these from A/B mock-ups on 2026-11-28 (round four); they
+are built in this order of need.
+
+- **Settings are pages for what you have:** General holds the few global
+  choices; then one page per library and one per app you have cited into,
+  found as you use them. An app's page holds its format, paste and text
+  rules, a library's page its location and keys. Depth sits behind each
+  row's **Details…**, and search finds every option.
+- **Your clipboard comes back:** after a paste Ibis restores what you had
+  copied, marks the citation as transient so clipboard managers skip it, and
+  leaves the clipboard alone if you copied something in between.
+- **The opening key is a chord** (as ⌥ Space is), offered with an
+  alternative when it is taken.
+- **Shortcuts on from the start; Spotlight asked once per library**
+  (the maintainer, 2026-11-28, after Sol and Astra noted that Spotlight makes
+  unpublished titles findable outside Ibis): when a library is first added,
+  one switch asks whether its references show in Spotlight on this Mac.
+  Settings can change it per library.
+- **Checking a document is a line in the picker:** with an empty query, the
+  first row reports the document in front (“2 citations aren’t in
+  thesis.bib · Fix”); ↩ opens the findings, where each fix is accepted on its
+  own, and nothing in the document changes until it is.
+- **Agent suggestions wait in one review list** (optional AI): each with
+  before and after, Accept, Reject and Undo; nothing changes until accepted.
+- **More ways in:** a Cite control in Control Center, a Services item for
+  selected text, and a short glow at the caret after a paste, beside the menu
+  bar item.
+- **Three places, three jobs** (finding and reading, the same day): the
+  picker cites, Peek glances, and the Library and reader open only when asked
+  for. Ibis stays in the menu bar until the Library or reader opens; then it
+  shows in the Dock and ⌘-Tab, and leaves again when they close.
+- **Peek shows everything useful at once:** the first page, the passage that
+  matched with its page, the person's own notes and highlights, and where it
+  is already cited, read by VoiceOver as one summary.
+- **Passages are found in the same search:** matches inside PDFs appear as
+  “In the text” with the sentence and page; ↩ cites with that page.
+- **Ibis has its own quick reader:** a normal Mac window that opens at the
+  page, with contents and highlights; selected text cites with its page or
+  quote. Pages are drawn in the isolated renderer
+  ([0036](../decisions/0036-reader-trust-boundary.md)), never by a PDF parser
+  beside the library; Open in Preview stays one click away.
+- **The Library window is a workspace for writing:** lists by job first
+  (This document, Reading now, Added this week, Needs a fix, Suggestions),
+  then each manager's collections and files. Agent suggestions and document
+  reports live there.
+
+Quality-of-life choices (the maintainer, 2026-11-28, all twelve as proposed).
+The engine owns the citation and what it remembers; the app owns windows,
+placement and focus.
+
+- **Placement:** the picker opens in Spotlight's place on the screen being
+  written on; a drag moves it there for that display. Reset Position is in the
+  menu bar menu and on a long press of the bird; a spot now off screen falls
+  back to the centre.
+- **Click away keeps the draft:** the whole draft (search, added references,
+  selected row) returns if the shortcut is pressed within 10 minutes, under one
+  line: “Where you left off, 3 minutes ago · Start Over ⌘⌫”.
+- **Keep Open** (⌘K): a small floating picker beside the document that stays
+  across pastes; ↩ pastes and clears, a pin shows in the field, Esc closes it.
+- **Edit the citation at the caret:** inside `\cite{…}` or on a Word citation
+  the picker opens with that citation and ↩ replaces it; inside `\cite{a,|}`
+  it inserts only the new key.
+- **Typed prefix:** text just before the caret that starts a citation
+  (“(Okafor”, “@oka”, “\cite{oka”) becomes the search and is replaced.
+- **Browser sites:** the page address comes from Accessibility, with no new
+  permission; each site keeps its own format, storing only the host.
+- **Per document:** each document remembers its library and format, falling
+  back to the app's; “In this document” is the first section with an empty
+  search, in an order that never moves while typing.
+- **Unreadable library:** the last good copy stays searchable and citable,
+  under one line naming the cause and the fix (“Zotero is syncing · showing
+  the copy from 9:12 · Open Zotero”).
+- **Drag and drop:** a row dragged out drops the citation in the target's
+  format, ⌥ drops the PDF; a PDF, DOI or title dropped in is searched for.
+- **“This page” row:** with a browser in front and an empty search, the page
+  (title, site, date read, from the window, nothing fetched) can be added and
+  cited. Writing to a manager's local port or any network use waits for the
+  maintainer's yes.
+- **Link format:** beside APA and LaTeX; with words selected ↩ links them to
+  the DOI or URL, with nothing selected it pastes the title as a link. In this
+  format the selection is the link text, not the search.
+- **Small surprises, rare and quiet,** behind their switch: a short note at
+  milestones (the 100th citation, a reference list passing 200), “Your year in
+  references” each December in the Library, and the bird looks up when “ibis”
+  is typed. All local; no sounds, seasonal icons or confetti.
+- **Built without asking:** a display unplugged moves the picker to the
+  remaining one; an app that can't take text makes the button Copy and says
+  why first; switching apps never pastes into the wrong window; Secure
+  Keyboard Entry is named when it blocks the shortcut; a library still
+  downloading shows its progress; a `.bib` with broken entries loads the rest
+  and lists the lines; a retracted item says so before it is cited; a
+  scannable placeholder format for Scrivener and Ulysses; full screen, Spaces
+  and Stage Manager are checked on each review.
+
+Sharing and sources (the maintainer, 2026-11-28, all eight as proposed):
+
+- **DOI links in pastes:** in rich-text apps the citation and every
+  bibliography entry link to the DOI or URL; plain text and LaTeX stay plain;
+  one switch per app.
+- **Pasted DOI lookup** ([0069](../decisions/0069-doi-lookup.md)): a missing
+  DOI gets one “Look up” row, asked once, sending only the DOI to `doi.org`.
+- **Share menu:** Share… on a row, the references menu and a document's list
+  opens the system share sheet with Reference and link, PDF, or Reading pack,
+  all built on `ibis share`, plus Copy Link.
+- **Reading packs, clean by default:** PDFs named “Author Year – Title.pdf”,
+  `references.bib`, `references.ris` and a contents page; own notes and
+  highlights only when ticked.
+- **Quote cards:** a passage selected in the reader shares as an image card
+  (quote, citation, DOI) or text, from the Share menu only.
+- **A reference's story in Peek:** newest first, where it was first cited,
+  read, added and found, all from local data.
+- **Time locators:** video and audio take a time where books take a page
+  (“12:34”); “This page” on a video offers the current time.
+- **Citation to PDF:** with the caret on a citation, ⌘O opens the PDF in the
+  reader at the cited page, with a quoted passage highlighted.
 
 ## What the interface does
 

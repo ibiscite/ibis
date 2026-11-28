@@ -13,6 +13,7 @@
 
 use ibis_os::sync::MutexExt;
 pub mod backup;
+pub mod native;
 mod owner;
 pub use owner::{Owner, Pending, Watching};
 pub mod writings;
@@ -298,6 +299,7 @@ macro_rules! resolved {
             pub fn larger_text(&self) -> bool { self.larger_text.unwrap_or(DEFAULTS.larger_text) }
             pub fn density(&self) -> Density { self.density.unwrap_or_default() }
             pub fn appearance(&self) -> Appearance { self.appearance.unwrap_or_default() }
+            pub fn search_glyph(&self) -> SearchGlyph { self.search_glyph.unwrap_or_default() }
             pub fn accent(&self) -> Accent { self.accent.unwrap_or_default() }
             pub fn picker_placement(&self) -> PickerPlacement { self.picker_placement.unwrap_or_default() }
         }
@@ -349,6 +351,17 @@ pub struct Delights {
     /// practice paste (maintainer, 2026-11-18); it is never offered again.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub practice_offered: bool,
+}
+
+/// The symbol at the start of the picker's search field (the maintainer,
+/// 2026-11-28): the colour bird unless someone chooses otherwise.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum SearchGlyph {
+    #[default]
+    Bird,
+    Magnifier,
+    None,
 }
 
 /// Settings owns these choices until the picker consumes the same event fields.
@@ -471,6 +484,9 @@ pub struct Portable {
     /// Quiet bird facts and milestones; absent means enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub small_surprises: Option<bool>,
+    /// The search field's symbol. `None` means the bird.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search_glyph: Option<SearchGlyph>,
     /// Explicit global shortcut per system; none stays unwritten.
     #[serde(skip_serializing_if = "Shortcuts::is_empty")]
     pub shortcut: Shortcuts,
@@ -616,6 +632,7 @@ impl Default for Portable {
             accent: None,
             interface_language: None,
             small_surprises: None,
+            search_glyph: None,
             shortcut: Shortcuts::default(),
             library: None,
             output: None,
@@ -692,6 +709,7 @@ pub struct Interface {
     pub menu_bar: Option<bool>,
     pub recent_citations: Option<bool>,
     pub small_surprises: Option<bool>,
+    pub search_glyph: Option<SearchGlyph>,
     pub delights: Option<Delights>,
     pub picker_windows: BTreeMap<String, PickerWindow>,
 }
@@ -713,6 +731,7 @@ impl From<&Settings> for Interface {
             menu_bar: portable.menu_bar,
             recent_citations: portable.recent_citations,
             small_surprises: portable.small_surprises,
+            search_glyph: portable.search_glyph,
             delights: settings.device.delights.clone(),
             picker_windows: settings.device.picker_windows.clone(),
         }
@@ -967,6 +986,17 @@ pub(super) fn writer_lock(path: &Path) -> Result<WriterLock, SettingsError> {
     })?;
     HOLDING.set(true);
     Ok(WriterLock { file, _local: local })
+}
+
+/// Keep the current primary settings stable against Ibis writes while a
+/// native client publishes an already checked citation.
+pub(crate) fn with_delivery_settings<T>(
+    path: &Path,
+    deliver: impl FnOnce(Option<&Settings>) -> T,
+) -> Result<T, SettingsError> {
+    let _writer = writer_lock(path)?;
+    let loaded = load(path);
+    Ok(deliver(loaded.cites().ok()))
 }
 
 thread_local! {
@@ -1311,6 +1341,21 @@ mod tests {
         assert!(!backup.contains("attachment_text_outside_library"));
     }
     use super::*;
+
+    #[test]
+    fn the_search_field_shows_the_bird_until_another_symbol_is_chosen() {
+        let defaults = parse(r#"{"schema_version":2}"#).unwrap();
+        assert_eq!(defaults.portable.search_glyph(), SearchGlyph::Bird);
+        assert!(serde_json::to_value(&defaults).unwrap().get("search_glyph").is_none());
+        for (glyph, written) in [(SearchGlyph::Magnifier, "magnifier"), (SearchGlyph::None, "none")] {
+            let text = format!(r#"{{"schema_version":2,"search_glyph":"{written}"}}"#);
+            let settings = parse(&text).unwrap();
+            assert_eq!(settings.portable.search_glyph(), glyph);
+            assert_eq!(serde_json::to_value(&settings).unwrap()["search_glyph"], written);
+            let backup = backup::export(&settings, "0.0.0").unwrap();
+            assert!(backup.contains(written), "the choice travels in a backup");
+        }
+    }
 
     #[test]
     fn overlapping_in_process_saves_wait_and_the_last_save_survives_reopen() -> Result<(), Box<dyn std::error::Error>> {

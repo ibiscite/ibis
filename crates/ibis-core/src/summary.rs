@@ -35,21 +35,23 @@ pub struct Author {
     pub name: String,
     /// The family name, or the whole name when it has no family part.
     pub short: String,
+    /// The source supplied a marker in place of the remaining names.
+    pub others: bool,
 }
 
 impl RecordSummary {
     /// The summary of a record's CSL fields, read through `field`.
     pub fn of<'a>(field: impl Fn(&str) -> Option<&'a Value>) -> Self {
-        Self::with_text(field, strip_markup)
+        Self::with_text(field, strip_markup, false)
     }
 
     /// The summary of already checked, decoded text. No further entity or
     /// markup interpretation may change a citable field after its privacy check.
     pub fn citable(fields: &crate::citable::CitableFields) -> Self {
-        Self::with_text(|name| fields.plain().get(name), str::to_owned)
+        Self::with_text(|name| fields.plain().get(name), str::to_owned, false)
     }
 
-    fn with_text<'a>(field: impl Fn(&str) -> Option<&'a Value>, plain: fn(&str) -> String) -> Self {
+    fn with_text<'a>(field: impl Fn(&str) -> Option<&'a Value>, plain: fn(&str) -> String, full: bool) -> Self {
         let text = |name: &str| {
             field(name)
                 .and_then(Value::as_str)
@@ -69,7 +71,7 @@ impl RecordSummary {
             year: date_text(field("issued"), plain),
             container: text("container-title")
                 .or_else(|| text("publisher"))
-                .map(|text| capped(&text, CONTAINER_LIMIT)),
+                .map(|text| if full { text } else { capped(&text, CONTAINER_LIMIT) }),
             item_type: text("type"),
         }
     }
@@ -88,7 +90,11 @@ fn author_named(name: Name, plain: fn(&str) -> String) -> Option<Author> {
     .map(|short| short.trim().to_owned())
     .filter(|short| !short.is_empty())
     .unwrap_or_else(|| display.clone());
-    Some(Author { name: display, short })
+    Some(Author {
+        name: display,
+        short,
+        others: name.is_others(),
+    })
 }
 
 /// The year a date gives as a number: CSL `date-parts` (a number or digits),
@@ -155,15 +161,28 @@ pub fn capped(text: &str, limit: usize) -> String {
 impl crate::contract::Record {
     /// What every front end shows of this record.
     pub fn summary(&self) -> RecordSummary {
+        self.summary_with_container(false)
+    }
+
+    /// The same summary with the complete container for a detail view or tooltip.
+    pub fn full_summary(&self) -> RecordSummary {
+        self.summary_with_container(true)
+    }
+
+    fn summary_with_container(&self, full: bool) -> RecordSummary {
         // Compact names are read as they are held, building no JSON.
         let compact = self.csl.names("author");
-        let mut summary = RecordSummary::of(|field| {
-            if field == "author" && compact.is_some() {
-                None
-            } else {
-                self.csl.get(field)
-            }
-        });
+        let mut summary = RecordSummary::with_text(
+            |field| {
+                if field == "author" && compact.is_some() {
+                    None
+                } else {
+                    self.csl.get(field)
+                }
+            },
+            strip_markup,
+            full,
+        );
         if let Some(names) = compact {
             summary.authors = names
                 .iter()
