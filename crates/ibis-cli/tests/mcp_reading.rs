@@ -1,10 +1,11 @@
 //! The attachment tools are offered only for libraries the person named in
 //! settings, and every answer labels the text it copies as data.
 #![cfg(test)]
-#[path = "support/zotero.rs"]
+#[path = "../../ibis-engine/tests/support/zotero.rs"]
 #[allow(dead_code)]
 mod fixture;
-use ibis_engine::{Cancellation, Engine, Method, mcp};
+use ibis::mcp;
+use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::{Value, json};
 
 fn modern(id: u64, method: &str, mut params: Value) -> Value {
@@ -138,43 +139,22 @@ fn each_answer_comes_only_from_a_library_the_person_named() {
 
 #[test]
 fn outline_projects_private_attachment_metadata_before_structured_content_and_summary() {
-    use ibis_core::contract::{Attachment, Availability, GoldenCase, ItemRef, LibraryObject, Snapshot};
-    let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
-    let parent = case.library.objects()[0].object.id().clone();
-    let mut objects: Vec<_> = case
-        .library
-        .objects()
-        .iter()
-        .map(|object| object.object.clone())
-        .collect();
-    objects.push(LibraryObject::Attachment(Attachment {
-        id: ItemRef {
-            library: parent.library.clone(),
-            key: "invented-attachment".into(),
-        },
-        parent: Some(parent.clone()),
-        title: "file:///synthetic/private/letter.pdf".into(),
-        media_type: "/synthetic/private/letter.pdf".into(),
-        availability: Availability::OnDisk,
-        content_hash: None,
-    }));
-    let engine = Engine::new().unwrap();
+    let server = fixture::Server::new();
+    *server.attachment.lock().unwrap() = json!({"key":"PDFA0001","version":1,"data":{"key":"PDFA0001","version":1,"dateModified":"2026-11-15T12:00:00Z","itemType":"attachment","parentItem":"SYNTH234","title":"file:///synthetic/private/letter.pdf","contentType":"/synthetic/private/letter.pdf","linkMode":"imported_file"}});
+    let engine = Engine::with_zotero_port(server.port).unwrap();
     engine
-        .publish_library(&ibis_sources::LoadedLibrary::new(
-            parent.library.clone(),
-            ibis_sources::LibraryKind::File,
-            &[
-                ibis_sources::SourceCapability::BibliographicRecords,
-                ibis_sources::SourceCapability::AttachmentText,
-            ],
-            Snapshot::new(objects).unwrap(),
-        ))
+        .dispatch(
+            Method::Libraries,
+            &json!({"action":"open-zotero","libraries":["user"]}),
+            &Cancellation::default(),
+        )
         .unwrap();
     let directory = tempfile::tempdir().unwrap();
-    let mut session = mcp::Session::default().with_formats(settings(directory.path(), json!([parent.library])));
-    let response = call(&engine, &mut session, "outline", json!({"ref":"Example2026"}));
+    let mut session = mcp::Session::default().with_formats(settings(directory.path(), personal_consent(&engine)));
+    let response = call(&engine, &mut session, "outline", json!({"ref":"Synthetic2026"}));
     assert_eq!(response["result"]["isError"], false, "{response}");
     let attachment = &response["result"]["structuredContent"]["attachments"][0];
+    assert!(attachment.is_object(), "{response}");
     assert!(attachment.get("title").is_none() && attachment.get("media_type").is_none());
     assert!(!response.to_string().contains("synthetic/private"), "{response}");
 }

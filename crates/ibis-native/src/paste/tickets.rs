@@ -39,6 +39,10 @@ pub trait TicketDesk {
     /// Check the ticket after any injection lock/recovery wait, immediately
     /// before sending fresh key-downs. Releasing old keys needs no ticket.
     fn post_if(&self, pid: i32, key: u16, ready: impl Fn() -> bool) -> bool;
+    /// The saved per-app choice, read again just before the paste posts.
+    fn app_choice(&self, captured: &super::Captured) -> Result<Option<ibis_core::destination::AppPaste>, CopyReason> {
+        captured.paste
+    }
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -125,6 +129,9 @@ impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
     }
     fn may_post(&self) -> bool {
         self.desk.may_post()
+    }
+    fn app_choice(&self, captured: &super::Captured) -> Result<Option<ibis_core::destination::AppPaste>, CopyReason> {
+        self.desk.app_choice(captured)
     }
     fn ask_to_post(&self) {
         self.desk.ask_to_post();

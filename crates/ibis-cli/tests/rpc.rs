@@ -1,8 +1,6 @@
+use ibis::rpc::{Message, RequestId, failure, parse_message};
 use ibis_core::contract::{EngineError, ErrorCode};
-use ibis_engine::{
-    Method,
-    rpc::{Message, RequestId, failure, parse_message},
-};
+use ibis_engine::Method;
 use serde_json::json;
 
 #[test]

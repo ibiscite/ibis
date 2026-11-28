@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use ibis_core::destination::{CopyReason, Decision, PastePermission};
+use ibis_core::destination::{AppPaste, CopyReason, Decision, PastePermission};
 
 use super::capture::Front;
 use super::destination::delivery_decision;
@@ -41,6 +41,12 @@ pub(super) trait Desk {
     /// captured document/surface instead, without an unconditional sleep.
     fn settle(&self) {
         self.wait(SETTLE);
+    }
+    /// The person's paste choice for the captured app as saved now, reread
+    /// just before the final post. A system that keeps no per-app choices
+    /// returns the one frozen with the copy.
+    fn app_choice(&self, captured: &Captured) -> Result<Option<AppPaste>, CopyReason> {
+        captured.paste
     }
     /// Restore only a proven target before waiting for it to come forward.
     fn prepare(&self) -> Result<(), CopyReason> {
@@ -162,6 +168,11 @@ pub(super) fn deliver<D: Desk>(
                         Some(true) => {}
                         Some(false) => return copied(CopyReason::PasteOff),
                         None => return copied(CopyReason::PasteUnavailable),
+                    }
+                    // The app's choice may have changed, or become unreadable,
+                    // in another process while the target came back.
+                    if desk.app_choice(captured) != captured.paste {
+                        return copied(CopyReason::PasteUnavailable);
                     }
                     desk.stage("post.queue");
                     let result = desk.finish(

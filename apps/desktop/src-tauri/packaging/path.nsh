@@ -17,6 +17,23 @@
   ${If} ${Errors}
     Abort "Could not prepare removal of the ibis command from your user PATH."
   ${EndIf}
+  ; The Microsoft Store copy shares this copy's settings folder
+  ; (packaging/msix/AppxManifest.xml), so while it is installed "Delete app
+  ; data" leaves that folder alone. Its package folder exists once it has run;
+  ; this is the last hook before Tauri deletes app data, so a Store copy
+  ; installed after the uninstaller starts is not seen.
+  !if "${BUNDLEID}" == "com.ibiscite.ibis"
+    !define IBIS_STORE_PACKAGE "Ibiscite.Ibis"
+  !else
+    !define IBIS_STORE_PACKAGE "Ibiscite.IbisNightly"
+  !endif
+  ReadEnvStr $2 LOCALAPPDATA
+  FindFirst $0 $1 "$2\Packages\${IBIS_STORE_PACKAGE}_*"
+  FindClose $0
+  ${If} $1 != ""
+    StrCpy $DeleteAppDataCheckboxState 0
+  ${EndIf}
+  !undef IBIS_STORE_PACKAGE
 !macroend
 !macro NSIS_HOOK_POSTUNINSTALL
   nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\path.ps1" -Action Remove -Directory "$INSTDIR"'

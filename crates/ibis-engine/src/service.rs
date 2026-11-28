@@ -1,5 +1,4 @@
 //! Typed services retain an immutable snapshot while refresh prepares its replacement.
-use crate::sync::MutexExt;
 use crate::{Method, request::*};
 use ibis_core::{
     citable::{CitableFields, FieldProjection},
@@ -9,6 +8,7 @@ use ibis_core::{
 pub use ibis_csl::{
     LocaleEntry as LocaleInfo, Release as UpstreamRelease, StyleEntry as StyleInfo, StylePage as StylesResult,
 };
+use ibis_os::sync::MutexExt;
 pub use ibis_sources::FileLoads;
 pub use ibis_sources::{LibraryKind, SourceCapability, SourceWarning, WarningCause, WarningCode};
 use schemars::JsonSchema;
@@ -507,9 +507,14 @@ impl Engine {
     }
     /// Publish a library a caller read itself, keeping what the read found:
     /// warnings, damaged and repeated keys, and whether it stopped short, so
-    /// lookups answer as they do for a library the engine opened.
+    /// lookups answer as they do for a library the engine opened. The engine
+    /// holds no source behind it, so it is a snapshot and offers only what its
+    /// records can serve: no original entries, attachments or proposals.
     pub fn publish_library(&self, loaded: &ibis_sources::LoadedLibrary) -> Result<(), EngineError> {
-        self.shared.install(sources::info(loaded), &loaded.snapshot, None)
+        let mut info = sources::info(loaded);
+        info.kind = LibraryKind::Snapshot;
+        info.capabilities.retain(|capability| !capability.needs_source());
+        self.shared.install(info, &loaded.snapshot, None)
     }
 
     /// Whether Zotero's references here came from its closed database, the

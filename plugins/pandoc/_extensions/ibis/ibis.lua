@@ -16,6 +16,7 @@
 -- IBIS names the command when it is not on PATH.
 
 local MAX_ITEMS = 1000 -- one citation's limit in `ibis cite` and `ibis search`
+local MAX_QUERY = 64 * 1024 -- the longest pasted list `ibis search` reads
 
 local function warn(message)
   io.stderr:write("[WARNING] ibis: " .. message .. "\n")
@@ -143,6 +144,22 @@ local function records(keys, libraries)
   return each
 end
 
+-- The keys in batches `held` can ask about at once: at most MAX_ITEMS keys,
+-- and MAX_QUERY bytes once written as `@{key} `.
+local function batches(keys)
+  local all, batch, size = {}, {}, 0
+  for _, key in ipairs(keys) do
+    local bytes = #key + 4
+    if #batch == MAX_ITEMS or size + bytes > MAX_QUERY then
+      all[#all + 1], batch, size = batch, {}, 0
+    end
+    batch[#batch + 1] = key
+    size = size + bytes
+  end
+  all[#all + 1] = batch
+  return all
+end
+
 local function cited(doc, known)
   local keys, seen = {}, {}
   local function add(cite)
@@ -155,10 +172,8 @@ local function cited(doc, known)
       end
     end
   end
-  doc.blocks:walk({ Cite = add })
-  if doc.meta.nocite then
-    pandoc.Blocks({ pandoc.Plain(doc.meta.nocite) }):walk({ Cite = add })
-  end
+  -- The body and the front matter: nocite, and citations in a title or abstract.
+  doc:walk({ Cite = add })
   return keys
 end
 
@@ -174,8 +189,7 @@ function Pandoc(doc)
   end
   local libraries = library_args(doc.meta)
   local added = pandoc.List(doc.meta.references or {})
-  for first = 1, #keys, MAX_ITEMS do
-    local chunk = { table.unpack(keys, first, math.min(first + MAX_ITEMS - 1, #keys)) }
+  for _, chunk in ipairs(batches(keys)) do
     local found, why = held(chunk, libraries)
     if found == nil then
       if why == "missing" then
@@ -187,7 +201,13 @@ function Pandoc(doc)
     end
     if #found > 0 then
       for _, json in ipairs(records(found, libraries)) do
-        added:extend(pandoc.read(json, "csljson").meta.references or {})
+        -- Pandoc matches a citation to a record's `id`, but the document cites
+        -- the key; a library's own `id` may differ, or name another work.
+        local items = pandoc.json.decode(json, false)
+        for _, item in ipairs(items) do
+          item.id = item["citation-key"] or item.id
+        end
+        added:extend(pandoc.read(pandoc.json.encode(items), "csljson").meta.references or {})
       end
     end
   end

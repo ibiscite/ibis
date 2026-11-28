@@ -1,7 +1,7 @@
 //! Sessions own citation ordering, cancellation, examples and commit validation.
-use crate::sync::MutexExt;
 use crate::{Cancellation, Engine, PreparedCitation};
 use ibis_core::contract::*;
+use ibis_os::sync::MutexExt;
 use std::collections::BTreeMap;
 use std::sync::{
     Arc, Mutex, MutexGuard,
@@ -115,18 +115,22 @@ pub enum Operation {
 pub struct Citations<'a> {
     engine: &'a Engine,
 }
-/// Reserved synchronously by a transport before its worker receives the request.
-pub(crate) struct SubmittedCitation {
+/// A place in a session's queue for one citation, taken when a transport
+/// accepts the request and before its worker reads it, so the session's order
+/// is the order requests arrived. Dropping it cancels the citation.
+pub struct ReservedCitation {
     worker: Worker,
     reserved: u64,
 }
-impl std::fmt::Debug for SubmittedCitation {
+impl std::fmt::Debug for ReservedCitation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SubmittedCitation").finish_non_exhaustive()
+        f.debug_struct("ReservedCitation").finish_non_exhaustive()
     }
 }
-impl SubmittedCitation {
-    pub(crate) fn prepare(
+impl ReservedCitation {
+    /// Prepare the reserved citation, unless the session closed or the
+    /// reservation was cancelled first.
+    pub fn prepare(
         &self,
         request: &CitationRequest,
         every_library: bool,
@@ -150,7 +154,7 @@ impl SubmittedCitation {
         Ok(citation)
     }
 }
-impl Drop for SubmittedCitation {
+impl Drop for ReservedCitation {
     fn drop(&mut self) {
         if let Some(cancel) = self.worker.pending.recover_lock().remove(&self.reserved) {
             cancel.cancel();
@@ -247,8 +251,9 @@ impl Citations<'_> {
             worker.invalidate();
         }
     }
-    /// One-shot cite requests finish independently; only previews supersede previews.
-    pub(crate) fn submit(&self, id: SessionId, cancel: Cancellation) -> Result<SubmittedCitation, SessionError> {
+    /// Reserve a citation in session `id`. One-shot cite requests finish
+    /// independently; only previews supersede previews.
+    pub fn reserve(&self, id: SessionId, cancel: Cancellation) -> Result<ReservedCitation, SessionError> {
         let worker = self.worker(id)?;
         let reserved = TICKETS.fetch_add(1, Ordering::Relaxed);
         {
@@ -261,7 +266,7 @@ impl Citations<'_> {
             }
             pending.insert(reserved, cancel.child());
         }
-        Ok(SubmittedCitation { worker, reserved })
+        Ok(ReservedCitation { worker, reserved })
     }
     pub fn preview(
         &self,

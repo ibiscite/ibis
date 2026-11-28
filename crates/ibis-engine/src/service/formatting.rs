@@ -1,10 +1,10 @@
 //! Formatting and cancellation stay behind the same typed engine boundary.
 use super::{Engine, StylesResult, error};
 use crate::request::StylesRequest;
-use crate::sync::MutexExt;
 use ibis_core::citable::FieldProjection;
 use ibis_core::contract::*;
 use ibis_csl::{CancellationToken, FormatError};
+use ibis_os::sync::MutexExt;
 use std::{
     collections::BTreeMap,
     sync::{

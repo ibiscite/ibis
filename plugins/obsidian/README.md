@@ -5,7 +5,7 @@ One command, **Ibis: Insert citation**, searches your references with the
 for Obsidian: Pandoc keys such as `[@vale2024lanterns]` unless you chose
 another in Ibis. Assign it a hotkey in Obsidian's settings.
 
-It needs Obsidian 1.5 or later on a desktop and the `ibis` command
+It needs Obsidian 1.5.7 or later on a desktop and the `ibis` command
 ([install](../../docs/cli.md#install)). It does not run on Obsidian's phone
 and tablet apps.
 

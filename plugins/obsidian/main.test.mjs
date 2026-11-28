@@ -33,7 +33,13 @@ async function modal(data) {
   const plugin = new IbisPlugin();
   plugin.data = { command: process.env.IBIS, ...data };
   await plugin.onload();
-  const editor = { inserted: [], replaceSelection(text) { this.inserted.push(text); } };
+  // A note holding "See ." with the cursor before the full stop.
+  const editor = {
+    value: "See .",
+    getCursor() { return { line: 0, ch: 4 }; },
+    getValue() { return this.value; },
+    replaceRange(text, from, to) { this.value = this.value.slice(0, from.ch) + text + this.value.slice(to.ch); },
+  };
   let opened;
   const open = Modal.prototype.open;
   Modal.prototype.open = function () { opened = this; };
@@ -47,7 +53,16 @@ test("searching and choosing inserts the citation in Obsidian's format", { skip:
   const found = await opened.getSuggestions("synthetic signals");
   assert.deepEqual(found, [{ key: "taylor2026", title: "Synthetic signals", details: "Taylor and Dale, 2026" }]);
   await opened.onChooseSuggestion(found[0]);
-  assert.deepEqual(editor.inserted, ["[@taylor2026]"]);
+  assert.equal(editor.value, "See [@taylor2026].");
+});
+
+test("a note edited while citing is left alone", { skip: !process.env.IBIS && "IBIS is not set" }, async () => {
+  const { opened, editor } = await modal({ file: references });
+  const [found] = await opened.getSuggestions("synthetic signals");
+  editor.value = "Something else.";
+  await opened.onChooseSuggestion(found);
+  assert.equal(editor.value, "Something else.");
+  assert.match(notices.pop(), /note changed/);
 });
 
 test("an older search never replaces a newer one", { skip: !process.env.IBIS && "IBIS is not set" }, async () => {
@@ -57,6 +72,9 @@ test("an older search never replaces a newer one", { skip: !process.env.IBIS && 
   const show = (found) => { shown = found; };
   await Promise.all([opened.getSuggestions("invented").then(show), opened.getSuggestions("synthetic").then(show)]);
   assert.equal(shown[0].key, "taylor2026");
+  // Clearing the field while a search runs leaves it empty when that search answers.
+  await Promise.all([opened.getSuggestions("synthetic").then(show), opened.getSuggestions("").then(show)]);
+  assert.deepEqual(shown, []);
 });
 
 test("a missing command says how to install it", async () => {

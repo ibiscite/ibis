@@ -9,9 +9,6 @@ use crate::contract::*;
 
 mod bibtex;
 pub(crate) mod escape;
-/// Whether this build holds the manuscript and marker readers, which only the
-/// command line's document child may run (decision 0060).
-pub const DOCUMENT_READERS: bool = cfg!(feature = "documents");
 #[cfg(feature = "documents")]
 pub mod manuscript;
 #[cfg(feature = "documents")]

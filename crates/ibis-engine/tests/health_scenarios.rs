@@ -103,4 +103,19 @@ fn a_library_read_outside_the_engine_answers_lookups_as_one_it_opened() {
         .1,
         json!("damaged-entry")
     );
+    // No file stands behind the handed library, so it offers nothing that
+    // needs one: the opened library copies an original entry, it does not.
+    let handed_info = &handed.libraries().unwrap().libraries[0];
+    assert_eq!(handed_info.kind, ibis_sources::LibraryKind::Snapshot);
+    assert!(
+        handed_info
+            .capabilities
+            .iter()
+            .all(|capability| !capability.needs_source())
+    );
+    let entry = |engine: &Engine| {
+        let params = json!({"item": {"by": "key", "value": "one"}});
+        engine.dispatch(Method::Entry, &params, &cancel).unwrap().data["outcome"].clone()
+    };
+    assert_eq!((entry(&opened), entry(&handed)), (json!("entry"), json!("refused")));
 }

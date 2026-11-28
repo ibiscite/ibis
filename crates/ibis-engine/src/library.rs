@@ -7,7 +7,7 @@
 //! after a newer request never replaces it. A failed switch to B keeps A
 //! searchable and names B as the failed attempt.
 
-use crate::sync::MutexExt;
+use ibis_os::sync::MutexExt;
 mod error;
 mod status;
 #[cfg(test)]
@@ -516,7 +516,7 @@ impl Owner {
     /// client that needs the outcome before going on. Returns whether it is.
     pub fn wait_idle(&self, timeout: Duration) -> bool {
         let queue = self.shared.queue.recover_lock();
-        let (queue, _) = crate::sync::recover(
+        let (queue, _) = ibis_os::sync::recover(
             self.shared
                 .idle
                 .wait_timeout_while(queue, timeout, |queue| queue.running),

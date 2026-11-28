@@ -3,11 +3,11 @@
 //! characters, cut short. Refs name a record in one short string an agent can
 //! pass back: its citation key when that selects it alone, or else an id.
 use super::MAX_LIST;
-use crate::request::ItemSelector;
 use ibis_core::citable::CitableFields;
 use ibis_core::contract::{EngineError, ErrorCode, ItemRef, Snapshot};
 use ibis_core::model::{is_hidden, strip_markup};
 use ibis_core::summary::RecordSummary;
+use ibis_engine::request::ItemSelector;
 use serde_json::{Map, Value};
 
 /// Characters kept of any one text value.
@@ -105,7 +105,7 @@ pub(super) fn checked(base: String, fingerprint: &str) -> String {
 pub(super) fn parse<'a>(
     reference: &'a str,
     snapshot: &Snapshot,
-    cancel: &crate::Cancellation,
+    cancel: &ibis_engine::Cancellation,
 ) -> Result<(ItemSelector, Option<&'a str>), EngineError> {
     cancel.check()?;
     let (base, check) = match reference.rsplit_once('#') {
