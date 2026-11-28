@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.4.0](https://github.com/ibiscite/ibis/compare/v0.3.13...v0.4.0) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* refusals and reasons are worded in the app's language ([#2055](https://github.com/ibiscite/ibis/issues/2055))
+
+### Features
+
+* check a manuscript's citations with ibis check and from AI apps ([#2090](https://github.com/ibiscite/ibis/issues/2090)) ([14ad2a5](https://github.com/ibiscite/ibis/commit/14ad2a50fc376220100d9baca804c7fb1ff6e8ed))
+* check quotations, lock reference sets, fix Word bibliography paste ([#2080](https://github.com/ibiscite/ibis/issues/2080)) ([9edd90a](https://github.com/ibiscite/ibis/commit/9edd90a330f4562fdfe5fcf27bbf4828ca585043))
+* **cli:** share a warm local engine across the CLI and MCP ([#2058](https://github.com/ibiscite/ibis/issues/2058)) ([0569003](https://github.com/ibiscite/ibis/commit/05690039763f18a8c91afc9180da0df4e7b2c578))
+* **daemon:** make the warm engine optional and paste each Return once ([#2079](https://github.com/ibiscite/ibis/issues/2079)) ([b3a37c6](https://github.com/ibiscite/ibis/commit/b3a37c6b884d8d808e03c7fe62f7de9c3fd392f6))
+* **engine:** keep paste approvals in one shared file ([#2069](https://github.com/ibiscite/ibis/issues/2069)) ([5024db0](https://github.com/ibiscite/ibis/commit/5024db08ef906e94bc5480c2ed3e6c746927b389))
+* **macos:** a native app over the engine's picker session ([#2068](https://github.com/ibiscite/ibis/issues/2068)) ([e27f5f2](https://github.com/ibiscite/ibis/commit/e27f5f2950ad96372c0dc2ad0eb7d2cf7127d85a))
+* make each engine layer usable on its own ([#2075](https://github.com/ibiscite/ibis/issues/2075)) ([e1d2f84](https://github.com/ibiscite/ibis/commit/e1d2f8461c91bb2608c3466c4b533e04d14cd0df))
+* paste Word citations and bibliographies as Zotero does ([#2077](https://github.com/ibiscite/ibis/issues/2077)) ([9423fb8](https://github.com/ibiscite/ibis/commit/9423fb8ad77ff8ab69db40abecec52defe0737a9))
+* **plugins:** cite in Pandoc, Quarto and Obsidian through ibis ([#2070](https://github.com/ibiscite/ibis/issues/2070)) ([d4006ab](https://github.com/ibiscite/ibis/commit/d4006abb8fe59d211f9ba4619fbd2253a8ce128c))
+* **windows:** package the app for the Microsoft Store ([#2071](https://github.com/ibiscite/ibis/issues/2071)) ([3f54c8d](https://github.com/ibiscite/ibis/commit/3f54c8d291e2cf9d36d30caac6349944aff0eaca))
+
+
+### Bug Fixes
+
+* cite year ranges in every style, checked against Zotero's own output ([#2074](https://github.com/ibiscite/ibis/issues/2074)) ([45a5f20](https://github.com/ibiscite/ibis/commit/45a5f20a071b3e79ccbcfb0d009d964293852163))
+* **daemon:** each installed Ibis keeps its own warm engine ([#2092](https://github.com/ibiscite/ibis/issues/2092)) ([48188a3](https://github.com/ibiscite/ibis/commit/48188a363c964b9b519d220810556383eeb6c551))
+* **desktop:** build the Windows app again after the core split ([#2078](https://github.com/ibiscite/ibis/issues/2078)) ([a8db020](https://github.com/ibiscite/ibis/commit/a8db0207c92e70c9bd7ccfae6ebc7dd91d478af8))
+* **engine:** a library handed over offers only what its records serve ([#2082](https://github.com/ibiscite/ibis/issues/2082)) ([1e20d73](https://github.com/ibiscite/ibis/commit/1e20d73e11a13da3b9b1c935b97fced17c6f3294))
+* **engine:** keep paste approvals safe when apps.json is lost or busy ([#2083](https://github.com/ibiscite/ibis/issues/2083)) ([e9eb031](https://github.com/ibiscite/ibis/commit/e9eb0318a5c40ec4dbb6451130b7728514fc3a99))
+* keep the hanging indent in a bibliography pasted into Word ([#2091](https://github.com/ibiscite/ibis/issues/2091)) ([8576f54](https://github.com/ibiscite/ibis/commit/8576f5416c1d6d01e9f04e78da5733e98744a238))
+* **plugins:** cite the right work in Pandoc, the right place in Obsidian ([#2081](https://github.com/ibiscite/ibis/issues/2081)) ([3479837](https://github.com/ibiscite/ibis/commit/3479837e1c62f10df41b6ab6ef83e70994691ee0))
+* refusals and reasons are worded in the app's language ([#2055](https://github.com/ibiscite/ibis/issues/2055)) ([3572263](https://github.com/ibiscite/ibis/commit/3572263ebd72b495dcf1873590f76cc67998d3b8))
+* **release:** a nightly's version is found however the linker packs it ([#2049](https://github.com/ibiscite/ibis/issues/2049)) ([463bc16](https://github.com/ibiscite/ibis/commit/463bc16cb3c9a56c63eabf5e3078c6dc0453c306))
+* **ui:** keep the Menu scroll test's rows where the browser puts them ([#2059](https://github.com/ibiscite/ibis/issues/2059)) ([c055491](https://github.com/ibiscite/ibis/commit/c0554914c77f7173d98eb4231530ce56f1e6100b))
+* **website:** current features and one type scale ([#2051](https://github.com/ibiscite/ibis/issues/2051)) ([ad22efd](https://github.com/ibiscite/ibis/commit/ad22efd0762197a1d7facca0f3207aebac2e5586))
+* **windows:** the Store copy keeps its command and starts at once ([#2085](https://github.com/ibiscite/ibis/issues/2085)) ([fa73210](https://github.com/ibiscite/ibis/commit/fa73210c7256cee6aaf65bda78d7d0627a7885ab))
+* **windows:** the Store copy names its own ibis in every agent app ([#2089](https://github.com/ibiscite/ibis/issues/2089)) ([5e3ce8a](https://github.com/ibiscite/ibis/commit/5e3ce8ae2657ccdcadbb6325ea6c7d1fa57377b6))
+
+
+### Documentation
+
+* **decisions:** form follows the job; one citation, one status ([#2054](https://github.com/ibiscite/ibis/issues/2054)) ([7ac7772](https://github.com/ibiscite/ibis/commit/7ac77721d99f5fb5c77b05770b2b06503a36a196))
+* **decisions:** one warm engine, thin native shells ([#2057](https://github.com/ibiscite/ibis/issues/2057)) ([bc53bdb](https://github.com/ibiscite/ibis/commit/bc53bdbe7016d068a921979d16e0e56523386039))
+* **decisions:** the Mac app goes native now ([#2062](https://github.com/ibiscite/ibis/issues/2062)) ([268d89f](https://github.com/ibiscite/ibis/commit/268d89f43b174f2d99e2d24cd511d7c0b783642d))
+* **design:** a user research plan ([#2056](https://github.com/ibiscite/ibis/issues/2056)) ([998d517](https://github.com/ibiscite/ibis/commit/998d51713ce715c53f638dff2f9c4bc8de48f6c5))
+* **design:** add the macOS design guide ([#2061](https://github.com/ibiscite/ibis/issues/2061)) ([202bac2](https://github.com/ibiscite/ibis/commit/202bac27a28a3daa51dde66ffb9ff7ec86dba01f))
+* move agent working rules into the repo, with four skills ([#2073](https://github.com/ibiscite/ibis/issues/2073)) ([f34fb03](https://github.com/ibiscite/ibis/commit/f34fb03680b5405274a8093a56ff63f7f3e8dd3f))
+* one way to work everywhere, with a generated In flight list ([#2084](https://github.com/ibiscite/ibis/issues/2084)) ([972627e](https://github.com/ibiscite/ibis/commit/972627ec62171fdd0f88d30d803797fe3dcde585))
+* record the Tauri app's Linux baseline against the release budgets ([#2072](https://github.com/ibiscite/ibis/issues/2072)) ([5239423](https://github.com/ibiscite/ibis/commit/5239423aac890680596fe5a3ca0048aa51263ad6))
+* reviewers post their own verdict, and agents may request auto-merge ([#2087](https://github.com/ibiscite/ibis/issues/2087)) ([4aa3b46](https://github.com/ibiscite/ibis/commit/4aa3b469d28383df8eb6d08e94eb9563882fba73))
+* say which CI jobs a pull request runs ([#2067](https://github.com/ibiscite/ibis/issues/2067)) ([7aef127](https://github.com/ibiscite/ibis/commit/7aef127bf2268e6e1b9d31ff95aa625a672eb623))
+* typed citations on request, one nightly, 1.0 for both writers ([#2064](https://github.com/ibiscite/ibis/issues/2064)) ([d03da33](https://github.com/ibiscite/ibis/commit/d03da33fdce176266416770931d9ef47961449a2))
+
 ## [0.3.13](https://github.com/ibiscite/ibis/compare/v0.3.12...v0.3.13) (2026-11-26)
 
 
