@@ -1,10 +1,13 @@
 # 0049 Hosted CI gates merges
 
-Decided by the maintainer on 2026-11-14 and last changed on 2026-11-18.
+Decided by the maintainer on 2026-11-14 and last changed on 2026-11-28.
 
 Hosted **CI result** is the required check on main, with no merge queue.
-`scripts/land.sh` runs fast local checks, pushes the branch and requests squash
-auto-merge; a pull request merges once **CI result** passes, without being up to
+Development is local first (2026-11-28): work is built and proved on the
+machine in front of the agent, pushed in batches, and CI is never waited on.
+`scripts/check.sh` holds the commands of CI's checks; CI's jobs call it, and on
+a machine it runs the parts CI would select for the branch. `scripts/land.sh`
+runs it, pushes the branch and requests squash auto-merge; a pull request merges once **CI result** passes, without being up to
 date with main, and main's push CI checks the combined commit. Local machines
 are for speed and native checks, never the gate.
 

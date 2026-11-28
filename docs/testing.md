@@ -101,12 +101,18 @@ regression at the layer that owns the cause.
 
 ## Where checks run
 
-[`land.sh`](../scripts/land.sh) runs fast local feedback from a clean, named
-branch: formatting, workspace `cargo check` with all targets, TypeScript,
-Biome lint and `gen.mjs --check`. While main's latest finished push CI failed,
-it refuses any title but `fix` or `revert` and names the red run. Dependencies
-must already be installed; Rust uses this worktree's `target` without sccache. These checks are for speed
-only ([decision 0049](decisions/0049-local-gate.md)).
+[`check.sh`](../scripts/check.sh) holds the commands of CI's checks as named
+parts (`identities`, `scripts`, `interface`, `format`, `brand`, `lint`,
+`lint-app`, `test`, `test-app`, `fidelity`, `generated`, `csl`). CI's jobs call
+these parts, and with no arguments the script runs the parts that
+`ci-plan.mjs --local` selects for the branch against `origin/main`, so a machine
+runs what CI will. CI alone adds the other systems, the picture gate and the
+native tests. Dependencies must already be installed.
+
+[`land.sh`](../scripts/land.sh) runs `check.sh` from a clean, named branch.
+While main's latest finished push CI failed, it refuses any title but `fix` or
+`revert` and names the red run. Rust uses this worktree's `target` without
+sccache ([decision 0049](decisions/0049-local-gate.md)).
 
 After passing, it pushes the checked head, preserves existing PR text or creates
 a PR from `--title`/`--body-file` or the first non-merge commit, marks drafts

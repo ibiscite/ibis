@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# One-time setup for a Linux cloud session (Ubuntu): the libraries ibis-desktop
-# needs to build and test, so desktop Rust is checked before pushing, not only
-# in CI. Safe to rerun; installs only what is missing.
+# One-time setup for a Linux cloud session (Ubuntu): CI's own desktop and web
+# packages (scripts/ci-ubuntu-deps.sh), so `bash scripts/check.sh` runs here as
+# it does on CI. Safe to rerun; installs only what is missing.
 set -euo pipefail
-packages=(libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev python3-yaml)
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+mapfile -t packages < <(bash scripts/ci-ubuntu-deps.sh list desktop; bash scripts/ci-ubuntu-deps.sh list web)
 missing=()
 for package in "${packages[@]}"; do
   dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q "install ok installed" || missing+=("$package")
