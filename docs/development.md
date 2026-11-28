@@ -25,13 +25,13 @@ and is never waited on.
    branch can affect, chosen by the same plan CI uses (`scripts/ci-plan.mjs`)
    and made of the same commands, because CI's jobs call this script. Fix
    everything it finds before you push. `bash scripts/check.sh all` runs every
-   part; `bash scripts/check.sh test-app` runs one.
+   part; `bash scripts/check.sh test-app` runs one. CI alone adds the other
+   systems, the picture gate, actionlint, `cargo deny` and the release checks.
 3. **Push once and move on.** `bash scripts/land.sh` runs the check, pushes and
    requests auto-merge. Start the next piece straight away: from `origin/main`
    if it is independent, or from your branch's head if it builds on it. Never
    sleep or poll for CI; it reports back.
-4. **Fix what CI alone can see.** CI adds the other two systems, the picture
-   gate and the native tests. If it fails, reproduce the job on that system
+4. **Fix what CI alone can see.** If CI fails, reproduce the job on that system
    (see below), fix the cause and push once more. A red main is repaired
    first.
 

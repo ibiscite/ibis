@@ -4,8 +4,9 @@
 #   bash scripts/check.sh           the parts this branch can affect, as CI plans them
 #   bash scripts/check.sh all       every part
 #   bash scripts/check.sh PART...   named parts
-# CI alone runs the picture gate (pinned Linux WebKit), the other systems'
-# native tests and the daily qualification.
+# CI alone runs the picture gate (pinned Linux WebKit), the other systems,
+# the native GUI tests, actionlint, cargo deny, the release checks and the
+# daily qualification; the ci:full label has no effect here.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 python=python3
