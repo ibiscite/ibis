@@ -5,14 +5,16 @@ set -euo pipefail
 apt=(timeout 15m apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
 
 profile=${1:-}
-if [ "$profile" = cache-key ]; then profile=${2:-}; fi
+if [ "$profile" = cache-key ] || [ "$profile" = list ]; then profile=${2:-}; fi
 case $profile in
   desktop)
     packages=(libwebkit2gtk-4.1-dev librsvg2-dev librsvg2-bin fonts-inter libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof)
     ;;
   web) packages=(python3-yaml) ;;
-  *) echo 'Usage: ci-ubuntu-deps.sh [cache-key] desktop|web' >&2; exit 2 ;;
+  *) echo 'Usage: ci-ubuntu-deps.sh [cache-key|list] desktop|web' >&2; exit 2 ;;
 esac
+# The same packages for a Linux session outside CI (scripts/cloud-setup.sh).
+if [ "$1" = list ]; then printf '%s\n' "${packages[@]}"; exit 0; fi
 # The cache is stable across runs and changes exactly with this profile's list.
 if [ "$1" = cache-key ]; then
   printf '%s\n' "${packages[@]}" | sha256sum | awk '{ print "key=" $1 }'

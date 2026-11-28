@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fast local feedback; hosted CI result decides the squash merge (no merge queue).
+# Runs CI's checks locally, pushes and requests squash auto-merge; hosted CI result decides the merge.
 set -euo pipefail
 if [ "${1:-}" = start ] || [ "${1:-}" = end ]; then
   action=$1 name=${2:-} issue=${3:-}
@@ -93,11 +93,8 @@ export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=1
 export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
 # Empty values override wrappers set in Cargo's config too.
 export RUSTC_WRAPPER='' RUSTC_WORKSPACE_WRAPPER=''
-cargo fmt --all --check
-cargo check --workspace --all-targets --locked
-pnpm -C apps/desktop exec tsc --noEmit
-pnpm -C apps/desktop lint
-node scripts/gen.mjs --check
+# The same checks CI selects for this branch (scripts/check.sh).
+bash "$root/scripts/check.sh"
 unchanged
 git push -q -u origin "$sha:refs/heads/$branch"
 body=$(mktemp)

@@ -98,8 +98,7 @@ jobs:
         working-directory: apps/desktop
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec vite build
-          node ../../scripts/picker-budget.mjs dist
+          bash ../../scripts/check.sh build
 
       - name: Share the web interface
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -161,16 +160,10 @@ jobs:
           GIT_CONFIG_VALUE_0: ${{ github.workspace }}
         run: |
           bash scripts/ci-ubuntu-deps.sh web
-          node --test --test-concurrency=2 scripts/*.test.mjs
-          for test in scripts/test_*.py scripts/*.test.py; do python3 -B "$test"; done
+          bash scripts/check.sh scripts
 
       - name: Type check and test the interface
-        run: |
-          pnpm typecheck
-          pnpm lint
-          pnpm test
-          pnpm exec vite build
-          node ../../scripts/picker-budget.mjs dist
+        run: bash ../../scripts/check.sh interface
 
   pictures:
     needs: plan
@@ -278,11 +271,11 @@ jobs:
 
       - name: Check generated brand assets (Linux)
         if: runner.os == 'Linux'
-        run: python3 brand/build.py --check
+        run: bash scripts/check.sh brand
 
       - name: Format
         if: runner.os == 'Linux'
-        run: cargo fmt --all --check
+        run: bash scripts/check.sh format
 
       # Only on GitHub's fresh machines: the action restores and prunes
       # CARGO_HOME/bin, which on our Mac would remove the owner's rustup.
@@ -301,22 +294,19 @@ jobs:
       # Compile every test target first so contract errors report early on every system.
       - name: Lint the workspace
         if: needs.plan.outputs.workspace == 'true'
-        run: cargo clippy --all-targets --locked
+        run: bash scripts/check.sh lint
 
       - name: Lint the app
-        run: cargo clippy -p ibis-desktop -p ibis-desktop-macros --all-targets --locked
+        run: bash scripts/check.sh lint-app
 
       - name: Test
         if: needs.plan.outputs.workspace == 'true'
-        run: cargo test --locked
+        run: bash scripts/check.sh test
 
       - name: Test and build the app
         id: native_build
         working-directory: .
-        run: |
-          cargo test -p ibis-desktop -p ibis-desktop-macros --locked
-          # Embed the built interface; a plain debug build uses localhost:5173.
-          cargo build -p ibis-desktop --locked --features tauri/custom-protocol
+        run: bash scripts/check.sh test-app
 
       # Installed only after cargo test: with Pandoc present, cargo test also runs the
       # syntax_contract consumer tests, which fail on Ubuntu's older Pandoc.
@@ -328,12 +318,12 @@ jobs:
         if: runner.os == 'Linux' && needs.plan.outputs.workspace == 'true'
         env:
           IBIS_REQUIRE_PANDOC: "1"
-        run: cargo test -p ibis --test fidelity --locked
+        run: bash scripts/check.sh fidelity
 
       # The bindings, schemas, MCP tools and CLI options made from the Rust code.
       - name: Check generated files (Linux)
         if: runner.os == 'Linux'
-        run: node scripts/gen.mjs --check
+        run: bash scripts/check.sh generated
 
       - name: Paste into Notepad (Windows)
         if: runner.os == 'Windows'
@@ -341,11 +331,7 @@ jobs:
 
       - name: Test the scripts (macOS and Windows)
         if: (runner.os == 'Windows' || runner.os == 'macOS')
-        run: |
-          node --test --test-concurrency=2 scripts/*.test.mjs
-          python=python3
-          if [ "$RUNNER_OS" = Windows ]; then python=python; fi
-          for test in scripts/test_*.py scripts/*.test.py; do "$python" -B "$test"; done
+        run: bash scripts/check.sh scripts
 
       - name: Exercise the native picker (Linux)
         if: ${{ !cancelled() && steps.native_build.outcome == 'success' && runner.os == 'Linux' }}
@@ -447,7 +433,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
-        run: node scripts/check-agent-identity.mjs
+        run: bash scripts/check.sh identities
 
       - name: Validate workflow expressions
         uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
@@ -664,11 +650,8 @@ jobs:
           node-version: 26
           package-manager-cache: false
 
-      - name: Fetch the pinned CSL test suite
-        run: node scripts/csl-suite.mjs
-
-      - name: Run it through the shipped formatter
-        run: cargo test --locked -p ibis-csl --lib conformance -- --ignored
+      - name: Fetch the pinned CSL test suite and run it through the shipped formatter
+        run: bash scripts/check.sh csl
 
   # The required merge check and publication evidence; daily/manual runs add
   # qualification. A fork's PR skips every job above, so its result fails.

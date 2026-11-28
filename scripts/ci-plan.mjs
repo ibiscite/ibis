@@ -20,7 +20,7 @@ const ALWAYS_FULL = [
   /^apps\/desktop\/src\/bindings\.ts$/,
 ];
 // The web job checks links in prose.
-const DOCS = [/^docs\/.+\.md$/, /^[^/]+\.md$/];
+const DOCS = [/^docs\/.+\.md$/, /^[^/]+\.md$/, /^\.(agents|claude)\/skills(\/|$)/];
 // The interface: its own tests, the pictures, and the app that embeds it.
 const INTERFACE = /^apps\/desktop\/(?!src-tauri(?:\/|$))/;
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -171,6 +171,16 @@ function changedPaths() {
   return git("diff", "--name-only", "--no-renames", "-z", "HEAD^1", "HEAD").split("\0").filter(Boolean);
 }
 
+/** Paths this branch changes against origin/main, committed or not, for `--local`. */
+function localPaths() {
+  const base = git("merge-base", "origin/main", "HEAD").trim();
+  const lists = [
+    git("diff", "--name-only", "--no-renames", "-z", base),
+    git("ls-files", "--others", "--exclude-standard", "-z"),
+  ];
+  return [...new Set(lists.join("\0").split("\0").filter(Boolean))];
+}
+
 function workspaceCrates() {
   const result = spawnSync("cargo", ["metadata", "--format-version", "1", "--no-deps", "--locked"], { encoding: "utf8", timeout: 120_000, maxBuffer: 64 * 1024 * 1024 });
   if (result.status !== 0) throw new Error("cargo metadata failed");
@@ -243,7 +253,12 @@ export async function decide(env, read = { changedPaths, treePaths, workspaceCra
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] === fileURLToPath(import.meta.url) && process.argv[2] === "--local") {
+  // What scripts/check.sh runs: the same plan for this branch, without the
+  // picture inputs, since the picture gate runs only on CI.
+  const chosen = await decide({ EVENT: "pull_request" }, { changedPaths: localPaths, treePaths, workspaceCrates, pictureInputs: async () => new Set() });
+  console.log(`${chosen.full ? "Full suite" : "Selected"}: ${chosen.reason}. ${SELECTABLE.map((job) => `${job}=${chosen[job]}`).join(" ")}`);
+} else if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const chosen = await decide(process.env);
   const line = `${chosen.full ? "Full suite" : "Selected"}: ${chosen.reason}. ${SELECTABLE.map((job) => `${job}=${chosen[job]}`).join(" ")}`;
   console.log(line);

@@ -108,8 +108,8 @@ the anchor older links use.
 ## 0048 Nix install
 [0048](decisions/0048-nix-install.md): the CLI builds from source on Linux and macOS, the desktop on Linux; independent CI reports hash repairs for agents.
 
-## 0049 Local machines gate merges
-[0049](decisions/0049-local-gate.md): hosted **CI result** gates merges, with no merge queue; a pull request runs the jobs its paths select, main runs everything, and while main is red only fixes and reverts land.
+## 0049 Hosted CI gates merges, development is local first
+[0049](decisions/0049-local-gate.md): work is proved locally with `scripts/check.sh` (the commands CI's jobs call), pushed in batches and never waits on CI; hosted **CI result** gates merges, with no merge queue; a pull request runs the jobs its paths select, main runs everything, and while main is red only fixes and reverts land.
 
 ## 0050 The menu bar menu
 [0050](decisions/0050-menu-bar-menu.md): one native menu on every system, with one-click library switching, Copy Again for the frontmost app, a spoken state and text drops; no custom card.
