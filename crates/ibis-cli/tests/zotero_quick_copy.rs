@@ -62,6 +62,30 @@ fn entry_html(html: &str, numeric: bool) -> String {
     }
 }
 
+/// Zotero's layout as Ibis writes it for Word, its one named difference: Word
+/// reads no indent from the enclosing block, so a hanging indent moves from the
+/// body onto each entry, as the RTF's half inch.
+fn for_word(html: &str) -> String {
+    const BODY: &str = "margin-left: 2em; text-indent:-2em;";
+    const ENTRY: &str = "margin-left: 0.5in; text-indent: -0.5in; ";
+    let Some((head, entries)) = html.split_once('>') else {
+        return html.to_owned();
+    };
+    if !head.contains(BODY) {
+        return html.to_owned();
+    }
+    let entries = entries
+        .replace(
+            "<div class=\"csl-entry\" style=\"",
+            &format!("<div class=\"csl-entry\" style=\"{ENTRY}"),
+        )
+        .replace(
+            "<div class=\"csl-entry\">",
+            &format!("<div class=\"csl-entry\" style=\"{ENTRY}\">"),
+        );
+    format!("{}>{entries}", head.replace(BODY, ""))
+}
+
 /// A bibliography's layout: each block's inline style, in order. A numeric
 /// entry has no number in Ibis, so only the layout around it compares.
 fn layout(html: &str, numeric: bool) -> String {
@@ -112,7 +136,7 @@ fn zotero_views(case: &Value, numeric: bool) -> Option<Views> {
     }
     views.insert("bibliography text", entry);
     views.insert("bibliography html", entry_html);
-    views.insert("bibliography layout", layout(html, numeric));
+    views.insert("bibliography layout", layout(&for_word(html), numeric));
     Some(views)
 }
 

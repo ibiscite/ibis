@@ -1,7 +1,7 @@
 {
   "expected": {
     "data": {
-      "content_hash": "c057234189234aa8b93efb3b184e50dbf737c98591164039a3df76f20e9467ba",
+      "content_hash": "9249ab0e5cb29edf36369427363cf9fc63489b0c3a15aa7ecbcf86a86b584e4d",
       "display": {
         "nodes": [
           {
@@ -48,7 +48,7 @@
           "outcome": "rendered"
         }
       ],
-      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0 \\li0 \\fi0 \\sl240 \\slmult1 \\sa0 \nA. Taylor, {\\i{}Synthetic signals}. Imaginary Press, 2026.\n}",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0 \\li0 \\fi0 \\sl240 \\slmult1 \\sa0 \nA. Taylor, {\\i{}Synthetic signals}. Imaginary Press, 2026.\\par\n}",
       "text": "A. Taylor, Synthetic signals. Imaginary Press, 2026.",
       "language": "en-US"
     },

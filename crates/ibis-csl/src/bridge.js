@@ -337,7 +337,9 @@
     return engine;
   };
   const oneLine = (text) => text.replace(/\s*\n\s*/g, " ").trim();
-  const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").join("\\par\n") : text}\n}`;
+  // Each bibliography entry ends its paragraph, the last too: Word gives an
+  // unended last paragraph its document's own spacing and indent.
+  const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").map((entry) => `${entry}\\par`).join("\n") : text}\n}`;
   // One document's citations as one sequence (`ibis format`): its own
   // engine and unchanged style, so numbering, year letters and first and
   // subsequent citations follow the document's order. A narrative citation is

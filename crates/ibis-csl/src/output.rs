@@ -54,7 +54,9 @@ impl Layout {
             .ok_or(FormatError::Runtime)
     }
 
-    /// Zotero's inline styles around entries whose only tags are the processor's.
+    /// Zotero's inline styles around entries whose only tags are the processor's,
+    /// with one change Word needs: a hanging indent is on each entry, as the
+    /// RTF's half inch, because Word reads no indent from the enclosing block.
     fn html(&self, entries: &str) -> String {
         let margins = entries.contains("<div class=\"csl-left-margin\">");
         let aligned = self.second_field_align.is_some();
@@ -67,15 +69,16 @@ impl Layout {
         } else {
             ""
         };
-        let mut body = format!("line-height: {line}; ");
-        if self.hanging_indent && !margins {
-            body.push_str("margin-left: 2em; text-indent:-2em;");
-        }
+        let body = format!("line-height: {line}; ");
         let count = entries.matches("<div class=\"csl-entry\">").count();
         let mut out = format!("<div class=\"csl-bib-body\" style=\"{body}\">");
         for (index, part) in entries.split("<div class=\"csl-entry\">").enumerate() {
             if index > 0 {
-                let mut style = String::from(if margins { "clear: left; " } else { "" });
+                let mut style = String::from(match (margins, self.hanging_indent) {
+                    (true, _) => "clear: left; ",
+                    (false, true) => "margin-left: 0.5in; text-indent: -0.5in; ",
+                    (false, false) => "",
+                });
                 if entry != 0.0 && index != count {
                     style.push_str(&format!("margin-bottom: {entry}em;"));
                 }
