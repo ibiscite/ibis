@@ -316,6 +316,7 @@ final class PickerStore: ObservableObject {
                 notice = pickerError(error)
                 // The engine started a new session: show it rather than a citation it no longer holds.
                 if error as? DaemonError == .changed, let opening {
+                    deliverWhenSettled = nil
                     open(PickerOpenRequest(app: opening.app, file: opening.file, keepQuery: true,
                                            language: opening.language, reload: nil, site: opening.site))
                     return

@@ -298,7 +298,10 @@ fn a_trailing_semicolon_cites_only_what_was_typed() {
         "the recent list shows after the semicolon"
     );
     let cited: Vec<_> = state.citation.iter().map(|entry| entry.row.id.clone()).collect();
-    assert_eq!(cited, [vale]);
+    assert_eq!(cited, std::slice::from_ref(&vale));
+    let state = act(&mut picker, &engine, json!({"intent":"add"}));
+    let added: Vec<_> = state.citation.iter().map(|entry| entry.row.id.clone()).collect();
+    assert_eq!(added, [vale], "Tab adds what was typed, not the recent row beside it");
 }
 
 #[test]

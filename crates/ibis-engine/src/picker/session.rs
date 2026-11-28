@@ -328,7 +328,8 @@ impl PickerSession {
     }
 
     /// Moves the citation as it stands into what was added and clears the
-    /// field. Tab also takes the highlighted result, whatever Return would cite.
+    /// field. With nothing typed to add, Tab takes the highlighted result,
+    /// even beside an added citation where Return would not cite it.
     fn add_pending(&mut self, engine: &Engine, highlighted: bool) -> Result<(), EngineError> {
         let mut pending: Vec<_> = self
             .pending()
@@ -337,6 +338,7 @@ impl PickerSession {
             .map(|(row, details, _)| (row, details))
             .collect();
         if highlighted
+            && pending.is_empty()
             && let Some(row) = self
                 .highlight
                 .as_ref()
