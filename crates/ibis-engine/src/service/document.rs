@@ -266,11 +266,24 @@ impl Engine {
         let Some(kind) = TextKind::of(document) else {
             return Ok(Err(Refusal::Unsupported));
         };
+        if self.documents.is_none() {
+            return Ok(Err(Refusal::Unavailable));
+        }
+        match ibis_sources::document::read_text(document, MAX_TEXT_BYTES as u64, stop(cancel)) {
+            Ok(text) => self.scan(kind, &text, cancel),
+            Err(refusal) => {
+                cancel.check()?;
+                Ok(Err(refusal))
+            }
+        }
+    }
+
+    /// Scan a manuscript's text in the document child and look up every key it cites.
+    fn scan(&self, kind: TextKind, text: &str, cancel: &Cancellation) -> Result<Result<Scanned, Refusal>, EngineError> {
         let Some(reader) = &self.documents else {
             return Ok(Err(Refusal::Unavailable));
         };
-        let read = ibis_sources::document::read_text(document, MAX_TEXT_BYTES as u64, stop(cancel))
-            .and_then(|text| reader.scan_text(kind, &text, &*stop(cancel)));
+        let read = reader.scan_text(kind, text, &*stop(cancel));
         cancel.check()?;
         let manuscript = match read {
             Ok(manuscript) => manuscript,
@@ -342,13 +355,50 @@ impl Engine {
         request: &CheckRequest,
         cancel: &Cancellation,
     ) -> Result<health::Checked<CheckResult>, EngineError> {
+        let scanned = self.scan_manuscript(&request.document, cancel)?;
+        let set = match &request.set {
+            None => None,
+            Some(set) => Some(match ibis_sources::document::read(set, MAX_SET_BYTES, stop(cancel)) {
+                Ok(bytes) => match serde_json::from_slice::<Value>(&bytes) {
+                    Ok(Value::Array(records)) => Ok(records),
+                    _ => Err(Refusal::Damaged),
+                },
+                Err(reason) => {
+                    cancel.check()?;
+                    Err(reason)
+                }
+            }),
+        };
+        self.checked(scanned, set, request.quotes, cancel)
+    }
+
+    /// Check a manuscript's text, sent rather than read from a file, and
+    /// against a reference set's records. Quotations are not looked up.
+    pub fn check_text(
+        &self,
+        kind: TextKind,
+        text: &str,
+        set: Option<Vec<Value>>,
+        cancel: &Cancellation,
+    ) -> Result<health::Checked<CheckResult>, EngineError> {
+        let scanned = self.scan(kind, text, cancel)?;
+        self.checked(scanned, set.map(Ok), false, cancel)
+    }
+
+    fn checked(
+        &self,
+        scanned: Result<Scanned, Refusal>,
+        set: Option<Result<Vec<Value>, Refusal>>,
+        quotes: bool,
+        cancel: &Cancellation,
+    ) -> Result<health::Checked<CheckResult>, EngineError> {
         let checked = |value| {
             Ok(health::Checked {
                 source_health: health::SourceHealth::of(self.state()?.libraries.values()),
                 value,
             })
         };
-        let mut scanned = match self.scan_manuscript(&request.document, cancel)? {
+        let mut scanned = match scanned {
             Ok(scanned) => scanned,
             Err(reason) => {
                 return checked(CheckResult::Refused {
@@ -357,8 +407,12 @@ impl Engine {
                 });
             }
         };
-        if let Some(set) = &request.set {
-            match self.against_set(set, &scanned, cancel)? {
+        if let Some(set) = set {
+            let found = match set {
+                Ok(records) => self.against_set(records, &scanned, cancel)?,
+                Err(reason) => Err(reason),
+            };
+            match found {
                 Ok(mut findings) => scanned.findings.append(&mut findings),
                 Err(reason) => {
                     return checked(CheckResult::Refused {
@@ -368,7 +422,7 @@ impl Engine {
                 }
             }
         }
-        if request.quotes {
+        if quotes {
             let mut findings = self.quotes(&scanned, cancel)?;
             scanned.findings.append(&mut findings);
             scanned.findings.sort_by_key(|finding| finding.place);
@@ -515,20 +569,10 @@ impl Engine {
     /// CSL-JSON export, so only a change in what would be cited counts.
     fn against_set(
         &self,
-        set: &Path,
+        records: Vec<Value>,
         scanned: &Scanned,
         cancel: &Cancellation,
     ) -> Result<Result<Vec<Finding>, Refusal>, EngineError> {
-        let bytes = match ibis_sources::document::read(set, MAX_SET_BYTES, stop(cancel)) {
-            Ok(bytes) => bytes,
-            Err(reason) => {
-                cancel.check()?;
-                return Ok(Err(reason));
-            }
-        };
-        let Ok(Value::Array(records)) = serde_json::from_slice::<Value>(&bytes) else {
-            return Ok(Err(Refusal::Damaged));
-        };
         let mut keys = HashSet::new();
         let twice: HashSet<String> = records
             .iter()

@@ -39,6 +39,8 @@ pub(super) enum ToolProblem {
     AttachmentText,
     Writes,
     Busy,
+    ManuscriptKind,
+    Set,
 }
 impl ToolProblem {
     pub(super) fn problem(self, args: &[(&str, &str)]) -> (ErrorCode, Problem) {
@@ -75,7 +77,9 @@ impl ToolProblem {
             | Self::Text
             | Self::OmitAuthor
             | Self::NumberRange
-            | Self::NumberMinimum => (ErrorCode::BadInput, R::EditInput),
+            | Self::NumberMinimum
+            | Self::ManuscriptKind
+            | Self::Set => (ErrorCode::BadInput, R::EditInput),
         };
         let name = serde_json::to_value(self)
             .ok()

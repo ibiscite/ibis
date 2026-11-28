@@ -913,6 +913,7 @@ read-only tools over stdio:
 | `search` | `query`, optional `limit` (1–25, default 10), `shorthand` for a signal and locator; short hits with checked `ref` values, `complete` and `source_health`; shorthand adds `cited_with` and `searched_for`. |
 | `show` | `ref`; bibliographic fields and `source_health`. |
 | `cite` | Items with `ref` and optional locator/affixes/author omission, or caller [records](#records-you-send); a key-syntax `format` or any CSL `style`, locale, form, order, optional `for_app`, `strict` and `include_receipt`; citation text, notices, losses, warnings, `source_health`, and the receipt when asked. |
+| `check` | A manuscript's `text` and its `kind` (`markdown`, `latex` or `typst`), optional `set` (a [reference set](reference-set.md)'s records); `settled`, citations and keys read, and each finding with its `place`, `key` and `problem`, at most 200. The server reads no file for it, and does not check quotations; `ibis check --quotes` does. |
 | `styles` | Optional `query`, `limit` and `offset`; matching styles, total and locales. |
 | `outline` | `ref`; the reference's attachments, each with an `id` for `read` and `find_in` and whether its text can be read. |
 | `read` | `attachment`, optional `first_page`, `last_page` and `offset`; at most 5 pages or 32 KiB, each with `pdf_page` and `cite_page`, and `next`. |
