@@ -199,3 +199,6 @@ install/start checks before publishing. Nix and syntax-tool workflows confirm
 after merge. RustSec advisories block dependency changes on PRs and main, release
 publication and the weekly check; other failures warn. Publication details are
 in [RELEASING.md](../RELEASING.md).
+[In flight](../.github/workflows/in-flight.yml) checks nothing: when a pull
+request opens, changes or closes, it rewrites the tracking issue's In flight
+list from the open pull requests' handoffs.

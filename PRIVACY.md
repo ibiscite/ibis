@@ -94,7 +94,8 @@ yourself in the app. It has no account or crash-upload service. This page descri
   app, and formats per app or website site name. Atomic saves use `.tmp`, `.bak` and a writer `.lock`. `apps.json` keeps
   app paste choices, including an app-location fingerprint for unknown-app
   approval, with an empty `apps.json.lock` that serializes changes between Ibis
-  processes. [Backups](docs/moving-to-a-new-computer.md) exclude device-local
+  processes and shows the choices were once saved: if `apps.json` is then
+  missing, Ibis pastes into no app until it is chosen again. [Backups](docs/moving-to-a-new-computer.md) exclude device-local
   choices and do not grant paste permission.
 - **Library identity:** `library-ids.key` contains a random private key that
   makes opaque IDs repeatable on one computer. Deleting it changes those IDs.

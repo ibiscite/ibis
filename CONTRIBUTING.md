@@ -71,8 +71,9 @@ Run `bash scripts/check.sh` before you push: it runs the
 [checks](docs/testing.md#where-checks-run) hosted CI will run for your change.
 
 Use a Conventional Commit title, at most 72 characters, with lower case after
-the colon. Name branches `type/short-description`. Explain the problem,
-resulting behaviour, validation and remaining limits. Sign off commits
+the colon. Name branches with short lower-case words joined by hyphens. Explain the
+problem, resulting behaviour, validation and remaining limits, and end with the
+template's handoff: what is left, the next command, any blocker. Sign off commits
 (`git commit -s`, [DCO](https://developercertificate.org/)) and disclose AI
 assistance. Contributions retain their licences; there is no contributor
 licence agreement. Ibis is [AGPL-3.0-or-later](LICENSE).

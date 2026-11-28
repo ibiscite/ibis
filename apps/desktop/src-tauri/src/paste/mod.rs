@@ -91,6 +91,14 @@ impl ibis_native::paste::macos::Host for Host {
             .ok()?;
         Some((preference, paste_setting(&self.0)?))
     }
+
+    fn current_paste(
+        &self,
+        id: &AppId,
+        identity: Option<&str>,
+    ) -> Option<Result<Option<AppPaste>, ibis_core::destination::CopyReason>> {
+        Some(self.0.state::<ibis_engine::grants::Grants>().paste_for(id, identity))
+    }
 }
 
 /// The paste setting as the settings file holds it now, or `None` when the

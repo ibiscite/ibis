@@ -50,6 +50,8 @@ struct Fake {
     posts: RefCell<Vec<i32>>,
     /// What the final selection read finds, or why it fails.
     selection_now: RefCell<Option<Result<Selection, CopyReason>>>,
+    /// The app's saved choice when the final check rereads it; `None` keeps the frozen one.
+    choice_now: Cell<Option<Result<Option<AppPaste>, CopyReason>>>,
 }
 
 impl Fake {
@@ -97,6 +99,7 @@ impl Fake {
             checks: RefCell::default(),
             posts: RefCell::default(),
             selection_now: RefCell::new(None),
+            choice_now: Cell::new(None),
         }
     }
 
@@ -147,6 +150,9 @@ impl Desk for Fake {
         Ok(self.front())
     }
     fn settle(&self) {}
+    fn app_choice(&self, captured: &Captured) -> Result<Option<AppPaste>, CopyReason> {
+        self.choice_now.get().unwrap_or(captured.paste)
+    }
     fn ready(&self, request: &DeliveryRequest, proof: &DeliveryTicket) -> Result<bool, CopyReason> {
         self.clock.set(self.clock.get() + self.ready_stall);
         let front = Desk::frontmost(self)?;
@@ -1040,4 +1046,38 @@ fn a_changed_citation_never_pastes_when_the_old_one_is_not_selected() {
         copied("citation-not-selected")
     );
     assert!(desk.posts.borrow().is_empty());
+}
+
+#[test]
+fn a_choice_changed_while_the_app_comes_back_stops_the_paste() {
+    let mut captured = writer("org.example.writer");
+    captured.paste = Ok(Some(AppPaste::Paste));
+    // The store became unreadable, or the app was set to Copy only, elsewhere.
+    for now in [
+        Err(CopyReason::PasteUnavailable),
+        Ok(Some(AppPaste::CopyOnly)),
+        Ok(None),
+    ] {
+        let desk = Fake {
+            app_id: "org.example.writer",
+            ..Fake::new()
+        };
+        desk.choice_now.set(Some(now));
+        let proof = proof_for(Some(captured.clone()));
+        assert_eq!(
+            deliver(&desk, Some(&proof), consent(true)),
+            copied("paste-unavailable"),
+            "{now:?}"
+        );
+        assert!(desk.posts.borrow().is_empty());
+    }
+    let desk = Fake {
+        app_id: "org.example.writer",
+        ..Fake::new()
+    };
+    desk.choice_now.set(Some(Ok(Some(AppPaste::Paste))));
+    assert_eq!(
+        deliver(&desk, Some(&proof_for(Some(captured))), consent(true)),
+        pasted()
+    );
 }

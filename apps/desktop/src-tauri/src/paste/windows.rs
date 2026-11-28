@@ -210,6 +210,13 @@ fn picker_window(app: &AppHandle) -> Option<w::HWND> {
 impl TicketDesk for Win {
     type Window = Window;
 
+    fn app_choice(
+        &self,
+        captured: &super::Captured,
+    ) -> Result<Option<ibis_core::destination::AppPaste>, ibis_core::destination::CopyReason> {
+        crate::destination::paste_for_capture(&self.app.state(), captured)
+    }
+
     fn generation(&self) -> u64 {
         self.app.state::<crate::picker::PickerGeneration>().current()
     }
