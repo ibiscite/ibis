@@ -537,7 +537,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       description: login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : undefined,
       change: (on, restoring) => changeLogin(Boolean(on), restoring) },
     automatic: { value: updates, disabled: updatesSaving || updates === null,
-      description: updates === null && !readProblems.has("automatic") ? text("about-unavailable") : undefined,
       change: (on, restoring) => changeUpdates(Boolean(on), restoring) },
     "window-size": { value: windowSize, disabled: windowSize === null,
       change: (size) => chooseWindowSize(size as WindowSize),
@@ -621,6 +620,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               </Button>
               {versionCopyFailed && <Note problem role="alert">{text("about-copy-failed")}</Note>}
               {/* Under the version, as Mac apps place it (decision 0038); its outcome follows it. */}
+              {/* A copy the Store or a build without updates keeps current says so here. */}
+              {updates === null && !readProblems.has("automatic") && <Note>{text("about-unavailable")}</Note>}
               {(updates !== null || readProblems.has("automatic")) && <div id="check-updates" className="ui-about-check" data-highlighted={highlighted === "check-updates" || undefined}>
                 <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
                 <Status className="ui-quiet-status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</Status>

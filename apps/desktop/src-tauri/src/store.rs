@@ -19,14 +19,27 @@ pub(crate) fn installed() -> bool {
     false
 }
 
-/// The `ibis` command Windows keeps on PATH for the package, at the same
-/// place across Store updates; agent apps are pointed at it.
+/// The package's own `ibis` command, at the same place across Store updates;
+/// agent apps are pointed at it. It is the alias in the package family's
+/// folder, which stays when the person switches off the PATH alias in
+/// Windows Settings and never names another package's `ibis.exe`.
 pub(crate) fn command() -> Option<std::path::PathBuf> {
-    if !installed() {
-        return None;
+    #[cfg(target_os = "windows")]
+    {
+        let family = windows::ApplicationModel::Package::Current()
+            .and_then(|package| package.Id())
+            .and_then(|id| id.FamilyName())
+            .ok()?;
+        let local = std::env::var_os("LOCALAPPDATA")?;
+        Some(
+            std::path::Path::new(&local)
+                .join(r"Microsoft\WindowsApps")
+                .join(family.to_string())
+                .join("ibis.exe"),
+        )
     }
-    let local = std::env::var_os("LOCALAPPDATA")?;
-    Some(std::path::Path::new(&local).join(r"Microsoft\WindowsApps\ibis.exe"))
+    #[cfg(not(target_os = "windows"))]
+    None
 }
 
 /// Whether the package's startup task started this process.

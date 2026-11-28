@@ -288,7 +288,9 @@ fn main() {
             }
             #[cfg(target_os = "macos")]
             picker::follow_layout(app.handle());
-            app.state::<login_item::LoginItems>().refresh();
+            // Off the main thread: the Store's startup task answers through Windows.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || handle.state::<login_item::LoginItems>().refresh());
             let shown_shortcut = app
                 .state::<Mutex<ShortcutStatus>>()
                 .lock()

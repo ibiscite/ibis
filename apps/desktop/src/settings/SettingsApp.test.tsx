@@ -383,6 +383,14 @@ test("About copies the version natively, never through the web view's clipboard,
   expect(writeText).not.toHaveBeenCalled();
 });
 
+test("About says where updates come from when this copy cannot update itself", async () => {
+  const { api, state } = fakeApi();
+  state.updates = null as never;
+  render(<SettingsApp api={api} initialPage="about" />);
+  expect(await screen.findByText(/^This copy does not update itself\./)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Check for Updates" })).toBeNull();
+});
+
 test.each(["macos", "windows"])("settings search on %s uses only keys to find, choose, clear and leave", async (platform) => {
   const previous = document.documentElement.dataset.system;
   document.documentElement.dataset.system = platform;
