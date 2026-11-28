@@ -26,15 +26,17 @@ pub(crate) fn person(text: &str) -> Option<Value> {
         matches!(c as u32, 0x1100..=0x11FF | 0x2E80..=0x9FFF | 0xAC00..=0xD7AF | 0xF900..=0xFAFF | 0x20000..=0x3FFFF)
     });
     let parts: Vec<_> = text.split(',').map(str::trim).collect();
-    Some(match parts[..] {
-        [family, given] if !cjk && !family.is_empty() && !given.is_empty() => {
-            json!({"family": family, "given": given})
-        }
+    let given = match parts[..] {
+        [family, given] if !cjk && !family.is_empty() && !given.is_empty() => given.to_owned(),
         [family, given, suffix] if !cjk && !family.is_empty() && !given.is_empty() && !suffix.is_empty() => {
-            json!({"family": family, "given": given, "suffix": suffix})
+            format!("{given}, {suffix}")
         }
-        _ => json!({"literal": text}),
-    })
+        _ => return Some(json!({"literal": text})),
+    };
+    // Particles split as Zotero splits them: `van Example, Ada` is Ada van Example.
+    let mut name = BTreeMap::new();
+    crate::zotero::particles(&mut name, parts[0], &given);
+    Some(json!(name))
 }
 
 /// A date's parts, never invented: a year, then a month and a day only when given.

@@ -146,7 +146,7 @@ fn the_same_file_keeps_its_id_across_close_and_reopen() {
 }
 
 #[test]
-fn csl_json_export_refuses_two_records_that_would_share_an_id() {
+fn csl_json_export_ids_are_citation_keys_never_the_files_own_ids() {
     let directory = tempfile::tempdir().unwrap();
     let one = write(
         directory.path(),
@@ -168,7 +168,10 @@ fn csl_json_export_refuses_two_records_that_would_share_an_id() {
         Method::Cite,
         &json!({"items":items,"output":{"kind":"key","syntax":"csl-json"}}),
     );
-    assert_eq!(exported["data"]["outcomes"][1]["error"], "ambiguous-key");
+    let records: Vec<Value> = serde_json::from_str(exported["data"]["text"].as_str().unwrap()).unwrap();
+    let mut ids: Vec<_> = records.iter().map(|record| record["id"].clone()).collect();
+    ids.sort_by_key(Value::to_string);
+    assert_eq!(ids, ["One", "Two"], "both files' item-7 leave under their keys");
     let same = json!({"items":[items[0], items[0]],"output":{"kind":"key","syntax":"csl-json"}});
     let same = asked(&engine, Method::Cite, &same);
     assert_eq!(

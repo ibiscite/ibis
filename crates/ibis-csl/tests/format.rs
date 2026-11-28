@@ -464,6 +464,83 @@ fn formatted_dois_use_checked_text_before_url_encoding_and_markup() {
 }
 
 #[test]
+fn a_doi_links_the_same_whatever_was_cited_before_it() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let work = |title: &str, doi: &str| json!({"type":"book", "title":title, "DOI":doi});
+    let after = work("Invented second atlas", "10.1000/%3Cinvented%3E");
+    let mut links = vec![];
+    for items in [
+        vec![after.clone()],
+        vec![work("Invented atlas", "10.1000/<invented>"), after],
+    ] {
+        let snapshot = library(&items);
+        let html = formatter
+            .format(&snapshot, &selection(&snapshot, "apa", true))
+            .unwrap()
+            .html
+            .unwrap();
+        let second = html.rsplit("Invented second atlas").next().unwrap().to_owned();
+        links.push(second);
+    }
+    // The DOI holds a percent sign, which its address encodes.
+    assert!(
+        links[0].contains("https://doi.org/10.1000/%253Cinvented%253E"),
+        "{}",
+        links[0]
+    );
+    assert_eq!(links[0], links[1]);
+}
+
+#[test]
+fn links_take_their_address_from_the_record_however_the_style_prints_it() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let long = format!("https://example.org/lanterns?signature={}", "a".repeat(400));
+    for (style, field, value, href) in [
+        (
+            "apa",
+            "URL",
+            "HTTPS://example.org/lanterns",
+            "HTTPS://example.org/lanterns".to_owned(),
+        ),
+        (
+            "ieee",
+            "DOI",
+            "10.1234/synthetic&part",
+            "https://doi.org/10.1234/synthetic&#38;part".to_owned(),
+        ),
+        ("apa", "URL", long.as_str(), long.clone()),
+    ] {
+        let snapshot = library(&[json!({"type":"article-journal", "title":"Invented atlas", field: value})]);
+        let html = formatter
+            .format(&snapshot, &selection(&snapshot, style, true))
+            .unwrap()
+            .html
+            .unwrap();
+        assert!(html.contains(&format!("<a href=\"{href}\">")), "{style}: {html}");
+    }
+}
+
+#[test]
+fn a_year_range_takes_its_own_dates_formatting() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    let snapshot = library(&[json!({
+        "type":"book", "title":"Invented atlas", "author":[{"family":"Noor", "given":"Ada"}],
+        "issued":{"date-parts":[[2021], [2024]]}
+    })]);
+    for (bibliography, expected) in [(false, "(Noor, 2021–2024)"), (true, "<b>2021–2024</b>")] {
+        let html = formatter
+            .format(&snapshot, &selection(&snapshot, "new-phytologist", bibliography))
+            .unwrap()
+            .html
+            .unwrap();
+        assert!(html.contains(expected), "{html}");
+    }
+}
+
+#[test]
 fn apa_prints_rich_text_titles_with_whitespace_before_closing_tags() {
     let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
@@ -688,9 +765,9 @@ fn explicitly_literal_year_suffixes_keep_era_names_in_date_order() {
             let (text, html, rtf) = if bibliography {
                 (
                     "Okafor, A. (2020ac). Invented third. Invented Journal.\nOkafor, A. (2020ad). Invented second. Invented Journal.\nOkafor, A. (2020ae). Invented first. Invented Journal.",
-                    // APA's hanging indent and double spacing, as Zotero writes them.
-                    "<div class=\"csl-bib-body\" style=\"line-height: 2; margin-left: 2em; text-indent:-2em;\"><div class=\"csl-entry\">Okafor, A. (2020ac). Invented third. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\">Okafor, A. (2020ad). Invented second. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\">Okafor, A. (2020ae). Invented first. <i>Invented Journal</i>.</div></div>",
-                    " \\li720 \\fi-720 \\sl480 \\slmult1 \\sa0 \nOkafor, A. (2020ac). Invented third. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020ad). Invented second. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020ae). Invented first. {\\i{}Invented Journal}.",
+                    // APA's hanging indent on each entry, which Word keeps, and double spacing.
+                    "<div class=\"csl-bib-body\" style=\"line-height: 2; \"><div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">Okafor, A. (2020ac). Invented third. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">Okafor, A. (2020ad). Invented second. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">Okafor, A. (2020ae). Invented first. <i>Invented Journal</i>.</div></div>",
+                    " \\li720 \\fi-720 \\sl480 \\slmult1 \\sa0 \nOkafor, A. (2020ac). Invented third. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020ad). Invented second. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020ae). Invented first. {\\i{}Invented Journal}.\\par",
                 )
             } else {
                 (

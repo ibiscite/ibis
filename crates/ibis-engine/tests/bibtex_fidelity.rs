@@ -43,28 +43,36 @@ fn format(formatter: &Formatter, source: &Snapshot, style: &str) -> CitationResu
     formatter.format(source, &request).unwrap()
 }
 
-/// A style's bibliography layout in copied HTML and RTF, as Zotero writes it.
+/// A style's bibliography layout in copied HTML and RTF: the spacing on the
+/// body, the hanging indent on each entry, where Word keeps it.
 struct Layout {
     html: &'static str,
+    entry: &'static str,
     rtf: &'static str,
 }
 const APA: Layout = Layout {
-    html: "line-height: 2; margin-left: 2em; text-indent:-2em;",
+    html: "line-height: 2; ",
+    entry: "<div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">",
     rtf: r"\li720 \fi-720 \sl480 \slmult1 \sa0 ",
 };
 const IEEE: Layout = Layout {
     html: "line-height: 1.35; ",
+    entry: "<div class=\"csl-entry\">",
     rtf: r"\li0 \fi0 \sl240 \slmult1 \sa0 ",
 };
 
 fn paste(result: &CitationResult, layout: &Layout, text: &str, html: &str, rtf: &str) {
     assert_eq!(result.text, text);
-    let html = format!("<div class=\"csl-bib-body\" style=\"{}\">{html}</div>", layout.html);
+    let html = format!(
+        "<div class=\"csl-bib-body\" style=\"{}\">{}</div>",
+        layout.html,
+        html.replace("<div class=\"csl-entry\">", layout.entry)
+    );
     assert_eq!(result.html.as_deref(), Some(html.as_str()));
     assert_eq!(
         result.rtf,
         Some(format!(
-            "{{\\rtf1\\ansi\\deff0{{\\fonttbl{{\\f0 Times New Roman;}}}}\\f0 {}\n{rtf}\n}}",
+            "{{\\rtf1\\ansi\\deff0{{\\fonttbl{{\\f0 Times New Roman;}}}}\\f0 {}\n{rtf}\\par\n}}",
             layout.rtf
         ))
     );

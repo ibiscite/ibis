@@ -198,6 +198,9 @@ invented records in each curated style, read from Zotero and from an exported
 CSL-JSON file; [every difference](../fixtures/zotero/quick-copy/README.md) is
 listed. As in Zotero, URLs and DOIs are links in formatted HTML, and a copied
 bibliography keeps its style's hanging indent and line spacing when pasted.
+In Word for Mac, a pasted APA bibliography keeps its half-inch hanging indent
+and double spacing on every entry, the last included, from the HTML and from
+the RTF alone.
 Tests prove that Ibis writes the markers the add-on documents
 (`{ prefix | Author, Year | locator | suffix | zu:0:KEY }`, `zg:GROUP:KEY` for a group); they do not
 prove that a scan turns them into live Zotero citations in a particular

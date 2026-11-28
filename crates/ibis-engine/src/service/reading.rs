@@ -283,6 +283,35 @@ impl Engine {
         })
     }
 
+    /// Where a manuscript's quotation of `parent` is in its attachments' text.
+    pub(super) fn find_quote(
+        &self,
+        parent: &SnapshotObject,
+        quote: &str,
+        cancel: &Cancellation,
+    ) -> Result<QuoteFound, EngineError> {
+        let state = self.state()?;
+        let owner = self.owner(&state, parent)?;
+        let mut read = false;
+        let mut pages = Vec::new();
+        for listed in self.listed(&state, &owner, parent)? {
+            cancel.check()?;
+            let text = match self.text(&owner, parent, &listed, cancel) {
+                Err(failure) if failure.code == ErrorCode::ResourceLimit => continue,
+                text => text?,
+            };
+            if let TextState::Text(text) = text {
+                read = true;
+                pages.extend(quote_pages(&text, quote, cancel)?);
+            }
+        }
+        Ok(match (read, pages.is_empty()) {
+            (false, _) => QuoteFound::Unread,
+            (true, true) => QuoteFound::NotFound,
+            (true, false) => QuoteFound::Found(pages),
+        })
+    }
+
     /// The library of the reference an attachment id belongs to.
     pub fn attachment_library(&self, attachment: &str) -> Result<LibraryId, EngineError> {
         let state = self.state()?;
@@ -747,6 +776,115 @@ fn find_passages(text: &DocumentText, query: &str, cancel: &Cancellation) -> Res
         }
     }
     Ok((passages, true))
+}
+
+/// Where a quotation is in a reference's attachments.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum QuoteFound {
+    /// No attachment's text could be read.
+    Unread,
+    NotFound,
+    /// Each place it starts: its printed page, or `None` where the file's
+    /// printed pages are not known.
+    Found(Vec<Option<String>>),
+}
+
+/// The printed pages a quotation starts on in `text`. The words match as
+/// `find-in` matches them, and also across typographic quotes, apostrophes,
+/// dashes and a word hyphenated at a line break; an ellipsis (`…`, `...`,
+/// `[…]`) stands for words left out, so the parts around it must follow in
+/// order.
+fn quote_pages(text: &DocumentText, quote: &str, cancel: &Cancellation) -> Result<Vec<Option<String>>, EngineError> {
+    let parts: Vec<String> = typographic(quote)
+        .replace("[...]", "\u{1}")
+        .replace("...", "\u{1}")
+        .split('\u{1}')
+        .map(|part| fold(part.trim().trim_start_matches(['[', '(']).trim_end_matches([']', ')'])).0)
+        .map(|part| part.trim().to_owned())
+        .filter(|part| part.chars().any(char::is_alphanumeric))
+        .collect();
+    let Some((first, rest)) = parts.split_first() else {
+        return Ok(Vec::new());
+    };
+    let pages: Vec<(Option<u32>, &str)> = match &text.body {
+        Body::Pages(pages) => pages
+            .iter()
+            .enumerate()
+            .map(|(index, page)| (u32::try_from(index + 1).ok(), page.as_str()))
+            .collect(),
+        Body::Whole(whole) => vec![(None, whole.as_str())],
+    };
+    let mut found = Vec::new();
+    for joined in [false, true] {
+        cancel.check()?;
+        // Each page normalized, then the pages as one text, so a quotation
+        // may run across a page break.
+        let mut whole = String::new();
+        let mut starts = Vec::new();
+        for (page, body) in &pages {
+            starts.push((whole.len(), *page));
+            let body = typographic(body);
+            whole.push_str(&if joined { dehyphenated(&body) } else { body });
+            whole.push('\n');
+        }
+        let (folded, origins) = fold(&whole);
+        for (at, _) in folded.match_indices(first.as_str()) {
+            let mut after = at + first.len();
+            let follows = rest.iter().all(|part| {
+                folded[after..]
+                    .find(part.as_str())
+                    .inspect(|found| after += found + part.len())
+                    .is_some()
+            });
+            if !follows {
+                continue;
+            }
+            let origin = origins[at] as usize;
+            let page = starts
+                .iter()
+                .rev()
+                .find(|(start, _)| *start <= origin)
+                .and_then(|(_, page)| *page);
+            let label = page.and_then(|page| text.cite_page(page));
+            if !found.contains(&label) {
+                found.push(label);
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// Typographic quotes, apostrophes and dashes as their plain forms, and an
+/// ellipsis as three dots.
+fn typographic(text: &str) -> String {
+    text.chars()
+        .flat_map(|c| match c {
+            '\u{2018}' | '\u{2019}' | '\u{201b}' | '\u{2032}' | '\u{02bc}' => vec!['\''],
+            '\u{201c}' | '\u{201d}' | '\u{201e}' | '\u{201f}' | '\u{2033}' | '\u{ab}' | '\u{bb}' => vec!['"'],
+            '\u{2010}'..='\u{2015}' | '\u{2212}' => vec!['-'],
+            '\u{2026}' => vec!['.', '.', '.'],
+            c => vec![c],
+        })
+        .collect()
+}
+
+/// A word hyphenated at a line break, as one word.
+fn dehyphenated(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("-\n") {
+        let before = &rest[..at];
+        let after = rest[at + 2..].trim_start_matches([' ', '\t']);
+        let joins = before.chars().next_back().is_some_and(char::is_alphabetic)
+            && after.chars().next().is_some_and(char::is_lowercase);
+        out.push_str(before);
+        if !joins {
+            out.push_str("-\n");
+        }
+        rest = if joins { after } else { &rest[at + 2..] };
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Compatibility-normalized lowercase text with each run of white space one

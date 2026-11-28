@@ -580,10 +580,11 @@ fn csl_json(picks: &[Pick<'_>], project_fields: FieldProjection) -> Result<Strin
     impl Serialize for Export<'_> {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
             let fields = (self.1)(self.0.record.csl.to_map());
-            // Preserve a plain source token; URL-shaped or private source
-            // identities never leave through the export's id field.
+            // The id is the key, as a reference set requires
+            // (docs/reference-set.md): Pandoc and citeproc cite by `id`, and a
+            // source's own id never leaves.
             RecordExport {
-                id: fields.source_id().unwrap_or(self.0.key),
+                id: self.0.key,
                 key: self.0.key,
                 fields: &fields,
             }
@@ -599,7 +600,7 @@ fn csl_json(picks: &[Pick<'_>], project_fields: FieldProjection) -> Result<Strin
         .filter(|pick| seen.insert(&pick.record.id))
         .map(|pick| Export(pick, project_fields))
         .collect();
-    serde_json::to_writer(&mut output, &records).map_err(|failure| {
+    serde_json::to_writer_pretty(&mut output, &records).map_err(|failure| {
         if failure.io_error_kind() == Some(std::io::ErrorKind::FileTooLarge) {
             CitationError::OutputTooLarge
         } else {

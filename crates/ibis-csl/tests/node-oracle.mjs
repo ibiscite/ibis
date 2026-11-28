@@ -74,7 +74,9 @@ CSL.getCite = unobservedGetCite;
 // A copied bibliography's layout, as Zotero writes it. RTF comes from Zotero's
 // own getBibliographyFormatParameters; HTML transcribes the inline styles of
 // Zotero.Cite.makeFormattedBibliography, which needs a browser DOM and is
-// checked against Zotero itself in fixtures/zotero/quick-copy.
+// checked against Zotero itself in fixtures/zotero/quick-copy. One change is
+// Word's: a hanging indent sits on each entry, as RTF's half inch, because Word
+// reads no indent from the enclosing block.
 const zotero = {};
 vm.runInNewContext(fs.readFileSync(new URL("../../ibis-sources/vendor/zotero/cite.js", import.meta.url), "utf8"), { Zotero: zotero });
 const rtfSettings = (bibliography) => {
@@ -90,9 +92,9 @@ const htmlLayout = ([layout], html) => {
   const offset = Math.max(1, parseInt(layout.maxoffset) - 2);
   const count = html.split('<div class="csl-entry">').length - 1;
   let index = 0;
-  return `<div class="csl-bib-body" style="line-height: ${line}; ${layout.hangingindent && !margins ? "margin-left: 2em; text-indent:-2em;" : ""}">`
+  return `<div class="csl-bib-body" style="line-height: ${line}; ">`
     + html.replace(/<div class="csl-entry">/g, () => {
-      const style = (margins ? "clear: left; " : "") + (entry && ++index !== count ? `margin-bottom: ${entry}em;` : "");
+      const style = (margins ? "clear: left; " : layout.hangingindent ? "margin-left: 0.5in; text-indent: -0.5in; " : "") + (entry && ++index !== count ? `margin-bottom: ${entry}em;` : "");
       return style ? `<div class="csl-entry" style="${style}">` : '<div class="csl-entry">';
     })
       .replaceAll('<div class="csl-left-margin">', `<div class="csl-left-margin" style="float: left; padding-right: 0.5em;${aligned ? `text-align: right; width: ${offset}em;` : ""}">`)
@@ -117,7 +119,8 @@ const expected = pristine.map((request) => {
     engine.updateItems(request.items.map((item) => item.id));
     const bibliography = request.bibliography ? engine.makeBibliography() : null;
     const value = bibliography ? bibliography[1].map((text) => text.replace(/\s*\n\s*/g, " ").trim()).join("\n") : engine.makeCitationCluster(request.cites);
-    output[format] = format === "rtf" ? `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? value.split("\n").join("\\par\n") : value}\n}` : value;
+    // Every entry ends its paragraph, the last too, for Word.
+    output[format] = format === "rtf" ? `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? value.split("\n").map((entry) => `${entry}\\par`).join("\n") : value}\n}` : value;
     if (bibliography) output.layout = bibliography;
   }
   return output;

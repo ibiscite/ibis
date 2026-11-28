@@ -171,9 +171,16 @@ fn bibliographic_fields_survive_rendering_and_notes_stay_private() {
     )
     .unwrap();
     let back: Value = serde_json::from_str(exported.text.as_deref().unwrap()).unwrap();
-    for (field, value) in record.as_object().unwrap().iter().filter(|(field, _)| *field != "note") {
+    for (field, value) in record
+        .as_object()
+        .unwrap()
+        .iter()
+        .filter(|(field, _)| !matches!(field.as_str(), "id" | "note"))
+    {
         assert_eq!(&back[0][field], value, "{field}");
     }
+    // A record leaves under its key, as a reference set requires.
+    assert_eq!(back[0]["id"], "vale2024");
     assert!(back[0].get("note").is_none());
     let entry = records(
         &engine,

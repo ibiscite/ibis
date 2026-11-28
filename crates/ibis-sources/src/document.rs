@@ -9,7 +9,9 @@
 //! deadline; Office marker and reference counts are bounded inside the child.
 
 use crate::zotero_local::closed::{ClosedError, with_local_file};
-use ibis_core::contract::{Cite, DisplayRun, DocumentEntry, MAX_TEXT_BYTES, Manuscript, ScanProblem, TextKind};
+use ibis_core::contract::{
+    Cite, DisplayRun, DocumentEntry, MAX_QUOTE_CHARS, MAX_TEXT_BYTES, Manuscript, ScanProblem, TextKind,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -230,6 +232,10 @@ fn checked(manuscript: Manuscript, text: &str) -> Result<Manuscript, Refusal> {
     let sound = manuscript.citations.iter().all(|cited| {
         fits(&cited.place)
             && !cited.cites.is_empty()
+            && cited
+                .quote
+                .as_ref()
+                .is_none_or(|quote| quote.chars().count() <= MAX_QUOTE_CHARS && quote.len() <= text.len())
             && cited
                 .cites
                 .iter()
@@ -549,6 +555,7 @@ mod tests {
                 key: key.into(),
                 ..Cite::default()
             }],
+            quote: None,
         };
         let answer = |citations| Manuscript {
             citations,

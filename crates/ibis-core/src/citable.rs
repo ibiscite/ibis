@@ -31,8 +31,6 @@ pub struct CitableFields {
     #[serde(skip)]
     rich: BTreeMap<String, Vec<TextPart>>,
     #[serde(skip)]
-    source_id: Option<String>,
-    #[serde(skip)]
     doi: Option<DoiLink>,
     #[serde(skip)]
     identifiers: BTreeMap<String, Verbatim>,
@@ -50,12 +48,8 @@ impl CitableFields {
     /// Apply an output's extra path check to decoded metadata as it is projected.
     pub fn with_path_filter(mut fields: Map<String, Value>, is_private_path: fn(&str) -> bool) -> Self {
         let project = |value: &mut Value, keep_markup| project_scalar(value, keep_markup, is_private_path);
-        let source_id = fields.remove("id").and_then(|mut id| {
-            project(&mut id, false)?;
-            id.as_str()
-                .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_')))
-                .map(str::to_owned)
-        });
+        // A record's own id never leaves: an export's id is its key.
+        fields.remove("id");
         fields.remove("annote");
         // Preserve source precedence, with a note fallback for a private URL.
         // Both candidates enter the projection exactly once.
@@ -165,7 +159,6 @@ impl CitableFields {
             fields,
             plain,
             rich,
-            source_id,
             doi,
             identifiers,
             names: export_names,
@@ -181,11 +174,6 @@ impl CitableFields {
     /// Checked literal text and supported markup, without downstream decoding.
     pub fn rich_text(&self) -> &BTreeMap<String, Vec<TextPart>> {
         &self.rich
-    }
-
-    /// A plain source identity token; library URLs never leave as export IDs.
-    pub fn source_id(&self) -> Option<&str> {
-        self.source_id.as_deref()
     }
 
     pub fn doi(&self) -> Option<&DoiLink> {

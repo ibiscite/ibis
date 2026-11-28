@@ -52,18 +52,22 @@ fn format(formatter: &Formatter, snapshot: &Snapshot, form: CitationForm) -> Cit
     formatter.format(snapshot, &request(snapshot, "apa", form)).unwrap()
 }
 
-/// An APA bibliography is copied with its hanging indent and double spacing,
-/// as Zotero writes them; a citation has no layout.
+const APA_ENTRY: &str = "<div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">";
+
+/// An APA bibliography is copied with double spacing and a hanging indent on
+/// each entry, and every entry ends its paragraph; a citation has no layout.
 fn paste(result: &CitationResult, text: &str, html: &str, rtf_body: &str) {
-    let (html, settings) = if html.starts_with("<div class=\"csl-entry\">") {
+    let (html, settings, rtf_body) = if html.starts_with("<div class=\"csl-entry\">") {
         (
             format!(
-                "<div class=\"csl-bib-body\" style=\"line-height: 2; margin-left: 2em; text-indent:-2em;\">{html}</div>"
+                "<div class=\"csl-bib-body\" style=\"line-height: 2; \">{}</div>",
+                html.replace("<div class=\"csl-entry\">", APA_ENTRY)
             ),
             r" \li720 \fi-720 \sl480 \slmult1 \sa0 ",
+            format!("{rtf_body}\\par"),
         )
     } else {
-        (html.to_owned(), "")
+        (html.to_owned(), "", rtf_body.to_owned())
     };
     assert_eq!(result.text, text);
     assert_eq!(result.html.as_deref(), Some(html.as_str()));
@@ -154,7 +158,7 @@ fn only_web_addresses_and_dois_become_links() {
     assert_eq!(
         result.html.as_deref(),
         Some(
-            "<div class=\"csl-bib-body\" style=\"line-height: 2; margin-left: 2em; text-indent:-2em;\"><div class=\"csl-entry\">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>. www.example.org/rivers</div></div>"
+            "<div class=\"csl-bib-body\" style=\"line-height: 2; \"><div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>. www.example.org/rivers</div></div>"
         )
     );
 }

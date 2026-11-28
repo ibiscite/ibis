@@ -780,3 +780,46 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn bibtex_names_with_a_particle_never_hold_a_double_quote_biber_cannot_read() {
+    // Biber 2.19 never finishes reading an extended name part with a quote.
+    let mut case = seed();
+    case.library = changed(&case, |record| {
+        record.csl.insert(
+            "author".into(),
+            json!([{"family":"Synthetic\"","given":"Ex\"ample","non-dropping-particle":"de"}]),
+        );
+    });
+    case.request.output = OutputSpec::Key {
+        syntax: KeySyntax::Bibtex,
+        command: None,
+    };
+    let text = syntax::cite(&case.library, &case.request).unwrap().text;
+    let author = text.lines().find(|line| line.contains("author = ")).unwrap();
+    assert_eq!(
+        author,
+        r"  author = {family={Synthetic\symbol{34}}, given={Ex\symbol{34}ample}, prefix={de}, useprefix=true},"
+    );
+}
+
+#[test]
+fn bibtex_years_before_the_common_era_are_iso_years() {
+    // CSL's -44 is 44 BC; biblatex's -0043 is 44 BC.
+    let mut case = seed();
+    case.request.output = OutputSpec::Key {
+        syntax: KeySyntax::Bibtex,
+        command: None,
+    };
+    for (parts, written) in [
+        (json!([[-44, 3, 15]]), "-0043-03-15"),
+        (json!([[-1]]), "0000"),
+        (json!([[-100], [50]]), "-0099/0050"),
+    ] {
+        let library = changed(&case, |record| {
+            record.csl.insert("issued".into(), json!({"date-parts": parts}));
+        });
+        let text = syntax::cite(&library, &case.request).unwrap().text;
+        assert!(text.contains(&format!("  date = {{{written}}},")), "{text}");
+    }
+}

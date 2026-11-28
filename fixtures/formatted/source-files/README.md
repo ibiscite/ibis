@@ -41,7 +41,10 @@ Generation checksums:
 
 The bibliography cases were regenerated the same way on 28 November 2026,
 when copied bibliographies gained Zotero's layout (hanging indent and spacing);
-the other cases came out byte for byte as before.
+the other cases came out byte for byte as before. They were regenerated
+again the same day when the hanging indent moved onto each entry and every RTF
+entry, the last too, gained its paragraph end, both for Word; text was
+unchanged.
 
 The CLI integration test starts with each source file, then replays all ten
 cases through the engine, human `cite --style` arguments and framed

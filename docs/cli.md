@@ -584,6 +584,12 @@ Input is one UTF-8 JSON value, read to EOF with a 1 MiB limit. stdout holds
 the citation or `--json` envelope; reasons go to stderr. RPC cancellation
 answers `cancelled` without affecting the next request.
 
+### A reference set
+
+A [reference set](reference-set.md) is a document's records as one CSL-JSON
+file that co-authors and build tools share. `ibis cite KEY… --format csl-json`
+writes its records, and `--file references.json` reads it back as a library.
+
 ### A project's own bibliography
 
 ```sh
@@ -605,7 +611,9 @@ redefined dependencies. A refusal is a finding, as a refused citation is: exit
 1, with `ok: true`, `data.outcome: "refused"` and a `reason` in `--json`.
 `no-original` means the library keeps no BibTeX source (Zotero, CSL-JSON, RIS
 and CSV); `ibis cite KEY --format bibtex` writes an entry from the record's
-fields instead. Original entries may include private `file`/`note` fields;
+fields instead, in biblatex's fields for Biber (years before the common era as
+ISO years, so 44 BC is `-0043`); [every invented test record](../fixtures/latex/README.md)
+compiles that way. Original entries may include private `file`/`note` fields;
 inspect them before sharing.
 
 To use the same `.bib` elsewhere, upload it beside an Overleaf document, name it

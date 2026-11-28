@@ -322,6 +322,11 @@ fn ris_fields_keep_what_was_written_and_refuse_what_disagrees() {
         json!([{"family": "Doe", "given": "Jane"}])
     );
     assert_eq!(field("A2  - Roe, Rafael\n", "editor"), Value::Null);
+    // Particles and suffixes split as Zotero splits them.
+    assert_eq!(
+        field("AU  - van Example, Ada, Jr.\n", "author"),
+        json!([{"family": "Example", "given": "Ada", "non-dropping-particle": "van", "suffix": "Jr."}])
+    );
     // A date with no year is dropped with a warning; the record stays.
     let monthly = read("PY  - 2026\nDA  - MAY\n");
     assert_eq!(citation_fields(&monthly)[0]["issued"], json!({"date-parts": [[2026]]}));

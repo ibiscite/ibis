@@ -604,7 +604,9 @@ fn numeric_date_value(
     match value {
         Ok(PermissiveType::Typed(date)) => {
             let to_partial = |d: biblatex::Datetime| PartialDate {
-                year: d.year,
+                // biblatex reads ISO 8601's astronomical years (0 is 1 BC);
+                // CSL, like Zotero and citeproc-js, has no year zero.
+                year: if d.year <= 0 { d.year - 1 } else { d.year },
                 // The parser counts months and days from zero; CSL counts from one.
                 month: d.month.map(|m| m + 1),
                 day: d.day.map(|day| day + 1),

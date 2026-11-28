@@ -711,16 +711,16 @@ pub fn cite_with_fields(
                         reason: LossReason::Flattened,
                     });
                 }
-                if caps.syntax == KeySyntax::CslJson {
-                    let fields = project_fields(record.csl.to_map());
-                    let id = fields.source_id().unwrap_or(key).to_owned();
-                    if *exported.entry(id).or_insert(&record.id) != &record.id {
-                        outcomes.push(ItemOutcome::Refused {
-                            item: index,
-                            error: CitationError::AmbiguousKey,
-                        });
-                        continue;
-                    }
+                // An export's id is its key, so two records with one key
+                // could not both be read back.
+                if caps.syntax == KeySyntax::CslJson
+                    && *exported.entry(key.to_owned()).or_insert(&record.id) != &record.id
+                {
+                    outcomes.push(ItemOutcome::Refused {
+                        item: index,
+                        error: CitationError::AmbiguousKey,
+                    });
+                    continue;
                 }
                 picks.push(Pick {
                     index,
