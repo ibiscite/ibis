@@ -8,12 +8,16 @@ import SwiftUI
 final class SystemGlass: NSView {
     private let corner: CGFloat
     private let content: NSView
+    /// Reading surfaces (Peek) take the popover material on every macOS:
+    /// Liquid Glass is for controls, not for text people read (HIG, Materials).
+    private let readable: Bool
     private var glass: NSView?
     private var reduced: Bool?
 
-    init(content: NSView, corner: CGFloat) {
+    init(content: NSView, corner: CGFloat, readable: Bool = false) {
         self.content = content
         self.corner = corner
+        self.readable = readable
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = corner
@@ -39,7 +43,7 @@ final class SystemGlass: NSView {
         } else {
             layer?.backgroundColor = NSColor.clear.cgColor
             let view: NSView
-            if #available(macOS 26, *) {
+            if #available(macOS 26, *), !readable {
                 let liquid = NSGlassEffectView()
                 liquid.style = .regular
                 liquid.cornerRadius = corner
@@ -47,7 +51,7 @@ final class SystemGlass: NSView {
                 view = liquid
             } else {
                 let material = NSVisualEffectView()
-                material.material = .hudWindow
+                material.material = readable ? .popover : .hudWindow
                 material.blendingMode = .behindWindow
                 material.state = .active
                 material.addSubview(content)

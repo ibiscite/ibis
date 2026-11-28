@@ -506,7 +506,7 @@ general-paste-drag-fallback = إذا لم يكن Ibis في القائمة، فا
 general-paste-drag-failed = تعذّر سحب نسخة Ibis هذه. استخدم الزر + في إعدادات النظام لإضافتها.
 general-paste-waiting = بانتظار موافقتك…
 general-paste-unreadable = تعذّر على Ibis قراءة هذا الإذن، لذا يبقى اللصق متوقفًا حتى يتمكن من ذلك.
-general-paste-granted = يستطيع Ibis اللصق الآن.
+general-paste-granted = اللصق مفعّل.
 general-paste-return-failed = تعذّرت العودة إلى استشهادك. افتح Ibis باختصارك للمتابعة.
 general-paste-stale = مفعّل بالفعل، لكنه لا يزال ينتظر؟ في إعدادات النظام، أزل { $name } من القائمة، وأضف هذه النسخة مجددًا، ثم فعّلها.
 
@@ -2237,10 +2237,9 @@ picker-native-engine-busy = هناك عملية تسليم أخرى في Ibis.
 picker-native-engine-changed = تغيّر الاستشهاد. راجعه قبل المحاولة مجددًا.
 picker-native-request-failed = تعذّر على Ibis إكمال الطلب. حاول مجددًا.
 picker-native-before-example = انظر
+picker-native-after-example = التشديد مضاف
 picker-native-form-narrative = الاسم في النص
 picker-native-copy-citation = نسخ الاستشهاد
-picker-native-copy-citations = نسخ الاستشهادات ({ $count })
-picker-native-paste-citations = لصق الاستشهادات ({ $count }) في { $app }
 
 picker-native-remember-format = تذكّر التنسيق لـ { $app }
 picker-native-format-project = المشروع: { $name }

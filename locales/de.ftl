@@ -506,7 +506,7 @@ general-paste-drag-fallback = Falls Ibis nicht in der Liste steht, ziehen Sie es
 general-paste-drag-failed = Diese Kopie von Ibis ließ sich nicht ziehen. Fügen Sie sie in den Systemeinstellungen mit der Taste + hinzu.
 general-paste-waiting = Warten auf Ihre Zustimmung…
 general-paste-unreadable = Ibis konnte diese Berechtigung nicht lesen, daher bleibt das Einfügen aus, bis es möglich ist.
-general-paste-granted = Ibis kann jetzt einfügen.
+general-paste-granted = Einfügen ist aktiviert.
 general-paste-return-failed = Rückkehr zu Ihrer Zitation nicht möglich. Öffnen Sie Ibis mit Ihrem Tastenkürzel, um fortzufahren.
 general-paste-stale = Schon aktiviert, aber es wartet noch? Entfernen Sie { $name } in den Systemeinstellungen aus der Liste, fügen Sie diese Kopie erneut hinzu und aktivieren Sie sie.
 
@@ -2129,10 +2129,9 @@ picker-native-engine-busy = Ibis fügt gerade ein anderes Zitat ein.
 picker-native-engine-changed = Das Zitat hat sich geändert. Prüfen Sie es vor dem nächsten Versuch.
 picker-native-request-failed = Ibis konnte die Anfrage nicht abschließen. Versuchen Sie es erneut.
 picker-native-before-example = siehe
+picker-native-after-example = Hervorhebung hinzugefügt
 picker-native-form-narrative = Name im Text
 picker-native-copy-citation = Zitat kopieren
-picker-native-copy-citations = { $count } Zitate kopieren
-picker-native-paste-citations = { $count } Zitate in { $app } einfügen
 
 picker-native-remember-format = Für { $app } merken
 picker-native-format-project = Projekt: { $name }

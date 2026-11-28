@@ -71,6 +71,7 @@ pub fn shell_words(language: Language) -> BTreeMap<&'static str, String> {
         ("pageShort", "locator-short-page"),
         ("before", "citation-details-prefix"),
         ("beforeExample", "picker-native-before-example"),
+        ("afterExample", "picker-native-after-example"),
         ("after", "citation-details-suffix"),
         ("copyCitation", "picker-native-copy-citation"),
         ("add", "key-add-to-citation"),
@@ -148,7 +149,6 @@ pub fn shell_words(language: Language) -> BTreeMap<&'static str, String> {
         ("recentlyAdded", "picker-recent-heading", "state", "added"),
         ("paste", "picker-bar-paste", "app", VALUE),
         ("accessTitle", "picker-native-access-title", "app", VALUE),
-        ("copyCitations", "picker-native-copy-citations", "count", VALUE),
         ("referenceCount", "picker-native-reference-count", "count", VALUE),
         ("findLibrary", "picker-native-find-library", "name", VALUE),
         ("libraryMissing", "picker-native-library-missing", "name", VALUE),
@@ -180,13 +180,5 @@ pub fn shell_words(language: Language) -> BTreeMap<&'static str, String> {
                 .into_iter()
                 .map(|(key, id, name, value)| (key, super::word(language, id, &[(name, value)]))),
         )
-        .chain(std::iter::once((
-            "pasteCitations",
-            super::word(
-                language,
-                "picker-native-paste-citations",
-                &[("count", "{IBIS_COUNT}"), ("app", VALUE)],
-            ),
-        )))
         .collect()
 }

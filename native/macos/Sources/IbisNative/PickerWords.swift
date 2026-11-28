@@ -25,6 +25,7 @@ enum PickerWord {
     case activeToken
     case add
     case after
+    case afterExample
     case allowPaste
     case app
     case appearance
@@ -50,7 +51,6 @@ enum PickerWord {
     case compact
     case copied
     case copyCitation
-    case copyCitations
     case copyFailed
     case copyMode
     case dark
@@ -111,7 +111,6 @@ enum PickerWord {
     case pageShort
     case panel
     case paste
-    case pasteCitations
     case pasteNeedsAccess
     case pasteReady
     case pasteSettings
@@ -200,6 +199,7 @@ enum PickerWords {
             .activeToken: "تحرير الاستشهاد: {IBIS_VALUE}",
             .add: "إضافة إلى الاستشهاد",
             .after: "نص بعده",
+            .afterExample: "التشديد مضاف",
             .allowPaste: "السماح باللصق…",
             .app: "Ibis",
             .appearance: "المظهر",
@@ -225,7 +225,6 @@ enum PickerWords {
             .compact: "مضغوطة",
             .copied: "تم النسخ. اضغط ⌘V للصق.",
             .copyCitation: "نسخ الاستشهاد",
-            .copyCitations: "نسخ الاستشهادات ({IBIS_VALUE})",
             .copyFailed: "تغيّرت الحافظة أو تعذّرت الكتابة فيها.",
             .copyMode: "ينسخ Ibis الاستشهادات. اضغط ⌘V للصق.",
             .dark: "داكن",
@@ -286,9 +285,8 @@ enum PickerWords {
             .pageShort: "ص",
             .panel: "Ibis، منتقي الاستشهادات",
             .paste: "لصق في {IBIS_VALUE}",
-            .pasteCitations: "لصق الاستشهادات ({IBIS_COUNT}) في {IBIS_VALUE}",
             .pasteNeedsAccess: "ليلصق بأمان، يحتاج Ibis إلى إذن تسهيلات الاستخدام ليتحقق من النافذة التي تتلقى الكتابة، وإلى إذن بضغط ⌘V. ولا يقرأ أبدًا ما تكتبه.",
-            .pasteReady: "يستطيع Ibis اللصق الآن.",
+            .pasteReady: "اللصق مفعّل.",
             .pasteSettings: "اللصق",
             .pasteTryAgain: "عُد إلى مستندك وافتح Ibis مجددًا. اضغط Enter للمحاولة مرة أخرى.",
             .pasted: "القائمة الملصقة",
@@ -362,6 +360,7 @@ enum PickerWords {
             .activeToken: "Zitat bearbeiten: {IBIS_VALUE}",
             .add: "Zur Zitation hinzufügen",
             .after: "Text danach",
+            .afterExample: "Hervorhebung hinzugefügt",
             .allowPaste: "Einfügen erlauben…",
             .app: "Ibis",
             .appearance: "Erscheinungsbild",
@@ -387,7 +386,6 @@ enum PickerWords {
             .compact: "Kompakt",
             .copied: "Kopiert. Drücken Sie ⌘V zum Einfügen.",
             .copyCitation: "Zitat kopieren",
-            .copyCitations: "{IBIS_VALUE} Zitate kopieren",
             .copyFailed: "Die Zwischenablage hat sich geändert oder konnte nicht beschrieben werden.",
             .copyMode: "Ibis kopiert Zitate. Drücken Sie ⌘V zum Einfügen.",
             .dark: "Dunkel",
@@ -448,9 +446,8 @@ enum PickerWords {
             .pageShort: "S.",
             .panel: "Ibis, Zitationsauswahl",
             .paste: "In {IBIS_VALUE} einfügen",
-            .pasteCitations: "{IBIS_COUNT} Zitate in {IBIS_VALUE} einfügen",
             .pasteNeedsAccess: "Um sicher einzufügen, braucht Ibis Zugriff auf Bedienungshilfen, um zu prüfen, welches Fenster die Tastatur hat, und die Erlaubnis, ⌘V zu drücken. Was Sie tippen, liest Ibis nie.",
-            .pasteReady: "Ibis kann jetzt einfügen.",
+            .pasteReady: "Einfügen ist aktiviert.",
             .pasteSettings: "Einfügen",
             .pasteTryAgain: "Kehren Sie zu Ihrem Dokument zurück und öffnen Sie Ibis erneut. Drücken Sie Enter, um es noch einmal zu versuchen.",
             .pasted: "Eingefügte Liste",
@@ -524,6 +521,7 @@ enum PickerWords {
             .activeToken: "Editing citation: {IBIS_VALUE}",
             .add: "Add to Citation",
             .after: "Text after",
+            .afterExample: "emphasis added",
             .allowPaste: "Allow Paste…",
             .app: "Ibis",
             .appearance: "Appearance",
@@ -549,7 +547,6 @@ enum PickerWords {
             .compact: "Compact",
             .copied: "Copied. Press ⌘V to paste.",
             .copyCitation: "Copy Citation",
-            .copyCitations: "Copy {IBIS_VALUE} Citations",
             .copyFailed: "The clipboard changed or could not be written.",
             .copyMode: "Ibis copies citations. Press ⌘V to paste.",
             .dark: "Dark",
@@ -610,9 +607,8 @@ enum PickerWords {
             .pageShort: "p.",
             .panel: "Ibis, citation picker",
             .paste: "Paste into {IBIS_VALUE}",
-            .pasteCitations: "Paste {IBIS_COUNT} Citations into {IBIS_VALUE}",
             .pasteNeedsAccess: "To paste safely, Ibis needs Accessibility access to check which window has the keyboard, as well as permission to press ⌘V. It never reads what you type.",
-            .pasteReady: "Ibis can paste now.",
+            .pasteReady: "Pasting is on.",
             .pasteSettings: "Pasting",
             .pasteTryAgain: "Return to your document and open Ibis again. Press Enter to try again.",
             .pasted: "Pasted list",

@@ -33,6 +33,7 @@ enum ReviewState: String, CaseIterable {
         }
         let store = panel.store
         panel.summon()
+        backdrop(behind: panel)
         await settle(store)
         // The same format in every shot, whichever app is in front.
         if self != .choose { store.useFormatOnce("apa") }
@@ -61,8 +62,35 @@ enum ReviewState: String, CaseIterable {
         }
         await settle(store)
         await pause(500)
-        report(area(of: NSApp.windows.filter { $0.isVisible && $0.level >= .floating && !$0.className.contains("StatusBar") }))
+        report(area(of: NSApp.windows.filter {
+            $0.isVisible && $0.level >= .floating && $0 !== Self.backdropWindow && !$0.className.contains("StatusBar")
+        }))
     }
+
+    /// An invented shoreline behind the picker, so a shot shows the glass over
+    /// the same picture every time and never what is on the person's screen.
+    private func backdrop(behind panel: NSWindow) {
+        guard let screen = panel.screen ?? NSScreen.main else { return }
+        let window = NSWindow(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 1)
+        window.ignoresMouseEvents = true
+        window.isOpaque = true
+        window.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
+        let view = NSView()
+        view.wantsLayer = true
+        let gradient = CAGradientLayer()
+        gradient.colors = [NSColor(red: 0.18, green: 0.50, blue: 0.69, alpha: 1).cgColor,
+                           NSColor(red: 0.50, green: 0.72, blue: 0.79, alpha: 1).cgColor,
+                           NSColor(red: 0.91, green: 0.83, blue: 0.68, alpha: 1).cgColor]
+        gradient.startPoint = CGPoint(x: 0.1, y: 1)
+        gradient.endPoint = CGPoint(x: 0.9, y: 0)
+        view.layer = gradient
+        window.contentView = view
+        window.orderFront(nil)
+        Self.backdropWindow = window
+    }
+
+    private static var backdropWindow: NSWindow?
 
     /// The windows' union in screen points from the top left, as `screencapture -R` takes it.
     private func area(of windows: [NSWindow]) -> String {

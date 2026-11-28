@@ -22,7 +22,7 @@ final class PeekPanel: NSPanel {
         isExcludedFromWindowsMenu = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         host.safeAreaRegions = []
-        contentView = SystemGlass(content: host, corner: 22)
+        contentView = SystemGlass(content: host, corner: 22, readable: true)
     }
 
     override var canBecomeKey: Bool { false }
@@ -60,9 +60,11 @@ private struct PeekView: View {
                 Text(row.title ?? PickerWords.text(.untitled))
                     .font(.title3.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
-                Text(row.authors.isEmpty ? row.fullByline : row.authors.joined(separator: ", "))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if !row.authors.isEmpty {
+                    Text(row.authors.joined(separator: ", "))
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 HStack(spacing: 6) {
                     if let journal = row.journal { Text(journal).italic() }
                     Text(row.year ?? PickerWords.text(.noDate))

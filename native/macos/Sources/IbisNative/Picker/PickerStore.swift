@@ -94,16 +94,9 @@ final class PickerStore: ObservableObject {
         return preview.problem == nil && !preview.ticket.isEmpty && !preview.text.isEmpty
     }
 
+    /// One citation, however many references it holds; the footer counts those.
     var deliveryTitle: String {
-        let count = citation.count
-        if count < 2 {
-            return pasteDestination.map { PickerWords.text(.paste, $0) } ?? PickerWords.text(.copyCitation)
-        }
-        let number = count.formatted(.number.locale(Locale(identifier: PickerWords.language.rawValue)))
-        guard let pasteDestination else { return PickerWords.text(.copyCitations, number) }
-        return PickerWords.text(.pasteCitations)
-            .replacingOccurrences(of: "{IBIS_COUNT}", with: number)
-            .replacingOccurrences(of: "{IBIS_VALUE}", with: pasteDestination)
+        pasteDestination.map { PickerWords.text(.paste, $0) } ?? PickerWords.text(.copyCitation)
     }
 
     /// The app the citation goes to, for its icon beside the delivery button.

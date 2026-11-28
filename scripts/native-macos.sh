@@ -22,6 +22,17 @@ cd "$root"
 package="$root/native/macos"
 app="$root/target/native-macos/Ibis.app"
 export CARGO_TARGET_DIR="$root/target"
+# The app needs the macOS 26 SDK (Swift 6.2) even though it runs on macOS 15.
+# Hosted runners and older Macs may default to an older Xcode beside a newer one.
+if [[ -z "${DEVELOPER_DIR:-}" ]] && ! swift --version 2>/dev/null | grep -Eq 'Swift version (6\.[2-9]|[7-9])'; then
+  newest=$(ls -d /Applications/Xcode_26*.app /Applications/Xcode-26*.app 2>/dev/null | sort -V | tail -1 || true)
+  if [[ -n "$newest" ]]; then
+    export DEVELOPER_DIR="$newest/Contents/Developer"
+  else
+    printf '%s\n' 'The native app needs Xcode 26 or its Command Line Tools (Swift 6.2).' >&2
+    exit 1
+  fi
+fi
 export CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-0}"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-3}"
 

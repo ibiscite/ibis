@@ -468,7 +468,7 @@ private struct Footer: View {
                 .popover(isPresented: Binding(
                     get: { store.editing != nil },
                     set: { if !$0 { store.editingClosed() } }
-                ), arrowEdge: .top) {
+                ), arrowEdge: .bottom) {
                     if let item = store.editing { DetailsPopover(store: store, item: item) }
                 }
 
@@ -555,30 +555,28 @@ private struct DetailsPopover: View {
         Form {
             if let title = entry?.row.title { Text(title).font(.headline).lineLimit(2) }
             LabeledContent {
-                HStack(spacing: 6) {
-                    Picker(PickerWords.text(.locatorType), selection: Binding(
-                        get: { term },
-                        set: { next in
-                            store.changeDetails(item, to: details.with(locator: Locator(term: next, value: details.locator?.value ?? "")))
-                        }
-                    )) {
-                        ForEach(options, id: \.term) { Text($0.name).tag($0.term) }
+                NativeTextField(
+                    text: details.locator?.value ?? "", placeholder: "", label: name, style: .rounded,
+                    font: .systemFont(ofSize: NSFont.systemFontSize),
+                    register: { store.locatorField = $0 },
+                    began: {},
+                    change: { value in
+                        store.changeDetails(item, to: details.with(locator: Locator(term: term, value: value)))
                     }
-                    .labelsHidden()
-                    .fixedSize()
-                    NativeTextField(
-                        text: details.locator?.value ?? "", placeholder: name, label: name, style: .rounded,
-                        font: .systemFont(ofSize: NSFont.systemFontSize),
-                        register: { store.locatorField = $0 },
-                        began: {},
-                        change: { value in
-                            store.changeDetails(item, to: details.with(locator: Locator(term: term, value: value)))
-                        }
-                    )
-                    .frame(width: 90)
-                }
+                )
+                .frame(width: 120)
             } label: {
-                Text(name)
+                // The locator's kind is the row's label, so "Page" is said once.
+                Picker(PickerWords.text(.locatorType), selection: Binding(
+                    get: { term },
+                    set: { next in
+                        store.changeDetails(item, to: details.with(locator: Locator(term: next, value: details.locator?.value ?? "")))
+                    }
+                )) {
+                    ForEach(options, id: \.term) { Text($0.name).tag($0.term) }
+                }
+                .labelsHidden()
+                .fixedSize()
             }
             TextField(PickerWords.text(.before), text: Binding(
                 get: { details.prefix ?? "" },
@@ -587,7 +585,7 @@ private struct DetailsPopover: View {
             TextField(PickerWords.text(.after), text: Binding(
                 get: { details.suffix ?? "" },
                 set: { store.changeDetails(item, to: details.with(suffix: $0)) }
-            ))
+            ), prompt: Text(PickerWords.text(.afterExample)))
             let forms = formChoices(details)
             if forms.count > 1 {
                 Picker(PickerWords.text(.showAs), selection: Binding(
@@ -598,7 +596,9 @@ private struct DetailsPopover: View {
                 }
             }
         }
-        .formStyle(.grouped)
+        // One box: the popover is the group, so the form draws none of its own.
+        .formStyle(.columns)
+        .padding(16)
         .frame(width: 340)
         .fixedSize(horizontal: false, vertical: true)
         .onSubmit { store.closeEditing() }

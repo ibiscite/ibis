@@ -68,8 +68,24 @@ are built in this order of need.
 - **More ways in:** a Cite control in Control Center, a Services item for
   selected text, and a short glow at the caret after a paste, beside the menu
   bar item.
-- **Browsing the library** (0.5) is still open: the picker growing into a
-  library, or a Library window of its own.
+- **Three places, three jobs** (finding and reading, the same day): the
+  picker cites, Peek glances, and the Library and reader open only when asked
+  for. Ibis stays in the menu bar until the Library or reader opens; then it
+  shows in the Dock and ⌘-Tab, and leaves again when they close.
+- **Peek shows everything useful at once:** the first page, the passage that
+  matched with its page, the person's own notes and highlights, and where it
+  is already cited, read by VoiceOver as one summary.
+- **Passages are found in the same search:** matches inside PDFs appear as
+  “In the text” with the sentence and page; ↩ cites with that page.
+- **Ibis has its own quick reader:** a normal Mac window that opens at the
+  page, with contents and highlights; selected text cites with its page or
+  quote. Pages are drawn in the isolated renderer
+  ([0036](../decisions/0036-reader-trust-boundary.md)), never by a PDF parser
+  beside the library; Open in Preview stays one click away.
+- **The Library window is a workspace for writing:** lists by job first
+  (This document, Reading now, Added this week, Needs a fix, Suggestions),
+  then each manager's collections and files. Agent suggestions and document
+  reports live there.
 
 ## What the interface does
 

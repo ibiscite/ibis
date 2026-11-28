@@ -36,7 +36,7 @@ final class EngineClientTests: XCTestCase {
         }
         let request = PickerDeliverRequest(contentHash: preview.contentHash, paste: false, ticket: preview.ticket)
         let delivered = try await picker.deliver(request) { grant in
-            XCTAssertEqual(grant.text, preview.text)
+            XCTAssertEqual(grant.text, current.text)
             return 1
         }
         XCTAssertNotNil(delivered)
@@ -181,11 +181,14 @@ final class EngineClientTests: XCTestCase {
         let preview = try XCTUnwrap(edited.preview)
         XCTAssertNil(preview.problem)
         XCTAssertTrue(preview.text.contains("chapter 12"), preview.text)
-        // Browsing beside an added reference keeps the citation and its ticket.
+        // Browsing beside an added reference keeps the citation; the newest
+        // render carries the ticket that delivers it.
         let browse = try await client.typed("bridges")
         XCTAssertNotEqual(browse.sections.first?.rows.first?.id, row.id)
         let browsed = try await client.typed("")
-        XCTAssertEqual(browsed.preview?.ticket, preview.ticket)
+        XCTAssertEqual(browsed.citation.map(\.row.id), [row.id])
+        let current = try XCTUnwrap(browsed.preview)
+        XCTAssertEqual(current.text, preview.text)
 
         let preferences = fixture.client()
         let disabled = try await preferences.settings(
@@ -193,11 +196,11 @@ final class EngineClientTests: XCTestCase {
         )
         XCTAssertFalse(disabled.paste)
 
-        let request = PickerDeliverRequest(contentHash: preview.contentHash, paste: true, ticket: preview.ticket)
+        let request = PickerDeliverRequest(contentHash: current.contentHash, paste: true, ticket: current.ticket)
         let settingsLock = fixture.settings.deletingPathExtension().appendingPathExtension("json.lock").path
         let copied = try await client.deliver(request) { grant in
             XCTAssertFalse(grant.paste)
-            XCTAssertEqual(grant.text, preview.text)
+            XCTAssertEqual(grant.text, current.text)
             XCTAssertNotNil(grant.html)
             XCTAssertNotNil(grant.rtf)
             let fd = open(settingsLock, O_RDONLY)
