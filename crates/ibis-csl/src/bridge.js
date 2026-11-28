@@ -88,6 +88,19 @@
   // shows the break, so the text keeps it too, and one-line folding spaces it.
   CSL.Output.Formats.text["@display/block"] = (state, str) => "\n" + str + "\n";
   CSL.Output.Formats.text["@display/indent"] = (state, str) => "\n    " + str + "\n";
+  // The processor opens a style's date output level with the date's own node
+  // at build time, affixes included; only after its first range does it reopen
+  // with the affix-free copy. So the first year range a compiled style prints
+  // gets the affixes twice: "(2020–(2026))". Open with the copy from the start.
+  const buildDate = CSL.Node.date.build;
+  CSL.Node.date.build = function (state, target) {
+    if (this.tokentype !== CSL.START && this.tokentype !== CSL.SINGLETON) return buildDate.call(this, state, target);
+    const node = this;
+    state.dateput.openLevel = function (token) {
+      return CSL.Output.Queue.prototype.openLevel.call(this, token === node ? state.tmp.date_token : token);
+    };
+    try { return buildDate.call(this, state, target); } finally { delete state.dateput.openLevel; }
+  };
   let literalLessThan = null;
   const checkedText = (text) => literalLessThan && text ? text.split(literalLessThan).join("<") : text;
   const encodeDoiForUrl = CSL.Util.encodeDoiForUrl;

@@ -184,6 +184,10 @@ Ibis also writes org-cite, MyST, ConTeXt and other key syntaxes. Supported
 forms and field losses depend on the output. Numeric styles give an
 unnumbered reference entry; note styles give a full first note. Ibis cannot
 determine a document's numbering, ibid. or year-letter disambiguation.
+Formatted text is checked against what Zotero's own Quick Copy gives for 297
+invented records in each curated style, read from Zotero and from an exported
+CSL-JSON file; [every difference](../fixtures/zotero/quick-copy/README.md) is
+listed. Zotero links URLs and DOIs in formatted HTML; Ibis does not yet.
 Tests prove that Ibis writes the markers the add-on documents
 (`{ prefix | Author, Year | locator | suffix | zu:0:KEY }`, `zg:GROUP:KEY` for a group); they do not
 prove that a scan turns them into live Zotero citations in a particular
