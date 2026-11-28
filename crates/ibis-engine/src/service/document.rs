@@ -12,10 +12,12 @@
 //! the local-file rules and checks what the child answers. A text read only
 //! in part says so, and never passes.
 
+use super::reading::QuoteFound;
 use super::{Cancellation, Engine, health, select};
 use crate::request::{ItemSelector, KeyCitationRequest, KeyItem, RecordsRequest};
 use ibis_core::contract::{
-    CitationError, CitationForm, CitationResult, EngineError, ErrorCode, ErrorReason, KeySyntax, OutputSpec,
+    CitationError, CitationForm, CitationResult, EngineError, ErrorCode, ErrorReason, KeySyntax, LocatorTerm,
+    OutputSpec,
 };
 use ibis_core::contract::{
     Cite, LibraryObject, MAX_TEXT_BYTES, Manuscript, Place, ScanProblem, SnapshotObject, TextKind,
@@ -46,6 +48,10 @@ pub struct CheckRequest {
     /// must still match: a lock file for co-authors and builds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub set: Option<PathBuf>,
+    /// Check each quotation just before a citation against the text of the
+    /// cited reference's attachments, and on the cited page.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub quotes: bool,
 }
 
 /// Export the records a manuscript cites.
@@ -141,6 +147,9 @@ pub struct Finding {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current: Option<String>,
     pub problem: Problem,
+    /// For a quotation found on other pages, the printed pages it is on.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
@@ -180,6 +189,15 @@ pub enum Problem {
     Renamed,
     /// `\nocite{*}`: the export holds what is cited by key, not the whole bibliography.
     CitesEverything,
+    /// The quotation's words are not in the cited reference's attachments.
+    QuoteNotFound,
+    /// The quotation is in the reference, but not on the cited page.
+    QuoteOnOtherPage,
+    /// The quotation is in the reference, whose printed pages are not known,
+    /// so the cited page could not be checked.
+    QuotePageUnknown,
+    /// The cited reference has no attachment whose text could be read.
+    QuoteUnchecked,
 }
 
 impl From<ScanProblem> for Problem {
@@ -268,6 +286,7 @@ impl Engine {
                 key: None,
                 current: None,
                 problem: problem.kind.into(),
+                pages: Vec::new(),
             })
             .collect();
         let mut keys: Vec<(String, Result<String, Problem>)> = Vec::new();
@@ -304,6 +323,7 @@ impl Engine {
                     key: Some(cite.key.clone()),
                     current,
                     problem,
+                    pages: Vec::new(),
                 });
             }
         }
@@ -348,7 +368,83 @@ impl Engine {
                 }
             }
         }
+        if request.quotes {
+            let mut findings = self.quotes(&scanned, cancel)?;
+            scanned.findings.append(&mut findings);
+            scanned.findings.sort_by_key(|finding| finding.place);
+        }
         checked(CheckResult::Checked(Checked { read: scanned.read() }))
+    }
+
+    /// Each quotation just before a citation, looked for in the cited
+    /// references' attachments. A citation of several references passes when
+    /// one of them holds the words on its cited page.
+    fn quotes(&self, scanned: &Scanned, cancel: &Cancellation) -> Result<Vec<Finding>, EngineError> {
+        let now: BTreeMap<&str, &str> = scanned
+            .keys
+            .iter()
+            .filter_map(|(key, found)| Some((key.as_str(), found.as_deref().ok()?)))
+            .collect();
+        let mut findings = Vec::new();
+        for cited in &scanned.manuscript.citations {
+            let Some(quote) = &cited.quote else { continue };
+            // The closest answer of the cited references: none is a pass.
+            let mut closest: Option<(&str, Problem, Vec<String>)> = None;
+            let rank = |problem: &Problem| match problem {
+                Problem::QuoteUnchecked => 0,
+                Problem::QuoteNotFound => 1,
+                Problem::QuotePageUnknown => 2,
+                _ => 3,
+            };
+            for cite in &cited.cites {
+                // A key no library holds is already named.
+                let Some(&key) = now.get(cite.key.as_str()) else {
+                    continue;
+                };
+                let parent = {
+                    let state = self.state()?;
+                    select(
+                        state.index.snapshot(),
+                        &state.libraries,
+                        &ItemSelector::Key(key.to_owned()),
+                    )?
+                    .clone()
+                };
+                let page = cite
+                    .locator
+                    .as_ref()
+                    .filter(|locator| locator.term == LocatorTerm::Page);
+                let (problem, pages) = match self.find_quote(&parent, quote, cancel)? {
+                    QuoteFound::Unread => (Problem::QuoteUnchecked, Vec::new()),
+                    QuoteFound::NotFound => (Problem::QuoteNotFound, Vec::new()),
+                    QuoteFound::Found(pages) => match page {
+                        None => {
+                            closest = None;
+                            break;
+                        }
+                        Some(locator) if pages.iter().flatten().any(|found| on_page(&locator.value, found)) => {
+                            closest = None;
+                            break;
+                        }
+                        Some(_) if pages.iter().all(Option::is_none) => (Problem::QuotePageUnknown, Vec::new()),
+                        Some(_) => (Problem::QuoteOnOtherPage, pages.into_iter().flatten().collect()),
+                    },
+                };
+                if closest.as_ref().is_none_or(|(_, best, _)| rank(&problem) > rank(best)) {
+                    closest = Some((&cite.key, problem, pages));
+                }
+            }
+            if let Some((key, problem, pages)) = closest {
+                findings.push(Finding {
+                    place: Some(cited.place),
+                    key: Some(key.to_owned()),
+                    current: None,
+                    problem,
+                    pages,
+                });
+            }
+        }
+        Ok(findings)
     }
 
     /// Export the records `request.document` cites, in first-citation order.
@@ -385,6 +481,7 @@ impl Engine {
                 key: None,
                 current: None,
                 problem: Problem::CitesEverything,
+                pages: Vec::new(),
             });
         }
         if keys.is_empty() {
@@ -512,12 +609,27 @@ impl Engine {
                         key: Some(name.to_owned()),
                         current: None,
                         problem,
+                        pages: Vec::new(),
                     });
                 }
             }
         }
         Ok(Ok(findings))
     }
+}
+
+/// Whether printed page `page` is in a page locator such as `12`, `12-14`
+/// or `xii, 15`.
+fn on_page(locator: &str, page: &str) -> bool {
+    locator.split([',', '&']).map(str::trim).any(|part| {
+        let mut ends = part.splitn(2, ['-', '\u{2013}', '\u{2014}']).map(str::trim);
+        let (first, last) = (ends.next().unwrap_or_default(), ends.next());
+        match (first.parse::<u64>(), last.map(str::parse::<u64>), page.parse::<u64>()) {
+            (Ok(first), Some(Ok(last)), Ok(page)) => (first..=last.max(first)).contains(&page),
+            (Ok(first), None, Ok(page)) => first == page,
+            _ => first == page || last == Some(page),
+        }
+    })
 }
 
 /// CSL-JSON records by citation key, without the file-local `id`.

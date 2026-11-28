@@ -9,6 +9,9 @@ use std::path::Path;
 /// The largest manuscript read, in bytes.
 pub const MAX_TEXT_BYTES: usize = 16 * 1024 * 1024;
 
+/// The longest quotation read before a citation, in characters.
+pub const MAX_QUOTE_CHARS: usize = 1000;
+
 /// How a manuscript writes its citations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -68,6 +71,10 @@ pub struct Cited {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub narrative: bool,
     pub cites: Vec<Cite>,
+    /// The words of a quotation that ends just before the citation, as the
+    /// manuscript writes them without markup: `"…" [@key, p. 4]`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quote: Option<String>,
 }
 
 /// Why text that starts a citation is not one.

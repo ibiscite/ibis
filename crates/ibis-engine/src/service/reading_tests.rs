@@ -356,3 +356,18 @@ fn rereading_an_unchanged_library_keeps_attachment_ids_and_a_failed_read_says_so
     std::fs::write(&program, "#!/bin/sh\nexit 1\n").unwrap();
     assert_eq!(read(&id).err().map(reason), Some(Some(ErrorReason::NoAttachmentText)));
 }
+
+#[test]
+fn a_quotation_matches_across_typography_hyphenation_and_page_breaks() {
+    let mut text = paged(&["The ships\u{2019} lan-\nterns guide", "them home \u{2014} always."]);
+    text.cite_pages = Some(vec![Some("xi".into()), Some("xii".into())]);
+    let pages = |quote: &str| quote_pages(&text, quote, &Cancellation::default()).unwrap();
+    assert_eq!(pages("ships' lanterns guide"), [Some("xi".to_owned())]);
+    assert_eq!(pages("lanterns guide them home - always"), [Some("xi".to_owned())]);
+    assert_eq!(pages("The ships\u{2019} [\u{2026}] always"), [Some("xi".to_owned())]);
+    assert_eq!(pages("always \u{2026} ships"), Vec::<Option<String>>::new());
+    assert_eq!(
+        quote_pages(&whole("Lanterns guide."), "lanterns guide", &Cancellation::default()).unwrap(),
+        [None]
+    );
+}

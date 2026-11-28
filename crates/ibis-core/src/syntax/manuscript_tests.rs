@@ -234,3 +234,61 @@ fn nested_comments_inside_typst_math_hold_no_delimiter() {
         of(&[(1, 23, &["ghost"])])
     );
 }
+
+#[test]
+fn a_quotation_just_before_a_citation_is_read_without_markup() {
+    let quote = |kind, text: &str| -> Vec<Option<String>> {
+        scan(kind, text, &|| false)
+            .citations
+            .into_iter()
+            .map(|cited| cited.quote)
+            .collect()
+    };
+    let some = |text: &str| Some(text.to_owned());
+    assert_eq!(
+        quote(
+            TextKind::Markdown,
+            "Vale wrote \"lanterns *guide* the\nships\" [@vale2024, p. 12], \u{201c}curly words\u{201d} [@fen2023] and [@noor2026].\n"
+        ),
+        [some("lanterns guide the ships"), some("curly words"), None]
+    );
+    assert_eq!(
+        quote(
+            TextKind::Latex,
+            "As ``lanterns \\emph{guide} ships''~\\cite[p.~12]{vale2024} and \\enquote{tides\\,turn} \\parencite{fen2023}.\n"
+        ),
+        [some("lanterns guide ships"), some("tides turn")]
+    );
+    assert_eq!(
+        quote(
+            TextKind::Typst,
+            "\"Lanterns _guide_ ships\" @vale2024 and #cite(<fen2023>).\n"
+        ),
+        [some("Lanterns guide ships"), None]
+    );
+    // A quotation in an earlier paragraph is not this citation's.
+    assert_eq!(quote(TextKind::Markdown, "\"Lanterns.\"\n\n[@vale2024]\n"), [None]);
+}
+
+#[test]
+fn a_latex_postnote_is_the_locator_of_its_one_key() {
+    let read = scan(
+        TextKind::Latex,
+        "\\cite[p.~12]{vale2024} \\parencite[see][ch.~3]{fen2023} \\cite[12]{a,b} \\cite[see]{c}\n",
+        &|| false,
+    );
+    let locators: Vec<Option<String>> = read
+        .citations
+        .iter()
+        .flat_map(|cited| &cited.cites)
+        .map(|cite| {
+            cite.locator
+                .as_ref()
+                .map(|locator| format!("{:?} {}", locator.term, locator.value))
+        })
+        .collect();
+    assert_eq!(
+        locators,
+        [Some("Page 12".into()), Some("Chapter 3".into()), None, None, None]
+    );
+}

@@ -17,7 +17,11 @@ fn the_engine_checks_a_manuscript_through_the_child() {
     )
     .unwrap();
     let draft = root.join("draft.tex");
-    std::fs::write(&draft, "As \\textcite{vale2024} and \\cite{ghost} show.\n").unwrap();
+    std::fs::write(
+        &draft,
+        "As \\textcite{vale2024} and \\cite{ghost} show, ``lanterns guide ships''~\\cite[p.~4]{vale2024}.\n",
+    )
+    .unwrap();
     let engine = Engine::new()
         .unwrap()
         .without_file_watches()
@@ -26,14 +30,27 @@ fn the_engine_checks_a_manuscript_through_the_child() {
     let request = CheckRequest {
         document: draft.clone(),
         set: None,
+        quotes: true,
     };
     let checked = match engine.check_document(&request, &Cancellation::default()).unwrap().value {
         CheckResult::Checked(checked) => checked,
         refused => panic!("{refused:?}"),
     };
-    assert_eq!((checked.read.citations, checked.read.keys), (2, 2));
-    assert_eq!(checked.read.findings.len(), 1);
-    assert_eq!(checked.read.findings[0].key.as_deref(), Some("ghost"));
+    assert_eq!((checked.read.citations, checked.read.keys), (3, 2));
+    let findings: Vec<_> = checked
+        .read
+        .findings
+        .iter()
+        .map(|finding| (finding.key.as_deref(), finding.problem))
+        .collect();
+    // The child read the quotation; the reference has no attachment to check it in.
+    assert_eq!(
+        findings,
+        [
+            (Some("ghost"), ibis_engine::DocumentProblem::Missing),
+            (Some("vale2024"), ibis_engine::DocumentProblem::QuoteUnchecked)
+        ]
+    );
 
     // Without a child, nothing is parsed.
     let alone = Engine::new().unwrap().without_file_watches();

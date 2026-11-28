@@ -99,6 +99,27 @@ the library's record is written, and the two are compared without `id`. So a
 newer Ibis that writes a field differently does not report every record as
 changed, and the comparison needs no stored fingerprint.
 
+## Checking quotations
+
+A check can also look up each quotation that ends just before a citation,
+such as `"the lanterns guide every ship" [@vale2024, p. 11]` or
+``` ``…''~\cite[p.~11]{vale2024} ```, in the text of the cited reference's
+attachments (decision 0055). The comparison is exact and repeatable: case,
+line breaks, typographic quotes, apostrophes and dashes, and a word
+hyphenated at a line break do not count, and an ellipsis stands for words
+left out. Nothing is guessed or paraphrased.
+
+| Finding | When |
+| --- | --- |
+| `quote-not-found` | No attachment of the reference holds the words. |
+| `quote-on-other-page` | The words are there, but not on the cited page; the finding lists the pages they are on. |
+| `quote-page-unknown` | The words are there, but the PDF has no printed page labels, so the cited page could not be checked. |
+| `quote-unchecked` | The reference has no attachment whose text Ibis can read. |
+
+A citation of several references passes when one of them holds the words on
+its cited page. Pages are printed pages, from the PDF's own labels, never
+the file's page numbers.
+
 ## Co-authors on different managers
 
 The set is committed with the document. Each co-author checks the document

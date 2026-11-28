@@ -37,6 +37,7 @@ impl Fixture {
                 &CheckRequest {
                     document: document.to_owned(),
                     set: set.map(Path::to_owned),
+                    quotes: false,
                 },
                 &Cancellation::default(),
             )
@@ -318,4 +319,62 @@ fn a_large_set_reads_back_and_a_wildcard_is_named_on_export() {
     let set = fixture.file("references.json", &records.text);
     let read = super::tests::read(fixture.check(&draft, Some(&set)));
     assert!(read.settled(), "{read:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_quotation_is_checked_against_the_cited_page_of_the_source() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::new(
+        "@book{vale2024, title = {Lanterns of the North}, year = {2024}, file = {vale.pdf}}\n\
+         @book{fen2023, title = {Clouds over invented hills}, year = {2023}}\n",
+    );
+    // A stand-in for `ibis __extract-pdf`: two pages printed as 11 and 12.
+    let program = fixture.folder.path().join("invented-ibis");
+    std::fs::write(
+        &program,
+        "#!/bin/sh\ncat >/dev/null\nprintf '{\"read\":{\"pages\":2,\"labels\":[\"11\",\"12\"],\"text\":[\"The lanterns guide\\\\nevery ship home.\",\"Tides turn when the moon is low.\"]}}'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::write(
+        fixture.folder.path().canonicalize().unwrap().join("vale.pdf"),
+        "%PDF-1.7\n",
+    )
+    .unwrap();
+    fixture.engine.reload_files(None, &Cancellation::default()).unwrap();
+    let engine = fixture.engine.clone().with_pdf_reader(program);
+    let draft = fixture.file(
+        "draft.md",
+        "\u{201c}The lanterns guide every ship\u{201d} [@vale2024, p. 11].\n\n\
+         \"Tides turn\" [@vale2024, p. 11].\n\n\
+         \"The lanterns \u{2026} home\" [@vale2024, pp. 10-12].\n\n\
+         \"Lanterns never fail\" [@vale2024].\n\n\
+         \"Clouds gather\" [@fen2023].\n",
+    );
+    let request = CheckRequest {
+        document: draft,
+        set: None,
+        quotes: true,
+    };
+    let read = read(engine.check_document(&request, &Cancellation::default()).unwrap().value);
+    let found: Vec<_> = read
+        .findings
+        .iter()
+        .map(|finding| {
+            (
+                finding.place.map(|place| place.line),
+                finding.problem,
+                finding.pages.clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (Some(3), Problem::QuoteOnOtherPage, vec!["12".to_owned()]),
+            (Some(7), Problem::QuoteNotFound, vec![]),
+            (Some(9), Problem::QuoteUnchecked, vec![]),
+        ]
+    );
 }

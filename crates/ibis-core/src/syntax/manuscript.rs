@@ -9,7 +9,8 @@
 
 use super::marker::{self, Found};
 use super::read::{group, pandoc_key_start, typst};
-use crate::contract::{Cite, Cited, Manuscript, Place, ScanFinding, ScanProblem, TextKind};
+use crate::contract::{Cite, Cited, Locator, MAX_QUOTE_CHARS, Manuscript, Place, ScanFinding, ScanProblem, TextKind};
+use crate::locator;
 use crate::scan::Work;
 
 /// Read `text` as `kind`. `stop` is polled as the allowance is spent.
@@ -244,6 +245,7 @@ fn markdown(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut 
                         place: places.at(start + found.start),
                         narrative: found.narrative,
                         cites: found.cites,
+                        quote: quote_before(block, found.start, TextKind::Markdown),
                     });
                 }
                 Found::Problem(problem) => out.problems.push(ScanFinding {
@@ -405,12 +407,13 @@ const TEX_NARRATIVE: [&str; 7] = [
 ];
 
 /// One optional `open … close` group at the start of `rest`, consumed:
-/// `None` when there is none, `Some(false)` when it runs to the end unclosed.
-fn optional(rest: &mut &str, open: char, close: char, work: &mut Work<'_>) -> Option<bool> {
+/// `None` when there is none, `Some(None)` when it runs to the end unclosed,
+/// otherwise what it holds.
+fn optional<'a>(rest: &mut &'a str, open: char, close: char, work: &mut Work<'_>) -> Option<Option<&'a str>> {
     let after = work.trim_start(rest).strip_prefix(open)?;
     let (body, next) = group(after, open, close, false, work);
     *rest = next;
-    Some(body.len() < after.len())
+    Some((body.len() < after.len()).then_some(body))
 }
 
 fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Manuscript) {
@@ -427,25 +430,28 @@ fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Man
         }
         let mut rest = &text[start + 1 + name_len..];
         rest = rest.strip_prefix('*').unwrap_or(rest);
-        let mut keys = Vec::new();
+        // Each key, with the locator its group's postnote gives when the
+        // group holds that key alone: `\cite[p.~12]{key}`.
+        let mut keys: Vec<(&str, Option<Locator>)> = Vec::new();
         let mut unclosed = false;
         if multi {
             for _ in 0..2 {
                 match optional(&mut rest, '(', ')', work) {
-                    Some(true) => {}
-                    Some(false) => unclosed = true,
+                    Some(Some(_)) => {}
+                    Some(None) => unclosed = true,
                     None => break,
                 }
             }
         }
         loop {
+            let mut postnote = None;
             for _ in 0..2 {
                 if unclosed {
                     break;
                 }
                 match optional(&mut rest, '[', ']', work) {
-                    Some(true) => {}
-                    Some(false) => unclosed = true,
+                    Some(Some(note)) => postnote = Some(note),
+                    Some(None) => unclosed = true,
                     None => break,
                 }
             }
@@ -478,7 +484,11 @@ fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Man
                 unclosed = true;
                 break;
             }
-            keys.extend(body.split(',').map(str::trim).filter(|key| !key.is_empty()));
+            let group: Vec<&str> = body.split(',').map(str::trim).filter(|key| !key.is_empty()).collect();
+            let locator = postnote
+                .filter(|_| group.len() == 1)
+                .and_then(|note| locator::read_given(&note.replace('~', " ")));
+            keys.extend(group.into_iter().map(|key| (key, locator.clone())));
             rest = after;
             if !multi {
                 break;
@@ -495,14 +505,15 @@ fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Man
             });
             return;
         }
-        if keys.contains(&"*") {
+        if keys.iter().any(|(key, _)| *key == "*") {
             out.cites_everything = true;
         }
         let cites: Vec<Cite> = keys
             .into_iter()
-            .filter(|key| *key != "*")
-            .map(|key| Cite {
+            .filter(|(key, _)| *key != "*")
+            .map(|(key, locator)| Cite {
                 key: key.to_owned(),
+                locator,
                 ..Cite::default()
             })
             .collect();
@@ -511,6 +522,7 @@ fn latex(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mut Man
                 place,
                 narrative: TEX_NARRATIVE.contains(&name),
                 cites,
+                quote: quote_before(text, start, TextKind::Latex),
             });
         }
         at = text.len() - rest.len();
@@ -798,6 +810,7 @@ fn typst_text(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mu
                             place: places.at(start),
                             narrative: false,
                             cites,
+                            quote: quote_before(masked, start, TextKind::Typst),
                         });
                     }
                     at = masked.len() - read.rest.len();
@@ -822,6 +835,7 @@ fn typst_text(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mu
                     key: key.to_owned(),
                     ..Cite::default()
                 }],
+                quote: quote_before(masked, start, TextKind::Typst),
             });
         }
         at = start + 1 + key.len().max(1).min(masked.len() - start - 1);
@@ -829,6 +843,88 @@ fn typst_text(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mu
             return;
         }
     }
+}
+
+// ---- Quotations ----
+
+/// The words of a quotation that closes just before `start`, in the same
+/// paragraph: `"…"`, `“…”`, `«…»`, and in LaTeX also ``` ``…'' ``` and
+/// `\enquote{…}`. Markup is removed so the words read as the source prints
+/// them; `None` when there is no such quotation or it is too long to be one.
+fn quote_before(text: &str, start: usize, kind: TextKind) -> Option<String> {
+    let head = text[..start].trim_end_matches(|c: char| c.is_whitespace() || c == '~');
+    // The paragraph the citation is in, and no more than a long quotation.
+    let floor = head.rfind("\n\n").map_or(0, |at| at + 2);
+    let floor = head[floor..]
+        .char_indices()
+        .rev()
+        .nth(MAX_QUOTE_CHARS + 16)
+        .map_or(floor, |(at, _)| floor + at);
+    let region = &head[floor..];
+    let body = if kind == TextKind::Latex && region.ends_with('}') {
+        let close = region.len() - 1;
+        let mut depth = 0usize;
+        let open = region[..close].char_indices().rev().find(|&(_, c)| {
+            match c {
+                '}' => depth += 1,
+                '{' if depth == 0 => return true,
+                '{' => depth -= 1,
+                _ => {}
+            }
+            false
+        })?;
+        let command = region[..open.0].trim_end_matches('*');
+        if !["\\enquote", "\\textquote", "\\foreignquote"]
+            .iter()
+            .any(|name| command.ends_with(name))
+        {
+            return None;
+        }
+        &region[open.0 + 1..close]
+    } else {
+        let (open, close) = [("“", "”"), ("«", "»"), ("„", "“"), ("``", "''"), ("\"", "\"")]
+            .into_iter()
+            .find(|(_, close)| region.ends_with(close))?;
+        if open == "``" && kind != TextKind::Latex {
+            return None;
+        }
+        let inner = &region[..region.len() - close.len()];
+        &inner[inner.rfind(open)? + open.len()..]
+    };
+    let words = unmarked(body, kind);
+    let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+    (words.chars().any(char::is_alphanumeric) && words.chars().count() <= MAX_QUOTE_CHARS).then_some(words)
+}
+
+/// Quoted text without the manuscript's markup: emphasis marks, and in LaTeX
+/// command names, braces and ties.
+fn unmarked(text: &str, kind: TextKind) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match (kind, c) {
+            (TextKind::Latex, '\\') => {
+                let mut name = false;
+                while chars.next_if(char::is_ascii_alphabetic).is_some() {
+                    name = true;
+                }
+                if !name {
+                    // `\,`, `\ ` and `\%`: a space or the character itself.
+                    match chars.next() {
+                        Some(c) if c.is_ascii_punctuation() && c != ',' => out.push(c),
+                        Some(_) => out.push(' '),
+                        None => {}
+                    }
+                }
+            }
+            (TextKind::Latex, '{' | '}') => {}
+            (TextKind::Latex, '~') => out.push(' '),
+            (_, '*' | '`') if kind != TextKind::Latex => {}
+            (TextKind::Typst, '_') => {}
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
