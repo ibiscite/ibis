@@ -16,8 +16,8 @@ pub fn check_damaged_pdf(data: &[u8]) {
         return;
     }
     let started = Instant::now();
-    let full = ibis::pdf_text::extract(data, false);
-    let labels = ibis::pdf_text::extract(data, true);
+    let full = ibis_sources::pdf::read::extract(data, false);
+    let labels = ibis_sources::pdf::read::extract(data, true);
     match (full, labels) {
         (Ok(full), Ok(labels)) => {
             assert_eq!(full.pages, labels.pages, "page counts differ with and without text");
@@ -45,7 +45,7 @@ mod tests {
     /// The committed seeds run in the crate's `seed_corpus`; these are made here.
     #[test]
     fn invented_pdfs_and_their_cuts() {
-        let invented = ibis::pdf_text::invented_pdf(
+        let invented = ibis_sources::pdf::read::invented_pdf(
             &["Invented first page.", "Invented second page."],
             Some(&[(0, Some("r"), "", 1), (1, Some("D"), "B-", 1)]),
         );

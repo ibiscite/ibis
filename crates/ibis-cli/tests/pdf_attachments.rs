@@ -33,7 +33,7 @@ impl Library {
         let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("pdf-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("papers")).unwrap();
-        let pdf = ibis::pdf_text::invented_pdf(
+        let pdf = ibis_sources::pdf::read::invented_pdf(
             &[
                 "Invented preface.",
                 "Invented chapter opening.",
@@ -223,7 +223,7 @@ fn a_linked_pdf_is_never_followed() {
 #[test]
 fn contradicting_pdf_labels_give_no_cite_pages_in_outline_read_or_find_in() {
     let library = Library::new("wrong-labels");
-    let pdf = ibis::pdf_text::invented_pdf(
+    let pdf = ibis_sources::pdf::read::invented_pdf(
         &["Invented preface.\niv", "78\nAn invented brass lantern."],
         Some(&[(0, Some("r"), "", 5), (1, Some("D"), "", 79)]),
     );

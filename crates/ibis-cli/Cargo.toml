@@ -13,18 +13,13 @@ ibis-core = { path = "../ibis-core" }
 ibis-os = { path = "../ibis-os" }
 ibis-engine = { path = "../ibis-engine" }
 # The built-in EndNote source adapter, served as `ibis __source endnote`.
-ibis-sources = { path = "../ibis-sources", features = ["documents", "endnote"] }
+ibis-sources = { path = "../ibis-sources", features = ["documents", "endnote", "pdf-reader"] }
 serde_json = "1.0.154"
 serde = { version = "1.0.229", features = ["derive"] }
 jiff = "0.2.38"
 console = { version = "0.16.6", default-features = false, features = ["std"] }
 icu_properties = "2.4.0"
 unicode-segmentation = "1.13.3"
-# The PDF extractor's child process (decision 0055). Only `ibis` parses PDFs,
-# never the desktop app: lopdf is pure Rust and forbids unsafe code.
-lopdf = { version = "0.47.0", default-features = false }
-# The XMP packet a PDF carries, read in the same child.
-quick-xml = "=0.42.0"
 
 [target.'cfg(unix)'.dependencies]
 # Parser resource limits and the daemon's peer credentials and socket waits.

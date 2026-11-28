@@ -172,7 +172,7 @@ async fn operation(app: tauri::AppHandle, step: Step) -> Result<CommandStatus, N
 /// is installed and goes with it, so Settings neither installs nor removes it.
 fn packaged(alias: std::path::PathBuf) -> CommandStatus {
     CommandStatus {
-        state: ibis_core::command_install::CommandState::Matching,
+        state: ibis_os::command_install::CommandState::Matching,
         version: Some(ibis_core::VERSION.into()),
         used_path: Some(alias),
         profile_line: None,
