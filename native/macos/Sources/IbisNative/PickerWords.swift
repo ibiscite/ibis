@@ -6,23 +6,12 @@ enum PickerWord {
     case accessDrag
     case accessTitle
     case accessWait
-    case actionStateOff
-    case actionStateOn
     case actionWordsChoose
-    case actionWordsDetails
-    case actionWordsFocus
-    case actionWordsFormat
-    case actionWordsOrder
-    case actionWordsPeek
-    case actionWordsRemove
-    case actionWordsSettings
-    case actionWordsSource
     case actionWordsText
     case actionsCitation
     case actionsIbis
     case actionsLibrary
     case actionsTitle
-    case activeToken
     case add
     case after
     case afterExample
@@ -31,7 +20,6 @@ enum PickerWord {
     case appearance
     case appearanceSettings
     case automaticPaste
-    case backFromActions
     case before
     case beforeExample
     case best
@@ -80,9 +68,7 @@ enum PickerWord {
     case formatSuggestedFor
     case formatSuggestion
     case formatValue
-    case formatting
     case generalSettings
-    case goToCitation
     case invalidFrame
     case keepOrder
     case largerText
@@ -92,11 +78,9 @@ enum PickerWord {
     case locatorType
     case missingHint
     case missingShortcut
-    case more
     case moveEarlier
     case moveLater
     case newerEngine
-    case noActions
     case noDate
     case noEngine
     case noLibrarySelected
@@ -107,10 +91,8 @@ enum PickerWord {
     case openLibrary
     case openSource
     case openSystemSettings
-    case openZotero
     case opening
     case page
-    case pageShort
     case panel
     case paste
     case pasteNeedsAccess
@@ -132,10 +114,7 @@ enum PickerWord {
     case requestFailed
     case restoreShortcut
     case returnKey
-    case runAction
-    case scopeLabel
     case search
-    case searchActions
     case searchGlyph
     case searchGlyphBird
     case searchGlyphMagnifier
@@ -151,7 +130,6 @@ enum PickerWord {
     case settingsSearchResults
     case settingsShortcutWords
     case settingsTextSize
-    case settingsWindow
     case shortcutInUse
     case shortcutInvalid
     case shortcutNeedsModifier
@@ -188,23 +166,12 @@ enum PickerWords {
             .accessDrag: "إن لم يكن في القائمة، اسحب هذه الأيقونة إليها.",
             .accessTitle: "شغّل {IBIS_VALUE}",
             .accessWait: "تُغلق هذه النافذة وحدها عند التشغيل. حتى ذلك الحين، تُنسخ الاستشهادات للصقها بـ ⌘V.",
-            .actionStateOff: "إيقاف",
-            .actionStateOn: "تشغيل",
             .actionWordsChoose: "مكتبة ملف bib zotero فتح تبديل تغيير",
-            .actionWordsDetails: "تعديل صفحة موضع تفاصيل استشهاد",
-            .actionWordsFocus: "تركيز رمز مرجع استشهاد",
-            .actionWordsFormat: "نمط إخراج apa pandoc latex صيغة مشاركة تصدير bibtex doi json",
-            .actionWordsOrder: "ترتيب فرز تسلسل",
-            .actionWordsPeek: "تفاصيل معاينة لمحة معلومات",
-            .actionWordsRemove: "إزالة حذف رمز مرجع استشهاد",
-            .actionWordsSettings: "إعدادات تفضيلات خيارات ضبط",
-            .actionWordsSource: "فتح ملف مجلد zotero إظهار عرض مكتبة",
             .actionWordsText: "تكبير النص أو تصغيره",
             .actionsCitation: "هذا الاستشهاد",
             .actionsIbis: "Ibis",
             .actionsLibrary: "هذه المكتبة",
             .actionsTitle: "الإجراءات",
-            .activeToken: "تحرير الاستشهاد: {IBIS_VALUE}",
             .add: "إضافة إلى الاستشهاد",
             .after: "نص بعده",
             .afterExample: "التشديد مضاف",
@@ -213,7 +180,6 @@ enum PickerWords {
             .appearance: "المظهر",
             .appearanceSettings: "المظهر",
             .automaticPaste: "اللصق في التطبيق الذي جئت منه",
-            .backFromActions: "رجوع",
             .before: "نص قبله",
             .beforeExample: "انظر",
             .best: "أفضل التطابقات",
@@ -262,9 +228,7 @@ enum PickerWords {
             .formatSuggestedFor: "مقترح لـ {IBIS_VALUE}.",
             .formatSuggestion: "مقترح إلى أن تختار تنسيقًا.",
             .formatValue: "التنسيق، {IBIS_VALUE}",
-            .formatting: "جارٍ التنسيق…",
             .generalSettings: "عام",
-            .goToCitation: "الانتقال إلى الاستشهاد",
             .invalidFrame: "أرسل محرك Ibis ردًا غير صالح.",
             .keepOrder: "الإبقاء على ترتيبي",
             .largerText: "نص أكبر",
@@ -274,11 +238,9 @@ enum PickerWords {
             .locatorType: "نوع الموضع",
             .missingHint: "ربما نُقل الملف أو تغيّر اسمه.",
             .missingShortcut: "اختصار Ibis غير متاح.",
-            .more: "المزيد",
             .moveEarlier: "نقل إلى الأمام",
             .moveLater: "نقل إلى الخلف",
             .newerEngine: "يعمل إصدار أحدث من محرك Ibis. ابنِ التطبيق الأصلي بالإصدار الأحدث.",
-            .noActions: "لا توجد إجراءات مطابقة",
             .noDate: "بلا تاريخ",
             .noEngine: "تعذّر على Ibis تشغيل محركه المحلي.",
             .noLibrarySelected: "لم تُختر أي مكتبة",
@@ -289,10 +251,8 @@ enum PickerWords {
             .openLibrary: "فتح المكتبة",
             .openSource: "فتح المصدر",
             .openSystemSettings: "فتح إعدادات النظام",
-            .openZotero: "فتح Zotero",
             .opening: "جارٍ فتح المكتبة…",
             .page: "صفحة",
-            .pageShort: "ص",
             .panel: "Ibis، منتقي الاستشهادات",
             .paste: "لصق في {IBIS_VALUE}",
             .pasteNeedsAccess: "ليلصق بأمان، يحتاج Ibis إلى إذن تسهيلات الاستخدام ليتحقق من النافذة التي تتلقى الكتابة، وإلى إذن بضغط ⌘V. ولا يقرأ أبدًا ما تكتبه.",
@@ -314,10 +274,7 @@ enum PickerWords {
             .requestFailed: "تعذّر على Ibis إكمال الطلب. حاول مجددًا.",
             .restoreShortcut: "استخدام الافتراضي",
             .returnKey: "مفتاح الإدخال",
-            .runAction: "تنفيذ",
-            .scopeLabel: "المكتبة: {IBIS_VALUE}",
             .search: "البحث في المراجع",
-            .searchActions: "ابحث في الإجراءات",
             .searchGlyph: "رمز حقل البحث",
             .searchGlyphBird: "طائر Ibis",
             .searchGlyphMagnifier: "عدسة مكبّرة",
@@ -333,7 +290,6 @@ enum PickerWords {
             .settingsSearchResults: "نتائج البحث",
             .settingsShortcutWords: "لوحة مفاتيح اختصار مفتاح ربط",
             .settingsTextSize: "حجم النص",
-            .settingsWindow: "إعدادات Ibis",
             .shortcutInUse: "قد يكون هذا الاختصار مستخدمًا من تطبيق آخر أو من النظام. جرّب غيره.",
             .shortcutInvalid: "لا يستطيع Ibis استخدام تركيبة المفاتيح هذه. جرّب اختصارًا آخر.",
             .shortcutNeedsModifier: "أضف Control أو Alt أو Command. لا يكفي Shift وحده.",
@@ -357,23 +313,12 @@ enum PickerWords {
             .accessDrag: "Falls es nicht in der Liste steht, ziehen Sie dieses Symbol hinein.",
             .accessTitle: "{IBIS_VALUE} einschalten",
             .accessWait: "Dies schließt sich, sobald es eingeschaltet ist. Bis dahin werden Zitate zum Einfügen mit ⌘V kopiert.",
-            .actionStateOff: "Aus",
-            .actionStateOn: "Ein",
             .actionWordsChoose: "bibliothek datei bib zotero öffnen wechseln ändern",
-            .actionWordsDetails: "bearbeiten seite fundstelle details zitation",
-            .actionWordsFocus: "fokus token referenz zitation",
-            .actionWordsFormat: "stil ausgabe apa pandoc latex syntax teilen exportieren bibtex doi json",
-            .actionWordsOrder: "reihenfolge sortieren abfolge",
-            .actionWordsPeek: "details vorschau kurzansicht info",
-            .actionWordsRemove: "entfernen löschen token referenz zitation",
-            .actionWordsSettings: "einstellungen optionen konfigurieren",
-            .actionWordsSource: "öffnen datei ordner zotero anzeigen bibliothek",
             .actionWordsText: "Text vergrößern oder verkleinern",
             .actionsCitation: "Diese Zitation",
             .actionsIbis: "Ibis",
             .actionsLibrary: "Diese Bibliothek",
             .actionsTitle: "Aktionen",
-            .activeToken: "Zitat bearbeiten: {IBIS_VALUE}",
             .add: "Zur Zitation hinzufügen",
             .after: "Text danach",
             .afterExample: "Hervorhebung hinzugefügt",
@@ -382,7 +327,6 @@ enum PickerWords {
             .appearance: "Erscheinungsbild",
             .appearanceSettings: "Erscheinungsbild",
             .automaticPaste: "In die vorherige App einfügen",
-            .backFromActions: "Zurück",
             .before: "Text davor",
             .beforeExample: "siehe",
             .best: "Beste Treffer",
@@ -431,9 +375,7 @@ enum PickerWords {
             .formatSuggestedFor: "Für {IBIS_VALUE} empfohlen.",
             .formatSuggestion: "Vorgeschlagen, bis Sie ein Format wählen.",
             .formatValue: "Format, {IBIS_VALUE}",
-            .formatting: "Wird formatiert…",
             .generalSettings: "Allgemein",
-            .goToCitation: "Zur Zitation wechseln",
             .invalidFrame: "Die Ibis-Engine hat eine ungültige Antwort gesendet.",
             .keepOrder: "Meine Reihenfolge beibehalten",
             .largerText: "Größerer Text",
@@ -443,11 +385,9 @@ enum PickerWords {
             .locatorType: "Art der Fundstelle",
             .missingHint: "Die Datei wurde möglicherweise verschoben oder umbenannt.",
             .missingShortcut: "Das Tastenkürzel von Ibis ist nicht verfügbar.",
-            .more: "Mehr",
             .moveEarlier: "Nach vorne",
             .moveLater: "Nach hinten",
             .newerEngine: "Eine neuere Ibis-Engine läuft. Bauen Sie die native App mit der neueren Version.",
-            .noActions: "Keine passenden Aktionen",
             .noDate: "Ohne Datum",
             .noEngine: "Ibis konnte seine lokale Engine nicht starten.",
             .noLibrarySelected: "Keine Bibliothek gewählt",
@@ -458,10 +398,8 @@ enum PickerWords {
             .openLibrary: "Bibliothek öffnen",
             .openSource: "Quelle öffnen",
             .openSystemSettings: "Systemeinstellungen öffnen",
-            .openZotero: "Zotero öffnen",
             .opening: "Bibliothek wird geöffnet…",
             .page: "Seite",
-            .pageShort: "S.",
             .panel: "Ibis, Zitationsauswahl",
             .paste: "In {IBIS_VALUE} einfügen",
             .pasteNeedsAccess: "Um sicher einzufügen, braucht Ibis Zugriff auf Bedienungshilfen, um zu prüfen, welches Fenster die Tastatur hat, und die Erlaubnis, ⌘V zu drücken. Was Sie tippen, liest Ibis nie.",
@@ -483,10 +421,7 @@ enum PickerWords {
             .requestFailed: "Ibis konnte die Anfrage nicht abschließen. Versuchen Sie es erneut.",
             .restoreShortcut: "Standard verwenden",
             .returnKey: "Eingabetaste",
-            .runAction: "Ausführen",
-            .scopeLabel: "Bibliothek: {IBIS_VALUE}",
             .search: "Referenzen suchen",
-            .searchActions: "Aktionen suchen",
             .searchGlyph: "Symbol im Suchfeld",
             .searchGlyphBird: "Ibis-Vogel",
             .searchGlyphMagnifier: "Lupe",
@@ -502,7 +437,6 @@ enum PickerWords {
             .settingsSearchResults: "Suchergebnisse",
             .settingsShortcutWords: "tastatur tastenkürzel tastenbelegung kurzbefehl",
             .settingsTextSize: "Textgröße",
-            .settingsWindow: "Ibis-Einstellungen",
             .shortcutInUse: "Eine andere App oder das System verwendet dieses Tastenkürzel womöglich. Versuchen Sie ein anderes.",
             .shortcutInvalid: "Ibis kann diese Tastenkombination nicht verwenden. Versuchen Sie ein anderes Tastenkürzel.",
             .shortcutNeedsModifier: "Nehmen Sie Control, Alt oder Command dazu. Shift allein reicht nicht.",
@@ -526,23 +460,12 @@ enum PickerWords {
             .accessDrag: "If it’s not in the list, drag this icon in.",
             .accessTitle: "Switch on {IBIS_VALUE}",
             .accessWait: "This closes by itself once it’s on. Until then, citations are copied for ⌘V.",
-            .actionStateOff: "Off",
-            .actionStateOn: "On",
             .actionWordsChoose: "library file bib zotero open switch change",
-            .actionWordsDetails: "edit page locator details citation",
-            .actionWordsFocus: "focus token reference citation",
-            .actionWordsFormat: "style output apa pandoc latex syntax share export bibtex doi json",
-            .actionWordsOrder: "order sort sequence",
-            .actionWordsPeek: "details preview quick look info",
-            .actionWordsRemove: "remove delete token reference citation",
-            .actionWordsSettings: "preferences options configure",
-            .actionWordsSource: "open file folder zotero show library",
             .actionWordsText: "Make text larger or smaller",
             .actionsCitation: "This citation",
             .actionsIbis: "Ibis",
             .actionsLibrary: "This library",
             .actionsTitle: "Actions",
-            .activeToken: "Editing citation: {IBIS_VALUE}",
             .add: "Add to Citation",
             .after: "Text after",
             .afterExample: "emphasis added",
@@ -551,7 +474,6 @@ enum PickerWords {
             .appearance: "Appearance",
             .appearanceSettings: "Appearance",
             .automaticPaste: "Paste into the app you came from",
-            .backFromActions: "Back",
             .before: "Text before",
             .beforeExample: "see",
             .best: "Best matches",
@@ -600,9 +522,7 @@ enum PickerWords {
             .formatSuggestedFor: "Suggested for {IBIS_VALUE}.",
             .formatSuggestion: "Suggested until you choose a format.",
             .formatValue: "Format, {IBIS_VALUE}",
-            .formatting: "Formatting…",
             .generalSettings: "General",
-            .goToCitation: "Go to Citation",
             .invalidFrame: "The Ibis engine sent an invalid response.",
             .keepOrder: "Keep My Order",
             .largerText: "Larger text",
@@ -612,11 +532,9 @@ enum PickerWords {
             .locatorType: "Locator type",
             .missingHint: "It may have moved or been renamed.",
             .missingShortcut: "The Ibis shortcut is unavailable.",
-            .more: "More",
             .moveEarlier: "Move Earlier",
             .moveLater: "Move Later",
             .newerEngine: "A newer Ibis engine is running. Build the native app with the newer Ibis.",
-            .noActions: "No matching actions",
             .noDate: "No date",
             .noEngine: "Ibis could not start its local engine.",
             .noLibrarySelected: "No library chosen",
@@ -627,10 +545,8 @@ enum PickerWords {
             .openLibrary: "Open Library",
             .openSource: "Open Source",
             .openSystemSettings: "Open System Settings",
-            .openZotero: "Open Zotero",
             .opening: "Opening library…",
             .page: "Page",
-            .pageShort: "p.",
             .panel: "Ibis, citation picker",
             .paste: "Paste into {IBIS_VALUE}",
             .pasteNeedsAccess: "To paste safely, Ibis needs Accessibility access to check which window has the keyboard, as well as permission to press ⌘V. It never reads what you type.",
@@ -652,10 +568,7 @@ enum PickerWords {
             .requestFailed: "Ibis couldn’t finish this request. Try again.",
             .restoreShortcut: "Use Default",
             .returnKey: "Return",
-            .runAction: "Run",
-            .scopeLabel: "Library: {IBIS_VALUE}",
             .search: "Search references",
-            .searchActions: "Search actions",
             .searchGlyph: "Search field symbol",
             .searchGlyphBird: "Ibis bird",
             .searchGlyphMagnifier: "Magnifying glass",
@@ -671,7 +584,6 @@ enum PickerWords {
             .settingsSearchResults: "Search results",
             .settingsShortcutWords: "keyboard hotkey keybinding",
             .settingsTextSize: "Text size",
-            .settingsWindow: "Ibis Settings",
             .shortcutInUse: "Another app or the system may be using that shortcut. Try another.",
             .shortcutInvalid: "Ibis cannot use that key combination. Try another shortcut.",
             .shortcutNeedsModifier: "Include Control, Alt or Command. Shift alone is not enough.",
