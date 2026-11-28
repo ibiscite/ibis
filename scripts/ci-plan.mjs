@@ -20,7 +20,7 @@ const ALWAYS_FULL = [
   /^apps\/desktop\/src\/bindings\.ts$/,
 ];
 // The web job checks links in prose.
-const DOCS = [/^docs\/.+\.md$/, /^[^/]+\.md$/, /^\.(agents|claude)\/skills(\/|$)/];
+const DOCS = [/^docs\/.+\.md$/, /^[^/]+\.md$/, /^\.github\/pull_request_template\.md$/, /^\.(agents|claude)\/skills(\/|$)/];
 // The interface: its own tests, the pictures, and the app that embeds it.
 const INTERFACE = /^apps\/desktop\/(?!src-tauri(?:\/|$))/;
 const ROOT = fileURLToPath(new URL("../", import.meta.url));

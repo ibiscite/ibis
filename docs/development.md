@@ -1,8 +1,8 @@
 # Development
 
-How to work on Ibis day to day: the local-first loop, one command per job, the
-machines it runs on, the landing pitfalls that have cost a round, and how to
-work with the maintainer. Rules are in [AGENTS.md](../AGENTS.md); what each check proves is
+How to work on Ibis day to day: one way to work for every agent and machine,
+the local-first loop, one command per job, the machines it runs on, the landing
+pitfalls that have cost a round, and how to work with the maintainer. Rules are in [AGENTS.md](../AGENTS.md); what each check proves is
 in [testing](testing.md).
 
 ## Set up once
@@ -12,6 +12,32 @@ Use `rust-toolchain.toml`, Node 26 and the pnpm version in
 `pnpm -C apps/desktop install --frozen-lockfile`. System packages per platform
 are in [CONTRIBUTING.md](../CONTRIBUTING.md#setup). In a Linux cloud session,
 `bash scripts/cloud-setup.sh` installs what the desktop crate needs.
+
+## One way to work, everywhere
+
+The same steps hold in a cloud session, on the maintainer's machines and for
+any agent in any app, so any of them can resume where another stopped.
+
+1. **Resume.** Read the tracking issue's **In flight** list, then run
+   `git fetch origin --prune` and `node scripts/inflight.mjs`: the open pull
+   requests with their handoffs, this checkout's worktrees, and local branches
+   whose pull request merged. Continue an open pull request on its own branch
+   rather than starting a second one.
+2. **Claim.** One piece of work is one branch from `origin/main`, one worktree
+   and one pull request, opened as a draft straight away:
+   `bash scripts/land.sh start NAME [ISSUE]`. Where the agent's app names the
+   branch (cloud sessions use `claude/…`), keep that name and open the draft
+   with `gh api`. Titles are Conventional Commits.
+3. **Build** in the local-first loop below.
+4. **Hand off on every push or pause.** The pull request keeps the template's
+   **Handoff** line current: what is left, the next command, any blocker, or
+   "nothing left". The In flight list is regenerated from those lines whenever
+   a pull request opens, changes or closes, so nobody edits it by hand.
+   **Waiting**, below it, is kept by hand for what waits on the maintainer, a
+   machine or a review.
+5. **Finish.** After the merge, `bash scripts/land.sh end NAME` removes the
+   worktree and local branch; GitHub deletes the merged branch. Close a
+   superseded pull request with a link to the one that replaces it.
 
 ## The local-first loop
 
@@ -39,6 +65,7 @@ and is never waited on.
 
 | Job | Command |
 | --- | --- |
+| See what is in flight, here and on GitHub | `node scripts/inflight.mjs` |
 | Start a piece of work (worktree, branch, draft PR) | `bash scripts/land.sh start NAME [ISSUE]` |
 | Run the command line | `cargo run -p ibis -- --help` |
 | Run the desktop app | `pnpm -C apps/desktop tauri dev` |
