@@ -1,4 +1,5 @@
 use super::*;
+use crate::format::FormatFrom;
 use serde_json::json;
 
 fn library(records: Vec<serde_json::Value>) -> (tempfile::TempDir, Engine) {
@@ -10,18 +11,39 @@ fn library(records: Vec<serde_json::Value>) -> (tempfile::TempDir, Engine) {
     (dir, engine)
 }
 
-fn find(engine: &Engine, query: &str, shorthand: bool, recent: &[ItemRef], language: Language) -> PickerSearchResult {
-    search(
-        engine,
-        PickerSearchRequest {
-            query: query.into(),
-            shorthand,
-        },
-        recent,
-        language,
-        &Cancellation::default(),
-    )
-    .unwrap()
+fn find(engine: &Engine, query: &str, recent: &[ItemRef], language: Language) -> PickerSearchResult {
+    search(engine, query, recent, language, &Cancellation::default()).unwrap()
+}
+
+fn scope(format: &str) -> PickerFormatScope {
+    PickerFormatScope {
+        format: Some(format.into()),
+        from: FormatFrom::Yours,
+        usual_format: Some(format.into()),
+        remembers_for: None,
+        remembered_for: None,
+        project: None,
+        requires_bibliography: false,
+    }
+}
+
+fn session(engine: &Engine, format: &str) -> PickerSession {
+    let mut session = PickerSession::default();
+    session.open(engine, true, scope(format), Vec::new(), Language::English, false);
+    session
+}
+
+fn act(session: &mut PickerSession, engine: &Engine, intent: serde_json::Value) -> PickerState {
+    session.act(engine, serde_json::from_value(intent).unwrap()).unwrap()
+}
+
+fn two_books() -> (tempfile::TempDir, Engine) {
+    library(vec![
+        json!({"id":"vale", "citation-key":"vale2024", "title":"Imaginary lanterns", "type":"article-journal",
+            "author":[{"family":"Vale","given":"Mira"}], "issued":{"date-parts":[[2024]]}}),
+        json!({"id":"fen", "citation-key":"fen2023", "title":"Invented bridges", "type":"book",
+            "author":[{"family":"Fen","given":"Tavi"}], "issued":{"date-parts":[[2023]]}}),
+    ])
 }
 
 #[test]
@@ -37,8 +59,7 @@ fn sections_count_the_untruncated_search_and_fill_recent_sections() {
             })
             .collect(),
     );
-    let result = find(&engine, "lantern", false, &[], Language::English);
-    assert_eq!(result.total, Some(53));
+    let result = find(&engine, "lantern", &[], Language::English);
     assert_eq!(result.count_label.as_deref(), Some("53 results"));
     assert_eq!(result.sections[0].kind, PickerSectionKind::Best);
     assert_eq!(result.sections[0].rows.len(), 50);
@@ -55,8 +76,8 @@ fn sections_count_the_untruncated_search_and_fill_recent_sections() {
             "Vale",
         ]
     );
-    let recents = find(&engine, "", false, std::slice::from_ref(&selected.id), Language::German);
-    assert_eq!(recents.total, None);
+    let recents = find(&engine, "", std::slice::from_ref(&selected.id), Language::German);
+    assert_eq!(recents.count_label, None);
     assert_eq!(recents.sections[0].kind, PickerSectionKind::CitedHere);
     assert_eq!(recents.sections[0].rows[0].id, selected.id);
     assert_eq!(recents.sections[1].kind, PickerSectionKind::RecentlyAdded);
@@ -72,7 +93,7 @@ fn search_explains_unexpected_matches_without_labelling_ordinary_rows() {
         "abstract": "A fictional catalogue of peregrinations.", "keyword": "pernoctation", "date-added": "2026-01-05"
     })]);
     let reasons = |query, language| {
-        find(&engine, query, false, &[], language)
+        find(&engine, query, &[], language)
             .sections
             .into_iter()
             .flat_map(|section| section.rows)
@@ -96,106 +117,48 @@ fn search_explains_unexpected_matches_without_labelling_ordinary_rows() {
 
 #[test]
 fn locator_recovery_names_the_reference_that_needs_editing() {
-    let (_dir, engine) = library(vec![
-        json!({"id":"vale", "citation-key":"vale2024", "title":"Imaginary lanterns", "type":"book"}),
-        json!({"id":"fen", "citation-key":"fen2023", "title":"Invented bridges", "type":"book"}),
-    ]);
-    let entries: Vec<_> = find(&engine, "invent", false, &[], Language::English)
-        .sections
-        .into_iter()
-        .flat_map(|section| section.rows)
-        .map(|row| PickerPreviewEntry {
-            item: row.id,
-            cite: row.cite,
-            form: None,
-            locator: None,
-            prefix: None,
-            suffix: None,
-        })
-        .collect();
-    // Use separate title searches so the two item identities are unambiguous.
-    assert_eq!(entries.len(), 1);
-    let mut other = find(&engine, "lanterns", false, &[], Language::English).sections;
-    let row = other.remove(0).rows.remove(0);
-    let owner = row.id.clone();
-    let mut draft = vec![PickerPreviewEntry {
-        item: row.id,
-        cite: row.cite,
-        form: None,
-        locator: Some(Locator {
-            term: ibis_core::contract::LocatorTerm::Page,
-            value: "17 [appendix]".into(),
-        }),
-        prefix: None,
-        suffix: Some("and compare".into()),
-    }];
-    draft.extend(entries);
-    let result = preview(
+    let (_dir, engine) = two_books();
+    let mut picker = session(&engine, "pandoc");
+    act(&mut picker, &engine, json!({"intent":"type","query":"lanterns"}));
+    let state = act(&mut picker, &engine, json!({"intent":"add"}));
+    let owner = state.citation[0].row.id.clone();
+    let state = act(
+        &mut picker,
         &engine,
-        PickerPreviewRequest {
-            entries: draft,
-            format: "pandoc".into(),
-            keep_order: false,
-        },
-        Language::English,
-        Cancellation::default(),
+        json!({"intent":"details","item":owner,"details":{"locator":{"term":"page","value":"17 [appendix]"},
+            "prefix":null,"suffix":"and compare","form":null}}),
     );
-    let status = result.problem.unwrap();
+    let status = state.preview.unwrap().problem.unwrap();
     assert!(matches!(status.fix, Some(PickerFix::EditLocator)));
     assert_eq!(status.item, Some(owner));
 }
 
 #[test]
-fn explicit_segments_build_the_same_group_as_the_rich_preview() {
-    let (_dir, engine) = library(vec![
-        json!({"id":"vale", "title":"Imaginary lanterns", "type":"article-journal",
-            "author":[{"family":"Vale","given":"Mira"}], "issued":{"date-parts":[[2024]]}}),
-        json!({"id":"fen", "title":"Invented bridges", "type":"book",
-            "author":[{"family":"Fen","given":"Tavi"}], "issued":{"date-parts":[[2023]]}}),
-    ]);
-    let query = "vale p12; fen ch3;";
-    let plain = find(&engine, query, false, &[], Language::English);
-    assert!(plain.segments.is_empty());
-    let parsed = find(&engine, query, true, &[], Language::English);
-    assert_eq!(parsed.segments.len(), 2);
-    let german = find(&engine, "vale Seite12; fen Kapitel3;", true, &[], Language::German);
-    assert!(
-        german
-            .segments
-            .iter()
-            .all(|part| part.row.is_some() && part.locator.is_some())
-    );
-    let entries = parsed
-        .segments
-        .into_iter()
-        .map(|part| {
-            assert!(part.complete);
-            let row = part.row.unwrap();
-            PickerPreviewEntry {
-                item: row.id,
-                cite: row.cite,
-                locator: part.locator,
-                prefix: part.prefix,
-                suffix: None,
-                form: None,
-            }
-        })
-        .collect();
-    let preview = preview(
+fn typed_references_read_as_the_citation_that_will_be_delivered() {
+    let (_dir, engine) = two_books();
+    let mut picker = session(&engine, "apa");
+    let state = act(
+        &mut picker,
         &engine,
-        PickerPreviewRequest {
-            entries,
-            format: "apa".into(),
-            keep_order: true,
-        },
-        Language::English,
-        Cancellation::default(),
+        json!({"intent":"type","query":"vale p12; fen ch3"}),
     );
+    assert_eq!(state.query, "vale p12; fen ch3");
+    assert_eq!(state.citation.len(), 2);
+    assert!(
+        state
+            .citation
+            .iter()
+            .all(|entry| !entry.added && entry.details.locator.is_some())
+    );
+    assert_eq!(state.citation[0].note.as_deref(), Some("p. 12"));
+    assert_eq!(state.reads_as.as_deref(), Some("Chapter 3 · then 1 more reference"));
+    let preview = state.preview.unwrap();
     assert!(preview.problem.is_none());
-    assert!(preview.text.contains("12"));
-    assert!(preview.text.contains("3"));
+    assert!(preview.text.contains("12") && preview.text.contains('3'));
     let nodes = preview.display.nodes;
-    assert_eq!(nodes.iter().filter_map(|node| node.item).collect::<Vec<_>>(), [0, 1]);
+    let mut owners: Vec<_> = nodes.iter().filter_map(|node| node.item).collect();
+    owners.sort_unstable();
+    assert_eq!(owners, [0, 1]);
     assert_eq!(
         nodes
             .into_iter()
@@ -203,5 +166,92 @@ fn explicit_segments_build_the_same_group_as_the_rich_preview() {
             .map(|run| run.text)
             .collect::<String>(),
         preview.text
+    );
+    let german = {
+        let mut picker = PickerSession::default();
+        picker.open(&engine, true, scope("apa"), Vec::new(), Language::German, false);
+        act(
+            &mut picker,
+            &engine,
+            json!({"intent":"type","query":"vale Seite12; fen Kapitel3"}),
+        )
+    };
+    assert!(german.citation.iter().all(|entry| entry.details.locator.is_some()));
+    // A signal is read only before more words; a plain title search is left alone.
+    let state = act(&mut picker, &engine, json!({"intent":"type","query":"see vale"}));
+    assert_eq!(state.citation[0].details.prefix.as_deref(), Some("see"));
+    let state = act(
+        &mut picker,
+        &engine,
+        json!({"intent":"type","query":"invented bridges"}),
+    );
+    assert_eq!(state.reads_as, None);
+}
+
+#[test]
+fn tab_adds_and_the_citation_keeps_its_own_order_with_undo() {
+    let (_dir, engine) = two_books();
+    let mut picker = session(&engine, "apa");
+    act(&mut picker, &engine, json!({"intent":"type","query":"vale 12"}));
+    let state = act(&mut picker, &engine, json!({"intent":"add"}));
+    assert_eq!(state.query, "");
+    assert_eq!(
+        state.citation.len(),
+        1,
+        "the recent list beside an added citation is not cited"
+    );
+    assert!(state.citation[0].added);
+    assert_eq!(state.citation[0].note.as_deref(), Some("p. 12"));
+    let vale = state.citation[0].row.id.clone();
+    act(&mut picker, &engine, json!({"intent":"type","query":"fen"}));
+    let typing = act(&mut picker, &engine, json!({"intent":"type","query":"fen"}));
+    assert_eq!(
+        typing.citation.len(),
+        2,
+        "Return would also cite the highlighted reference"
+    );
+    let state = act(&mut picker, &engine, json!({"intent":"add"}));
+    let fen = state.citation[1].row.id.clone();
+    assert!(state.citation.iter().all(|entry| entry.added));
+    let state = act(&mut picker, &engine, json!({"intent":"reorder","item":fen,"step":-1}));
+    assert_eq!(state.citation[0].row.id, fen);
+    assert!(state.keep_order);
+    let state = act(&mut picker, &engine, json!({"intent":"remove","item":vale}));
+    assert_eq!(state.citation.len(), 1);
+    let state = act(&mut picker, &engine, json!({"intent":"undo"}));
+    assert_eq!(state.citation.len(), 2);
+    assert!(!state.can_undo);
+    let first = state.revision;
+    let state = act(&mut picker, &engine, json!({"intent":"move","step":1}));
+    assert!(state.revision > first);
+    picker.delivered();
+    let state = picker.open(&engine, true, scope("apa"), Vec::new(), Language::English, true);
+    assert!(state.citation.len() <= 1 && state.citation.iter().all(|entry| !entry.added));
+}
+
+#[test]
+fn a_format_used_once_drops_forms_it_cannot_write() {
+    let (_dir, engine) = two_books();
+    let mut picker = session(&engine, "apa");
+    act(&mut picker, &engine, json!({"intent":"type","query":"vale"}));
+    let state = act(&mut picker, &engine, json!({"intent":"add"}));
+    let vale = state.citation[0].row.id.clone();
+    let state = act(
+        &mut picker,
+        &engine,
+        json!({"intent":"details","item":vale,"details":{"locator":null,"prefix":null,"suffix":null,"form":"narrative"}}),
+    );
+    assert_eq!(state.citation[0].details.form, Some(CitationForm::Narrative));
+    let state = act(&mut picker, &engine, json!({"intent":"use-format","id":"cite"}));
+    assert!(state.format_held);
+    assert_eq!(state.format.as_deref(), Some("cite"));
+    assert!(state.citation[0].details.form.is_none() || state.forms.contains(&CitationForm::Narrative));
+    assert!(
+        picker
+            .act(
+                &engine,
+                serde_json::from_value(json!({"intent":"use-format","id":"nothing"})).unwrap()
+            )
+            .is_err()
     );
 }

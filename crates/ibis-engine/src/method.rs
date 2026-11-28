@@ -367,9 +367,8 @@ use crate::picker::*;
 use crate::settings::native::{SettingsRequest, SettingsResult};
 picker_rows! {
     Open "picker/open": PickerOpenRequest => PickerOpenResult;
-    ChangeFormat "picker/format": PickerChangeFormatRequest => PickerFormatScope;
-    Search "picker/search": PickerSearchRequest => PickerSearchResult;
-    Preview "picker/preview": PickerPreviewRequest => PickerPreviewResult;
+    Act "picker/act": PickerIntent => PickerState;
+    ChangeFormat "picker/format": PickerChangeFormatRequest => PickerState;
     Forms "picker/forms": PickerFormsRequest => FormDetails;
     Deliver "picker/deliver": PickerDeliverRequest => PickerDeliverResult;
     Settings "settings": SettingsRequest => SettingsResult;

@@ -2113,6 +2113,16 @@ picker-native-text-smaller = Kleinere Schrift
 picker-native-density = Zeilen
 picker-native-copied = Kopiert. Drücken Sie ⌘V zum Einfügen.
 picker-native-copied-permission = Kopiert. Erlauben Sie im Ibis-Menü das automatische Einfügen.
+picker-native-access-title = { $app } einschalten
+picker-native-access-drag = Falls es nicht in der Liste steht, ziehen Sie dieses Symbol hinein.
+picker-native-access-wait = Dies schließt sich, sobald es eingeschaltet ist. Bis dahin werden Zitate zum Einfügen mit ⌘V kopiert.
+picker-native-read-locator = { $term } { $value }
+picker-native-read-prefix = „{ $text }“ davor
+picker-native-read-more =
+    { $count ->
+        [one] dann 1 weitere Quelle
+       *[other] dann { $count } weitere Quellen
+    }
 picker-native-copy-failed = Die Zwischenablage hat sich geändert oder konnte nicht beschrieben werden.
 picker-native-engine-disconnected = Die Ibis-Engine wurde beendet. Versuchen Sie es erneut.
 picker-native-engine-invalid = Die Ibis-Engine hat eine ungültige Antwort gesendet.

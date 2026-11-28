@@ -692,16 +692,9 @@ fn picker_releases_a_delivery_whose_acknowledgement_stops_mid_frame() {
         response["result"].clone()
     };
     call(1, "picker/open", json!({"app":null,"file":library,"language":"en-US"}));
-    let search = call(2, "picker/search", json!({"query":"lantern","shorthand":false}));
-    let row = &search["sections"][0]["rows"][0];
-    let preview = call(
-        3,
-        "picker/preview",
-        json!({
-            "entries":[{"item":row["id"],"cite":row["cite"]}],
-            "format":"apa","keep_order":false
-        }),
-    );
+    let state = call(2, "picker/act", json!({"intent":"type","query":"lantern"}));
+    let preview = &state["preview"];
+    assert!(preview["ticket"].is_string(), "{state}");
     let fence = OpenOptions::new()
         .create(true)
         .truncate(false)

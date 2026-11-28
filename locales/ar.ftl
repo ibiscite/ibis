@@ -2217,6 +2217,20 @@ picker-native-text-smaller = تصغير النص
 picker-native-density = الصفوف
 picker-native-copied = تم النسخ. اضغط ⌘V للصق.
 picker-native-copied-permission = تم النسخ. اسمح باللصق من قائمة Ibis لتفعيل اللصق التلقائي.
+picker-native-access-title = شغّل { $app }
+picker-native-access-drag = إن لم يكن في القائمة، اسحب هذه الأيقونة إليها.
+picker-native-access-wait = تُغلق هذه النافذة وحدها عند التشغيل. حتى ذلك الحين، تُنسخ الاستشهادات للصقها بـ ⌘V.
+picker-native-read-locator = { $term } { $value }
+picker-native-read-prefix = «{ $text }» قبله
+picker-native-read-more =
+    { $count ->
+        [zero] ثم لا مراجع أخرى
+        [one] ثم مرجع واحد آخر
+        [two] ثم مرجعان آخران
+        [few] ثم { $count } مراجع أخرى
+        [many] ثم { $count } مرجعًا آخر
+       *[other] ثم { $count } مرجع آخر
+    }
 picker-native-copy-failed = تغيّرت الحافظة أو تعذّرت الكتابة فيها.
 picker-native-engine-disconnected = توقّف محرك Ibis. حاول مجددًا.
 picker-native-engine-invalid = أرسل محرك Ibis ردًا غير صالح.

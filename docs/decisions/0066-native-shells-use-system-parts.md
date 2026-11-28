@@ -42,6 +42,14 @@ plan for a native feel on every system later. It refines the shell part of
    and fixes already come from the engine. The command table (names, groups,
    search words, enablement) moves there next, with key bindings declared per
    system, so a Windows or Linux shell renders the same commands.
+   **The picker session is the engine's** (the maintainer, 2026-11-28, after
+   the first native build kept its own copy of the citation and raced the
+   engine): one session per picker connection owns the query, the results,
+   the highlighted row, the references added with their pages, prefixes,
+   suffixes and forms, the format and the preview. A shell sends intents
+   (type, move, add, remove, reorder, edit details, choose a format, undo,
+   deliver) and draws the state each reply carries. It keeps only what is its
+   own: windows, focus, hover and keys.
 4. **Other systems, when a gate or reports call for them** (0065): Windows in
    WinUI 3 with Mica and Fluent controls, Linux in GTK 4 and libadwaita
    (gtk4-rs), each a client of `ibisd` with the contract generated for its

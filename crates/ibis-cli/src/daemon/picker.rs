@@ -3,11 +3,8 @@
 use super::{Connections, Endpoint, Framed, Stream, WRITE_TIMEOUT, decode as decode_frame};
 use ibis_core::contract::{EngineError, ErrorCode, ItemRef};
 use ibis_core::destination::{AppId, PASTE_DEADLINE};
-use ibis_engine::catalogue::Language;
 use ibis_engine::citations::SessionId;
-use ibis_engine::picker::{
-    self, PickerChangeFormatRequest, PickerFormatScope, PickerLibraryCondition, PickerOpenRequest,
-};
+use ibis_engine::picker::{self, PickerChangeFormatRequest, PickerLibraryCondition, PickerOpenRequest, PickerSession};
 use ibis_engine::recents::{List, SessionReferences};
 use ibis_engine::settings::native::SettingsRequest;
 use ibis_engine::{Cancellation, Engine, PickerMethod, protocol, rpc, settings};
@@ -117,8 +114,7 @@ struct Picker<'a> {
     source: Option<settings::LibrarySetting>,
     target: Option<AppId>,
     site: Option<AppId>,
-    format_scope: Option<PickerFormatScope>,
-    language: Language,
+    session: PickerSession,
     paste_at_opening: bool,
 }
 
@@ -126,10 +122,8 @@ impl Picker<'_> {
     fn open(&mut self, request: PickerOpenRequest) -> Result<picker::PickerOpenResult, EngineError> {
         self.engine.citations().invalidate(SessionId::PICKER);
         self.paste_at_opening = false;
-        self.format_scope = None;
         self.site = request.site();
         self.target = request.destination();
-        self.language = request.language;
         let source = request.library(&self.settings)?;
         let mut error = None;
         if request.reload || source != self.source {
@@ -151,15 +145,26 @@ impl Picker<'_> {
                 Err(failure) => error = Some(failure),
             }
         }
+        let recent = self.history().recent(&self.settings, self.target.as_ref());
+        let (session, engine) = (&mut self.session, &self.engine);
         let result = picker::open_result(
             &self.settings,
             self.target.as_ref(),
             self.site.as_ref(),
             source.as_ref(),
             error,
-            self.language,
+            request.language,
+            |scope, ready| {
+                session.open(
+                    engine,
+                    ready,
+                    scope.clone(),
+                    recent,
+                    request.language,
+                    request.keep_query,
+                )
+            },
         );
-        self.format_scope = Some(result.format_scope.clone());
         self.paste_at_opening = result.paste_enabled
             && result
                 .library
@@ -188,8 +193,7 @@ pub(super) fn serve(
         source: None,
         target: None,
         site: None,
-        format_scope: None,
-        language: Language::default(),
+        session: PickerSession::default(),
         paste_at_opening: false,
     };
     while !connections.draining.load(Ordering::Acquire) {
@@ -211,12 +215,12 @@ pub(super) fn serve(
             PickerMethod::ChangeFormat => decode::<PickerChangeFormatRequest>(params).and_then(|request| {
                 let owner = host.settings_for(picker.settings.clone(), |_| {});
                 let scope = request.answer(&owner, picker.target.as_ref(), picker.site.as_ref())?;
-                if picker.format_scope.as_ref() != Some(&scope) {
+                if picker.session.scope() != Some(&scope) {
                     picker.engine.citations().invalidate(SessionId::PICKER);
                 }
-                picker.format_scope = Some(scope.clone());
-                encode(scope)
+                encode(picker.session.set_scope(&picker.engine, scope))
             }),
+            PickerMethod::Act => decode(params).and_then(|intent| encode(picker.session.act(&picker.engine, intent)?)),
             PickerMethod::Settings => decode::<Option<SettingsRequest>>(params).and_then(|params| {
                 let owner = host.settings_for(picker.settings.clone(), |_| {});
                 let saved = params.unwrap_or_default().answer(&owner, |path| {
@@ -226,32 +230,6 @@ pub(super) fn serve(
                         .map(|_| ())
                 })?;
                 encode(saved)
-            }),
-            PickerMethod::Search => decode(params).and_then(|params| {
-                let recent = picker.history().recent(&picker.settings, picker.target.as_ref());
-                encode(picker::search(
-                    &picker.engine,
-                    params,
-                    &recent,
-                    picker.language,
-                    &Cancellation::default(),
-                )?)
-            }),
-            PickerMethod::Preview
-                if !picker
-                    .format_scope
-                    .as_ref()
-                    .is_some_and(|scope| !scope.requires_bibliography) =>
-            {
-                Err(ErrorCode::BadInput.into())
-            }
-            PickerMethod::Preview => decode(params).and_then(|params| {
-                encode(picker::preview(
-                    &picker.engine,
-                    params,
-                    picker.language,
-                    Cancellation::default(),
-                ))
             }),
             PickerMethod::Forms => decode(params).and_then(|params| {
                 encode(
@@ -273,7 +251,7 @@ pub(super) fn serve(
                         params,
                         picker.paste_at_opening,
                         |saved| {
-                            picker.format_scope.as_ref().is_some_and(|scope| {
+                            picker.session.scope().is_some_and(|scope| {
                                 scope.is_current(saved, picker.target.as_ref(), picker.site.as_ref())
                             })
                         },
@@ -288,6 +266,7 @@ pub(super) fn serve(
                                 picker
                                     .history()
                                     .record(&picker.settings, picker.target.as_ref(), &items);
+                                picker.session.delivered();
                             }
                             continue;
                         }

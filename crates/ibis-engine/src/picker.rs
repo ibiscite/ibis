@@ -11,8 +11,10 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 mod format_scope;
+mod session;
 mod words;
 pub use format_scope::{PickerChangeFormatRequest, PickerFormatScope};
+pub use session::{PickerDetails, PickerEntry, PickerIntent, PickerSession, PickerState};
 pub use words::shell_words;
 
 #[derive(Deserialize, JsonSchema)]
@@ -24,6 +26,9 @@ pub struct PickerOpenRequest {
     pub language: Language,
     #[serde(default)]
     pub reload: bool,
+    /// Keep the last search, as when the picker reopens soon after closing.
+    #[serde(default)]
+    pub keep_query: bool,
 }
 
 impl PickerOpenRequest {
@@ -68,6 +73,8 @@ pub struct PickerOpenResult {
     pub appearance: settings::Appearance,
     pub density: settings::Density,
     pub larger_text: bool,
+    /// The session as it opens, drawn before the first key.
+    pub state: PickerState,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -115,6 +122,7 @@ pub fn open_result(
     source: Option<&settings::LibrarySetting>,
     error: Option<EngineError>,
     language: Language,
+    session: impl FnOnce(&PickerFormatScope, bool) -> PickerState,
 ) -> PickerOpenResult {
     use settings::LibrarySetting;
     let loaded = settings::load(path);
@@ -163,10 +171,16 @@ pub fn open_result(
             }
         })
         .collect();
+    let format_scope = PickerFormatScope::for_destination(settings, app, site);
+    let ready = library
+        .as_ref()
+        .is_some_and(|library| library.condition == PickerLibraryCondition::Ready);
+    let state = session(&format_scope, ready);
     PickerOpenResult {
         library,
         status,
-        format_scope: PickerFormatScope::for_destination(settings, app, site),
+        format_scope,
+        state,
         formats: outputs::outputs()
             .iter()
             .filter(|entry| !entry.exports_records && !entry.zotero_items)
@@ -222,18 +236,10 @@ fn problem_text(language: Language, problem: &Problem) -> String {
     catalogue::message_in(language, &problem.info.message, Audience::App)
 }
 
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct PickerSearchRequest {
-    pub query: String,
-    pub shorthand: bool,
-}
-
-#[derive(Serialize, JsonSchema)]
-pub struct PickerSearchResult {
+#[derive(Clone)]
+pub(crate) struct PickerSearchResult {
     pub sections: Vec<PickerSection>,
     /// The count of all matches. Absent for an empty search.
-    pub total: Option<usize>,
     pub count_label: Option<String>,
     pub status: Vec<PickerStatus>,
     pub segments: Vec<PickerSegment>,
@@ -249,13 +255,13 @@ pub enum PickerSectionKind {
     Pasted,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct PickerSection {
     pub kind: PickerSectionKind,
     pub rows: Vec<PickerRow>,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct PickerStatus {
     pub kind: PickerStatusKind,
     pub text: String,
@@ -263,15 +269,14 @@ pub struct PickerStatus {
     pub item: Option<ItemRef>,
 }
 
-#[derive(Clone, Copy, Serialize, JsonSchema)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum PickerStatusKind {
     Library,
-    Shorthand,
     Citation,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum PickerFix {
     ChooseLibrary,
@@ -283,18 +288,17 @@ pub enum PickerFix {
     EditCitation,
 }
 
-#[derive(Serialize, JsonSchema)]
-pub struct PickerSegment {
-    pub typed: String,
-    pub search: String,
+/// One reference as typed: the search, and the prefix and locator read around it.
+#[derive(Clone)]
+pub(crate) struct PickerSegment {
     pub complete: bool,
     pub locator: Option<Locator>,
     pub prefix: Option<String>,
-    /// A finished segment is automatically added only for a clear first match.
+    /// A finished segment counts only with a clear first match.
     pub row: Option<PickerRow>,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Clone, PartialEq, Serialize, JsonSchema)]
 pub struct PickerRow {
     pub id: ItemRef,
     #[schemars(with = "String")]
@@ -316,7 +320,7 @@ pub struct PickerRow {
     pub match_reasons: Vec<String>,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum PickerRowKind {
     Article,
@@ -497,33 +501,32 @@ fn source_status(health: health::SourceHealth, language: Language) -> Vec<Picker
         .collect()
 }
 
-pub fn search(
+/// One search as typed: `;` separates references, and each reads its own
+/// signal and locator (`see vale 417; okafor`). Only the last is listed.
+pub(crate) fn search(
     engine: &Engine,
-    request: PickerSearchRequest,
+    typed: &str,
     recent: &[ItemRef],
     language: Language,
     cancel: &Cancellation,
 ) -> Result<PickerSearchResult, EngineError> {
-    if request.query.len() > 64 * 1024 {
+    if typed.len() > 64 * 1024 {
         return Err(ErrorCode::BadInput.into());
     }
-    let mut pieces = vec![request.query.as_str()];
-    if request.shorthand {
-        pieces = request.query.split(';').collect();
-        if pieces.len() > crate::MAX_CITATION_ITEMS + 1 {
-            return Err(ErrorCode::ResourceLimit.into());
-        }
+    let mut pieces: Vec<&str> = typed.split(';').collect();
+    if pieces.len() > crate::MAX_CITATION_ITEMS + 1 {
+        return Err(ErrorCode::ResourceLimit.into());
     }
     let query = pieces.pop().unwrap_or_default().trim();
     let mut segments = Vec::new();
     let mut status = Vec::new();
-    let labels = if request.shorthand && language != Language::English {
+    let labels: Vec<_> = if language == Language::English {
+        Vec::new()
+    } else {
         LocatorTerm::ALL
             .into_iter()
             .map(|term| (word(language, &catalogue::id("locator", term), &[]), term))
             .collect()
-    } else {
-        Vec::new()
     };
     let search_one = |query: &str| {
         engine.search_with_total(
@@ -531,20 +534,18 @@ pub fn search(
                 query: query.to_owned(),
                 limit: 50,
                 libraries: None,
-                interpret_locator: request.shorthand,
+                interpret_locator: true,
             },
             &labels,
             cancel,
         )
     };
-    let segment = |typed: &str, complete, result: &crate::service::SearchResult| {
+    let segment = |complete, result: &crate::service::SearchResult| {
         let read = result.shorthand.as_ref();
         let best = result.hits.first().filter(|hit| {
             complete && !hit.partial && !hit.typo && result.hits.get(1).is_none_or(|next| hit.score > next.score)
         });
         PickerSegment {
-            typed: typed.to_owned(),
-            search: read.map_or(typed, |read| read.search.as_str()).to_owned(),
             complete,
             prefix: read.and_then(|read| read.prefix.clone()),
             locator: read
@@ -555,10 +556,10 @@ pub fn search(
     };
     for typed in pieces.into_iter().map(str::trim).filter(|part| !part.is_empty()) {
         let (found, _) = search_one(typed)?;
-        let finished = segment(typed, true, &found);
+        let finished = segment(true, &found);
         if finished.row.is_none() && status.is_empty() {
             status.push(PickerStatus {
-                kind: PickerStatusKind::Shorthand,
+                kind: PickerStatusKind::Citation,
                 text: word(language, "picker-native-unmatched-segment", &[("query", typed)]),
                 fix: Some(PickerFix::ClearSearch),
                 item: None,
@@ -585,9 +586,7 @@ pub fn search(
         (sections, None, health::SourceHealth::of(&libraries))
     } else {
         let (result, total) = search_one(query)?;
-        if request.shorthand {
-            segments.push(segment(query, false, &result));
-        }
+        segments.push(segment(false, &result));
         let kind = if result.list.is_some() {
             PickerSectionKind::Pasted
         } else if result.hits.first().is_some_and(|hit| hit.partial) {
@@ -601,34 +600,13 @@ pub fn search(
     status.extend(source_status(health, language));
     Ok(PickerSearchResult {
         sections,
-        total,
         count_label: total.and_then(|count| catalogue::count_in(language, "picker-result-count", count)),
         status,
         segments,
     })
 }
 
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct PickerPreviewRequest {
-    pub entries: Vec<PickerPreviewEntry>,
-    pub format: String,
-    pub keep_order: bool,
-}
-
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct PickerPreviewEntry {
-    pub item: ItemRef,
-    #[schemars(with = "String")]
-    pub cite: Fingerprint,
-    pub locator: Option<Locator>,
-    pub form: Option<CitationForm>,
-    pub prefix: Option<String>,
-    pub suffix: Option<String>,
-}
-
-#[derive(Serialize, JsonSchema)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct PickerPreviewResult {
     pub ticket: String,
     pub content_hash: String,
@@ -639,44 +617,47 @@ pub struct PickerPreviewResult {
     pub problem: Option<PickerStatus>,
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Clone, Serialize, JsonSchema)]
 pub struct PickerWarning {
     pub item: Option<usize>,
     pub text: String,
 }
 
-pub fn preview(
+/// Render the citation the person would deliver, as one ticket.
+pub(crate) fn preview(
     engine: &Engine,
-    request: PickerPreviewRequest,
+    entries: &[PickerEntry],
+    format: &str,
+    keep_order: bool,
     language: Language,
-    cancel: Cancellation,
 ) -> PickerPreviewResult {
     let result = engine
         .citations()
         .preview(
             SessionId::PICKER,
             Draft {
-                items: request
-                    .entries
-                    .into_iter()
+                items: entries
+                    .iter()
                     .map(|entry| DraftItem {
-                        id: entry.item,
-                        cite: entry.cite,
-                        locator: entry.locator,
+                        id: entry.row.id.clone(),
+                        cite: entry.row.cite.clone(),
+                        locator: entry.details.locator.clone(),
                         locator_input: None,
-                        form: entry.form,
-                        prefix: entry.prefix,
-                        suffix: entry.suffix,
+                        form: entry.details.form,
+                        prefix: entry.details.prefix.clone(),
+                        suffix: entry.details.suffix.clone(),
                     })
                     .collect(),
-                output: OutputSpec::Preset { name: request.format },
+                output: OutputSpec::Preset {
+                    name: format.to_owned(),
+                },
                 form: CitationForm::Normal,
-                keep_order: request.keep_order,
+                keep_order,
                 input_language: None,
                 output_locale: None,
                 sample: false,
             },
-            cancel,
+            Cancellation::default(),
         )
         .and_then(|work| work.run());
     let status = |problem: Problem| {

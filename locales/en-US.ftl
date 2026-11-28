@@ -2132,6 +2132,16 @@ picker-native-text-smaller = Smaller Text
 picker-native-density = Rows
 picker-native-copied = Copied. Press ⌘V to paste.
 picker-native-copied-permission = Copied. Allow Paste in the Ibis menu to paste automatically.
+picker-native-access-title = Switch on { $app }
+picker-native-access-drag = If it’s not in the list, drag this icon in.
+picker-native-access-wait = This closes by itself once it’s on. Until then, citations are copied for ⌘V.
+picker-native-read-locator = { $term } { $value }
+picker-native-read-prefix = “{ $text }” before
+picker-native-read-more =
+    { $count ->
+        [one] then 1 more reference
+       *[other] then { $count } more references
+    }
 picker-native-copy-failed = The clipboard changed or could not be written.
 picker-native-engine-disconnected = The Ibis engine stopped. Try again.
 picker-native-engine-invalid = The Ibis engine sent an invalid response.

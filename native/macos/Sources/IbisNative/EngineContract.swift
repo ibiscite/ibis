@@ -6,43 +6,37 @@ protocol PickerRPC {
     associatedtype Reply: Decodable
 }
 
-enum PickerOpen: PickerRPC {
+enum PickerOpenMethod: PickerRPC {
     static let name = "picker/open"
     typealias Parameters = PickerOpenRequest
     typealias Reply = PickerOpenResult
 }
 
-enum PickerChangeFormat: PickerRPC {
+enum PickerActMethod: PickerRPC {
+    static let name = "picker/act"
+    typealias Parameters = PickerIntent
+    typealias Reply = PickerState
+}
+
+enum PickerFormatMethod: PickerRPC {
     static let name = "picker/format"
     typealias Parameters = PickerChangeFormatRequest
-    typealias Reply = PickerFormatScope
+    typealias Reply = PickerState
 }
 
-enum PickerSearch: PickerRPC {
-    static let name = "picker/search"
-    typealias Parameters = PickerSearchRequest
-    typealias Reply = PickerSearchResult
-}
-
-enum PickerPreview: PickerRPC {
-    static let name = "picker/preview"
-    typealias Parameters = PickerPreviewRequest
-    typealias Reply = PickerPreviewResult
-}
-
-enum PickerForms: PickerRPC {
+enum PickerFormsMethod: PickerRPC {
     static let name = "picker/forms"
     typealias Parameters = PickerFormsRequest
     typealias Reply = FormDetails
 }
 
-enum PickerDeliver: PickerRPC {
+enum PickerDeliverMethod: PickerRPC {
     static let name = "picker/deliver"
     typealias Parameters = PickerDeliverRequest
     typealias Reply = PickerDeliverResult
 }
 
-enum Settings: PickerRPC {
+enum SettingsMethod: PickerRPC {
     static let name = "settings"
     typealias Parameters = SettingsRequest
     typealias Reply = SettingsResult
@@ -224,6 +218,20 @@ struct PickerDeliverResult: Codable, Hashable, Sendable {
     let text: String
 }
 
+struct PickerDetails: Codable, Hashable, Sendable {
+    let form: CitationForm?
+    let locator: Locator?
+    let prefix: String?
+    let suffix: String?
+}
+
+struct PickerEntry: Codable, Hashable, Sendable {
+    let added: Bool
+    let details: PickerDetails
+    let note: String?
+    let row: PickerRow
+}
+
 enum PickerFix: String, Codable, Hashable, Sendable {
     case chooseLibrary = "choose-library"
     case locateLibrary = "locate-library"
@@ -285,6 +293,72 @@ struct PickerFormsRequest: Codable, Hashable, Sendable {
     }
 }
 
+enum PickerIntent: Encodable, Hashable, Sendable {
+    case type(query: String)
+    case highlight(item: ItemRef)
+    case move(step: Int64)
+    case add
+    case toggle(item: ItemRef)
+    case remove(item: ItemRef)
+    case reorder(item: ItemRef, step: Int64)
+    case details(details: PickerDetails, item: ItemRef)
+    case keepOrder(on: Bool)
+    case useFormat(id: String?)
+    case undo
+    case clearSearch
+
+    private enum CodingKeys: String, CodingKey {
+        case intent = "intent"
+        case query = "query"
+        case item = "item"
+        case step = "step"
+        case details = "details"
+        case on = "on"
+        case id = "id"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case let .type(query):
+            try container.encode("type", forKey: .intent)
+            try container.encode(query, forKey: .query)
+        case let .highlight(item):
+            try container.encode("highlight", forKey: .intent)
+            try container.encode(item, forKey: .item)
+        case let .move(step):
+            try container.encode("move", forKey: .intent)
+            try container.encode(step, forKey: .step)
+        case .add:
+            try container.encode("add", forKey: .intent)
+        case let .toggle(item):
+            try container.encode("toggle", forKey: .intent)
+            try container.encode(item, forKey: .item)
+        case let .remove(item):
+            try container.encode("remove", forKey: .intent)
+            try container.encode(item, forKey: .item)
+        case let .reorder(item, step):
+            try container.encode("reorder", forKey: .intent)
+            try container.encode(item, forKey: .item)
+            try container.encode(step, forKey: .step)
+        case let .details(details, item):
+            try container.encode("details", forKey: .intent)
+            try container.encode(details, forKey: .details)
+            try container.encode(item, forKey: .item)
+        case let .keepOrder(on):
+            try container.encode("keep-order", forKey: .intent)
+            try container.encode(on, forKey: .on)
+        case let .useFormat(id):
+            try container.encode("use-format", forKey: .intent)
+            try container.encodeIfPresent(id, forKey: .id)
+        case .undo:
+            try container.encode("undo", forKey: .intent)
+        case .clearSearch:
+            try container.encode("clear-search", forKey: .intent)
+        }
+    }
+}
+
 struct PickerLibrary: Codable, Hashable, Sendable {
     let condition: PickerLibraryCondition
     let file: String?
@@ -313,9 +387,19 @@ struct PickerLocator: Codable, Hashable, Sendable {
 struct PickerOpenRequest: Codable, Hashable, Sendable {
     let app: String?
     let file: String?
+    let keepQuery: Bool?
     let language: Language
     let reload: Bool?
     let site: String?
+
+    enum CodingKeys: String, CodingKey {
+        case app = "app"
+        case file = "file"
+        case keepQuery = "keep_query"
+        case language = "language"
+        case reload = "reload"
+        case site = "site"
+    }
 }
 
 struct PickerOpenResult: Codable, Hashable, Sendable {
@@ -329,6 +413,7 @@ struct PickerOpenResult: Codable, Hashable, Sendable {
     let libraryExtensions: [String]
     let locators: [PickerLocator]
     let pasteEnabled: Bool
+    let state: PickerState
     let status: [PickerStatus]
 
     enum CodingKeys: String, CodingKey {
@@ -342,28 +427,8 @@ struct PickerOpenResult: Codable, Hashable, Sendable {
         case libraryExtensions = "library_extensions"
         case locators = "locators"
         case pasteEnabled = "paste_enabled"
+        case state = "state"
         case status = "status"
-    }
-}
-
-struct PickerPreviewEntry: Codable, Hashable, Sendable {
-    let cite: String
-    let form: CitationForm?
-    let item: ItemRef
-    let locator: Locator?
-    let prefix: String?
-    let suffix: String?
-}
-
-struct PickerPreviewRequest: Codable, Hashable, Sendable {
-    let entries: [PickerPreviewEntry]
-    let format: String
-    let keepOrder: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case entries = "entries"
-        case format = "format"
-        case keepOrder = "keep_order"
     }
 }
 
@@ -431,27 +496,6 @@ enum PickerRowKind: String, Codable, Hashable, Sendable {
     case other = "other"
 }
 
-struct PickerSearchRequest: Codable, Hashable, Sendable {
-    let query: String
-    let shorthand: Bool
-}
-
-struct PickerSearchResult: Codable, Hashable, Sendable {
-    let countLabel: String?
-    let sections: [PickerSection]
-    let segments: [PickerSegment]
-    let status: [PickerStatus]
-    let total: UInt64?
-
-    enum CodingKeys: String, CodingKey {
-        case countLabel = "count_label"
-        case sections = "sections"
-        case segments = "segments"
-        case status = "status"
-        case total = "total"
-    }
-}
-
 struct PickerSection: Codable, Hashable, Sendable {
     let kind: PickerSectionKind
     let rows: [PickerRow]
@@ -465,13 +509,42 @@ enum PickerSectionKind: String, Codable, Hashable, Sendable {
     case pasted = "pasted"
 }
 
-struct PickerSegment: Codable, Hashable, Sendable {
-    let complete: Bool
-    let locator: Locator?
-    let prefix: String?
-    let row: PickerRow?
-    let search: String
-    let typed: String
+struct PickerState: Codable, Hashable, Sendable {
+    let canKeepOrder: Bool
+    let canUndo: Bool
+    let citation: [PickerEntry]
+    let countLabel: String?
+    let format: String?
+    let formatHeld: Bool
+    let formatScope: PickerFormatScope?
+    let forms: [CitationForm]
+    let highlight: ItemRef?
+    let keepOrder: Bool
+    let preview: PickerPreviewResult?
+    let query: String
+    let readsAs: String?
+    let revision: UInt64
+    let sections: [PickerSection]
+    let status: [PickerStatus]
+
+    enum CodingKeys: String, CodingKey {
+        case canKeepOrder = "can_keep_order"
+        case canUndo = "can_undo"
+        case citation = "citation"
+        case countLabel = "count_label"
+        case format = "format"
+        case formatHeld = "format_held"
+        case formatScope = "format_scope"
+        case forms = "forms"
+        case highlight = "highlight"
+        case keepOrder = "keep_order"
+        case preview = "preview"
+        case query = "query"
+        case readsAs = "reads_as"
+        case revision = "revision"
+        case sections = "sections"
+        case status = "status"
+    }
 }
 
 struct PickerStatus: Codable, Hashable, Sendable {
@@ -483,7 +556,6 @@ struct PickerStatus: Codable, Hashable, Sendable {
 
 enum PickerStatusKind: String, Codable, Hashable, Sendable {
     case library = "library"
-    case shorthand = "shorthand"
     case citation = "citation"
 }
 

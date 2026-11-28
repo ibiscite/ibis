@@ -1,5 +1,6 @@
-// The picker contract uses named structs, string enums and scalar/array
-// properties. Fail on any other schema shape rather than guessing its ABI.
+// The picker contract uses named structs, string enums, internally tagged
+// request enums and scalar/array properties. Fail on any other schema shape
+// rather than guessing its ABI.
 const camel = (name) => name.replace(/[-_]([a-zA-Z])/g, (_, letter) => letter.toUpperCase());
 const identifier = /^[a-zA-Z_]\w*$/;
 const keywords = new Set(["case", "default", "enum", "let", "protocol", "repeat", "self", "struct", "subscript", "typealias", "var"]);
@@ -57,6 +58,8 @@ export function swiftBindings(methods) {
       const cases = variants.map((wire) => `    case ${fieldName(wire)} = ${JSON.stringify(wire)}`);
       return `enum ${name}: String, Codable, Hashable, Sendable {\n${cases.join("\n")}\n}`;
     }
+    const tag = tagOf(schema);
+    if (tag) return taggedUnion(name, schema, tag);
     if (schema.type === "object" && schema.properties) {
       const required = new Set(schema.required ?? []);
       const fields = Object.entries(schema.properties).map(([wire, value]) => {
@@ -76,10 +79,61 @@ export function swiftBindings(methods) {
     return `typealias ${name} = ${type(schema)}`;
   }
 
+  // An internally tagged enum (`#[serde(tag = "...")]`): every variant is an
+  // object whose tag property is one constant string. Requests only, so encode.
+  function tagOf(schema) {
+    const parts = schema.oneOf;
+    if (!parts?.every((part) => part.type === "object" && part.properties)) return undefined;
+    const tags = Object.keys(parts[0].properties).filter((key) =>
+      parts.every((part) => typeof part.properties[key]?.const === "string"));
+    return tags.length === 1 ? tags[0] : undefined;
+  }
+
+  function taggedUnion(name, schema, tag) {
+    const keys = new Map([[tag, fieldName(tag)]]);
+    const variants = schema.oneOf.map((part) => {
+      const required = new Set(part.required ?? []);
+      const fields = Object.entries(part.properties).filter(([wire]) => wire !== tag).map(([wire, value]) => {
+        const base = type(value);
+        const optional = required.has(wire) || base.endsWith("?") ? "" : "?";
+        keys.set(wire, fieldName(wire));
+        return { wire, name: fieldName(wire), type: `${base}${optional}` };
+      });
+      return { wire: part.properties[tag].const, name: fieldName(part.properties[tag].const), fields };
+    });
+    const cases = variants.map(({ name, fields }) => fields.length
+      ? `    case ${name}(${fields.map((field) => `${field.name}: ${field.type}`).join(", ")})`
+      : `    case ${name}`);
+    const encodes = variants.map(({ wire, name, fields }) => [
+      fields.length ? `        case let .${name}(${fields.map((field) => field.name).join(", ")}):` : `        case .${name}:`,
+      `            try container.encode(${JSON.stringify(wire)}, forKey: .${fieldName(tag)})`,
+      ...fields.map((field) => field.type.endsWith("?")
+        ? `            try container.encodeIfPresent(${field.name}, forKey: .${field.name})`
+        : `            try container.encode(${field.name}, forKey: .${field.name})`),
+    ].join("\n"));
+    return [
+      `enum ${name}: Encodable, Hashable, Sendable {`,
+      ...cases,
+      "",
+      "    private enum CodingKeys: String, CodingKey {",
+      ...[...keys].map(([wire, key]) => `        case ${key} = ${JSON.stringify(wire)}`),
+      "    }",
+      "",
+      "    func encode(to encoder: Encoder) throws {",
+      "        var container = encoder.container(keyedBy: CodingKeys.self)",
+      "        switch self {",
+      ...encodes,
+      "        }",
+      "    }",
+      "}",
+    ].join("\n");
+  }
+
   const calls = methods.map(({ method, params, result }) => {
     const request = root(params);
     const reply = root(result);
-    const name = request.replace(/Request$/, "");
+    // Named for the method, so a request type can be named for what it holds.
+    const name = `${method.split("/").map((part) => camel(part[0].toUpperCase() + part.slice(1))).join("")}Method`;
     return [
       `enum ${name}: PickerRPC {`,
       `    static let name = ${JSON.stringify(method)}`,
