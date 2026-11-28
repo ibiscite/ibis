@@ -6,18 +6,32 @@ import { fileURLToPath } from "node:url";
 
 // Exercise the hook bodies in Tauri's uninstall lifecycle, without an installer,
 // registry writes or NSIS. Unknown instructions fail instead of being ignored.
-function uninstaller() {
+function uninstaller({ bundle = "com.ibiscite.ibis", packages = [] } = {}) {
   const source = readFileSync(new URL("../apps/desktop/src-tauri/packaging/path.nsh", import.meta.url), "utf8");
   const macros = new Map([...source.matchAll(/!macro (\w+)\s*\n([\s\S]*?)!macroend/g)].map(([, name, body]) => [name, body]));
   const installed = "$INSTDIR\\packaging\\path.ps1", temporary = "$PLUGINSDIR\\path.ps1";
   const files = new Set([installed]);
-  let registered = true, errors = false, result = 0;
+  let registered = true, errors = false, result = 0, deleteAppData = true;
+  const defines = new Map([["BUNDLEID", bundle]]), vars = new Map();
+  const expand = (text) => text.replace(/\$\{(\w+)\}/g, (all, name) => defines.get(name) ?? all).replace(/\$(\d)/g, (all, n) => vars.get(n) ?? all);
   const run = (name) => {
-    const branches = [];
+    const branches = [], compiled = [];
     for (const line of (macros.get(name) ?? "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith(";"))) {
+      // Compile-time branches, as makensis resolves them.
+      if (line.startsWith("!if ")) {
+        const [, left, right] = line.match(/^!if "([^"]+)" == "([^"]+)"$/) ?? [];
+        assert.ok(left && right, line);
+        compiled.push(expand(left) === right);
+        continue;
+      }
+      if (line === "!else") { compiled.push(!compiled.pop()); continue; }
+      if (line === "!endif") { compiled.pop(); continue; }
+      if (compiled.includes(false)) continue;
+      if (line.startsWith("!define ")) { const [, key, value] = line.match(/^!define (\w+) "([^"]*)"$/); defines.set(key, value); continue; }
+      if (line.startsWith("!undef ")) { defines.delete(line.slice(7)); continue; }
       if (line.startsWith("${If}")) {
-        assert.ok(["${If} ${Errors}", "${If} $0 != 0"].includes(line), line);
-        branches.push(line.includes("${Errors}") ? errors : result !== 0);
+        assert.ok(["${If} ${Errors}", "${If} $0 != 0", '${If} $1 != ""'].includes(line), line);
+        branches.push(line.includes("${Errors}") ? errors : line.includes("$1") ? (vars.get("1") ?? "") !== "" : result !== 0);
       } else if (line === "${EndIf}") branches.pop();
       else if (branches.includes(false)) continue;
       else if (line === "InitPluginsDir") continue;
@@ -36,11 +50,20 @@ function uninstaller() {
       } else if (/^Pop \$[01]$/.test(line)) continue;
       else if (line.startsWith("Abort ")) throw new Error(line);
       else if (line.startsWith("Delete ")) files.delete(line.match(/^Delete "([^"]+)"$/)[1]);
+      else if (line === "ReadEnvStr $2 LOCALAPPDATA") vars.set("2", "C:\\Users\\a\\AppData\\Local");
+      else if (line.startsWith("FindFirst $0 $1 ")) {
+        const pattern = expand(line.match(/^FindFirst \$0 \$1 "([^"]+)"$/)[1]);
+        const [, folder, prefix] = pattern.match(/^(.*)\\([^\\]+)\*$/);
+        assert.equal(folder, "C:\\Users\\a\\AppData\\Local\\Packages");
+        vars.set("1", packages.find((p) => p.startsWith(prefix)) ?? "");
+      } else if (line === "FindClose $0") continue;
+      else if (line === "StrCpy $DeleteAppDataCheckboxState 0") deleteAppData = false;
       else assert.fail(`Unsupported NSIS instruction: ${line}`);
     }
     assert.equal(branches.length, 0);
+    assert.equal(compiled.length, 0);
   };
-  return { run, files, installed, temporary, registered: () => registered };
+  return { run, files, installed, temporary, registered: () => registered, deleteAppData: () => deleteAppData };
 }
 
 test("cancelling the running-app prompt keeps the installed command on PATH", () => {
@@ -60,6 +83,27 @@ test("successful uninstall removes PATH using the retained temporary helper", ()
   u.run("NSIS_HOOK_POSTUNINSTALL");
   assert.ok(!u.registered());
   assert.ok(!u.files.has(u.temporary), "the temporary helper is cleaned up");
+});
+
+test("Delete app data keeps the settings folder its own channel's Store copy shares", () => {
+  // The package names the Store build uses (scripts/build-msix.ps1), so the two cannot drift apart.
+  const build = readFileSync(new URL("./build-msix.ps1", import.meta.url), "utf8");
+  const name = build.match(/^\s*Name = '([^']+)'$/m)?.[1];
+  assert.ok(name, "build-msix.ps1 names the package");
+  assert.match(build, /\$name = if \(\$Product -eq 'Ibis'\) \{ \$Identity\.Name \} else \{ "\$\(\$Identity\.Name\)Nightly" \}/);
+  const store = [`${name}_8wekyb3d8bbwe`], nightly = [`${name}Nightly_8wekyb3d8bbwe`];
+  const cases = [
+    [{}, true],
+    [{ packages: store }, false],
+    [{ packages: nightly }, true],
+    [{ bundle: "com.ibiscite.ibis.nightly", packages: nightly }, false],
+    [{ bundle: "com.ibiscite.ibis.nightly", packages: store }, true],
+  ];
+  for (const [options, deleted] of cases) {
+    const u = uninstaller(options);
+    u.run("NSIS_HOOK_PREUNINSTALL");
+    assert.equal(u.deleteAppData(), deleted, JSON.stringify(options));
+  }
 });
 
 test("a missing uninstall helper refuses removal while preserving PATH", () => {

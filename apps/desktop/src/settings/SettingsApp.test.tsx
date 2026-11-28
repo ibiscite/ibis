@@ -383,10 +383,14 @@ test("About copies the version natively, never through the web view's clipboard,
   expect(writeText).not.toHaveBeenCalled();
 });
 
-test("About says where updates come from when this copy cannot update itself", async () => {
-  const { api, state } = fakeApi();
-  state.updates = null as never;
+test("About says where updates come from once it has read that this copy cannot update itself", async () => {
+  const { api } = fakeApi();
+  let answer = (_: boolean | null) => {};
+  api.updateChecks = () => new Promise((resolve) => { answer = resolve; });
   render(<SettingsApp api={api} initialPage="about" />);
+  await screen.findByRole("button", { name: /^Version / });
+  expect(screen.queryByText(/^This copy does not update itself\./)).toBeNull();
+  act(() => answer(null));
   expect(await screen.findByText(/^This copy does not update itself\./)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Check for Updates" })).toBeNull();
 });

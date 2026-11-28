@@ -82,6 +82,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const formatSettings = useFormatSettings(api);
   const [login, setLogin] = useState<LoginItem | null>(null);
   const [updates, setUpdates] = useState<boolean | null>(null);
+  // Whether updates has been read once: null alone does not say this copy cannot update.
+  const [updatesRead, setUpdatesRead] = useState(false);
   const latestLogin = useRef<LoginItem | null>(null);
   const latestUpdates = useRef<boolean | null>(null);
   const updateWrite = useRef<{ on: boolean; resolve: () => void; reject: () => void } | null>(null);
@@ -286,7 +288,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       if (updateWrite.current) return;
       const updateRequest = ++updateReads.current;
       api.updateChecks().then((next) => {
-        if (active && updateRequest === updateReads.current) { if (latestUpdates.current !== null && latestUpdates.current !== next) clearSettingUndo(); latestUpdates.current = next; setUpdates(next); readProblem("automatic", false); }
+        if (active && updateRequest === updateReads.current) { if (latestUpdates.current !== null && latestUpdates.current !== next) clearSettingUndo(); latestUpdates.current = next; setUpdates(next); setUpdatesRead(true); readProblem("automatic", false); }
       }).catch(() => {
         if (active && updateRequest === updateReads.current) readProblem("automatic", true);
       });
@@ -621,7 +623,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               {versionCopyFailed && <Note problem role="alert">{text("about-copy-failed")}</Note>}
               {/* Under the version, as Mac apps place it (decision 0038); its outcome follows it. */}
               {/* A copy the Store or a build without updates keeps current says so here. */}
-              {updates === null && !readProblems.has("automatic") && <Note>{text("about-unavailable")}</Note>}
+              {updatesRead && updates === null && !readProblems.has("automatic") && <Note>{text("about-unavailable")}</Note>}
               {(updates !== null || readProblems.has("automatic")) && <div id="check-updates" className="ui-about-check" data-highlighted={highlighted === "check-updates" || undefined}>
                 <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
                 <Status className="ui-quiet-status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</Status>
