@@ -36,7 +36,7 @@ final class EngineClientTests: XCTestCase {
         }
         let request = PickerDeliverRequest(contentHash: preview.contentHash, paste: false, ticket: preview.ticket)
         let delivered = try await picker.deliver(request) { grant in
-            XCTAssertEqual(grant.text, current.text)
+            XCTAssertEqual(grant.text, preview.text)
             return 1
         }
         XCTAssertNotNil(delivered)

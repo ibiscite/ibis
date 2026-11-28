@@ -33,6 +33,10 @@ if [[ -z "${DEVELOPER_DIR:-}" ]] && ! swift --version 2>/dev/null | grep -Eq 'Sw
     exit 1
   fi
 fi
+# SwiftPM records the deployment target as the SDK version, which makes macOS
+# draw the pre-26 look. Record the SDK the app is really built with.
+sdk_version=$(xcrun --sdk macosx --show-sdk-version)
+link_sdk=(-Xlinker -platform_version -Xlinker macos -Xlinker 15.0 -Xlinker "$sdk_version")
 export CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-0}"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-3}"
 
@@ -48,12 +52,12 @@ if [[ ! -f "$link_stamp" || "$(cat "$link_stamp")" != "$fingerprint" ]]; then
 fi
 if [[ "$mode" == test ]]; then
   cargo test --locked -p ibis-native-ffi
-  swift test --package-path "$package" --jobs 3
+  swift test --package-path "$package" --jobs 3 "${link_sdk[@]}"
   exit
 fi
 
-swift build --package-path "$package" --jobs 3
-swift_bin=$(swift build --package-path "$package" --show-bin-path)
+swift build --package-path "$package" --jobs 3 "${link_sdk[@]}"
+swift_bin=$(swift build --package-path "$package" --show-bin-path "${link_sdk[@]}")
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$package/Info.plist" "$app/Contents/Info.plist"
 cp "$swift_bin/IbisNative" "$app/Contents/MacOS/IbisNative"
