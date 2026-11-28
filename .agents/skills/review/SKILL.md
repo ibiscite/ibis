@@ -34,5 +34,14 @@ One light pass over the final head. Report what is wrong; do not redesign.
 
 List the findings most severe first, each with the file, the line and the
 failure. Fix P1 and P2 without adding guards for anything else. For paths that
-`land.sh` guards, a session that did not write the change posts
-`Independent review: no P1 or P2 at <full head sha>` on the PR when none remain.
+`land.sh` guards, the reviewer itself (a session or subagent that did not write
+the change) posts the verdict when none remain; the author never does:
+
+```sh
+gh api -X POST repos/ibiscite/ibis/issues/PR/comments \
+  -f body="Independent review: no P1 or P2 at FULL_HEAD_SHA"
+```
+
+For a Sol review, the subagent that runs Codex posts Sol's verdict this way.
+The author then requests squash auto-merge, which the maintainer has approved
+for their own branches.
