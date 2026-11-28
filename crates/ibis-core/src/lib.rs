@@ -31,7 +31,9 @@
 //!     "output": {"kind": "key", "syntax": "pandoc"},
 //! }))?;
 //! let cited = ibis_core::syntax::cite(&snapshot, &request).map_err(|error| format!("{error:?}"))?;
-//! assert_eq!(cited.text, "[@Taylor2026]");
+//! // Insert a citation only when every item rendered; `text` alone may be partial.
+//! let content = cited.copy_content(request.items.len()).ok_or("not every item rendered")?;
+//! assert_eq!(content.text, "[@Taylor2026]");
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 

@@ -29,8 +29,17 @@
 //!     "items": [{"item": id}],
 //!     "output": {"kind": "csl", "style": "apa"},
 //! }))?;
-//! let formatted = ibis_csl::Formatter::new()?.format(&snapshot, &request)?;
-//! assert_eq!(formatted.text, "(Taylor, 2026)");
+//! let formatter = ibis_csl::Formatter::new()?;
+//! let formatted = formatter.format(&snapshot, &request)?;
+//! // Insert a citation only when every item rendered; `text` alone may be partial.
+//! let content = formatted.copy_content(request.items.len()).ok_or("not every item rendered")?;
+//! assert_eq!(content.text, "(Taylor, 2026)");
+//!
+//! // A reference the library does not hold is refused, not guessed.
+//! let mut missing = request.clone();
+//! missing.items[0].item.key = "not-in-library".into();
+//! let refused = formatter.format(&snapshot, &missing)?;
+//! assert!(refused.copy_content(missing.items.len()).is_none());
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
