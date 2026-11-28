@@ -114,6 +114,12 @@ impl Home {
             .unwrap()
             .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(100))
             .unwrap();
+        // The system checks a new program on its first launch, which can take
+        // seconds under load; do it here, before the timed daemon start.
+        let checked = spawn_copy(Command::new(&older).arg("--version").stdout(Stdio::null()))
+            .wait()
+            .unwrap();
+        assert!(checked.success());
         older
     }
 }
