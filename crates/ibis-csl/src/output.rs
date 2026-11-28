@@ -57,6 +57,8 @@ impl Layout {
     /// Zotero's inline styles around entries whose only tags are the processor's,
     /// with one change Word needs: a hanging indent is on each entry, as the
     /// RTF's half inch, because Word reads no indent from the enclosing block.
+    /// Word for Mac keeps a pasted left margin only on a paragraph, so such an
+    /// entry is a `p` unless it holds a block of its own.
     fn html(&self, entries: &str) -> String {
         let margins = entries.contains("<div class=\"csl-left-margin\">");
         let aligned = self.second_field_align.is_some();
@@ -73,22 +75,35 @@ impl Layout {
         let count = entries.matches("<div class=\"csl-entry\">").count();
         let mut out = format!("<div class=\"csl-bib-body\" style=\"{body}\">");
         for (index, part) in entries.split("<div class=\"csl-entry\">").enumerate() {
-            if index > 0 {
-                let mut style = String::from(match (margins, self.hanging_indent) {
-                    (true, _) => "clear: left; ",
-                    (false, true) => "margin-left: 0.5in; text-indent: -0.5in; ",
-                    (false, false) => "",
-                });
-                if entry != 0.0 && index != count {
-                    style.push_str(&format!("margin-bottom: {entry}em;"));
-                }
-                out.push_str(&if style.is_empty() {
-                    "<div class=\"csl-entry\">".into()
-                } else {
-                    format!("<div class=\"csl-entry\" style=\"{style}\">")
-                });
+            if index == 0 {
+                out.push_str(part);
+                continue;
             }
-            out.push_str(part);
+            let after = if entry != 0.0 && index != count { entry } else { 0.0 };
+            let paragraph = self.hanging_indent && !margins;
+            match part.split_once("</div>") {
+                Some((text, rest)) if paragraph && !text.contains("<div") => {
+                    out.push_str(&format!(
+                        "<p class=\"csl-entry\" style=\"margin: 0 0 {after}em 0.5in; text-indent: -0.5in; \">{text}</p>{rest}"
+                    ));
+                }
+                _ => {
+                    let mut style = String::from(match (margins, self.hanging_indent) {
+                        (true, _) => "clear: left; ",
+                        (false, true) => "margin-left: 0.5in; text-indent: -0.5in; ",
+                        (false, false) => "",
+                    });
+                    if after != 0.0 {
+                        style.push_str(&format!("margin-bottom: {after}em;"));
+                    }
+                    out.push_str(&if style.is_empty() {
+                        "<div class=\"csl-entry\">".into()
+                    } else {
+                        format!("<div class=\"csl-entry\" style=\"{style}\">")
+                    });
+                    out.push_str(part);
+                }
+            }
         }
         let width = if aligned {
             format!("text-align: right; width: {offset}em;")

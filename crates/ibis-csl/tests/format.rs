@@ -766,7 +766,7 @@ fn explicitly_literal_year_suffixes_keep_era_names_in_date_order() {
                 (
                     "Okafor, A. (2020ac). Invented third. Invented Journal.\nOkafor, A. (2020ad). Invented second. Invented Journal.\nOkafor, A. (2020ae). Invented first. Invented Journal.",
                     // APA's hanging indent on each entry, which Word keeps, and double spacing.
-                    "<div class=\"csl-bib-body\" style=\"line-height: 2; \"><div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">Okafor, A. (2020ac). Invented third. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">Okafor, A. (2020ad). Invented second. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">Okafor, A. (2020ae). Invented first. <i>Invented Journal</i>.</div></div>",
+                    "<div class=\"csl-bib-body\" style=\"line-height: 2; \"><p class=\"csl-entry\" style=\"margin: 0 0 0em 0.5in; text-indent: -0.5in; \">Okafor, A. (2020ac). Invented third. <i>Invented Journal</i>.</p>\n<p class=\"csl-entry\" style=\"margin: 0 0 0em 0.5in; text-indent: -0.5in; \">Okafor, A. (2020ad). Invented second. <i>Invented Journal</i>.</p>\n<p class=\"csl-entry\" style=\"margin: 0 0 0em 0.5in; text-indent: -0.5in; \">Okafor, A. (2020ae). Invented first. <i>Invented Journal</i>.</p></div>",
                     " \\li720 \\fi-720 \\sl480 \\slmult1 \\sa0 \nOkafor, A. (2020ac). Invented third. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020ad). Invented second. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020ae). Invented first. {\\i{}Invented Journal}.\\par",
                 )
             } else {

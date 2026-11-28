@@ -44,20 +44,23 @@ fn format(formatter: &Formatter, source: &Snapshot, style: &str) -> CitationResu
 }
 
 /// A style's bibliography layout in copied HTML and RTF: the spacing on the
-/// body, the hanging indent on each entry, where Word keeps it.
+/// body, the hanging indent on each entry as a paragraph, where Word keeps it.
 struct Layout {
     html: &'static str,
     entry: &'static str,
+    close: &'static str,
     rtf: &'static str,
 }
 const APA: Layout = Layout {
     html: "line-height: 2; ",
-    entry: "<div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">",
+    entry: "<p class=\"csl-entry\" style=\"margin: 0 0 0em 0.5in; text-indent: -0.5in; \">",
+    close: "</p>",
     rtf: r"\li720 \fi-720 \sl480 \slmult1 \sa0 ",
 };
 const IEEE: Layout = Layout {
     html: "line-height: 1.35; ",
     entry: "<div class=\"csl-entry\">",
+    close: "</div>",
     rtf: r"\li0 \fi0 \sl240 \slmult1 \sa0 ",
 };
 
@@ -67,6 +70,7 @@ fn paste(result: &CitationResult, layout: &Layout, text: &str, html: &str, rtf: 
         "<div class=\"csl-bib-body\" style=\"{}\">{}</div>",
         layout.html,
         html.replace("<div class=\"csl-entry\">", layout.entry)
+            .replace("</div>", layout.close)
     );
     assert_eq!(result.html.as_deref(), Some(html.as_str()));
     assert_eq!(

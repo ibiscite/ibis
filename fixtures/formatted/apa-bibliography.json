@@ -1,7 +1,7 @@
 {
   "expected": {
     "data": {
-      "content_hash": "09b6fd4a205cdb24c420cdfab97f3ae7297e4478c6f1fcc54302b2ded505e1ad",
+      "content_hash": "67d5fde674bad7c4198acbd43f8fb8f47c95ef45efe976592305d670097d9ec4",
       "display": {
         "nodes": [
           {
@@ -36,7 +36,7 @@
           }
         ]
       },
-      "html": "<div class=\"csl-bib-body\" style=\"line-height: 2; \"><div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">Taylor, A. (2026). <i>Synthetic signals</i>. Imaginary Press.</div></div>",
+      "html": "<div class=\"csl-bib-body\" style=\"line-height: 2; \"><p class=\"csl-entry\" style=\"margin: 0 0 0em 0.5in; text-indent: -0.5in; \">Taylor, A. (2026). <i>Synthetic signals</i>. Imaginary Press.</p></div>",
       "losses": [],
       "notices": [],
       "outcomes": [

@@ -42,9 +42,10 @@ bibliography entry, and compares text and HTML after these named differences:
 A bibliography's layout, the inline styles that give a pasted bibliography its
 line height, hanging indent, spacing and margins, is compared on its own as
 `bibliography layout`; for a numeric style, only the block around the entry.
-One difference is named there: Word reads no indent from the enclosing block,
-so where Zotero puts a hanging indent on the body (`margin-left: 2em`), Ibis
-puts it on each entry as the RTF's half inch.
+One difference is named there: Word reads no indent from the enclosing block
+and keeps a pasted left margin only on a paragraph, so where Zotero puts a
+hanging indent on the body (`margin-left: 2em`), Ibis makes each entry a
+paragraph with the RTF's half inch.
 
 Each style's `differences/STYLE.json` lists every remaining case where Ibis's
 output differs, with both texts, and the records Ibis refuses because they have

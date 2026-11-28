@@ -93,9 +93,15 @@ const htmlLayout = ([layout], html) => {
   const count = html.split('<div class="csl-entry">').length - 1;
   let index = 0;
   return `<div class="csl-bib-body" style="line-height: ${line}; ">`
-    + html.replace(/<div class="csl-entry">/g, () => {
-      const style = (margins ? "clear: left; " : layout.hangingindent ? "margin-left: 0.5in; text-indent: -0.5in; " : "") + (entry && ++index !== count ? `margin-bottom: ${entry}em;` : "");
-      return style ? `<div class="csl-entry" style="${style}">` : '<div class="csl-entry">';
+    + html.replace(/<div class="csl-entry">((?:(?!<\/div>)[\s\S])*?)<\/div>|<div class="csl-entry">/g, (whole, text) => {
+      const after = entry && ++index !== count ? entry : 0;
+      // Word for Mac keeps a pasted left margin only on a paragraph.
+      if (text !== undefined && layout.hangingindent && !margins && !text.includes("<div")) {
+        return `<p class="csl-entry" style="margin: 0 0 ${after}em 0.5in; text-indent: -0.5in; ">${text}</p>`;
+      }
+      const style = (margins ? "clear: left; " : layout.hangingindent ? "margin-left: 0.5in; text-indent: -0.5in; " : "") + (after ? `margin-bottom: ${after}em;` : "");
+      const open = style ? `<div class="csl-entry" style="${style}">` : '<div class="csl-entry">';
+      return text === undefined ? open : open + text + "</div>";
     })
       .replaceAll('<div class="csl-left-margin">', `<div class="csl-left-margin" style="float: left; padding-right: 0.5em;${aligned ? `text-align: right; width: ${offset}em;` : ""}">`)
       .replaceAll('<div class="csl-right-inline">', `<div class="csl-right-inline" style="margin: 0 .4em 0 ${aligned ? offset + 0.5 : "0"}em;${layout.hangingindent ? "padding-left: 2em; text-indent:-2em;" : ""}">`)
