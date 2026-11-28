@@ -7,7 +7,7 @@
 //! `/PageLabels`. The parent bounds the time, checks the answer again and
 //! decides what may be cited; a crash here only fails this one file.
 
-use ibis_engine::pdf::{Answer, DETAILS, Extracted, LABELS_ONLY, MAX_FILE_BYTES, MAX_PAGES, MAX_TEXT_BYTES, Refusal};
+use ibis_sources::pdf::{Answer, DETAILS, Extracted, LABELS_ONLY, MAX_FILE_BYTES, MAX_PAGES, MAX_TEXT_BYTES, Refusal};
 use lopdf::content::Content;
 use lopdf::{Dictionary, Document, Encoding, LoadOptions, Object, ObjectId};
 use std::collections::BTreeMap;
@@ -17,7 +17,7 @@ use std::io::{Read, Write};
 /// The most one stream may inflate to: page content, object and font streams.
 const MAX_STREAM_BYTES: usize = 64 * 1024 * 1024;
 /// Address space on Linux, a hard backstop behind the parent's memory
-/// ceiling (`ibis_engine::pdf::MAX_MEMORY_BYTES`).
+/// ceiling (`ibis_sources::pdf::MAX_MEMORY_BYTES`).
 #[cfg(unix)]
 const MAX_MEMORY_BYTES: u64 = 3 * 1024 * 1024 * 1024;
 /// Processor seconds, a backstop behind the parent's ten-second deadline.
@@ -95,7 +95,7 @@ pub(crate) fn load(bytes: &[u8]) -> Result<(Document, Vec<ObjectId>), Refusal> {
     if bytes.len() as u64 > MAX_FILE_BYTES {
         return Err(Refusal::TooLarge);
     }
-    if !ibis_engine::pdf::has_mark(bytes) {
+    if !ibis_sources::pdf::has_mark(bytes) {
         return Err(Refusal::NotPdf);
     }
     let options = LoadOptions {

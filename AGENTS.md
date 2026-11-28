@@ -3,12 +3,14 @@
 Ibis is one shortcut to cite from your library in any app. Read only what your task needs:
 scope in [ROADMAP.md](ROADMAP.md) (its "How we build" is the working method), structure in
 [docs/architecture.md](docs/architecture.md), look and behaviour in [docs/design.md](docs/design.md),
-checks in [docs/testing.md](docs/testing.md), lasting decisions in [docs/decisions.md](docs/decisions.md).
+checks in [docs/testing.md](docs/testing.md), lasting decisions in [docs/decisions.md](docs/decisions.md),
+every command, machine and landing pitfall in [docs/development.md](docs/development.md).
 Current work and owners: the tracking issue (label `tracking`).
 
 ```sh
 bash scripts/land.sh start NAME [ISSUE]    # worktree, signed first commit and draft claim
-bash scripts/land.sh                       # fast local checks, push, squash auto-merge on hosted CI
+bash scripts/check.sh                      # the checks CI would run for this branch, run here
+bash scripts/land.sh                       # those checks, push, squash auto-merge on hosted CI
 bash scripts/land.sh end NAME              # remove the merged session
 node scripts/gen.mjs                       # regenerate bindings, schemas and the CLI options
 cargo test -p ibis-desktop --locked        # the app's Rust side; plain cargo test skips it
@@ -22,10 +24,12 @@ bash scripts/native-macos.sh shots          # Mac: screenshot every review state
 
 - Start from the tracking issue: **Plan** gives the order, **Now** what is in flight. Run `git fetch origin --prune` and `git status`; keep work you did not make. Everything needed to resume lives in the repository and on GitHub, never only in a chat or a local file. Each open pull request ends with a short handoff: what is left, the next command, any blocker.
 - One branch from `origin/main` per piece of work, one worktree per session with its own Cargo target directory (never shared). Never push to `main`. Related changes go in one pull request. Overlapping paths with an open pull request: finish that one first.
-- The 10-core, 16 GB Mac is shared: run one focused check (`cargo check -p CRATE`, one test filter, one Vitest file) and leave the rest to the gate. A piece still failing after three rounds is cut: land the part that is right, put the rest in one line on its issue.
-- Build the simplest correct form at the place that owns the problem. If the same fix is needed, or would be copied, at a second place, change the shared piece instead; a root-cause change lands as a series (the new primitive beside the old path, then callers moved, then the old path deleted). Never change a test's expected result to reach green unless the behaviour was meant to change, and say so on the pull request. Delete what you replace; write no compatibility code before 1.0 ([ROADMAP.md](ROADMAP.md) › How we build). UI changes go through the shared piece, never one screen alone: in the Tauri app `tokens.css`, a component in `apps/desktop/src/ui/` or the part's page under `docs/design/`; in the native Mac app (`native/macos`) the system's own controls, colours and SF Symbols and the shared views there ([decision 0066](docs/decisions/0066-native-shells-use-system-parts.md)). Logos come only from `brand/`; the Tauri app's icons too.
+- Local first ([development](docs/development.md#the-local-first-loop)): build and prove work on your machine, run `bash scripts/check.sh` before every push, push in batches, and never wait on CI; start the next piece while it runs. While working, run one focused check (`cargo check -p CRATE`, one test filter, one Vitest file); the 10-core, 16 GB Mac is shared. A piece still failing after three rounds is cut: land the part that is right, put the rest in one line on its issue.
+- Build the simplest correct form at the place that owns the problem. If the same fix is needed, or would be copied, at a second place, change the shared piece instead; a root-cause change lands as a series (the new primitive beside the old path, then callers moved, then the old path deleted). Never change a test's expected result to reach green unless the behaviour was meant to change, and say so on the pull request. Delete what you replace; write no compatibility code before 1.0 ([ROADMAP.md](ROADMAP.md) › How we build). UI changes go through the shared piece, never one screen alone: in the Tauri app `tokens.css`, a component in `apps/desktop/src/ui/` or the part's page under `docs/design/`; in the native Mac app (`native/macos`) the system's own controls, colours and SF Symbols and the shared views there ([decision 0066](docs/decisions/0066-native-shells-use-system-parts.md)). Logos and icons come only from `brand/`.
 - A change people can see lands with its explanation, in the same pull request: the website (`website/content/`, `website/pages/`) and the docs that say what Ibis does, cannot do yet, and how (the maintainer, 2026-11-26).
 - When the maintainer approves a plan or answers a question, record it the same day in the file it changes and link it from the tracking issue.
+- Skills in `.agents/skills/` (also `.claude/skills/`) find problems on demand: `verify` drives the real CLI or app, `review` checks a diff once, `audit` finds what to delete, `diagnose` builds a failing signal before a fix.
+- Encode a lesson in structure first: a type, private visibility or generated code, so the wrong version cannot be written. A new check comes second and a prose rule last; a primitive that makes a check unnecessary deletes it.
 
 ## Trust and authority
 
@@ -41,8 +45,8 @@ bash scripts/native-macos.sh shots          # Mac: screenshot every review state
 
 ## Landing
 
-Pull request titles are Conventional Commits and become the release notes; link `Closes #N`. Sign off commits (`git commit -s`) with a public project or GitHub noreply identity and disclose AI help with an `Assisted-by:` or `Co-authored-by:` trailer.
+Public text (issues, pull requests, docs, commits, releases) states the result in short, plain, professional words, never the conversation, and never quotes the maintainer. Issue titles are plain outcome sentences with one `type:` label, and open issues carry a milestone. Pull request titles are Conventional Commits and become the release notes; link `Closes #N`. Sign off commits (`git commit -s`) with a public project or GitHub noreply identity and disclose AI help with an `Assisted-by:` or `Co-authored-by:` trailer.
 
-Land with `bash scripts/land.sh` from a clean branch: fast local checks, push and request squash auto-merge.
-Hosted **CI result** is the required check, with no merge queue ([decision 0049](docs/decisions/0049-local-gate.md)): every PR and every push to main tests all three systems. If main turns red, restore it first with the smallest verified repair or a revert and record the cause on its issue the same day; until main's push CI is green again, `land.sh` refuses any title but `fix` or `revert`.
+Land with `bash scripts/land.sh` from a clean branch: it runs `scripts/check.sh`, pushes and requests squash auto-merge.
+Hosted **CI result** is the required check, with no merge queue ([decision 0049](docs/decisions/0049-local-gate.md)): a pull request runs the jobs its changed paths can affect on all three systems (the `ci:full` label runs everything), and every push to main runs everything. If main turns red, restore it first with the smallest verified repair or a revert and record the cause on its issue the same day; until main's push CI is green again, `land.sh` refuses any title but `fix` or `revert`.
 Start with `land.sh start NAME` (the draft PR is the claim) and finish with `land.sh end NAME` after it merges.

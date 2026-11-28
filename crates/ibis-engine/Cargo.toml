@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 schemars = "=1.2.3"
 ibis-core = { path = "../ibis-core" }
+ibis-os = { path = "../ibis-os" }
 serde = { version = "1.0.229", features = ["derive"] }
 # Transport parsing must not round a numeric record ID to a different f64.
 serde_json = { version = "1.0.154", features = ["float_roundtrip", "raw_value"] }

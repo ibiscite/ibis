@@ -1,7 +1,7 @@
 {
   "expected": {
     "data": {
-      "content_hash": "ad12b3cff340c070fe2ce1fc29c67c50ecedfc3ac3eac2d124ed72ca9deb0658",
+      "content_hash": "7ec7ae7eb209363e80fea60b5edc3102e1ca4431bb615e7b2996bd1583ed5839",
       "display": {
         "nodes": [
           {
@@ -36,7 +36,7 @@
           }
         ]
       },
-      "html": "<div class=\"csl-entry\">Taylor, A. (2026). <i>Synthetic signals</i>. Imaginary Press.</div>",
+      "html": "<div class=\"csl-bib-body\" style=\"line-height: 2; margin-left: 2em; text-indent:-2em;\"><div class=\"csl-entry\">Taylor, A. (2026). <i>Synthetic signals</i>. Imaginary Press.</div></div>",
       "losses": [],
       "notices": [],
       "outcomes": [
@@ -45,7 +45,7 @@
           "outcome": "rendered"
         }
       ],
-      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nTaylor, A. (2026). {\\i{}Synthetic signals}. Imaginary Press.\n}",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0 \\li720 \\fi-720 \\sl480 \\slmult1 \\sa0 \nTaylor, A. (2026). {\\i{}Synthetic signals}. Imaginary Press.\n}",
       "text": "Taylor, A. (2026). Synthetic signals. Imaginary Press.",
       "warnings": [
         {

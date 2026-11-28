@@ -619,7 +619,7 @@ about-source = الشيفرة المصدرية
 about-problem = الإبلاغ عن مشكلة
 about-licences = التراخيص
 about-free = برنامج حر بموجب رخصة AGPL 3.0
-about-unavailable = هذا الإصدار لا يحدّث نفسه.
+about-unavailable = هذه النسخة لا تحدّث نفسها. تأتي التحديثات من المكان الذي ثبّتها منه، مثل Microsoft Store.
 
 
 # Settings window pages and visual choices.

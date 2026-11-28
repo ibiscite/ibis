@@ -1,8 +1,8 @@
 //! Source handles stay outside Shared: callbacks upgrade only publication state.
 use super::*;
 use crate::sync::MutexExt;
-use ibis_core::zotero::api::TransportError;
 use ibis_sources::adapter::{AdapterError, SourceAdapter};
+use ibis_sources::zotero_local::api::TransportError;
 use ibis_sources::zotero_source::{Library, LiveError, ZoteroError, ZoteroSource};
 use ibis_sources::{LoadedLibrary, SourceError, SourceWatch};
 use std::{
@@ -181,7 +181,7 @@ pub(super) fn source_error(error: SourceError) -> EngineError {
         }
     })
 }
-fn info(loaded: &LoadedLibrary) -> LibraryInfo {
+pub(super) fn info(loaded: &LoadedLibrary) -> LibraryInfo {
     LibraryInfo {
         id: loaded.library.clone(),
         kind: loaded.kind,

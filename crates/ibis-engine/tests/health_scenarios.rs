@@ -66,3 +66,41 @@ fn search_reports_source_warnings_as_a_count_without_the_damaged_entry() {
         }]})
     );
 }
+
+#[test]
+fn a_library_read_outside_the_engine_answers_lookups_as_one_it_opened() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("invented-damaged.bib");
+    std::fs::write(
+        &path,
+        b"@misc{one,title={Invented Lantern}}\n@misc{privatevalue,title={Missing brace}\n",
+    )
+    .unwrap();
+    let cancel = Cancellation::default();
+    let opened = Engine::new().unwrap().without_file_watches();
+    opened.open_file_observed(&path, &cancel).unwrap();
+    let handed = Engine::new().unwrap().without_file_watches();
+    handed
+        .publish_library(&ibis_sources::load_file(&path).unwrap())
+        .unwrap();
+    let answer =
+        |engine: &Engine, method: Method, params: serde_json::Value| match engine.dispatch(method, &params, &cancel) {
+            Ok(result) => (result.exit_code, result.data["source_health"].clone()),
+            Err(error) => (error.code.exit_code(), json!(error.reason)),
+        };
+    for (method, params) in [
+        (Method::Search, json!({"query": "lantern"})),
+        (Method::Show, json!({"item": {"by": "key", "value": "privatevalue"}})),
+    ] {
+        assert_eq!(answer(&opened, method, params.clone()), answer(&handed, method, params));
+    }
+    assert_eq!(
+        answer(
+            &handed,
+            Method::Show,
+            json!({"item": {"by": "key", "value": "privatevalue"}})
+        )
+        .1,
+        json!("damaged-entry")
+    );
+}

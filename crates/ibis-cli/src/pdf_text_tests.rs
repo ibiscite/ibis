@@ -147,7 +147,7 @@ fn damaged_invented_pdfs_never_escape_their_bounds() {
         // A panic would end only the child process; it must still be rare
         // enough not to matter here.
         if let Ok(Ok(extracted)) = outcome {
-            assert!(ibis_engine::pdf::checked(extracted, false).is_ok());
+            assert!(ibis_sources::pdf::checked(extracted, false).is_ok());
         }
     }
 }

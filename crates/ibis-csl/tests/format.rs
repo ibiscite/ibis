@@ -688,14 +688,15 @@ fn explicitly_literal_year_suffixes_keep_era_names_in_date_order() {
             let (text, html, rtf) = if bibliography {
                 (
                     "Okafor, A. (2020ac). Invented third. Invented Journal.\nOkafor, A. (2020ad). Invented second. Invented Journal.\nOkafor, A. (2020ae). Invented first. Invented Journal.",
-                    "<div class=\"csl-entry\">Okafor, A. (2020ac). Invented third. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\">Okafor, A. (2020ad). Invented second. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\">Okafor, A. (2020ae). Invented first. <i>Invented Journal</i>.</div>",
-                    "Okafor, A. (2020ac). Invented third. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020ad). Invented second. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020ae). Invented first. {\\i{}Invented Journal}.",
+                    // APA's hanging indent and double spacing, as Zotero writes them.
+                    "<div class=\"csl-bib-body\" style=\"line-height: 2; margin-left: 2em; text-indent:-2em;\"><div class=\"csl-entry\">Okafor, A. (2020ac). Invented third. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\">Okafor, A. (2020ad). Invented second. <i>Invented Journal</i>.</div>\n<div class=\"csl-entry\">Okafor, A. (2020ae). Invented first. <i>Invented Journal</i>.</div></div>",
+                    " \\li720 \\fi-720 \\sl480 \\slmult1 \\sa0 \nOkafor, A. (2020ac). Invented third. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020ad). Invented second. {\\i{}Invented Journal}.\\par\nOkafor, A. (2020ae). Invented first. {\\i{}Invented Journal}.",
                 )
             } else {
                 (
                     "(Okafor, 2020ac, 2020ad, 2020ae)",
                     "(Okafor, 2020ac, 2020ad, 2020ae)",
-                    "(Okafor, 2020ac, 2020ad, 2020ae)",
+                    "\n(Okafor, 2020ac, 2020ad, 2020ae)",
                 )
             };
             assert_eq!(result.text, text, "{date_kind}, bibliography={bibliography}");
@@ -703,7 +704,7 @@ fn explicitly_literal_year_suffixes_keep_era_names_in_date_order() {
             assert_eq!(
                 result.rtf,
                 Some(format!(
-                    "{{\\rtf1\\ansi\\deff0{{\\fonttbl{{\\f0 Times New Roman;}}}}\\f0\n{rtf}\n}}"
+                    "{{\\rtf1\\ansi\\deff0{{\\fonttbl{{\\f0 Times New Roman;}}}}\\f0{rtf}\n}}"
                 ))
             );
             assert!(result.copy_content(3).is_some());

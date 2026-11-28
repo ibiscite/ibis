@@ -123,9 +123,10 @@ support claim has proof.
   text where a dependency ships no file; every package is verified on its system
   before publishing; parsers are fuzzed nightly; releases carry provenance and
   SBOMs, and stable ones cannot change.
-- **Distribution:** Nix and the project's own Homebrew tap. Until signing is
-  decided near 1.0, macOS uses the self-signed identity and Windows installers
-  are unsigned, so the official Homebrew cask waits.
+- **Distribution:** Nix, the project's own Homebrew tap and the Microsoft
+  Store, which signs its copy for free. Until signing is decided near 1.0, macOS
+  uses the self-signed identity and the Windows installer is unsigned, so the
+  official Homebrew cask waits.
 - **Help:** a documentation site covering install (with pictures of each
   system's first-launch block), first use, privacy and troubleshooting; an
   offline Copy Diagnostics for bug reports instead of telemetry; help
@@ -258,8 +259,11 @@ from any library or a folder of PDFs.
   readback on Mac and Windows; winget and Flathub.
 - **Every client:** Claude, Cursor and Codex qualified, and one real outside
   client on the stable tier; VS Code Citation Picker for Zotero qualified
-  against the editor endpoint. On request: a same-user socket to the running app
-  (no network listener) and thin editor clients.
+  against the editor endpoint. The Pandoc and Quarto filter and the Obsidian
+  plugin, thin clients of `ibis` already in `plugins/`, qualified inside
+  Quarto, RStudio and Obsidian; the plugin listed in Obsidian's community
+  directory, which needs a repository of its own. On request: a same-user
+  socket to the running app (no network listener) and thin editor clients.
 
 ### F. 1.0 Stable
 

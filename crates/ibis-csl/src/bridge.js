@@ -88,10 +88,37 @@
   // shows the break, so the text keeps it too, and one-line folding spaces it.
   CSL.Output.Formats.text["@display/block"] = (state, str) => "\n" + str + "\n";
   CSL.Output.Formats.text["@display/indent"] = (state, str) => "\n    " + str + "\n";
+  // The processor opens a style's date output level with the date's own node
+  // at build time, affixes included; only after its first range does it reopen
+  // with the affix-free copy. So the first year range a compiled style prints
+  // gets the affixes twice: "(2020–(2026))". Open with the copy from the start.
+  const buildDate = CSL.Node.date.build;
+  CSL.Node.date.build = function (state, target) {
+    if (this.tokentype !== CSL.START && this.tokentype !== CSL.SINGLETON) return buildDate.call(this, state, target);
+    const node = this;
+    state.dateput.openLevel = function (token) {
+      return CSL.Output.Queue.prototype.openLevel.call(this, token === node ? state.tmp.date_token : token);
+    };
+    try { return buildDate.call(this, state, target); } finally { delete state.dateput.openLevel; }
+  };
   let literalLessThan = null;
   const checkedText = (text) => literalLessThan && text ? text.split(literalLessThan).join("<") : text;
   const encodeDoiForUrl = CSL.Util.encodeDoiForUrl;
-  CSL.Util.encodeDoiForUrl = (doi) => encodeDoiForUrl(checkedText(doi));
+  // With links on, the processor encodes a DOI after a doi.org prefix twice in
+  // a row, once to print it and once to link it: "%3C" became "%253C". The
+  // second call gets exactly the first call's answer, which is kept as it is.
+  let encodedDoi = null;
+  CSL.Util.encodeDoiForUrl = (doi) => {
+    if (doi === encodedDoi) return doi;
+    encodedDoi = encodeDoiForUrl(checkedText(doi));
+    return encodedDoi;
+  };
+  // The processor links every URL and DOI through this one decoration, and
+  // puts doi.org before anything without a scheme, so Zotero links a bare
+  // "www.example.org" to doi.org. Only a web address or a DOI links here.
+  const linkDoi = CSL.Output.Formats.html["@DOI/true"];
+  CSL.Output.Formats.html["@DOI/true"] = (state, text) =>
+    /^(https?:\/\/|10\.)/i.test(text) ? linkDoi(state, text) : text;
   for (const format of ["text", "html", "rtf"]) {
     const escape = CSL.Output.Formats[format].text_escape;
     CSL.Output.Formats[format].text_escape = (text) => escape(checkedText(text));
@@ -280,6 +307,17 @@
     for (const part of capture.parts) if (part.item !== undefined && part.item !== null) texts[part.item] += leafText(engine, part);
     return texts;
   };
+  // One processor, set up as Zotero sets up its own (Zotero.Style.getCiteProc):
+  // URLs and DOIs are links in HTML, and names arrive already split by their
+  // reader, so the processor never parses them again and a quoted "de Vries"
+  // stays one family name.
+  const newEngine = (request, style) => {
+    const engine = new CSL.Engine({ retrieveLocale: __ibisLocaleXml, retrieveItem: (id) => activeItems.get(id), uppercase_subtitles: request.sentence_titles }, style, request.locale ?? undefined, request.locale !== null);
+    engine.opt.development_extensions.throw_on_empty = true;
+    engine.opt.development_extensions.wrap_url_and_doi = true;
+    engine.opt.development_extensions.parse_names = false;
+    return engine;
+  };
   const oneLine = (text) => text.replace(/\s*\n\s*/g, " ").trim();
   const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").join("\\par\n") : text}\n}`;
   // One document's citations as one sequence (`ibis format`): its own
@@ -289,8 +327,7 @@
   const document = (request, source) => {
     if (!items.open(request)) return JSON.stringify({ status: "refused" });
     engines.clear();
-    const engine = new CSL.Engine({ retrieveLocale: __ibisLocaleXml, retrieveItem: (id) => activeItems.get(id), uppercase_subtitles: request.sentence_titles }, source, request.locale ?? undefined, request.locale !== null);
-    engine.opt.development_extensions.throw_on_empty = true;
+    const engine = newEngine(request, source);
     try {
       const citations = [];
       const add = (citationItems) => {
@@ -435,8 +472,7 @@
         }
         xml = tree;
       }
-      engine = new CSL.Engine({ retrieveLocale: __ibisLocaleXml, retrieveItem: (id) => activeItems.get(id), uppercase_subtitles: request.sentence_titles }, xml, request.locale ?? undefined, request.locale !== null);
-      engine.opt.development_extensions.throw_on_empty = true;
+      engine = newEngine(request, xml);
       if (request.keep_order) engine.citation_sort.tokens = [];
       engines.set(key, engine);
     }
@@ -467,6 +503,17 @@
           const bibliography = engine.makeBibliography();
           if (!bibliography || bibliography[0].bibliography_errors.length) throw unverified;
           if (format === "text") outputs.text_parts = bibliography[1];
+          if (format === "html") {
+            // How the style lays entries out; the formatter writes it as Zotero does.
+            const [layout] = bibliography;
+            outputs.layout = {
+              hanging_indent: Boolean(layout.hangingindent),
+              line_spacing: layout.linespacing,
+              entry_spacing: layout.entryspacing,
+              second_field_align: layout["second-field-align"] || null,
+              max_offset: layout.maxoffset,
+            };
+          }
           output = bibliography[1].map(oneLine).join("\n");
           if (format === "text") {
             outputs.spans = [];

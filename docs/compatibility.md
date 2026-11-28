@@ -174,7 +174,7 @@ text means; it is not certification of every writing app.
 
 | Destination | Output | Requirement |
 | --- | --- | --- |
-| Markdown, Quarto, R Markdown (RStudio, Positron) | Pandoc keys | Matching bibliography when building the document. |
+| Markdown, Quarto, R Markdown (RStudio, Positron), Obsidian | Pandoc keys | Matching bibliography when building the document, or the [Ibis filter](#pandoc-quarto-and-obsidian). |
 | LaTeX (TeXShop, TeXstudio, Texifier), Overleaf | BibLaTeX, Natbib or LaTeX keys | Matching project `.bib`. |
 | Typst | Typst keys | Matching bibliography. |
 | Word, LibreOffice, Google Docs, Pages, email | Formatted text | Static citations; they do not join a managed bibliography or update with a document's style. |
@@ -184,6 +184,11 @@ Ibis also writes org-cite, MyST, ConTeXt and other key syntaxes. Supported
 forms and field losses depend on the output. Numeric styles give an
 unnumbered reference entry; note styles give a full first note. Ibis cannot
 determine a document's numbering, ibid. or year-letter disambiguation.
+Formatted text is checked against what Zotero's own Quick Copy gives for 297
+invented records in each curated style, read from Zotero and from an exported
+CSL-JSON file; [every difference](../fixtures/zotero/quick-copy/README.md) is
+listed. As in Zotero, URLs and DOIs are links in formatted HTML, and a copied
+bibliography keeps its style's hanging indent and line spacing when pasted.
 Tests prove that Ibis writes the markers the add-on documents
 (`{ prefix | Author, Year | locator | suffix | zu:0:KEY }`, `zg:GROUP:KEY` for a group); they do not
 prove that a scan turns them into live Zotero citations in a particular
@@ -208,6 +213,30 @@ Requests reconstructed from VS Code Citation Picker for Zotero 0.2.1 are
 replayed by `cayw_clients.rs`. This is protocol evidence, not an interactive
 VS Code acceptance test. Its Check Connection and PDF commands require
 Better BibTeX JSON-RPC, which Ibis does not provide.
+
+## Pandoc, Quarto and Obsidian
+
+Two small plugins in the repository run the `ibis` command and hold no
+citation logic of their own:
+
+- The [Pandoc and Quarto filter](../plugins/pandoc/README.md) fills in the
+  references a document cites from the libraries Ibis reads, Zotero
+  included, before citeproc formats them (in Quarto, with `citeproc: true`).
+  A project's own `bibliography` and `references` win over it. It needs
+  Pandoc 3.1.1 or later.
+- The [Obsidian plugin](../plugins/obsidian/README.md) adds **Insert
+  citation**, which searches with Ibis and inserts the citation in the format
+  Ibis uses for Obsidian. It runs on Obsidian's desktop apps only and is not
+  yet in Obsidian's community directory, so it is installed by copying two
+  files.
+
+`fidelity.rs` renders a document through Pandoc 3.1 twice, once from the
+`.bib` and once through the filter, and requires the same text.
+`obsidian.rs` runs the plugin's own tests against the built command with a
+stand-in for Obsidian's interface. Quarto 1.11 was checked by hand on macOS on
+2026-11-28: with `citeproc: true` in the front matter, the references came from
+a `.bib` named in `ibis:` and `@fig-plot` stayed a figure cross-reference.
+RStudio and the Obsidian app are not yet checked.
 
 ## What the tests establish
 

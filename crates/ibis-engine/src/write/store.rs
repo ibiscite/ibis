@@ -4,8 +4,8 @@
 //! [`MAX_PENDING`] wait and [`MAX_KEPT`] are kept; the oldest decided ones go
 //! first. A file that cannot be read is left alone and listed as nothing.
 use super::{Change, FORMAT, Proposal, Source, Status, Target, WriteError, WriteProblem};
-use ibis_core::atomic_file::AtomicFile;
 use ibis_core::contract::Fingerprint;
+use ibis_os::atomic_file::AtomicFile;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};

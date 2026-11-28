@@ -16,13 +16,21 @@ use serde_json::Value;
 /// `[build-dependencies]` are not part of what ships, so they are not read.
 ///
 /// Shared capabilities belong in engine methods; clients use core contract types.
-const LAYERS: [(&str, &[&str]); 10] = [
+const LAYERS: [(&str, &[&str]); 11] = [
     ("crates/ibis-core", &[]),
+    // What the layers share of the operating system, so core stays pure.
+    ("crates/ibis-os", &[]),
     ("crates/ibis-csl", &["ibis-core"]),
-    ("crates/ibis-sources", &["ibis-core"]),
-    ("crates/ibis-engine", &["ibis-core", "ibis-csl", "ibis-sources"]),
+    ("crates/ibis-sources", &["ibis-core", "ibis-os"]),
+    (
+        "crates/ibis-engine",
+        &["ibis-core", "ibis-csl", "ibis-os", "ibis-sources"],
+    ),
     // The CLI also serves the built-in EndNote adapter in a child process.
-    ("crates/ibis-cli", &["ibis-core", "ibis-engine", "ibis-sources"]),
+    (
+        "crates/ibis-cli",
+        &["ibis-core", "ibis-engine", "ibis-os", "ibis-sources"],
+    ),
     // Native paste for any front end; the host supplies the paste setting.
     ("crates/ibis-native", &["ibis-core"]),
     // The macOS C ABI and clipboard writer link no engine or library code.
@@ -35,13 +43,14 @@ const LAYERS: [(&str, &[&str]); 10] = [
             "ibis-engine",
             "ibis-native",
             "ibis-native-ffi",
+            "ibis-os",
         ],
     ),
     // Records each command's types for the generated bindings; ships nothing else.
     ("apps/desktop/src-tauri/macros", &[]),
     // The fuzzing harness ships nothing; it reads BibTeX as the engine does and
     // PDFs as the `ibis` extractor's child process does.
-    ("fuzz", &["ibis", "ibis-core", "ibis-sources"]),
+    ("fuzz", &["ibis", "ibis-core", "ibis-os", "ibis-sources"]),
 ];
 
 type Graph = BTreeMap<String, BTreeSet<String>>;
@@ -137,17 +146,8 @@ fn each_crate_uses_only_the_layers_below_it() {
 
 /// `ibis-core` is the pure domain a WebAssembly reader can use: its shipped
 /// code opens no file, process or socket, reads no environment or clock,
-/// starts no thread, installs no panic hook and has no platform branch. These
-/// files still do and are moving to the crates that use them; the list only
-/// shrinks.
-const CORE_IMPURE: [&str; 5] = [
-    "atomic_file.rs",
-    "command_install.rs",
-    "destination/mod.rs",
-    "file_io.rs",
-    "panic_guard.rs",
-];
-
+/// starts no thread, installs no panic hook and has no platform branch. What
+/// the other layers share of the world is in `ibis-os`.
 /// `std` modules that reach the world. `net` is allowed only for address types.
 const IMPURE_STD: [&str; 7] = ["env", "fs", "net", "panic", "process", "thread", "time"];
 const PURE_NET: [&str; 3] = ["IpAddr", "Ipv4Addr", "Ipv6Addr"];
@@ -390,25 +390,13 @@ fn shipped_files(src: &Path) -> BTreeMap<String, Vec<String>> {
 #[test]
 fn core_does_no_io() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../ibis-core/src");
-    let files = shipped_files(&src);
-    let allowed: BTreeSet<&str> = CORE_IMPURE.into_iter().collect();
-    let impure: BTreeMap<&str, &Vec<String>> = files
-        .iter()
-        .filter(|(file, found)| !found.is_empty() && !allowed.contains(file.as_str()))
-        .map(|(file, found)| (file.as_str(), found))
+    let impure: BTreeMap<String, Vec<String>> = shipped_files(&src)
+        .into_iter()
+        .filter(|(_, found)| !found.is_empty())
         .collect();
     assert!(
         impure.is_empty(),
-        "ibis-core must stay pure; move this code to the crate that uses it: {impure:#?}"
-    );
-    let stale: Vec<&str> = allowed
-        .iter()
-        .copied()
-        .filter(|file| files.get(*file).is_none_or(Vec::is_empty))
-        .collect();
-    assert!(
-        stale.is_empty(),
-        "No longer impure or gone; take it off CORE_IMPURE: {stale:?}"
+        "ibis-core must stay pure; move this code to ibis-os or the crate that uses it: {impure:#?}"
     );
 }
 

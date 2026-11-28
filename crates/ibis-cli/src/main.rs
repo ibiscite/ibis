@@ -13,7 +13,7 @@ fn main() -> std::process::ExitCode {
     // reads no settings and opens no library (decision 0055).
     if arguments
         .get(1)
-        .is_some_and(|argument| argument == ibis_engine::pdf::CHILD_ARGUMENT)
+        .is_some_and(|argument| argument == ibis_sources::pdf::CHILD_ARGUMENT)
     {
         return std::process::ExitCode::from(ibis::pdf_text::run_child(&arguments[2..]));
     }
@@ -28,7 +28,7 @@ fn main() -> std::process::ExitCode {
     // A built-in source adapter, started only by `ibis` itself (decision 0056).
     if arguments
         .get(1)
-        .is_some_and(|argument| argument == ibis_engine::sources::CHILD_ARGUMENT)
+        .is_some_and(|argument| argument == ibis_sources::adapter::CHILD_ARGUMENT)
     {
         return std::process::ExitCode::from(match arguments.get(2).and_then(|name| name.to_str()) {
             Some(ibis_sources::adapter::ENDNOTE) => {

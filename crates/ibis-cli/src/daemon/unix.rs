@@ -1,5 +1,5 @@
 //! The runtime directory and both ends of a same-user Unix connection.
-use ibis_core::atomic_file::open_private;
+use ibis_os::atomic_file::open_private;
 use nix::poll::{PollFd, PollFlags, poll};
 use nix::sys::socket::{self, AddressFamily, SockFlag, SockType, UnixAddr};
 use nix::unistd::{Uid, geteuid};

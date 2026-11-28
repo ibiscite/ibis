@@ -22,15 +22,10 @@ definition does not certify a passing run. Plans live in
 
 ## Local commands
 
-Setup is in [CONTRIBUTING.md](../CONTRIBUTING.md#setup). Run the focused check
-for the changed behaviour; `land.sh` runs fast local checks before requesting
-auto-merge on hosted CI.
+Everyday commands (setup, focused tests, landing) are in
+[development](development.md#one-command-per-job). These are the specialised ones:
 
 ```sh
-bash scripts/land.sh
-cargo test -p ibis-engine --locked TEST_FILTER
-cargo test -p ibis-desktop --locked TEST_FILTER
-pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1
 node --test scripts/doc-links.test.mjs
 node scripts/gen.mjs --check
 node scripts/contract-compat.mjs --base refs/tags/vX.Y.Z
@@ -52,6 +47,7 @@ and inspect the `.snap` diff.
 | Rust unit, integration and proptest | Parsers, search, citations, settings, source lifecycle and delivery guards. | Simulated decisions do not prove native focus, permissions or insertion. |
 | Engine boundary | `engine_boundary.rs` compares Cargo's dependency graph with allowed layers. | A crate boundary check, not a behaviour test. |
 | CLI/MCP fixtures | [Canonical cases](../fixtures/cases/README.md), [formatted fixtures](../fixtures/formatted/README.md), schemas and error transcripts. | Covers only the requests each front end can express. |
+| Zotero evidence | [Zotero's own Quick Copy output](../fixtures/zotero/quick-copy/README.md) for 297 invented items in each curated style, compared with Ibis reading them from Zotero and from an exported CSL-JSON file; every difference is listed per style. | Quick Copy text, HTML and bibliography layout only: Word fields and compiled documents are separate evidence. |
 | Interface tests | Picker, Settings, keyboard, composition, delayed replies and accessibility structure with shared IPC/delivery fakes; the canvas checks portalled citation details and Reader. | jsdom and synthetic events do not exercise native clipboard/input APIs, a real input method or screen reader. |
 | Native WebKit canvas | System WebKit colours and measured layout rules on macOS. | Startup pictures are not reviewed visual-state comparisons. |
 | Picture gate | Every canvas PNG matches the committed visual spec in `apps/desktop/gallery/baselines/`, using pinned Linux WebKit and fonts. | Does not replace visual review or native platform checks. |
@@ -106,12 +102,19 @@ regression at the layer that owns the cause.
 
 ## Where checks run
 
-[`land.sh`](../scripts/land.sh) runs fast local feedback from a clean, named
-branch: formatting, workspace `cargo check` with all targets, TypeScript,
-Biome lint and `gen.mjs --check`. While main's latest finished push CI failed,
-it refuses any title but `fix` or `revert` and names the red run. Dependencies
-must already be installed; Rust uses this worktree's `target` without sccache. These checks are for speed
-only ([decision 0049](decisions/0049-local-gate.md)).
+[`check.sh`](../scripts/check.sh) holds the commands of CI's checks as named
+parts (`identities`, `scripts`, `build`, `interface`, `format`, `brand`, `lint`,
+`lint-app`, `test`, `test-app`, `fidelity`, `generated`, `csl`). CI's jobs call
+these parts, and with no arguments the script runs the parts that
+`ci-plan.mjs --local` selects for the branch against `origin/main`, so a machine
+runs CI's checks for its own system. CI alone adds the other systems, the
+picture gate, the native GUI tests, actionlint, `cargo deny` and the release
+checks. Dependencies must already be installed.
+
+[`land.sh`](../scripts/land.sh) runs `check.sh` from a clean, named branch.
+While main's latest finished push CI failed, it refuses any title but `fix` or
+`revert` and names the red run. Rust uses this worktree's `target` without
+sccache ([decision 0049](decisions/0049-local-gate.md)).
 
 After passing, it pushes the checked head, preserves existing PR text or creates
 a PR from `--title`/`--body-file` or the first non-merge commit, marks drafts

@@ -331,7 +331,7 @@ fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>
     text.plugin_note = target
         .as_ref()
         .filter(|_| pasted)
-        .is_some_and(|id| app.state::<crate::destination::AppMemory>().take_plugin_note(id));
+        .is_some_and(|id| app.state::<ibis_engine::grants::Grants>().take_plugin_note(id));
     if let Some(format) = notice.take_format(owner.latest_token, target.as_ref())
         && format.choice.from == ibis_engine::format::FormatFrom::Suggestion
     {

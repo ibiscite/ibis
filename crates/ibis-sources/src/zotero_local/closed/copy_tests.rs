@@ -35,7 +35,7 @@ fn cache_without_a_committed_stamp_is_never_read() {
     let cache = scratch();
     let store = Store::open(cache.path(), &control()).unwrap();
     let root = cache.path().join(ROOT);
-    let mut partial = ibis_core::atomic_file::create_private(&root.join("zotero.sqlite")).unwrap();
+    let mut partial = ibis_os::atomic_file::create_private(&root.join("zotero.sqlite")).unwrap();
     partial.write_all(b"interrupted publication").unwrap();
     drop(partial);
     let mut copies = 0;

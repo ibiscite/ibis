@@ -631,7 +631,7 @@ fn restoring_settings_honors_the_apps_writer_lock_and_clears_disabled_history() 
         .to_string(),
     )
     .unwrap();
-    let file = ibis_core::atomic_file::open_private(&settings.with_extension("json.lock")).unwrap();
+    let file = ibis_os::atomic_file::open_private(&settings.with_extension("json.lock")).unwrap();
     let deadline = Instant::now() + WAIT;
     while let Err(error) = file.try_lock() {
         assert!(
@@ -715,6 +715,6 @@ fn picker_releases_a_delivery_whose_acknowledgement_stops_mid_frame() {
     let start = Instant::now();
     wire.write_all(b"Content-Length: 4\r\n\r\nt").unwrap();
     assert!(read_response_frame(&mut reader).unwrap().is_none());
-    assert!(start.elapsed() >= ibis_core::destination::PASTE_DEADLINE);
+    assert!(start.elapsed() >= std::time::Duration::from_millis(ibis_core::destination::PASTE_DEADLINE_MS));
     assert!(start.elapsed() < Duration::from_secs(5));
 }

@@ -2,8 +2,8 @@
 
 use serde_json::Value;
 
-use super::Library;
 use super::api::{self, Transport, ZoteroError};
+use ibis_core::zotero::Library;
 
 /// Groups listed per request; the most Zotero returns at once.
 const GROUP_PAGE: usize = 100;
@@ -92,8 +92,14 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::zotero::api::{Response, TransportError};
-    use crate::zotero::test_support::number;
+    use crate::zotero_local::api::{Response, TransportError};
+
+    fn number(path: &str, name: &str) -> usize {
+        path.split(['?', '&'])
+            .find_map(|part| part.strip_prefix(name))
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0)
+    }
 
     fn ok(headers: &[(&str, String)], body: Value) -> Response {
         let mut all = vec![("Zotero-API-Version".to_string(), "3".to_string())];

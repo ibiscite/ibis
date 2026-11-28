@@ -1,6 +1,6 @@
 //! Fixed native command locations; Settings never supplies a path or executable.
 use crate::errors::NativeFailure;
-use ibis_core::command_install::{CommandInstall, CommandStatus, PROFILE_LINE};
+use ibis_os::command_install::{CommandInstall, CommandStatus, PROFILE_LINE};
 use tauri::Manager;
 
 fn installer(app: &tauri::AppHandle) -> Result<CommandInstall, NativeFailure> {
@@ -33,7 +33,7 @@ fn installer(app: &tauri::AppHandle) -> Result<CommandInstall, NativeFailure> {
         ])
         .collect();
     #[cfg(target_os = "linux")]
-    let appimage = ibis_core::command_install::appimage_for(
+    let appimage = ibis_os::command_install::appimage_for(
         &exe,
         std::env::var_os("APPIMAGE").map(std::path::PathBuf::from),
         std::env::var_os("APPDIR").map(std::path::PathBuf::from),
@@ -52,13 +52,18 @@ fn installer(app: &tauri::AppHandle) -> Result<CommandInstall, NativeFailure> {
 /// Connections use the installer's discovery locations, plus the per-user
 /// command even when a Dock-launched app has not inherited that PATH yet.
 pub(crate) fn agent_home(app: &tauri::AppHandle) -> Result<ibis_engine::agent_apps::Home, NativeFailure> {
-    agent_environment(
+    let mut home = agent_environment(
         installer(app)?,
         app.path().config_dir().map_err(|_| NativeFailure)?,
         std::env::var_os("CODEX_HOME")
             .map(std::path::PathBuf::from)
             .filter(|path| path.is_absolute()),
-    )
+    )?;
+    // The package's own folder changes with each Store update; its alias stays.
+    if let Some(alias) = crate::store::command() {
+        home.ibis = Some(alias);
+    }
+    Ok(home)
 }
 
 fn agent_environment(
@@ -148,6 +153,9 @@ async fn operation(app: tauri::AppHandle, step: Step) -> Result<CommandStatus, N
     static OWNER: tauri::async_runtime::Mutex<()> = tauri::async_runtime::Mutex::const_new(());
     // Lock before scheduling workers so a later removal cannot overtake an install.
     with_owner(&OWNER, move || {
+        if let Some(alias) = crate::store::command() {
+            return Ok(packaged(alias));
+        }
         let install = installer(&app)?;
         match step {
             Step::Status => install.status(),
@@ -158,6 +166,19 @@ async fn operation(app: tauri::AppHandle, step: Step) -> Result<CommandStatus, N
         .map_err(|_| NativeFailure)
     })
     .await
+}
+
+/// The Store package declares the command itself: it is on PATH while the app
+/// is installed and goes with it, so Settings neither installs nor removes it.
+fn packaged(alias: std::path::PathBuf) -> CommandStatus {
+    CommandStatus {
+        state: ibis_core::command_install::CommandState::Matching,
+        version: Some(ibis_core::VERSION.into()),
+        used_path: Some(alias),
+        profile_line: None,
+        removable: false,
+        installable: false,
+    }
 }
 
 pub(crate) async fn with_owner<T: Send + 'static, E: From<NativeFailure> + Send + 'static>(

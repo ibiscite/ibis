@@ -14,8 +14,11 @@ use std::time::{Duration, Instant};
 
 #[cfg(test)]
 use ibis_core::destination::PastePermission;
-use ibis_core::destination::{AppPaste, CopyReason, PASTE_DEADLINE as LATE, System};
+use ibis_core::destination::{AppPaste, CopyReason, PASTE_DEADLINE_MS, System};
 use serde::{Deserialize, Serialize};
+
+/// How old a clipboard write may be when its paste is posted.
+const LATE: Duration = Duration::from_millis(PASTE_DEADLINE_MS);
 
 pub mod capture;
 mod delivery;

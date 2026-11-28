@@ -2,7 +2,6 @@
 use ibis_core::contract::{CitationForm, GoldenCase, LibraryObject, OutputSpec};
 use ibis_engine::{Cancellation, Engine};
 use serde_json::json;
-use std::sync::Arc;
 
 #[test]
 fn private_urls_in_file_fields_and_note_overrides_never_reach_formatted_output()
@@ -58,12 +57,12 @@ fn private_urls_in_file_fields_and_note_overrides_never_reach_formatted_output()
                 assert!(!format!("{:?}", loaded.snapshot).contains("private.pdf"));
                 case.request.items[0].item = record.id.clone();
                 engine
-                    .publish_library(
+                    .publish_library(&ibis_sources::LoadedLibrary::new(
                         loaded.library.clone(),
                         ibis_engine::LibraryKind::Snapshot,
                         ibis_engine::SourceCapability::SNAPSHOT,
-                        Arc::new(loaded.snapshot),
-                    )
+                        loaded.snapshot,
+                    ))
                     .map_err(|error| format!("{error:?}"))?;
                 let prepared = engine
                     .prepare_citation(&case.request, &Cancellation::default())

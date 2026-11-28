@@ -18,8 +18,8 @@ use crate::contract::citation::{KeySyntax, OutputSpec};
 pub use site::site;
 pub use table::{APPS, App};
 
-/// Maximum age of a clipboard write when native paste is posted.
-pub const PASTE_DEADLINE: std::time::Duration = std::time::Duration::from_millis(1_500);
+/// Maximum age, in milliseconds, of a clipboard write when native paste is posted.
+pub const PASTE_DEADLINE_MS: u64 = 1_500;
 
 /// Where an app ID belongs: the operating system it runs on, or the web for
 /// a website inside a browser, whose ID is only its site name (see [`site`]).
@@ -32,17 +32,6 @@ pub enum System {
     /// A website, such as `overleaf.com`: never a path, query or full address.
     /// It only chooses a format; pasting is always decided for the browser.
     Web,
-}
-
-impl System {
-    /// The system this build runs on; other Unix desktops count as Linux.
-    pub const HERE: Self = if cfg!(target_os = "macos") {
-        Self::Macos
-    } else if cfg!(windows) {
-        Self::Windows
-    } else {
-        Self::Linux
-    };
 }
 
 /// An app as the platform names it: a bundle ID on macOS, an executable name

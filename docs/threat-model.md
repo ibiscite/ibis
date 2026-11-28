@@ -20,7 +20,7 @@ endpoints, updates and extensions. Report a gap through [SECURITY.md](../SECURIT
 | Attacker | Reach | Not in scope |
 | --- | --- | --- |
 | Author of a shared library file, PDF or EndNote export | Bytes in a file the person opens | Convincing the person to open it |
-| Another program on the same computer | Answering on Zotero's port, writing Zotero's files, naming itself as an adapter only if the person configures it | A program running as the person can already do what they can |
+| Another program on the same computer | Answering on Zotero's port, writing Zotero's files, connecting to the warm engine's socket from another user's session, naming itself as an adapter only if the person configures it | A program running as the person can already do what they can |
 | Text inside a record, aimed at an AI agent using `ibis mcp` | What the agent reads back | The agent's own judgement |
 | Someone on the network | Update downloads and the update feed | — |
 | Someone who controls the build or release | Packages people download | The maintainer's own accounts |
@@ -83,11 +83,34 @@ compared with the shown hash at commit ([architecture](architecture.md)).
 
 ## Local endpoints
 
-`ibis serve` and `ibis mcp` speak over stdio to the program that started them
-and open no socket. MCP tools are read-only; their results mark library text
-as data so an agent does not act on it.
+`ibis serve --stdio` and `ibis mcp` speak over stdio to the program that
+started them. MCP tools are read-only; their results mark library text as data
+so an agent does not act on it.
 
-The **editor endpoint** (decision 0008) is the one listening socket: off
+The **warm engine** (`ibis daemon`, [decision 0065](decisions/0065-one-warm-engine-thin-shells.md))
+listens on a same-user local socket and never on the network. The CLI and
+each `ibis mcp` session connect to it when it is available and start it on
+demand; without it every command runs in its own process. On Linux
+and macOS the socket sits in a directory of mode `0700` that the person owns,
+and each end checks the other's user ID (`SO_PEERCRED`, `getpeereid`). On
+Windows it is a named pipe created as the first instance, refusing remote
+clients, with a DACL for the person's SID and a token check on each end. Every
+connection starts with a handshake naming the protocol and build; at most 32
+connections are served at once. It answers the same method table as
+`ibis serve --stdio` and the requests the `ibis` command itself makes, so it
+can do nothing a program running the `ibis` command as the person could not. Another user's session cannot reach it. Tests:
+`daemon/unix.rs` and `daemon/windows.rs` (another user's peer, a shared socket
+directory, a second first instance) and `crates/ibis-cli/tests/daemon.rs`
+(capacity, crashes, build changes, the same answers as stdio).
+
+**Paste approvals** (`apps.json`, `ibis_engine::grants`) record the person's
+own answer per app, and only Ibis's own picker writes them. They are consent,
+not a security boundary: any program running as the person can edit the file.
+What they stop is a paste nobody approved, including one an agent's text asks
+for: no MCP tool, record or editor request can grant one. An unreadable file
+grants nothing until each app is answered again. Tests: `grants/tests.rs`.
+
+The **editor endpoint** (decision 0008) is the one TCP socket: off
 until switched on in Settings, it binds a TCP port on 127.0.0.1 only
 (`apps/desktop/src-tauri/src/editor_endpoint.rs`) so an editor can ask for a
 citation, as Better BibTeX's Cite as You Write does. Any program on the

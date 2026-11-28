@@ -7,8 +7,8 @@
 //! read-only home) ids hold for this process only; they are never guessable, and
 //! an old id then finds nothing rather than something else.
 use crate::LibraryKind;
-use ibis_core::atomic_file::AtomicFile;
 use ibis_core::contract::LibraryId;
+use ibis_os::atomic_file::AtomicFile;
 use std::{
     io::{self, Read},
     path::{Path, PathBuf},

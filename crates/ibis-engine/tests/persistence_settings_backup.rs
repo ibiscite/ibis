@@ -24,7 +24,7 @@ fn read(path: &Path) -> String {
 }
 
 fn other_system() -> System {
-    if System::HERE == System::Windows {
+    if ibis_engine::SYSTEM == System::Windows {
         System::Macos
     } else {
         System::Windows
@@ -123,7 +123,7 @@ fn home_paths_are_written_from_the_home_folder_and_read_on_any_computer() {
 #[test]
 fn shortcuts_are_kept_and_written_per_system() {
     let (_directory, path) = fixture::file();
-    let here = system_name(System::HERE);
+    let here = system_name(ibis_engine::SYSTEM);
     let other = system_name(other_system());
     write(&path, r#"{"shortcut":"Alt+Space"}"#);
     assert_eq!(fixture::read(&path).portable.shortcut.here(), Some("Alt+Space"));
@@ -251,14 +251,17 @@ fn a_backup_holds_what_travels_and_names_the_system_of_each_shortcut() {
     let written: Value = serde_json::from_str(&text).unwrap_or_default();
     assert_eq!(written["ibis_settings_backup"], 1);
     assert_eq!(written["made_by"], "0.2.8");
-    assert_eq!(written["made_on"], system_name(System::HERE));
+    assert_eq!(written["made_on"], system_name(ibis_engine::SYSTEM));
     let settings = &written["settings"];
     assert_eq!(settings.as_object().map(|settings| settings.len()), Some(6));
-    assert_eq!(settings["shortcut"], json!({system_name(System::HERE): "Alt+Shift+K"}));
+    assert_eq!(
+        settings["shortcut"],
+        json!({system_name(ibis_engine::SYSTEM): "Alt+Shift+K"})
+    );
     assert_eq!(settings["library"], json!({"zotero": {"group": 42}}));
     assert_eq!(settings["accent"], "ibis");
     let read = backup::parse(&text).unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(read.made_on, System::HERE);
+    assert_eq!(read.made_on, ibis_engine::SYSTEM);
     assert_eq!(read.settings.output.as_deref(), Some("ieee"));
 }
 

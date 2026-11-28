@@ -1,9 +1,9 @@
 //! Resolve a PDF through the existing read-only loopback transport. Only a
 //! validated Zotero item URI is accepted; uncertainty falls back to the item.
-use ibis_core::zotero::api::Transport;
+use super::api::Transport;
 
 pub fn pdf_uri(item: &str) -> Option<String> {
-    with_transport(item, &mut ibis_sources::zotero_source::LocalZotero::default())
+    with_transport(item, &mut super::LocalZotero::default())
 }
 
 fn key(value: &str) -> bool {
@@ -53,7 +53,7 @@ fn with_transport(item: &str, transport: &mut impl Transport) -> Option<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ibis_core::zotero::api::{Response, TransportError};
+    use crate::zotero_local::api::{Response, TransportError};
     struct Fake(Result<Response, TransportError>, &'static str);
     impl Transport for Fake {
         fn get(&mut self, path: &str) -> Result<Response, TransportError> {

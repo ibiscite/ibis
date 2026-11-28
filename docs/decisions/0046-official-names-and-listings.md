@@ -7,6 +7,16 @@
 - **Official listings.** Flathub `com.ibiscite.ibis` (verified domain), winget,
   the MCP Registry under the `ibiscite` namespace, the Homebrew tap and Nix all
   come before 1.0.
+- **Microsoft Store (2026-11-28).** The Windows app is also listed in the
+  Microsoft Store, as an MSIX package of the installer's files that the Store
+  signs: free for an individual developer, and Store installs carry no
+  SmartScreen warning. The Store copy updates through the Store and starts at
+  login through its package's startup task. Its writes to Ibis's settings and
+  to the agent apps' files it connects go to the real folders (flexible
+  virtualization); everything else it creates in AppData stays private to the
+  package. Windows 10 ignores that exclusion, so the Store copy needs Windows
+  11 and Windows 10 keeps the installer. The listing waits for the
+  owner's Partner Center account ([RELEASING.md](../../RELEASING.md#the-microsoft-store)).
 - **Code signing.** Signing stays a 1.0 question under
   [decision 0032](0032-release-gates.md). Meanwhile, downloads are verifiable
   with [build provenance](../../TRADEMARKS.md#how-to-recognise-official-ibis).

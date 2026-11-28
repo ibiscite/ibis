@@ -117,6 +117,54 @@ are built in this order of need.
   then each manager's collections and files. Agent suggestions and document
   reports live there.
 
+Quality-of-life choices (the maintainer, 2026-11-28, all twelve as proposed).
+The engine owns the citation and what it remembers; the app owns windows,
+placement and focus.
+
+- **Placement:** the picker opens in Spotlight's place on the screen being
+  written on; a drag moves it there for that display. Reset Position is in the
+  menu bar menu and on a long press of the bird; a spot now off screen falls
+  back to the centre.
+- **Click away keeps the draft:** the whole draft (search, added references,
+  selected row) returns if the shortcut is pressed within 10 minutes, under one
+  line: “Where you left off, 3 minutes ago · Start Over ⌘⌫”.
+- **Keep Open** (⌘K): a small floating picker beside the document that stays
+  across pastes; ↩ pastes and clears, a pin shows in the field, Esc closes it.
+- **Edit the citation at the caret:** inside `\cite{…}` or on a Word citation
+  the picker opens with that citation and ↩ replaces it; inside `\cite{a,|}`
+  it inserts only the new key.
+- **Typed prefix:** text just before the caret that starts a citation
+  (“(Okafor”, “@oka”, “\cite{oka”) becomes the search and is replaced.
+- **Browser sites:** the page address comes from Accessibility, with no new
+  permission; each site keeps its own format, storing only the host.
+- **Per document:** each document remembers its library and format, falling
+  back to the app's; “In this document” is the first section with an empty
+  search, in an order that never moves while typing.
+- **Unreadable library:** the last good copy stays searchable and citable,
+  under one line naming the cause and the fix (“Zotero is syncing · showing
+  the copy from 9:12 · Open Zotero”).
+- **Drag and drop:** a row dragged out drops the citation in the target's
+  format, ⌥ drops the PDF; a PDF, DOI or title dropped in is searched for.
+- **“This page” row:** with a browser in front and an empty search, the page
+  (title, site, date read, from the window, nothing fetched) can be added and
+  cited. Writing to a manager's local port or any network use waits for the
+  maintainer's yes.
+- **Link format:** beside APA and LaTeX; with words selected ↩ links them to
+  the DOI or URL, with nothing selected it pastes the title as a link. In this
+  format the selection is the link text, not the search.
+- **Small surprises, rare and quiet,** behind their switch: a short note at
+  milestones (the 100th citation, a reference list passing 200), “Your year in
+  references” each December in the Library, and the bird looks up when “ibis”
+  is typed. All local; no sounds, seasonal icons or confetti.
+- **Built without asking:** a display unplugged moves the picker to the
+  remaining one; an app that can't take text makes the button Copy and says
+  why first; switching apps never pastes into the wrong window; Secure
+  Keyboard Entry is named when it blocks the shortcut; a library still
+  downloading shows its progress; a `.bib` with broken entries loads the rest
+  and lists the lines; a retracted item says so before it is cited; a
+  scannable placeholder format for Scrivener and Ulysses; full screen, Spaces
+  and Stage Manager are checked on each review.
+
 ## What the interface does
 
 - **The picker is a launcher.** Keep the field, results and delivery in that

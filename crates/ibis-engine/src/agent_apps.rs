@@ -781,11 +781,11 @@ fn edit_json(path: &Path, key: &str, entry: Option<String>) -> Result<(), String
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|_| "its settings folder could not be created")?;
     }
-    let staged = ibis_core::atomic_file::AtomicFile::new(path, written.as_bytes())
+    let staged = ibis_os::atomic_file::AtomicFile::new(path, written.as_bytes())
         .map_err(|_| "the file could not be written".to_owned())?;
     let backup = if before.is_some() {
         let message = "a backup of the file could not be written; nothing was changed";
-        let (backup, mut file) = ibis_core::atomic_file::create_numbered(path, ".ibis-backup").map_err(|_| message)?;
+        let (backup, mut file) = ibis_os::atomic_file::create_numbered(path, ".ibis-backup").map_err(|_| message)?;
         file.write_all(text.as_bytes())
             .and_then(|()| file.sync_all())
             .inspect_err(|_| {

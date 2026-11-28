@@ -510,6 +510,7 @@ fn field_kind(name: &str) -> Option<FieldKind> {
         | "ISSN"
         | "jurisdiction"
         | "keyword"
+        | "license"
         | "medium"
         | "note"
         | "original-publisher"
@@ -548,6 +549,7 @@ fn field_kind(name: &str) -> Option<FieldKind> {
         | "page"
         | "page-first"
         | "part"
+        | "part-number"
         | "printing"
         | "supplement"
         | "volume" => Some(FieldKind::Number),

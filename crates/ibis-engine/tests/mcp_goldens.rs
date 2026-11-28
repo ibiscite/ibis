@@ -4,7 +4,7 @@
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, Engine, mcp};
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, sync::Arc};
+use std::collections::BTreeSet;
 
 #[test]
 fn golden_cases_replay_through_mcp() {
@@ -35,12 +35,12 @@ fn golden_cases_replay_through_mcp() {
                 .map(|item| item.object.clone())
                 .collect();
             engine
-                .publish_library(
+                .publish_library(&ibis_sources::LoadedLibrary::new(
                     library,
                     ibis_engine::LibraryKind::Snapshot,
                     ibis_engine::SourceCapability::SNAPSHOT,
-                    Arc::new(Snapshot::new(objects).unwrap()),
-                )
+                    Snapshot::new(objects).unwrap(),
+                ))
                 .unwrap();
         }
         let reply = mcp::handle(

@@ -56,6 +56,7 @@ mod settings_window;
 mod setup;
 mod shortcut_setting;
 mod sizing;
+mod store;
 mod system_open;
 mod tray;
 mod updater;
@@ -83,7 +84,7 @@ fn main() {
     let args: Vec<String> = std::env::args_os()
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();
-    if let Some(receipt) = ibis_core::toggle::receipt_path(&args) {
+    if let Some(receipt) = ibis_os::toggle::receipt_path(&args) {
         let _ = instance::sign_receipt(receipt);
     }
     let mut context = tauri::generate_context!();

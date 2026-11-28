@@ -1,7 +1,7 @@
 //! Byte-only acquisition and one persistent private cache. SQLite never sees a source path.
 use super::{ClosedError, ClosedSnapshot, ClosedWarning, Control, FileLease, database, keys, platform};
-use ibis_core::atomic_file::{create_numbered, create_private, sync_directory};
 use ibis_core::contract::Fingerprint;
+use ibis_os::atomic_file::{create_numbered, create_private, sync_directory};
 use std::fs::{File, Metadata};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};

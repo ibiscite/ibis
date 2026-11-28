@@ -3,12 +3,35 @@
 Ibis has a Rust engine, a command line and two desktop shells. This page
 describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 
+## Layers
+
+Each layer uses only the ones below it and is usable without the ones above;
+`engine_boundary.rs` in `ibis-engine` checks the crate graph and that core
+does no I/O. Each library crate's documentation opens with an example that
+uses it alone, and `cargo test` runs it.
+
+| Layer | Crates | Usable alone as |
+| --- | --- | --- |
+| Core | `ibis-core` | The nouns and pure rules: no file, socket, process, clock or platform branch |
+| Readers and formatter | `ibis-sources`, `ibis-csl` | A library file or Zotero read into a snapshot; a snapshot formatted with a CSL style |
+| Engine | `ibis-engine` | One `Engine` answering every method of the table, in process |
+| Background engine | `ibis daemon` in `ibis-cli` | The same methods over a same-user socket ([below](#warm-local-engine)) |
+| Apps | `ibis-cli`, the desktop app, `ibis-native` | The `ibis` command, the picker, native paste |
+
+`ibis-os` sits beside core under everything else: the operating system calls
+the layers share (private atomic writes, bounded filesystem work, contained
+parser panics, the `ibis` command's place on the system), so core stays pure.
+The versioned surface is the contract's JSON ([the CLI reference](cli.md#output-for-scripts-and-agents));
+the Rust crates are not published and their APIs may change before 1.0
+([0056](decisions/0056-open-layer-for-research-material.md)).
+
 ## Crates and clients
 
 | Location | Responsibility |
 | --- | --- |
 | `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search and delivery rules. |
-| `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API, closed database and Better BibTeX), discovery, database snapshots and file watches. Includes the built-in EndNote [source adapter](source-adapters.md). Each reader declares what its library offers. |
+| `crates/ibis-os` | Whole-file private writes, the bounded filesystem worker, parser panic containment, and installing the `ibis` command and its toggle receipt. Depends on no Ibis crate. |
+| `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API and its rules, the closed database and Better BibTeX), discovery, database snapshots and file watches. Includes the built-in EndNote [source adapter](source-adapters.md). Each reader declares what its library offers. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
 | `crates/ibis-cli` | The `ibis` executable, its same-user daemon and the child processes for PDFs, documents and built-in source adapters. Depends on core and engine, and enables the EndNote reader and the document readers in `ibis-sources` for those processes. |
@@ -79,11 +102,13 @@ CLI and MCP source adapters start in the invoking process's working directory.
 Direct socket clients supply absolute file paths.
 
 The daemon owns CLI settings writes, watches settings files for hand edits
-and clears stored recents when the saved switch is off. In phase 1 the Tauri
-app still has an in-process engine and records its delivered citations. Both
-processes use the existing settings file lock, including when saving or
-clearing recents. The app takes its own paste consent and delivery decisions
-until it becomes a client in phase 2.
+and clears stored recents when the saved switch is off. The Tauri app keeps
+its in-process engine: native shells replace it system by system, and it is
+not rebuilt as a client. It shares the daemon's files instead of its memory.
+Settings and recents use the settings file lock. Paste approvals in
+`apps.json` belong to `ibis_engine::grants`, which keeps no copy in memory:
+every answer reads the file and every change rewrites it under
+`apps.json.lock`, so two processes never undo each other's choices.
 
 ## Data and identity
 
@@ -457,6 +482,51 @@ searches reuse its loaded library and index.
 
 RSS was sampled with `ps` after the same search and counts shared pages in
 each process. The daemon exited 60.1 seconds after its last client disconnected.
+
+### App measurements
+
+These are the Tauri app's numbers against
+[0032](decisions/0032-release-gates.md)'s budgets. Each native shell has to
+beat them on the same system.
+
+On Linux, the nightly from 2026-11-27 (`d03da33f`) ran with 10,000 references
+from the generator in
+[`macos-nightly-budget.swift`](../scripts/macos-nightly-budget.swift), so all
+three systems use the same library. It used a disposable profile with update
+checks off. The protocol is the same as on the Mac: start, wait 15 s, hide,
+then sample over 240 s.
+
+The machine is a 4-core, 8-thread i7-4770 with 15 GiB of RAM, running Ubuntu
+26.04 and WebKitGTK 2.52. The app ran under Xvfb and Openbox on X11, with
+software rendering and the accessibility bridge on, at load averages below
+1.3. Memory is the summed PSS of the app and every child process, including
+the WebKit web, network and sandbox helpers. Wake-ups are context switches
+summed over all threads, so they are an upper bound.
+
+| Measurement | Linux 10k | Linux 50k | Budget |
+| --- | --- | --- | --- |
+| Hidden memory (PSS) | 413–425 MiB | 730 MiB | ≤ 200 MiB |
+| Hidden idle CPU | 0.27% of a core | 0.29% | ≤ 0.2% |
+| Hidden wake-ups | 24.7/s | 24.8/s | ≤ 1/s |
+| Shortcut to keyboard focus, p50 / p95 | 62 / 86 ms | p95 86 ms | p95 ≤ 100 ms |
+
+- **Memory:** at 10k, `ibis-desktop` uses 221 MiB, about 90 MiB of it for the
+  library. The WebKit page uses 167–180 MiB and the network process 19 MiB.
+- **Wake-ups:** about 20 a second are on the app's main thread, which matches
+  a 50 ms timer.
+- **Opening:** the figures time Ctrl+Shift+Y to the app holding X keyboard
+  focus and include up to 23 ms of probe overhead. "avery", typed at that
+  moment, arrived whole 5 times out of 5. A full accessibility check that
+  Search has focus adds an AT-SPI tree walk of 90–180 ms, which is too slow to
+  judge a 100 ms budget.
+- **100k:** not measured, because 100k generated references exceed the app's
+  64 MiB library file limit.
+- **Windows:** pending.
+
+On macOS, the installed nightly from 2026-11-26 used 255 MB of physical
+footprint after four hours hidden with a real library
+([0065](decisions/0065-one-warm-engine-thin-shells.md)), against the same
+200 MiB budget.
 
 ## Vocabulary
 

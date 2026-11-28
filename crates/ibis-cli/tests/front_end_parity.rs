@@ -6,7 +6,7 @@ use ibis_core::contract::*;
 use ibis_engine::protocol::{read_frame, write_frame};
 use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::{Value, json};
-use std::{io::Cursor, sync::Arc};
+use std::io::Cursor;
 
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -103,12 +103,12 @@ fn engine(case: &GoldenCase) -> Result<Engine> {
             .map(|item| item.object.clone())
             .collect();
         engine
-            .publish_library(
+            .publish_library(&ibis_sources::LoadedLibrary::new(
                 library,
                 ibis_engine::LibraryKind::Snapshot,
                 ibis_engine::SourceCapability::SNAPSHOT,
-                Arc::new(Snapshot::new(objects)?),
-            )
+                Snapshot::new(objects)?,
+            ))
             .map_err(|_| "publish")?;
     }
     Ok(engine)

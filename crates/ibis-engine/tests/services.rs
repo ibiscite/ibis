@@ -126,12 +126,12 @@ fn refresh_keeps_old_snapshots_and_refuses_ambiguous_keys() {
     record.id.library = library.clone();
     let second = Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap());
     engine
-        .publish_library(
+        .publish_library(&ibis_sources::LoadedLibrary::new(
             library.clone(),
             ibis_engine::LibraryKind::Snapshot,
             ibis_engine::SourceCapability::SNAPSHOT,
-            second,
-        )
+            (*second).clone(),
+        ))
         .unwrap();
     assert_eq!(old.objects().len(), 1);
     assert_eq!(engine.snapshot().unwrap().objects().len(), 2);
@@ -145,12 +145,12 @@ fn refresh_keeps_old_snapshots_and_refuses_ambiguous_keys() {
         ErrorCode::BadInput
     );
     engine
-        .publish_library(
+        .publish_library(&ibis_sources::LoadedLibrary::new(
             library,
             ibis_engine::LibraryKind::Snapshot,
             ibis_engine::SourceCapability::SNAPSHOT,
-            Arc::new(Snapshot::new(vec![]).unwrap()),
-        )
+            Snapshot::new(vec![]).unwrap(),
+        ))
         .unwrap();
     assert!(
         engine
@@ -196,21 +196,21 @@ fn a_slow_subscriber_wakes_to_current_state_without_blocking_publications() {
     let publisher = std::thread::spawn(move || {
         for _ in 0..40 {
             publishing
-                .publish_library(
+                .publish_library(&ibis_sources::LoadedLibrary::new(
                     library.clone(),
                     ibis_engine::LibraryKind::Snapshot,
                     ibis_engine::SourceCapability::SNAPSHOT,
-                    Arc::new(Snapshot::new(vec![]).unwrap()),
-                )
+                    Snapshot::new(vec![]).unwrap(),
+                ))
                 .unwrap();
         }
         publishing
-            .publish_library(
+            .publish_library(&ibis_sources::LoadedLibrary::new(
                 library,
                 ibis_engine::LibraryKind::Snapshot,
                 ibis_engine::SourceCapability::SNAPSHOT,
-                latest,
-            )
+                (*latest).clone(),
+            ))
             .unwrap();
         completed.send(()).unwrap();
     });
@@ -221,12 +221,12 @@ fn a_slow_subscriber_wakes_to_current_state_without_blocking_publications() {
     assert_eq!(engine.snapshot().unwrap().fingerprints(), newest.fingerprints());
     assert!(matches!(events.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)));
     engine
-        .publish_library(
+        .publish_library(&ibis_sources::LoadedLibrary::new(
             newest.objects()[0].object.id().library.clone(),
             ibis_engine::LibraryKind::Snapshot,
             ibis_engine::SourceCapability::SNAPSHOT,
-            Arc::new(Snapshot::new(vec![]).unwrap()),
-        )
+            Snapshot::new(vec![]).unwrap(),
+        ))
         .unwrap();
     events.try_recv().unwrap();
     assert!(engine.snapshot().unwrap().objects().is_empty());

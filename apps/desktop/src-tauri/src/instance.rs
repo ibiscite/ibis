@@ -4,7 +4,8 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use ibis_core::{atomic_file::AtomicFile, contract::Fingerprint};
+use ibis_core::contract::Fingerprint;
+use ibis_os::atomic_file::AtomicFile;
 use semver::Version;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
@@ -321,10 +322,10 @@ impl Handoff {
 }
 
 fn is_toggle(args: &[String]) -> bool {
-    matches!(args, [_, command] if command == "toggle") || ibis_core::toggle::receipt_path(args).is_some()
+    matches!(args, [_, command] if command == "toggle") || ibis_os::toggle::receipt_path(args).is_some()
 }
 
-/// Answer `ibis toggle` ([`ibis_core::toggle`]). Only an existing, empty
+/// Answer `ibis toggle` ([`ibis_os::toggle`]). Only an existing, empty
 /// regular file is written, so the argument can never create or overwrite a file.
 pub(crate) fn sign_receipt(path: &Path) -> io::Result<()> {
     let metadata = std::fs::symlink_metadata(path)?;
@@ -337,7 +338,7 @@ pub(crate) fn sign_receipt(path: &Path) -> io::Result<()> {
     if !opened.is_file() || opened.len() != 0 {
         return Err(io::ErrorKind::InvalidInput.into());
     }
-    file.write_all(ibis_core::toggle::RECEIPT)?;
+    file.write_all(ibis_os::toggle::RECEIPT)?;
     file.sync_all()
 }
 
@@ -497,7 +498,7 @@ mod tests {
 
     #[test]
     fn a_receipt_fills_only_an_existing_empty_file() {
-        use ibis_core::toggle::RECEIPT;
+        use ibis_os::toggle::RECEIPT;
         let dir = tempfile::tempdir().unwrap();
         let empty = dir.path().join("empty");
         std::fs::write(&empty, b"").unwrap();

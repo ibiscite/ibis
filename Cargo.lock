@@ -2149,6 +2149,7 @@ dependencies = [
  "console",
  "ibis-core",
  "ibis-engine",
+ "ibis-os",
  "ibis-sources",
  "icu_properties",
  "insta",
@@ -2170,7 +2171,6 @@ name = "ibis-core"
 version = "0.3.13"
 dependencies = [
  "memchr",
- "nix",
  "proptest",
  "schemars 1.2.3",
  "serde",
@@ -2214,6 +2214,7 @@ dependencies = [
  "ibis-engine",
  "ibis-native",
  "ibis-native-ffi",
+ "ibis-os",
  "image",
  "objc2-app-kit",
  "objc2-core-foundation",
@@ -2259,6 +2260,7 @@ dependencies = [
  "fluent-bundle",
  "ibis-core",
  "ibis-csl",
+ "ibis-os",
  "ibis-sources",
  "indexmap 2.14.2",
  "libc",
@@ -2283,6 +2285,7 @@ version = "0.3.13"
 dependencies = [
  "ibis",
  "ibis-core",
+ "ibis-os",
  "ibis-sources",
  "libfuzzer-sys",
  "serde_json",
@@ -2322,6 +2325,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibis-os"
+version = "0.3.13"
+dependencies = [
+ "nix",
+ "schemars 1.2.3",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+]
+
+[[package]]
 name = "ibis-sources"
 version = "0.3.13"
 dependencies = [
@@ -2329,6 +2344,7 @@ dependencies = [
  "flate2",
  "getrandom 0.4.3",
  "ibis-core",
+ "ibis-os",
  "insta",
  "nix",
  "notify",

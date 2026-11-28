@@ -57,7 +57,9 @@ Inspector edits page, form, prefix and suffix. Command+/ (Ctrl+/ elsewhere)
 shows the keys.
 
 Formatted citations are static text. Keys need a matching bibliography in
-your document's tools. [Writing-app limits](docs/compatibility.md#writing-apps)
+your document's tools, or the [Pandoc and Quarto filter](plugins/pandoc/README.md),
+which fills one in from your library. Obsidian has its own
+[plugin](plugins/obsidian/README.md). [Writing-app limits](docs/compatibility.md#writing-apps)
 and [citation features](docs/parity.md) explain the differences.
 
 ## Use with Zotero

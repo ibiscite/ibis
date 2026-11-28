@@ -1,7 +1,7 @@
 {
   "expected": {
     "data": {
-      "content_hash": "77b492511008730b99bda71b1f3896835ddc31342190a0b270e396f27b5c94fc",
+      "content_hash": "c057234189234aa8b93efb3b184e50dbf737c98591164039a3df76f20e9467ba",
       "display": {
         "nodes": [
           {
@@ -36,7 +36,7 @@
           }
         ]
       },
-      "html": "<div class=\"csl-entry\">A. Taylor, <i>Synthetic signals</i>. Imaginary Press, 2026.</div>",
+      "html": "<div class=\"csl-bib-body\" style=\"line-height: 1.35; \"><div class=\"csl-entry\">A. Taylor, <i>Synthetic signals</i>. Imaginary Press, 2026.</div></div>",
       "losses": [],
       "notices": [
         "needs-document-context",
@@ -48,7 +48,7 @@
           "outcome": "rendered"
         }
       ],
-      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\nA. Taylor, {\\i{}Synthetic signals}. Imaginary Press, 2026.\n}",
+      "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0 \\li0 \\fi0 \\sl240 \\slmult1 \\sa0 \nA. Taylor, {\\i{}Synthetic signals}. Imaginary Press, 2026.\n}",
       "text": "A. Taylor, Synthetic signals. Imaginary Press, 2026.",
       "language": "en-US"
     },

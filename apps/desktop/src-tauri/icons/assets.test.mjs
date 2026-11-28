@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
@@ -96,4 +96,18 @@ test("the Mac icon ships its appearances beside the older icon file", () => {
   expect(read("macos/Assets.car").length).toBeGreaterThan(0);
   expect(read("../Info.plist").toString()).toMatch(/CFBundleIconName<\/key>\s*<string>Ibis<\/string>/);
   expect(config.bundle.icon).toContain("icons/icon.icns");
+});
+
+test("the Store package has every image its manifest names, at the size its name says", () => {
+  const manifest = read("../packaging/msix/AppxManifest.xml").toString();
+  const names = readdirSync(root + "windows");
+  for (const logo of manifest.matchAll(/Assets\\(\w+)\.png/g)) {
+    expect(names.some((name) => name.startsWith(`${logo[1]}.`))).toBe(true);
+  }
+  const base = { Square44x44Logo: 44, Square150x150Logo: 150, StoreLogo: 50 };
+  for (const name of names) {
+    const [, logo, kind, value] = name.match(/^(\w+)\.(scale|targetsize)-(\d+)(?:_altform-unplated)?\.png$/);
+    const size = kind === "scale" ? (base[logo] * Number(value)) / 100 : Number(value);
+    expect(pngSize(read(`windows/${name}`))).toEqual([size, size]);
+  }
 });

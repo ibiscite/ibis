@@ -16,6 +16,7 @@ documents = ["ibis-core/documents", "dep:flate2", "dep:quick-xml", "dep:zip"]
 [dependencies]
 schemars = "=1.2.3"
 ibis-core = { path = "../ibis-core" }
+ibis-os = { path = "../ibis-os" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["raw_value"] }
 thiserror = "2.0.21"

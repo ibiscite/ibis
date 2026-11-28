@@ -95,12 +95,12 @@ fn changed_record_refuses_commit_even_when_the_text_is_identical() {
     record.csl.insert("title".into(), json!("Changed synthetic title"));
     let library = record.id.library.clone();
     engine
-        .publish_library(
+        .publish_library(&ibis_sources::LoadedLibrary::new(
             library,
             ibis_engine::LibraryKind::Snapshot,
             ibis_engine::SourceCapability::SNAPSHOT,
-            Arc::new(Snapshot::new(objects).unwrap()),
-        )
+            Snapshot::new(objects).unwrap(),
+        ))
         .unwrap();
     assert!(
         engine
@@ -270,12 +270,12 @@ fn delivery_refuses_a_key_that_became_ambiguous_after_commit() {
     record.id.key = "another-invented-record".into();
     let library = record.id.library.clone();
     engine
-        .publish_library(
+        .publish_library(&ibis_sources::LoadedLibrary::new(
             library,
             ibis_engine::LibraryKind::Snapshot,
             ibis_engine::SourceCapability::SNAPSHOT,
-            Arc::new(Snapshot::new(vec![first, other]).unwrap()),
-        )
+            Snapshot::new(vec![first, other]).unwrap(),
+        ))
         .unwrap();
     assert!(checked.check(&engine).is_err());
 }
@@ -335,12 +335,12 @@ fn citation_and_bibliography_delivery_allow_metadata_updates_and_refuse_changed_
             .push(ibis_core::identifier::Identifier::Arxiv("2601.00001".into()));
         let publish = |record: Record| {
             engine
-                .publish_library(
+                .publish_library(&ibis_sources::LoadedLibrary::new(
                     record.id.library.clone(),
                     ibis_engine::LibraryKind::Snapshot,
                     ibis_engine::SourceCapability::SNAPSHOT,
-                    Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()),
-                )
+                    Snapshot::new(vec![LibraryObject::Record(record)]).unwrap(),
+                ))
                 .unwrap()
         };
         publish(record.clone());

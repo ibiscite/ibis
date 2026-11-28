@@ -28,8 +28,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use ibis_core::atomic_file::{AtomicFile, create_numbered, open_private, sync_directory};
 use ibis_core::destination::System;
+use ibis_os::atomic_file::{AtomicFile, create_numbered, open_private, sync_directory};
 
 /// Version of the settings format this build reads and writes.
 pub const SCHEMA_VERSION: u32 = 2;
@@ -125,20 +125,20 @@ pub struct Shortcuts(BTreeMap<System, String>);
 impl Shortcuts {
     /// Only this system's shortcut.
     pub fn only_here(shortcut: impl Into<String>) -> Self {
-        Self(BTreeMap::from([(System::HERE, shortcut.into())]))
+        Self(BTreeMap::from([(crate::SYSTEM, shortcut.into())]))
     }
 
     /// The explicit shortcut for this system; `None` means the default.
     pub fn here(&self) -> Option<&str> {
-        self.0.get(&System::HERE).map(String::as_str)
+        self.0.get(&crate::SYSTEM).map(String::as_str)
     }
 
     /// Choose this system's shortcut, or `None` for the default. Other
     /// systems' shortcuts are kept.
     pub fn set_here(&mut self, shortcut: Option<String>) {
         match shortcut {
-            Some(shortcut) => self.0.insert(System::HERE, shortcut),
-            None => self.0.remove(&System::HERE),
+            Some(shortcut) => self.0.insert(crate::SYSTEM, shortcut),
+            None => self.0.remove(&crate::SYSTEM),
         };
     }
 
@@ -174,7 +174,7 @@ impl<'de> Deserialize<'de> for Shortcuts {
         }
         Ok(match Option::<Written>::deserialize(deserializer)? {
             None => Self::default(),
-            Some(Written::Here(shortcut)) => Self(BTreeMap::from([(System::HERE, shortcut)])),
+            Some(Written::Here(shortcut)) => Self(BTreeMap::from([(crate::SYSTEM, shortcut)])),
             Some(Written::BySystem(shortcuts)) => Self(shortcuts),
         })
     }
@@ -1714,7 +1714,7 @@ mod tests {
         let saved: Value =
             serde_json::from_str(&fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
-            saved["shortcut"][serde_json::to_value(System::HERE)
+            saved["shortcut"][serde_json::to_value(crate::SYSTEM)
                 .unwrap_or_default()
                 .as_str()
                 .unwrap_or_default()],

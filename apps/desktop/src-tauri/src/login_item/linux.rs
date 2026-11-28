@@ -124,7 +124,7 @@ impl DesktopFile {
     fn write(&self, contents: &str) -> Result<(), Failed> {
         let folder = self.path.parent().ok_or(Failed)?;
         std::fs::create_dir_all(folder).map_err(|_| Failed)?;
-        ibis_core::atomic_file::AtomicFile::new(&self.path, contents.as_bytes())
+        ibis_os::atomic_file::AtomicFile::new(&self.path, contents.as_bytes())
             .and_then(|file| file.replace())
             .map_err(|_| Failed)
     }

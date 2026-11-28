@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 clap = { version = "4.6.7", features = ["string"] }
 ibis-core = { path = "../ibis-core" }
+ibis-os = { path = "../ibis-os" }
 ibis-engine = { path = "../ibis-engine" }
 # The built-in EndNote source adapter, served as `ibis __source endnote`.
 ibis-sources = { path = "../ibis-sources", features = ["documents", "endnote"] }

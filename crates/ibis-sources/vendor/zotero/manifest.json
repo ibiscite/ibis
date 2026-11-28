@@ -55,6 +55,18 @@
       "path": "chrome/content/zotero/xpcom/cite.js",
       "out": "cite.js",
       "sha256": "a7891bf1da2aafadab1f4d52987aebf2f8d8415e6ee3c4dddfeb18410aad7157"
+    },
+    {
+      "source": "zotero",
+      "path": "chrome/content/zotero/xpcom/style.js",
+      "out": "style.js",
+      "sha256": "3924c7554fb7da47962e7632bfe0060b7295a1a4451a9ff8a13c04a2f351a31c"
+    },
+    {
+      "source": "zotero",
+      "path": "chrome/content/zotero/xpcom/quickCopy.js",
+      "out": "quickCopy.js",
+      "sha256": "4f01d0d0a8b852775130a1771ac268d0825d9d0c93a3858ab1bcae28f08e2732"
     }
   ],
   "oracleProfile": {

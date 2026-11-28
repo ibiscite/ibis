@@ -652,3 +652,55 @@ fn proposals_follow_the_name_the_library_was_opened_by() -> Result<(), Box<dyn s
     }
     Ok(())
 }
+
+/// Text a caller holds reads as the same file would, apart from what needs the
+/// file itself: its identity, attachments and proposals.
+#[test]
+fn text_reads_as_its_file_does() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    for (name, text) in [
+        ("damaged.bib", include_str!("../../../fixtures/bibtex/damaged.bib")),
+        (
+            "real-world.bib",
+            include_str!("../../../fixtures/bibtex/real-world.bib"),
+        ),
+        ("damaged.ris", include_str!("../../../fixtures/ris/damaged.ris")),
+        ("damaged.csv", include_str!("../../../fixtures/csv/damaged.csv")),
+    ] {
+        let path = dir.path().join(name);
+        std::fs::write(&path, text)?;
+        let file = ibis_sources::load_file(&path)?;
+        let library = ibis_core::contract::LibraryId::digest(name.as_bytes());
+        let held = ibis_sources::load_text(library.clone(), name, text)?;
+        let csl = |loaded: &ibis_sources::LoadedLibrary| -> Vec<serde_json::Value> {
+            loaded
+                .snapshot
+                .objects()
+                .iter()
+                .filter_map(|object| match &object.object {
+                    LibraryObject::Record(record) => Some(serde_json::to_value(&record.csl).ok()?),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(csl(&held), csl(&file), "{name}");
+        assert_eq!(held.warnings, file.warnings, "{name}");
+        assert_eq!(
+            held.damaged_keys.keys().collect::<Vec<_>>(),
+            file.damaged_keys.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            held.snapshot
+                .objects()
+                .iter()
+                .all(|object| object.object.id().library == library)
+        );
+        assert!(!held.capabilities.contains(&ibis_sources::SourceCapability::Proposals));
+    }
+    let too_large = " ".repeat(usize::try_from(ibis_sources::MAX_LIBRARY_BYTES)? + 1);
+    assert!(matches!(
+        ibis_sources::load_text(ibis_core::contract::LibraryId::digest(b"large"), "refs.bib", &too_large),
+        Err(ibis_sources::SourceError::TooLarge)
+    ));
+    Ok(())
+}

@@ -52,12 +52,27 @@ fn format(formatter: &Formatter, snapshot: &Snapshot, form: CitationForm) -> Cit
     formatter.format(snapshot, &request(snapshot, "apa", form)).unwrap()
 }
 
+/// An APA bibliography is copied with its hanging indent and double spacing,
+/// as Zotero writes them; a citation has no layout.
 fn paste(result: &CitationResult, text: &str, html: &str, rtf_body: &str) {
+    let (html, settings) = if html.starts_with("<div class=\"csl-entry\">") {
+        (
+            format!(
+                "<div class=\"csl-bib-body\" style=\"line-height: 2; margin-left: 2em; text-indent:-2em;\">{html}</div>"
+            ),
+            r" \li720 \fi-720 \sl480 \slmult1 \sa0 ",
+        )
+    } else {
+        (html.to_owned(), "")
+    };
     assert_eq!(result.text, text);
-    assert_eq!(result.html.as_deref(), Some(html));
+    assert_eq!(result.html.as_deref(), Some(html.as_str()));
     assert_eq!(
         result.rtf.as_deref(),
-        Some(format!("{{\\rtf1\\ansi\\deff0{{\\fonttbl{{\\f0 Times New Roman;}}}}\\f0\n{rtf_body}\n}}").as_str())
+        Some(
+            format!("{{\\rtf1\\ansi\\deff0{{\\fonttbl{{\\f0 Times New Roman;}}}}\\f0{settings}\n{rtf_body}\n}}")
+                .as_str()
+        )
     );
     assert!(result.copy_content(result.outcomes.len()).is_some());
 }
@@ -113,12 +128,12 @@ fn bibtex_url_and_doi_dashes_remain_verbatim_but_pages_use_en_dashes() {
             "@article{{work,title={{Imagined rivers}},author={{Okafor, Ada}},year={{2026}},journal={{Invented Journal}},pages={{12--19}},{field}={{{value}}}}}"
         ));
         let result = format(&formatter, &snapshot, CitationForm::BibliographyOnly);
+        let linked = ending.replace('&', "&#38;");
         paste(
             &result,
             &format!("Okafor, A. (2026). Imagined rivers. Invented Journal, 12–19. {ending}"),
             &format!(
-                "<div class=\"csl-entry\">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>, 12–19. {}</div>",
-                ending.replace('&', "&#38;")
+                "<div class=\"csl-entry\">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>, 12–19. <a href=\"{linked}\">{linked}</a></div>"
             ),
             &format!(
                 r"Okafor, A. (2026). Imagined rivers. {{\i{{}}Invented Journal}}, 12\uc0\u8211{{}}19. {}",
@@ -126,6 +141,22 @@ fn bibtex_url_and_doi_dashes_remain_verbatim_but_pages_use_en_dashes() {
             ),
         );
     }
+}
+
+#[test]
+fn only_web_addresses_and_dois_become_links() {
+    // The processor would link a bare address to doi.org; it stays text.
+    let formatter = Formatter::new().unwrap();
+    let snapshot = bib(
+        "@article{work,title={Imagined rivers},author={Okafor, Ada},year={2026},journal={Invented Journal},url={www.example.org/rivers}}",
+    );
+    let result = format(&formatter, &snapshot, CitationForm::BibliographyOnly);
+    assert_eq!(
+        result.html.as_deref(),
+        Some(
+            "<div class=\"csl-bib-body\" style=\"line-height: 2; margin-left: 2em; text-indent:-2em;\"><div class=\"csl-entry\">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>. www.example.org/rivers</div></div>"
+        )
+    );
 }
 
 fn dates_paste(dates: &[&str]) {

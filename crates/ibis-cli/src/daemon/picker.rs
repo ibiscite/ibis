@@ -2,7 +2,7 @@
 //! shell's acknowledgment, or with its connection closing.
 use super::{Connections, Endpoint, Framed, Stream, WRITE_TIMEOUT, decode as decode_frame};
 use ibis_core::contract::{EngineError, ErrorCode, ItemRef};
-use ibis_core::destination::{AppId, PASTE_DEADLINE};
+use ibis_core::destination::{AppId, PASTE_DEADLINE_MS};
 use ibis_engine::citations::SessionId;
 use ibis_engine::picker::{self, PickerChangeFormatRequest, PickerLibraryCondition, PickerOpenRequest, PickerSession};
 use ibis_engine::recents::{List, SessionReferences};
@@ -47,7 +47,7 @@ fn acknowledgement(framed: &mut Framed) -> io::Result<bool> {
     }
     let mut reader = Until {
         reader: &mut framed.reader,
-        deadline: Instant::now() + PASTE_DEADLINE + ACK_GRACE,
+        deadline: Instant::now() + Duration::from_millis(PASTE_DEADLINE_MS) + ACK_GRACE,
     };
     let copied = decode_frame(protocol::read_frame(&mut reader))?.ok_or(io::ErrorKind::UnexpectedEof)?;
     framed.session()?;

@@ -87,6 +87,21 @@ const NAMES: [(Format, &[&str]); 4] = [
 ];
 
 impl Format {
+    fn parse(
+        self,
+        library: &ibis_core::contract::LibraryId,
+        text: &str,
+        budget: bibtex::Budget,
+        previous: Option<&Snapshot>,
+    ) -> Result<crate::ParsedLibrary, SourceError> {
+        Ok(match self {
+            Self::CslJson => csl_json::load_str(library, text)?,
+            Self::Ris => exported::ris::load(library, text, previous)?,
+            Self::Csv => exported::csv::load(library, text, previous)?,
+            Self::Bibtex => bibtex::load_with_budget(library, text, budget, previous),
+        })
+    }
+
     /// By name first: BibTeX comments may start with a JSON-looking bracket.
     /// An unknown name needs a RIS opening or a BibTeX entry block.
     pub(crate) fn of(path: &Path, text: &str) -> Result<Self, SourceError> {
@@ -500,13 +515,43 @@ fn parse_format(
     };
     let text = text.trim_start_matches('\u{feff}');
     let format = Format::of(&source, text)?;
-    let parsed = match format {
-        Format::CslJson => csl_json::load_str(&library, text)?,
-        Format::Ris => exported::ris::load(&library, text, previous)?,
-        Format::Csv => exported::csv::load(&library, text, previous)?,
-        Format::Bibtex => bibtex::load_with_budget(&library, text, budget, previous),
-    };
+    let parsed = format.parse(&library, text, budget, previous)?;
     Ok((source, library, format, parsed))
+}
+
+/// Read library text a caller already holds, such as one piped in, with the
+/// same parsers, limits and warnings as a file. `name`, such as `refs.bib`,
+/// chooses the format as a file's name would, and `library` is the caller's
+/// identity for it. With no file behind it, it has no attachments, original
+/// entries or proposals: it declares records and the format's own keys.
+pub fn load_text(
+    library: ibis_core::contract::LibraryId,
+    name: &str,
+    text: &str,
+) -> Result<LoadedLibrary, SourceError> {
+    if text.len() as u64 > MAX_LIBRARY_BYTES {
+        return Err(SourceError::TooLarge);
+    }
+    let text = text.trim_start_matches('\u{feff}');
+    let format = Format::of(Path::new(name), text)?;
+    let parsed = format.parse(&library, text, bibtex::Budget::for_input(text.len()), None)?;
+    let objects = parsed.records.into_iter().map(LibraryObject::Record).collect();
+    Ok(LoadedLibrary {
+        library,
+        kind: crate::LibraryKind::Snapshot,
+        capabilities: match format {
+            Format::Bibtex | Format::CslJson => &[
+                crate::SourceCapability::BibliographicRecords,
+                crate::SourceCapability::NativeCitationKeys,
+            ],
+            Format::Ris | Format::Csv => crate::SourceCapability::SNAPSHOT,
+        },
+        snapshot: Snapshot::new(objects).map_err(|_| SourceError::InvalidData)?,
+        warnings: parsed.warnings,
+        cut_short: parsed.cut_short,
+        duplicate_keys: parsed.duplicate_keys,
+        damaged_keys: parsed.damaged_keys,
+    })
 }
 
 /// Where the attachment `key` of `parent` is, when the library file at

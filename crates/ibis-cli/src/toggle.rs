@@ -1,6 +1,6 @@
 //! Explicit desktop launch utility; tested with constructed commands/fake binaries.
 use ibis_core::contract::{EngineError, ErrorCode, ErrorReason};
-use ibis_core::toggle::{RECEIPT, RECEIPT_ARG};
+use ibis_os::toggle::{RECEIPT, RECEIPT_ARG};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 /// How long a starting app may take to confirm the toggle.
@@ -12,8 +12,7 @@ pub fn run(app: Option<&Path>) -> Result<(), EngineError> {
         .as_deref()
         .and_then(|exe| bundled_app(exe, std::env::consts::OS, Path::is_file));
     let managed = std::env::var_os("HOME").map(PathBuf::from).and_then(|home| {
-        let install =
-            ibis_core::command_install::CommandInstall::new(home, vec![], PathBuf::new(), None, String::new());
+        let install = ibis_os::command_install::CommandInstall::new(home, vec![], PathBuf::new(), None, String::new());
         executable
             .as_ref()
             .filter(|exe| exe.canonicalize().ok() == install.destination().canonicalize().ok())
@@ -25,7 +24,7 @@ pub fn run(app: Option<&Path>) -> Result<(), EngineError> {
         .as_deref()
         .filter(|_| cfg!(target_os = "linux"))
         .and_then(|exe| {
-            ibis_core::command_install::appimage_for(
+            ibis_os::command_install::appimage_for(
                 exe,
                 std::env::var_os("APPIMAGE").map(PathBuf::from),
                 std::env::var_os("APPDIR").map(PathBuf::from),
@@ -258,7 +257,7 @@ mod bundled_tests {
     // AppImages exist only on Linux; the Unix paths mean nothing on Windows.
     #[test]
     fn inherited_appimage_variables_cannot_replace_the_bundled_or_managed_app() {
-        use ibis_core::command_install::appimage_for;
+        use ibis_os::command_install::appimage_for;
         let image = PathBuf::from("/invented/Other.AppImage");
         let mount = PathBuf::from("/tmp/.mount-other");
         for exe in [
