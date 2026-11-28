@@ -167,3 +167,6 @@ the anchor older links use.
 
 ## 0068 Each layer stands on its own
 [0068](decisions/0068-layers-stand-alone.md): `ibis-os` beside a fully pure `ibis-core` (enforced by `core_does_no_io` with no exceptions) holds the shared system calls (private atomic writes, bounded file work, panic containment, the command install and toggle receipt); JSON-RPC framing, the server and the MCP runtime move to the host (`ibis-cli`) while the engine keeps the method table and result budgets, and `agent_apps` moves with MCP; the crates stay unpublished and the contract JSON is the only versioned surface.
+
+## 0069 A missing DOI can be looked up at doi.org, once allowed
+[0069](decisions/0069-doi-lookup.md): a DOI pasted into the picker is looked for in the library first; when missing, one row offers a lookup at `doi.org`, which asks once and is off until then; only the DOI is sent, the result goes to Ibis's own file or a manager that takes it locally, the permission is an engine setting shared with the CLI and MCP, and any other lookup needs its own decision.

@@ -165,6 +165,28 @@ placement and focus.
   scannable placeholder format for Scrivener and Ulysses; full screen, Spaces
   and Stage Manager are checked on each review.
 
+Sharing and sources (the maintainer, 2026-11-28, all eight as proposed):
+
+- **DOI links in pastes:** in rich-text apps the citation and every
+  bibliography entry link to the DOI or URL; plain text and LaTeX stay plain;
+  one switch per app.
+- **Pasted DOI lookup** ([0069](../decisions/0069-doi-lookup.md)): a missing
+  DOI gets one “Look up” row, asked once, sending only the DOI to `doi.org`.
+- **Share menu:** Share… on a row, the references menu and a document's list
+  opens the system share sheet with Reference and link, PDF, or Reading pack,
+  all built on `ibis share`, plus Copy Link.
+- **Reading packs, clean by default:** PDFs named “Author Year – Title.pdf”,
+  `references.bib`, `references.ris` and a contents page; own notes and
+  highlights only when ticked.
+- **Quote cards:** a passage selected in the reader shares as an image card
+  (quote, citation, DOI) or text, from the Share menu only.
+- **A reference's story in Peek:** newest first, where it was first cited,
+  read, added and found, all from local data.
+- **Time locators:** video and audio take a time where books take a page
+  (“12:34”); “This page” on a video offers the current time.
+- **Citation to PDF:** with the caret on a citation, ⌘O opens the PDF in the
+  reader at the cited page, with a quoted passage highlighted.
+
 ## What the interface does
 
 - **The picker is a launcher.** Keep the field, results and delivery in that
