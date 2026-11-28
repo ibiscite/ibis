@@ -8,14 +8,13 @@
 //! texts in `differences/STYLE.json`. The test fails when a list changes, so a
 //! new difference is reviewed like a snapshot and a fixed one leaves its list:
 //! `IBIS_BLESS=1 cargo test -p ibis --test zotero_quick_copy` rewrites them.
-use ibis_core::contract::{CitationRequest, CitationResult, LibraryObject, Snapshot};
+use ibis_core::contract::{CitationRequest, CitationResult};
 use ibis_engine::{Cancellation, Engine};
-use ibis_sources::zotero::{ZoteroItem, map_item};
-use ibis_sources::zotero_source::{Library, ZoteroSource};
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, io::Cursor, path::Path, sync::Arc};
+use std::{collections::BTreeMap, path::Path};
 
-type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+mod corpus;
+use corpus::{TestResult, csl_json_reader, zotero_reader};
 type Views = BTreeMap<&'static str, String>;
 
 const FIXTURE: &str = "../../fixtures/zotero/quick-copy";
@@ -144,107 +143,16 @@ fn ibis_views(engine: &Engine, item: &Value, style: &str, numeric: bool) -> Test
     Ok(Ok(views))
 }
 
-/// The engine and each case's item, read one way.
-struct Reader {
-    name: &'static str,
-    engine: Engine,
-    items: BTreeMap<String, Value>,
-}
-
-fn zotero_reader(cases: &[Value]) -> TestResult<Reader> {
-    let library = ZoteroSource::default().id_of(Library::User).ok_or("library id")?;
-    let mut objects = vec![];
-    let mut items = BTreeMap::new();
-    for case in cases {
-        let item: ZoteroItem = serde_json::from_value(case["item"].clone())?;
-        let mapped = map_item(library.clone(), &item).map_err(|error| format!("{error:?}"))?;
-        items.insert(
-            case["name"].as_str().ok_or("name")?.to_owned(),
-            json!({"item": mapped.record.id}),
-        );
-        objects.push(LibraryObject::Record(mapped.record));
-    }
-    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects)?));
-    Ok(Reader {
-        name: "zotero",
-        engine,
-        items,
-    })
-}
-
-/// Every item type as a CSL-JSON file exported from Zotero, through the CLI's
-/// own file loader: Ibis with no Zotero at all.
-fn csl_json_reader(cases: &[Value], dir: &Path) -> TestResult<Reader> {
-    let cases: Vec<&Value> = cases
-        .iter()
-        .filter(|case| {
-            case["name"]
-                .as_str()
-                .is_some_and(|name| name.starts_with("type-") || name.starts_with("formatted-"))
-        })
-        .collect();
-    let records: Vec<Value> = cases
-        .iter()
-        .enumerate()
-        .map(|(index, case)| {
-            // Each record gets its own key: several invented items share one,
-            // which a file reader rightly refuses to guess between.
-            let mut record = case["expected"].clone();
-            record["id"] = json!(format!("item{index}"));
-            record["citation-key"] = json!(format!("item{index}"));
-            record
-        })
-        .collect();
-    let path = dir.join("exported.json");
-    std::fs::write(&path, serde_json::to_vec(&records)?)?;
-    let engine = Engine::new().map_err(|error| format!("{error:?}"))?;
-    let (mut output, mut errors) = (vec![], vec![]);
-    let code = ibis::run_with(
-        engine.clone(),
-        ["ibis", "libraries", "--file", path.to_str().ok_or("path")?, "--json"]
-            .map(Into::into)
-            .into(),
-        Cursor::new(vec![]),
-        &mut output,
-        &mut errors,
-        ibis::OutputMode::Plain,
-    );
-    // Exit 1 reports, as findings, the Zotero fields CSL-JSON readers do not use.
-    assert!(code <= 1, "{}", String::from_utf8_lossy(&errors));
-    let envelope: Value = serde_json::from_slice(&output)?;
-    assert_eq!(
-        envelope["data"]["libraries"][0]["objects"],
-        records.len(),
-        "every record read"
-    );
-    let snapshot = engine.snapshot().map_err(|error| format!("{error:?}"))?;
-    let mut by_key = BTreeMap::new();
-    for object in snapshot.objects() {
-        if let LibraryObject::Record(record) = &object.object {
-            let key = record.citation_key()?.ok_or("record without key")?.to_owned();
-            by_key.insert(key, json!({"item": record.id}));
-        }
-    }
-    let mut items = BTreeMap::new();
-    for (index, case) in cases.iter().enumerate() {
-        let item = by_key.remove(&format!("item{index}")).ok_or("CSL-JSON lost a record")?;
-        items.insert(case["name"].as_str().ok_or("name")?.to_owned(), item);
-    }
-    Ok(Reader {
-        name: "csl-json",
-        engine,
-        items,
-    })
-}
-
 fn compare(style: &str) -> TestResult {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURE);
     let fixture: Value = serde_json::from_str(&std::fs::read_to_string(root.join("expected.json"))?)?;
-    let mapping: Value = serde_json::from_str(include_str!("../../../fixtures/zotero/mapping/cases.json"))?;
-    let mapping = mapping.as_array().ok_or("mapping cases")?;
+    let mapping = corpus::cases()?;
     let numeric = fixture["formats"][style] == "numeric";
     let dir = tempfile::tempdir()?;
-    let readers = [zotero_reader(mapping)?, csl_json_reader(mapping, dir.path())?];
+    let readers = [
+        zotero_reader(&mapping)?,
+        csl_json_reader(&corpus::every_type(&mapping), dir.path())?,
+    ];
     let cases: Vec<&Value> = fixture["cases"]
         .as_array()
         .ok_or("cases")?

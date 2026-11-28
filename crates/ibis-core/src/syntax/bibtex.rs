@@ -96,9 +96,15 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> 
         ("PMCID", "pmcid"),
     ] {
         if let Some(value) = identifiers.get(csl) {
-            write!(out, "  {bib} = {{")?;
-            verbatim(out, value)?;
-            out.write_all(b"},\n")?;
+            // Only biblatex's `doi` and `url` are verbatim fields; an ISBN or
+            // ISSN is typeset as text, so `_` in one would stop LaTeX.
+            if matches!(bib, "doi" | "url") {
+                write!(out, "  {bib} = {{")?;
+                verbatim(out, value)?;
+                out.write_all(b"},\n")?;
+            } else {
+                field(out, bib, value.as_str())?;
+            }
         }
     }
     if let Some(subtype) = fields.get("type").and_then(Value::as_str).and_then(|kind| match kind {
@@ -132,15 +138,15 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> 
                         // Extended names retain whether the prefix belongs
                         // to the family name, without trusting delimiters.
                         out.write_all(b"family={")?;
-                        escape(out, &family)?;
+                        name_part(out, &family)?;
                         out.write_all(b"}, given={")?;
-                        escape(out, given)?;
+                        name_part(out, given)?;
                         out.write_all(b"}, prefix={")?;
-                        escape(out, prefix)?;
+                        name_part(out, prefix)?;
                         write!(out, "}}, useprefix={use_prefix}")?;
                         if !suffix.is_empty() {
                             out.write_all(b", suffix={")?;
-                            escape(out, suffix)?;
+                            name_part(out, suffix)?;
                             out.write_all(b"}")?;
                         }
                     } else {
@@ -191,7 +197,7 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> 
                         for (index, part) in parts.iter().take(3).enumerate() {
                             if let Some(number) = part.as_i64() {
                                 if index == 0 {
-                                    write!(out, "{number:04}")?;
+                                    iso_year(out, number)?;
                                 } else {
                                     write!(out, "-{number:02}")?;
                                 }
@@ -209,6 +215,30 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> 
         }
     }
     out.write_all(b"}")
+}
+
+/// A CSL year as biblatex reads it. CSL counts years before the common era
+/// as Zotero and citeproc-js do, with no year zero (-44 is 44 BC); biblatex
+/// reads ISO 8601's astronomical years, in which 44 BC is -0043.
+fn iso_year(out: &mut impl Write, year: i64) -> io::Result<()> {
+    match year {
+        ..-1 => write!(out, "-{:04}", -(year + 1)),
+        -1 => out.write_all(b"0000"),
+        year => write!(out, "{year:04}"),
+    }
+}
+
+/// One part of an extended name. Biber 2.19 never finishes reading a part
+/// that holds a double quote, even braced or as `\textquotedbl`, so the quote
+/// is written as its character code, which Biber leaves alone.
+fn name_part(out: &mut impl Write, text: &str) -> io::Result<()> {
+    for (index, piece) in text.split('"').enumerate() {
+        if index > 0 {
+            out.write_all(b"\\symbol{34}")?;
+        }
+        escape(out, piece)?;
+    }
+    Ok(())
 }
 
 fn field(out: &mut impl Write, name: &str, text: &str) -> io::Result<()> {

@@ -335,6 +335,17 @@ fn subtitles_are_part_of_the_title() {
 }
 
 #[test]
+fn years_before_the_common_era_count_as_csl_counts_them() {
+    // biblatex reads ISO 8601 years, in which 0000 is 1 BC and -0043 is 44 BC.
+    let r = load(
+        "@book{era,title={T},year={45 BC}}\n@book{iso,title={T},date={-0043-03-15}}\n@book{zero,title={T},date={0000/0050}}",
+    );
+    assert_eq!(csl(&r, "era")["issued"]["date-parts"], json!([[-45]]));
+    assert_eq!(csl(&r, "iso")["issued"]["date-parts"], json!([[-44, 3, 15]]));
+    assert_eq!(csl(&r, "zero")["issued"]["date-parts"], json!([[-1], [50]]));
+}
+
+#[test]
 fn access_and_original_dates_reach_csl() {
     let r = load("@online{web,title={Live Status},urldate={2024-05-06},origdate={1999},url={https://example.org/}}");
     let csl = csl(&r, "web");

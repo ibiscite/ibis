@@ -605,7 +605,9 @@ redefined dependencies. A refusal is a finding, as a refused citation is: exit
 1, with `ok: true`, `data.outcome: "refused"` and a `reason` in `--json`.
 `no-original` means the library keeps no BibTeX source (Zotero, CSL-JSON, RIS
 and CSV); `ibis cite KEY --format bibtex` writes an entry from the record's
-fields instead. Original entries may include private `file`/`note` fields;
+fields instead, in biblatex's fields for Biber (years before the common era as
+ISO years, so 44 BC is `-0043`); [every invented test record](../fixtures/latex/README.md)
+compiles that way. Original entries may include private `file`/`note` fields;
 inspect them before sharing.
 
 To use the same `.bib` elsewhere, upload it beside an Overleaf document, name it
