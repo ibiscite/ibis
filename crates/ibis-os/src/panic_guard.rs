@@ -1,4 +1,9 @@
 //! Keep contained parser and worker panics private; forward unrelated panics unchanged.
+//!
+//! The first [`attempt`] puts a dispatcher in front of the panic hook that is
+//! set then. A host with its own hook sets it first, or calls [`install`] and
+//! wraps the hook it then finds: a hook set later replaces the dispatcher, and
+//! contained panics would print again.
 use std::cell::Cell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Once;
@@ -15,11 +20,11 @@ impl Drop for Scope {
     }
 }
 
-pub fn attempt<T>(read: impl FnOnce() -> T) -> std::thread::Result<T> {
-    // A prior hook or an unwinding destructor may reenter the loader. Never
-    // mutate hooks or wait on our own Once while already handling a panic.
+/// Put the dispatcher in front of the current panic hook now rather than at the
+/// first [`attempt`]. Later calls, and calls while panicking, do nothing.
+pub fn install() {
     if std::thread::panicking() {
-        return Err(Box::new(()));
+        return;
     }
     INSTALL.call_once(|| {
         // Stable take_hook/set_hook has an installation gap. Once coordinates
@@ -32,6 +37,16 @@ pub fn attempt<T>(read: impl FnOnce() -> T) -> std::thread::Result<T> {
             }
         }));
     });
+}
+
+/// Run `read`, returning its panic instead of printing it.
+pub fn attempt<T>(read: impl FnOnce() -> T) -> std::thread::Result<T> {
+    // A prior hook or an unwinding destructor may reenter the loader. Never
+    // mutate hooks or wait on our own Once while already handling a panic.
+    if std::thread::panicking() {
+        return Err(Box::new(()));
+    }
+    install();
     match catch_unwind(AssertUnwindSafe(|| {
         let previous = SUPPRESS.try_with(|flag| flag.replace(true)).ok()?;
         let _scope = Scope(previous);

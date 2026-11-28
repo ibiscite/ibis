@@ -26,7 +26,7 @@ fn a_pdfs_own_details_come_back_checked() {
     let pdf = root.join("atlas.pdf");
     std::fs::write(
         &pdf,
-        ibis::pdf_details::invented_pdf_with_details(
+        ibis_sources::pdf::read_details::invented_pdf_with_details(
             &["An Invented Atlas of Tides\nAda Lee", "Invented second page."],
             &[("Title", "Microsoft Word - atlas_final.docx"), ("Author", "alee")],
             Some(XMP),
