@@ -107,8 +107,12 @@ directory, a second first instance) and `crates/ibis-cli/tests/daemon.rs`
 own answer per app, and only Ibis's own picker writes them. They are consent,
 not a security boundary: any program running as the person can edit the file.
 What they stop is a paste nobody approved, including one an agent's text asks
-for: no MCP tool, record or editor request can grant one. An unreadable file
-grants nothing until each app is answered again. Tests: `grants/tests.rs`.
+for: no MCP tool, record or editor request can grant one. An unreadable file,
+or one missing after it was saved, grants nothing until each app is answered
+again. A paste waiting for its app to come back reads the app's choice again
+just before it posts. Tests: `grants/tests.rs` and, for the wait,
+`a_choice_changed_while_the_app_comes_back_stops_the_paste` in
+`crates/ibis-native/src/paste/tests.rs`.
 
 The **editor endpoint** (decision 0008) is the one TCP socket: off
 until switched on in Settings, it binds a TCP port on 127.0.0.1 only
