@@ -270,3 +270,71 @@ fn a_name_of_many_words_offers_a_few_short_bylines() {
     assert!(!shortened.is_empty());
     assert!(shortened.iter().all(|line| line.len() <= 200));
 }
+
+fn ids(engine: &Engine) -> (ItemRef, ItemRef) {
+    let id = |query| {
+        find(engine, query, &[], Language::English).sections[0].rows[0]
+            .id
+            .clone()
+    };
+    (id("vale"), id("fen"))
+}
+
+fn with_recent(engine: &Engine, recent: Vec<ItemRef>) -> PickerSession {
+    let mut session = PickerSession::default();
+    session.open(engine, true, scope("apa"), recent, Language::English, false);
+    session
+}
+
+#[test]
+fn a_trailing_semicolon_cites_only_what_was_typed() {
+    let (_dir, engine) = two_books();
+    let (vale, fen) = ids(&engine);
+    let mut picker = with_recent(&engine, vec![fen.clone()]);
+    let state = act(&mut picker, &engine, json!({"intent":"type","query":"vale;"}));
+    assert_eq!(
+        state.highlight.as_ref(),
+        Some(&fen),
+        "the recent list shows after the semicolon"
+    );
+    let cited: Vec<_> = state.citation.iter().map(|entry| entry.row.id.clone()).collect();
+    assert_eq!(cited, [vale]);
+}
+
+#[test]
+fn tab_adds_a_second_reference_from_the_recent_list() {
+    let (_dir, engine) = two_books();
+    let (vale, fen) = ids(&engine);
+    let mut picker = with_recent(&engine, vec![vale.clone(), fen.clone()]);
+    let state = act(&mut picker, &engine, json!({"intent":"highlight","item":vale}));
+    assert_eq!(state.highlight.as_ref(), Some(&vale));
+    act(&mut picker, &engine, json!({"intent":"add"}));
+    let state = act(&mut picker, &engine, json!({"intent":"highlight","item":fen}));
+    assert_eq!(state.citation.len(), 1, "Return cites only what was added");
+    let state = act(&mut picker, &engine, json!({"intent":"add"}));
+    let cited: Vec<_> = state.citation.iter().map(|entry| entry.row.id.clone()).collect();
+    assert_eq!(cited, [vale, fen]);
+}
+
+#[test]
+fn editing_one_typed_reference_keeps_the_others() {
+    let (_dir, engine) = two_books();
+    let (vale, fen) = ids(&engine);
+    let mut picker = session(&engine, "apa");
+    let typed = act(&mut picker, &engine, json!({"intent":"type","query":"vale 12; fen"}));
+    assert_eq!(typed.citation.len(), 2);
+    let state = act(
+        &mut picker,
+        &engine,
+        json!({"intent":"details","item":fen,"details":{"locator":{"term":"chapter","value":"3"},
+            "prefix":null,"suffix":null,"form":null}}),
+    );
+    assert_eq!(state.query, "");
+    let cited: Vec<_> = state
+        .citation
+        .iter()
+        .map(|entry| (entry.row.id.clone(), entry.added))
+        .collect();
+    assert_eq!(cited, [(vale, true), (fen, true)]);
+    assert_eq!(state.citation[0].note.as_deref(), Some("p. 12"));
+}

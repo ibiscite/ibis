@@ -204,17 +204,7 @@ impl PickerSession {
                     self.highlight = Some(rows[next].clone());
                 }
             }
-            Add => {
-                let pending: Vec<_> = self.pending().into_iter().filter(|(_, _, added)| !added).collect();
-                if !pending.is_empty() {
-                    self.save_undo();
-                    for (row, details, _) in pending {
-                        self.added.push((row, details));
-                    }
-                    self.query.clear();
-                    self.search(engine)?;
-                }
-            }
+            Add => self.add_pending(engine, true)?,
             Toggle { item } => {
                 if self.added.iter().any(|(row, _)| row.id == item) {
                     self.save_undo();
@@ -250,12 +240,13 @@ impl PickerSession {
                 let details = details.tidy();
                 if let Some((_, current)) = self.added.iter_mut().find(|(row, _)| row.id == item) {
                     *current = details;
-                } else if let Some((row, _, _)) = self.pending().into_iter().find(|(row, _, _)| row.id == item) {
-                    // Changing a typed or highlighted reference keeps it.
-                    self.save_undo();
-                    self.added.push((row, details));
-                    self.query.clear();
-                    self.search(engine)?;
+                } else if self.pending().iter().any(|(row, _, _)| row.id == item) {
+                    // Changing a typed or highlighted reference keeps it and
+                    // every other reference typed beside it.
+                    self.add_pending(engine, false)?;
+                    if let Some((_, current)) = self.added.iter_mut().find(|(row, _)| row.id == item) {
+                        *current = details;
+                    }
                 }
             }
             KeepOrder { on } => {
@@ -336,6 +327,33 @@ impl PickerSession {
             .flat_map(|section| &section.rows)
     }
 
+    /// Moves the citation as it stands into what was added and clears the
+    /// field. Tab also takes the highlighted result, whatever Return would cite.
+    fn add_pending(&mut self, engine: &Engine, highlighted: bool) -> Result<(), EngineError> {
+        let mut pending: Vec<_> = self
+            .pending()
+            .into_iter()
+            .filter(|(_, _, added)| !added)
+            .map(|(row, details, _)| (row, details))
+            .collect();
+        if highlighted
+            && let Some(row) = self
+                .highlight
+                .as_ref()
+                .and_then(|id| self.rows().find(|row| &row.id == id))
+            && !self.added.iter().chain(&pending).any(|(added, _)| added.id == row.id)
+        {
+            pending.push((row.clone(), self.typed_details(&row.id)));
+        }
+        if pending.is_empty() {
+            return Ok(());
+        }
+        self.save_undo();
+        self.added.extend(pending);
+        self.query.clear();
+        self.search(engine)
+    }
+
     fn save_undo(&mut self) {
         self.undo = Some((self.added.clone(), self.keep_order));
     }
@@ -358,8 +376,8 @@ impl PickerSession {
     }
 
     /// The citation as it stands: what was added, then each finished typed
-    /// reference, then the highlighted one, unless only the recent list shows
-    /// beside an added citation.
+    /// reference, then the highlighted one while a reference is being typed or
+    /// the citation would otherwise be empty.
     fn pending(&self) -> Vec<(PickerRow, PickerDetails, bool)> {
         let mut entries: Vec<_> = self
             .added
@@ -382,8 +400,12 @@ impl PickerSession {
                 entries.push((row.clone(), details, false));
             }
         }
-        let typing = !self.query.trim().is_empty();
-        if (typing || self.added.is_empty())
+        let typing = self
+            .found
+            .as_ref()
+            .and_then(|found| found.segments.last())
+            .is_some_and(|segment| !segment.complete);
+        if (typing || entries.is_empty())
             && let Some(row) = self
                 .highlight
                 .as_ref()
