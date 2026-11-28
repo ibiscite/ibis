@@ -138,9 +138,10 @@ pub fn open_result(
             ),
             LibrarySetting::Zotero(_) => (word(language, "picker-native-zotero", &[]), LibraryKind::Zotero, None),
         };
-        let condition = match (source, error) {
+        let condition = match (source, &error) {
             (_, None) => PickerLibraryCondition::Ready,
-            (LibrarySetting::Bibtex(file), Some(_)) if file.try_exists().ok() == Some(false) => {
+            // The reader already knows the file is gone; never probe a mount that may stall.
+            (LibrarySetting::Bibtex(_), Some(error)) if error.reason == Some(ErrorReason::MissingFile) => {
                 PickerLibraryCondition::Missing
             }
             (_, Some(_)) => PickerLibraryCondition::Unreadable,
@@ -298,6 +299,10 @@ pub(crate) struct PickerSegment {
     pub prefix: Option<String>,
     /// A finished segment counts only with a clear first match.
     pub row: Option<PickerRow>,
+    /// A pasted list of keys cites every reference it names, in its order.
+    pub list: Option<Vec<PickerRow>>,
+    /// Something typed that names no reference: the citation waits for a choice.
+    pub unresolved: bool,
 }
 
 #[derive(Clone, PartialEq, Serialize, JsonSchema)]
@@ -570,25 +575,45 @@ pub(crate) fn search(
         let best = result.hits.first().filter(|hit| {
             complete && !hit.partial && !hit.typo && result.hits.get(1).is_none_or(|next| hit.score > next.score)
         });
+        let list = result.list.as_ref().map(|_| {
+            result
+                .hits
+                .iter()
+                .filter_map(|hit| row(&hit.item, language))
+                .collect::<Vec<_>>()
+        });
+        let row = best.and_then(|hit| row(&hit.item, language));
+        let missing = result.list.as_ref().and_then(|list| list.missing.first().cloned());
         PickerSegment {
             complete,
             prefix: read.and_then(|read| read.prefix.clone()),
             locator: read
                 .and_then(|read| read.locator.as_ref())
                 .map(|found| found.locator.clone()),
-            row: best.and_then(|hit| row(&hit.item, language)),
+            unresolved: missing.is_some() || (complete && list.is_none() && row.is_none()),
+            row,
+            list,
         }
+    };
+    // What a segment names that the library lacks: the first missing key, or the words.
+    let unmatched = |typed: &str, result: &crate::service::SearchResult| {
+        result
+            .list
+            .as_ref()
+            .and_then(|list| list.missing.first().cloned())
+            .unwrap_or_else(|| typed.to_owned())
+    };
+    let blocking = |query: &str| PickerStatus {
+        kind: PickerStatusKind::Citation,
+        text: word(language, "picker-native-unmatched-segment", &[("query", query)]),
+        fix: Some(PickerFix::ClearSearch),
+        item: None,
     };
     for typed in pieces.into_iter().map(str::trim).filter(|part| !part.is_empty()) {
         let (found, _) = search_one(typed)?;
         let finished = segment(true, &found);
-        if finished.row.is_none() && status.is_empty() {
-            status.push(PickerStatus {
-                kind: PickerStatusKind::Citation,
-                text: word(language, "picker-native-unmatched-segment", &[("query", typed)]),
-                fix: Some(PickerFix::ClearSearch),
-                item: None,
-            });
+        if finished.unresolved && status.is_empty() {
+            status.push(blocking(&unmatched(typed, &found)));
         }
         segments.push(finished);
     }
@@ -611,7 +636,11 @@ pub(crate) fn search(
         (sections, None, health::SourceHealth::of(&libraries))
     } else {
         let (result, total) = search_one(query)?;
-        segments.push(segment(false, &result));
+        let current = segment(false, &result);
+        if current.unresolved && status.is_empty() {
+            status.push(blocking(&unmatched(query, &result)));
+        }
+        segments.push(current);
         let kind = if result.list.is_some() {
             PickerSectionKind::Pasted
         } else if result.hits.first().is_some_and(|hit| hit.partial) {

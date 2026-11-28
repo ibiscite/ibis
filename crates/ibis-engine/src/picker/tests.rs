@@ -341,3 +341,41 @@ fn editing_one_typed_reference_keeps_the_others() {
     assert_eq!(cited, [(vale, true), (fen, true)]);
     assert_eq!(state.citation[0].note.as_deref(), Some("p. 12"));
 }
+
+#[test]
+fn an_unmatched_reference_blocks_the_citation() {
+    let (_dir, engine) = two_books();
+    let (_, fen) = ids(&engine);
+    let mut picker = with_recent(&engine, vec![fen]);
+    let state = act(
+        &mut picker,
+        &engine,
+        json!({"intent":"type","query":"nobody-invented;"}),
+    );
+    assert!(state.citation.is_empty(), "the recent row is not cited in its place");
+    assert!(state.preview.is_none(), "nothing can be delivered");
+    assert!(!state.status.is_empty(), "the person is told what to fix");
+    let state = act(&mut picker, &engine, json!({"intent":"add"}));
+    assert!(state.citation.is_empty(), "Tab adds nothing either");
+}
+
+#[test]
+fn a_pasted_list_cites_every_key_in_order() {
+    let (_dir, engine) = two_books();
+    let (vale, fen) = ids(&engine);
+    let mut picker = session(&engine, "apa");
+    let state = act(
+        &mut picker,
+        &engine,
+        json!({"intent":"type","query":"fen2023, vale2024"}),
+    );
+    let cited: Vec<_> = state.citation.iter().map(|entry| entry.row.id.clone()).collect();
+    assert_eq!(cited, [fen, vale]);
+    let state = act(
+        &mut picker,
+        &engine,
+        json!({"intent":"type","query":"@fen2023 @nobody2020"}),
+    );
+    assert!(state.preview.is_none(), "a missing key is never dropped silently");
+    assert!(!state.status.is_empty());
+}
