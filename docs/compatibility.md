@@ -174,7 +174,7 @@ text means; it is not certification of every writing app.
 
 | Destination | Output | Requirement |
 | --- | --- | --- |
-| Markdown, Quarto, R Markdown (RStudio, Positron) | Pandoc keys | Matching bibliography when building the document. |
+| Markdown, Quarto, R Markdown (RStudio, Positron), Obsidian | Pandoc keys | Matching bibliography when building the document, or the [Ibis filter](#pandoc-quarto-and-obsidian). |
 | LaTeX (TeXShop, TeXstudio, Texifier), Overleaf | BibLaTeX, Natbib or LaTeX keys | Matching project `.bib`. |
 | Typst | Typst keys | Matching bibliography. |
 | Word, LibreOffice, Google Docs, Pages, email | Formatted text | Static citations; they do not join a managed bibliography or update with a document's style. |
@@ -208,6 +208,27 @@ Requests reconstructed from VS Code Citation Picker for Zotero 0.2.1 are
 replayed by `cayw_clients.rs`. This is protocol evidence, not an interactive
 VS Code acceptance test. Its Check Connection and PDF commands require
 Better BibTeX JSON-RPC, which Ibis does not provide.
+
+## Pandoc, Quarto and Obsidian
+
+Two small plugins in the repository run the `ibis` command and hold no
+citation logic of their own:
+
+- The [Pandoc and Quarto filter](../plugins/pandoc/README.md) fills in the
+  references a document cites from the libraries Ibis reads, Zotero
+  included, before citeproc formats them. A project's own `bibliography` and
+  `references` win over it. It needs Pandoc 3.1.1 or later.
+- The [Obsidian plugin](../plugins/obsidian/README.md) adds **Insert
+  citation**, which searches with Ibis and inserts the citation in the format
+  Ibis uses for Obsidian. It runs on Obsidian's desktop apps only and is not
+  yet in Obsidian's community directory, so it is installed by copying two
+  files.
+
+`fidelity.rs` renders a document through Pandoc 3.1 twice, once from the
+`.bib` and once through the filter, and requires the same text.
+`obsidian.rs` runs the plugin's own tests against the built command with a
+stand-in for Obsidian's interface. Neither is a test inside Quarto or the
+Obsidian app.
 
 ## What the tests establish
 

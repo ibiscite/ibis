@@ -1,0 +1,10 @@
+{
+  "id": "ibis",
+  "name": "Ibis",
+  "version": "0.3.13",
+  "minAppVersion": "1.5.0",
+  "description": "Cite from your reference library: search Zotero, BibTeX or CSL-JSON with Ibis and insert the citation.",
+  "author": "Ibis contributors",
+  "authorUrl": "https://ibiscite.org",
+  "isDesktopOnly": true
+}

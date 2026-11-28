@@ -258,8 +258,11 @@ from any library or a folder of PDFs.
   readback on Mac and Windows; winget and Flathub.
 - **Every client:** Claude, Cursor and Codex qualified, and one real outside
   client on the stable tier; VS Code Citation Picker for Zotero qualified
-  against the editor endpoint. On request: a same-user socket to the running app
-  (no network listener) and thin editor clients.
+  against the editor endpoint. The Pandoc and Quarto filter and the Obsidian
+  plugin, thin clients of `ibis` already in `plugins/`, qualified inside
+  Quarto, RStudio and Obsidian; the plugin listed in Obsidian's community
+  directory, which needs a repository of its own. On request: a same-user
+  socket to the running app (no network listener) and thin editor clients.
 
 ### F. 1.0 Stable
 
