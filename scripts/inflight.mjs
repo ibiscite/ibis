@@ -9,6 +9,8 @@ const TRUSTED = new Set(["diyanko", "ibis-release[bot]"]);
 export const START = "<!-- in-flight:start -->";
 export const END = "<!-- in-flight:end -->";
 const LIMIT = 500;
+const TEMPLATE = /^what is left, the next command, any blocker/i;
+const plain = (text) => text.replace(/<!--|-->/g, "");
 
 const gh = (args, input) => execFileSync("gh", ["api", ...args], { encoding: "utf8", input, maxBuffer: 1 << 26 });
 
@@ -26,7 +28,8 @@ export function handoff(body = "") {
     if (/^(#|---|🤖|(refs|part of|closes|fixes|supersedes|tracking)\b)/i.test(l)) break;
     out.push(l);
   }
-  const text = out.join(" ").replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+  const text = plain(out.join(" ")).replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+  if (TEMPLATE.test(text)) return "";
   return text.length > LIMIT ? `${text.slice(0, text.lastIndexOf(" ", LIMIT))} …` : text;
 }
 
@@ -37,7 +40,7 @@ export function section(pulls) {
     .map((p) => {
       const state = p.draft ? "draft" : "ready";
       const note = handoff(p.body ?? "") || (p.user.login === "ibis-release[bot]" ? "Release pull request." : "No handoff yet.");
-      return `- #${p.number} ${p.title} (${state}, \`${p.head.ref}\`, updated ${p.updated_at.slice(0, 10)}). ${note[0].toUpperCase()}${note.slice(1)}`;
+      return `- #${p.number} ${plain(p.title)} (${state}, \`${p.head.ref}\`). ${note[0].toUpperCase()}${note.slice(1)}`;
     });
   return [
     START,
@@ -61,14 +64,15 @@ function local(open) {
   for (const block of git("worktree", "list", "--porcelain").split("\n\n")) {
     const path = block.match(/^worktree (.*)$/m)?.[1];
     const branch = block.match(/^branch refs\/heads\/(.*)$/m)?.[1] ?? "(detached)";
-    if (!path) continue;
+    if (!path || /^bare$/m.test(block)) continue;
+    if (/^prunable/m.test(block)) { lines.push(`  ${path}  ${branch}  (missing: run git worktree prune)`); continue; }
     const dirty = git("-C", path, "status", "--porcelain").length > 0;
     const pr = open.get(branch);
     lines.push(`  ${path}  ${branch}${pr ? `  #${pr}` : ""}${dirty ? "  (uncommitted changes)" : ""}`);
   }
   const gone = git("for-each-ref", "--format=%(refname:short) %(upstream:track)", "refs/heads")
     .split("\n").filter((l) => l.endsWith("[gone]")).map((l) => `  ${l.split(" ")[0]}`);
-  return ["", "This checkout's worktrees:", ...lines, ...(gone.length ? ["Local branches whose pull request merged (remove them):", ...gone] : [])].join("\n");
+  return ["", "This checkout's worktrees:", ...lines, ...(gone.length ? ["Local branches whose remote branch is gone (merged or closed; remove them):", ...gone] : [])].join("\n");
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

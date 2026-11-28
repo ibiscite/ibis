@@ -21,7 +21,7 @@ any agent in any app, so any of them can resume where another stopped.
 1. **Resume.** Read the tracking issue's **In flight** list, then run
    `git fetch origin --prune` and `node scripts/inflight.mjs`: the open pull
    requests with their handoffs, this checkout's worktrees, and local branches
-   whose pull request merged. Continue an open pull request on its own branch
+   whose remote branch is gone. Continue an open pull request on its own branch
    rather than starting a second one.
 2. **Claim.** One piece of work is one branch from `origin/main`, one worktree
    and one pull request, opened as a draft straight away:

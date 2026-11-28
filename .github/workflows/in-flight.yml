@@ -28,6 +28,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Main's reviewed script writes the issue, never a pull request's own copy.
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
       - name: Update the tracking issue
         run: node scripts/inflight.mjs --write

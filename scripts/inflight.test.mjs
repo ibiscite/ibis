@@ -11,6 +11,8 @@ test("a handoff under a heading or in bold runs to the end of its paragraph", ()
   assert.equal(handoff(body), "Left: the shell. Next command: `bash scripts/land.sh`. Blocker: #9.");
   assert.equal(handoff("**Handoff**\n\nResume with a review.\n\nRefs #2014."), "Resume with a review.");
   assert.equal(handoff("No section here."), "");
+  assert.equal(handoff("Handoff: what is left, the next command, any blocker (or \"nothing left\")."), "");
+  assert.equal(handoff("Handoff: keep <!-- out."), "keep out.");
 });
 
 test("a long handoff is cut at a word", () => {
@@ -30,7 +32,7 @@ test("the list holds only the maintainer's and the release app's own branches", 
     pull(3, "diyanko", "Handoff: from a fork.", false, "fork/ibis"),
     pull(4, "ibis-release[bot]", ""),
   ]);
-  assert.match(text, /#4 fix: change 4 \(ready, `branch-4`, updated 2026-11-28\)\. Release pull request\.\n- #1 .*\(draft, .*Left nothing\./);
+  assert.match(text, /#4 fix: change 4 \(ready, `branch-4`\)\. Release pull request\.\n- #1 .*\(draft, .*Left nothing\./);
   assert.doesNotMatch(text, /#2|#3/);
 });
 
