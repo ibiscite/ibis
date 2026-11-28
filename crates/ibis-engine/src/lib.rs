@@ -15,6 +15,9 @@ pub mod mcp;
 pub mod format;
 pub mod outputs;
 
+/// Per-app paste choices in `apps.json`, shared by every delivering process.
+pub mod grants;
+
 pub mod settings;
 pub mod settings_backup;
 pub mod zotero_open;
