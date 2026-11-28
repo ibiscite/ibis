@@ -34,11 +34,11 @@ nothing that macOS already draws.
   `NavigationSplitView`. Text fields that need exact focus and caret control
   are `NSTextField`s.
 - **Colour and symbols:** semantic system colours and the person's accent.
-  Icons are SF Symbols. The bird is the brand's.
+  Icons are SF Symbols. The bird is the brand's and appears only in the menu bar and the app icon.
 - **Menus:** Actions (⌘K), the format menu and row menus are `NSMenu`s, opened
   at the control that owns them, with system section headers.
 - **Grid:** one scale multiplies every size, so Larger Text and ⌘+ scale the
-  whole picker. The lead column (48 pt) holds the bird and kind symbols. Text
+  whole picker. The lead column (48 pt) holds the search glyph and kind symbols. Text
   starts after it.
 - **Review:** `scripts/native-macos.sh shots` saves every review state in
   light and dark from the invented [review library](../../native/macos/Review.csljson).

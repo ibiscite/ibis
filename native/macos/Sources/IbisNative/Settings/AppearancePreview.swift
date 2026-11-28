@@ -10,7 +10,7 @@ struct AppearancePreview: View {
         let grid = PickerGrid(s: largerText ? 1.25 : 0.9)
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8 * grid.s) {
-                BrandMark().frame(width: 22 * grid.s, height: 22 * grid.s).frame(width: grid.lead - 8 * grid.s)
+                SearchGlyph(grid: grid)
                 Text(verbatim: "shoreline").font(grid.font(20))
                 Spacer()
             }

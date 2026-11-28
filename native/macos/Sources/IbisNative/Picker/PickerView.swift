@@ -66,9 +66,7 @@ private struct SearchHeader: View {
 
     var body: some View {
         HStack(spacing: 8 * grid.s) {
-            BrandMark()
-                .frame(width: 24 * grid.s, height: 24 * grid.s)
-                .frame(width: grid.lead - 8 * grid.s)
+            SearchGlyph(grid: grid)
             NativeTextField(
                 text: store.query,
                 placeholder: PickerWords.text(.search),
@@ -89,32 +87,17 @@ private struct SearchHeader: View {
     }
 }
 
-/// The bird, from the brand.
-struct BrandMark: View {
-    @Environment(\.colorScheme) private var scheme
+/// The search field's glyph, as in Spotlight: the brand stays in the menu bar.
+struct SearchGlyph: View {
+    let grid: PickerGrid
 
     var body: some View {
-        if let image = PickerArt.image(scheme == .dark ? "pickerMark-dark" : "pickerMark") {
-            Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
-                .accessibilityHidden(true)
-        }
+        Image(systemName: "magnifyingglass")
+            .font(grid.font(20))
+            .foregroundStyle(.secondary)
+            .frame(width: grid.lead - 8 * grid.s)
+            .accessibilityHidden(true)
     }
-}
-
-enum PickerArt {
-    private static let images: [String: NSImage] = {
-        guard let folder = Bundle.main.resourceURL?.appendingPathComponent("macos-picker"),
-              let urls = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-        else { return [:] }
-        return Dictionary(uniqueKeysWithValues: urls.compactMap { url in
-            guard url.pathExtension == "pdf", let image = NSImage(contentsOf: url) else { return nil }
-            let name = url.deletingPathExtension().lastPathComponent
-            image.isTemplate = !name.hasPrefix("pickerMark")
-            return (name, image)
-        })
-    }()
-
-    static func image(_ name: String) -> NSImage? { images[name] }
 }
 
 // MARK: Results
