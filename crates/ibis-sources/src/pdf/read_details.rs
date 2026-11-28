@@ -1,14 +1,14 @@
 //! What a PDF says about itself, for `ibis __extract-pdf --details`
 //! (decision 0061): the Info dictionary, the XMP packet and the text of the
 //! first pages, reported as the file states them. The parent bounds, checks
-//! and chooses (`ibis_sources::pdf::checked_details`); this side only reads.
+//! and chooses (`super::checked_details`); this side only reads.
 //!
 //! XMP is XML: a document type, an entity or anything past the size, depth and
 //! work bounds ends the XMP read, and the Info dictionary and page text are
 //! still answered.
 
-use crate::pdf_text::{load, page_text};
-use ibis_sources::pdf::{DETAIL_PAGES, MAX_LIST, MAX_PAGE_TEXT_BYTES, MAX_VALUE_CHARS, Refusal, Said, Stated};
+use super::read::{load, page_text};
+use super::{DETAIL_PAGES, MAX_LIST, MAX_PAGE_TEXT_BYTES, MAX_VALUE_CHARS, Refusal, Said, Stated};
 use lopdf::{Document, Object};
 use quick_xml::{Reader, events::Event};
 use std::collections::BTreeMap;
@@ -331,10 +331,10 @@ fn keep(found: &mut BTreeMap<&'static str, Vec<String>>, property: &'static str,
 /// Info dictionary of `info` text strings and, when given, `xmp` as its
 /// metadata stream. Never a real document.
 ///
-/// [`invented_pdf`]: crate::pdf_text::invented_pdf
+/// [`invented_pdf`]: super::read::invented_pdf
 #[doc(hidden)]
 pub fn invented_pdf_with_details(pages: &[&str], info: &[(&str, &str)], xmp: Option<&str>) -> Vec<u8> {
-    let bytes = crate::pdf_text::invented_pdf(pages, None);
+    let bytes = super::read::invented_pdf(pages, None);
     let Ok(mut document) = Document::load_mem(&bytes) else {
         return bytes;
     };
@@ -361,5 +361,5 @@ pub fn invented_pdf_with_details(pages: &[&str], info: &[(&str, &str)], xmp: Opt
 }
 
 #[cfg(test)]
-#[path = "pdf_details_tests.rs"]
+#[path = "read_details_tests.rs"]
 mod tests;
