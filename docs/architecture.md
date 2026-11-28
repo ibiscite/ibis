@@ -77,11 +77,13 @@ CLI and MCP source adapters start in the invoking process's working directory.
 Direct socket clients supply absolute file paths.
 
 The daemon owns CLI settings writes, watches settings files for hand edits
-and clears stored recents when the saved switch is off. In phase 1 the Tauri
-app still has an in-process engine and records its delivered citations. Both
-processes use the existing settings file lock, including when saving or
-clearing recents. The app takes its own paste consent and delivery decisions
-until it becomes a client in phase 2.
+and clears stored recents when the saved switch is off. The Tauri app keeps
+its in-process engine: native shells replace it system by system, and it is
+not rebuilt as a client. It shares the daemon's files instead of its memory.
+Settings and recents use the settings file lock. Paste approvals in
+`apps.json` belong to `ibis_engine::grants`, which keeps no copy in memory:
+every answer reads the file and every change rewrites it under
+`apps.json.lock`, so two processes never undo each other's choices.
 
 ## Data and identity
 
