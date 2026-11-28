@@ -110,6 +110,23 @@ Settings and recents use the settings file lock. Paste approvals in
 every answer reads the file and every change rewrites it under
 `apps.json.lock`, so two processes never undo each other's choices.
 
+The daemon is meant to be a speed-up, never a requirement.
+`ibis __picker_stdio` is a private engine that answers the same picker turns
+on its standard streams. The Mac shell starts one when no daemon can be
+started (`PrivateEngine` in `Engine/DaemonSocket.swift`). It never stands in
+for a newer engine, or for a runtime directory or socket that is not the
+person's own: those are reported instead. Nothing the picker
+needs lives only in one engine's memory. The citation being built is saved to
+`picker-draft.json` whenever it changes. A shell whose opening continues on
+a new engine opens with `resume` and gets it back, with each reference read
+afresh; the Mac shell does this when it reconnects after the engine changed.
+Any other opening, even one soon after that keeps the search, starts with an
+empty citation. Every Return carries a new
+`DeliveryId`. Before granting the paste, `ibis_engine::delivered` claims it in
+`deliveries.json` under a lock all processes share. A Return asked for again
+with the same ID, of the same or another engine, can copy but never paste a
+second time.
+
 ## Data and identity
 
 `ibis_core::contract` defines records, attachments, notes, annotations,

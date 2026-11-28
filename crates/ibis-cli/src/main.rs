@@ -49,9 +49,18 @@ fn main() -> std::process::ExitCode {
         let status = match ibis::daemon::picker_endpoint() {
             Ok(()) => 0,
             Err(error) if error.kind() == std::io::ErrorKind::Unsupported => 6,
+            // A runtime directory or socket that is not the person's own.
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => 7,
             Err(_) => 5,
         };
         termination.exit(status);
+    }
+    if arguments.len() == 2 && arguments[1] == "__picker_stdio" {
+        let status = if ibis::daemon::picker_stdio().is_ok() { 0 } else { 5 };
+        #[cfg(unix)]
+        termination.exit(status);
+        #[cfg(not(unix))]
+        return std::process::ExitCode::from(status);
     }
     if arguments.len() == 2 && arguments[1] == "daemon" {
         let status = ibis::run_daemon();

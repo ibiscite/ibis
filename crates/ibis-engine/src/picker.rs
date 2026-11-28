@@ -10,9 +10,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+mod draft;
 mod format_scope;
 mod session;
 mod words;
+pub use draft::{Drafts, KEPT_FOR as DRAFT_KEPT_FOR, PickerDraft};
 pub use format_scope::{PickerChangeFormatRequest, PickerFormatScope};
 pub use session::{PickerDetails, PickerEntry, PickerIntent, PickerSession, PickerState};
 pub use words::shell_words;
@@ -29,6 +31,10 @@ pub struct PickerOpenRequest {
     /// Keep the last search, as when the picker reopens soon after closing.
     #[serde(default)]
     pub keep_query: bool,
+    /// The same opening continues on a new engine: take back the citation an
+    /// earlier engine saved. Any other opening starts with an empty citation.
+    #[serde(default)]
+    pub resume: bool,
 }
 
 impl PickerOpenRequest {
@@ -782,6 +788,9 @@ pub struct PickerDeliverRequest {
     pub ticket: String,
     pub content_hash: String,
     pub paste: bool,
+    /// New for each Return and kept when the shell asks again after a lost
+    /// reply: only its first claim may paste ([`crate::delivered`]).
+    pub delivery: crate::delivered::DeliveryId,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -795,6 +804,7 @@ pub struct PickerDeliverResult {
 /// The transport keeps this turn until the native writer finishes. The
 /// publication lock orders library reloads, the checked content orders
 /// previews, and the settings lease keeps the format and paste consent current.
+/// A paste is granted only after the delivery's claim is on disk.
 pub fn deliver<T>(
     engine: &Engine,
     settings_path: &Path,
@@ -814,11 +824,17 @@ pub fn deliver<T>(
         let _publication = engine.shared.publication.lock().map_err(|_| ErrorCode::Internal)?;
         let guard = checked.check(engine)?;
         let content = guard.content();
+        let paste = request.paste
+            && paste_at_opening
+            && paste
+            && crate::delivered::Deliveries::beside(settings_path)
+                .claim(&request.delivery)
+                .unwrap_or(false);
         let result = write(PickerDeliverResult {
             text: content.text.to_owned(),
             html: content.html.map(str::to_owned),
             rtf: content.rtf.map(str::to_owned),
-            paste: request.paste && paste_at_opening && paste,
+            paste,
         });
         drop(guard);
         engine.citations().invalidate(SessionId::PICKER);

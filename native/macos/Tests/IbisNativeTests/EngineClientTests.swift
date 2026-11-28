@@ -9,7 +9,7 @@ final class EngineClientTests: XCTestCase {
         let fixture = try Fixture()
         try fixture.identifyDaemon()
         let settings = fixture.client()
-        let opening = PickerOpenRequest(app: nil, file: nil, keepQuery: nil, language: .enUS, reload: nil, site: nil)
+        let opening = PickerOpenRequest(app: nil, file: nil, keepQuery: nil, language: .enUS, reload: nil, resume: nil, site: nil)
         let empty = try await settings.open(opening)
         XCTAssertNil(empty.library)
         let saved = try await settings.chooseLibrary(fixture.library)
@@ -34,7 +34,7 @@ final class EngineClientTests: XCTestCase {
             let after = try await picker.settings(.readOnly)
             XCTAssertEqual(after.library, saved.library)
         }
-        let request = PickerDeliverRequest(contentHash: preview.contentHash, paste: false, ticket: preview.ticket)
+        let request = PickerDeliverRequest(contentHash: preview.contentHash, delivery: freshDelivery(), paste: false, ticket: preview.ticket)
         let delivered = try await picker.deliver(request) { grant in
             XCTAssertEqual(grant.text, preview.text)
             return 1
@@ -69,7 +69,7 @@ final class EngineClientTests: XCTestCase {
         XCTAssertEqual(stored.rememberedFor, text.app)
 
         func browser(_ site: String) -> PickerOpenRequest {
-            PickerOpenRequest(app: "com.apple.Safari", file: fixture.library.path, keepQuery: nil, language: .enUS, reload: nil, site: site)
+            PickerOpenRequest(app: "com.apple.Safari", file: fixture.library.path, keepQuery: nil, language: .enUS, reload: nil, resume: nil, site: site)
         }
         let overleaf = browser("overleaf.com")
         let googleDocs = browser("docs.google.com")
@@ -114,7 +114,7 @@ final class EngineClientTests: XCTestCase {
         let changed = try XCTUnwrap(changedReply.formatScope)
         do {
             _ = try await client.deliver(
-                PickerDeliverRequest(contentHash: preview.contentHash, paste: false, ticket: preview.ticket)
+                PickerDeliverRequest(contentHash: preview.contentHash, delivery: freshDelivery(), paste: false, ticket: preview.ticket)
             ) { _ in
                 XCTFail("An outdated saved format must never receive a delivery grant.")
                 return 0
@@ -199,7 +199,7 @@ final class EngineClientTests: XCTestCase {
         )
         XCTAssertFalse(disabled.paste)
 
-        let request = PickerDeliverRequest(contentHash: current.contentHash, paste: true, ticket: current.ticket)
+        let request = PickerDeliverRequest(contentHash: current.contentHash, delivery: freshDelivery(), paste: true, ticket: current.ticket)
         let settingsLock = fixture.settings.deletingPathExtension().appendingPathExtension("json.lock").path
         let copied = try await client.deliver(request) { grant in
             XCTAssertFalse(grant.paste)
@@ -239,7 +239,7 @@ final class EngineClientTests: XCTestCase {
             .patch(paste: true)
         )
         XCTAssertTrue(enabled.paste)
-        let copyRequest = PickerDeliverRequest(contentHash: copyPreview.contentHash, paste: true, ticket: copyPreview.ticket)
+        let copyRequest = PickerDeliverRequest(contentHash: copyPreview.contentHash, delivery: freshDelivery(), paste: true, ticket: copyPreview.ticket)
         let result = try await client.deliver(copyRequest) { grant in
             XCTAssertFalse(grant.paste, "A new preference must not enable paste for an old opening.")
             return 1
@@ -271,7 +271,7 @@ final class EngineClientTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(30))
         }
 
-        let request = PickerDeliverRequest(contentHash: preview.contentHash, paste: false, ticket: preview.ticket)
+        let request = PickerDeliverRequest(contentHash: preview.contentHash, delivery: freshDelivery(), paste: false, ticket: preview.ticket)
         do {
             _ = try await client.deliver(request) { _ in
                 XCTFail("A stale reference must not reach the clipboard writer.")
@@ -328,4 +328,65 @@ final class EngineClientTests: XCTestCase {
             XCTAssertEqual(error as? DaemonError, .newerEngine)
         }
     }
+}
+
+extension EngineClientTests {
+    /// With no daemon to be had, an engine of the app's own answers the same turns.
+    func testAPrivateEngineAnswersPickerTurnsOnItsStandardStreams() throws {
+        let fixture = try Fixture()
+        let engine = try PrivateEngine(binary: fixture.binary, configuration: fixture.configuration)
+        func call(_ id: Int, _ method: String, _ params: [String: Any]) throws -> [String: Any] {
+            let request: [String: Any] = ["jsonrpc": "2.0", "id": id, "method": method, "params": params]
+            try engine.send(JSONSerialization.data(withJSONObject: request))
+            let reply = try XCTUnwrap(JSONSerialization.jsonObject(with: engine.receive()) as? [String: Any])
+            XCTAssertEqual(reply["id"] as? Int, id)
+            return try XCTUnwrap(reply["result"] as? [String: Any], "\(reply)")
+        }
+        let opened = try call(1, "picker/open", ["app": NSNull(), "file": fixture.library.path, "language": "en-US"])
+        XCTAssertNotNil(opened["state"])
+        let state = try call(2, "picker/act", ["intent": "type", "query": "north"])
+        XCTAssertNotNil((state["preview"] as? [String: Any])?["ticket"])
+        XCTAssertTrue(engine.peerIsOpen)
+    }
+}
+
+extension EngineClientTests {
+    /// A daemon that cannot start leaves the picker working: the client opens,
+    /// types and delivers through an engine of its own. One that is another
+    /// user's is reported, never bypassed.
+    @MainActor
+    func testWithNoDaemonThePickerUsesAnEngineOfItsOwn() async throws {
+        let fixture = try Fixture()
+        func standIn(_ name: String, endpointStatus: Int) throws -> URL {
+            let script = fixture.root.appendingPathComponent(name)
+            let body = "#!/bin/sh\n[ \"$1\" = __picker_endpoint ] && exit \(endpointStatus)\nexec '\(fixture.binary.path)' \"$@\"\n"
+            try body.write(to: script, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+            return script
+        }
+        let client = fixture.client(binary: try standIn("ibis-no-daemon", endpointStatus: 5))
+        _ = try await client.open(fixture.opening)
+        let state = try await client.typed("north")
+        let preview = try XCTUnwrap(state.preview)
+        let request = PickerDeliverRequest(contentHash: preview.contentHash, delivery: freshDelivery(), paste: false,
+                                           ticket: preview.ticket)
+        let delivered = try await client.deliver(request) { grant in
+            XCTAssertEqual(grant.text, preview.text)
+            return 1
+        }
+        XCTAssertNotNil(delivered)
+
+        let foreign = fixture.client(binary: try standIn("ibis-foreign-socket", endpointStatus: 7))
+        do {
+            _ = try await foreign.open(fixture.opening)
+            XCTFail("A runtime directory that is not the person's own was bypassed.")
+        } catch {
+            XCTAssertEqual(error as? DaemonError, .wrongPeer)
+        }
+    }
+}
+
+/// A new delivery id, as the picker makes one for each Return.
+private func freshDelivery() -> DeliveryId {
+    UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
 }

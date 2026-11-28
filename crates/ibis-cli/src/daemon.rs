@@ -11,7 +11,6 @@ use std::sync::{Arc, Condvar, Mutex, OnceLock, mpsc};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 pub(crate) mod mcp;
-#[cfg(target_os = "macos")]
 pub(crate) mod picker;
 
 #[cfg(unix)]
@@ -533,7 +532,14 @@ fn serve(
             serve_cli(framed, host, connections)
         }
         #[cfg(target_os = "macos")]
-        Mode::Picker => picker::serve(framed, host, connections, _delivery),
+        Mode::Picker => {
+            let endpoint = Endpoint::current()?;
+            let fence = picker::Fence {
+                turn: _delivery,
+                endpoint: &endpoint,
+            };
+            picker::serve(&mut framed, host, &connections.draining, Some(fence))
+        }
     }
 }
 
@@ -550,6 +556,14 @@ pub fn picker_endpoint() -> io::Result<()> {
         "hello": Hello { build: Build::here().clone(), mode: Mode::Picker },
     });
     serde_json::to_writer(io::stdout().lock(), &result).map_err(io::Error::other)
+}
+
+/// A picker engine of the shell's own over its standard streams, for when the
+/// daemon cannot be reached: the same turns and files, without the socket.
+pub fn picker_stdio() -> io::Result<()> {
+    ibis_engine::identity::use_saved_key(true).map_err(io::Error::other)?;
+    let host = crate::headless::Host::new().map_err(|_| io::Error::other("engine unavailable"))?;
+    picker::serve(&mut picker::Pipes::standard(), &host, &AtomicBool::new(false), None)
 }
 
 fn serve_cli(framed: Framed, host: &crate::headless::Host, connections: &Connections) -> io::Result<()> {

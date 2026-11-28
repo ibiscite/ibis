@@ -238,13 +238,13 @@ final class PickerStore: ObservableObject {
         targetPID = pid
         pasteDestination = nil
         open(PickerOpenRequest(app: app, file: file?.path, keepQuery: keepQuery, language: PickerWords.language,
-                               reload: nil, site: site))
+                               reload: nil, resume: nil, site: site))
     }
 
     func reload() {
         guard let opening else { return }
         open(PickerOpenRequest(app: opening.app, file: file?.path, keepQuery: true, language: opening.language,
-                               reload: true, site: opening.site))
+                               reload: true, resume: nil, site: opening.site))
     }
 
     func useSavedLibrary() {
@@ -254,7 +254,7 @@ final class PickerStore: ObservableObject {
         state = nil
         notice = nil
         open(PickerOpenRequest(app: opening.app, file: nil, keepQuery: true, language: opening.language,
-                               reload: nil, site: opening.site))
+                               reload: nil, resume: nil, site: opening.site))
     }
 
     func reportLibraryChoice(_ error: Error) { notice = pickerError(error) }
@@ -376,10 +376,11 @@ final class PickerStore: ObservableObject {
                 notice = pickerError(error)
                 pendingReturn = nil
                 if case let .details(_, item) = intent { sentDetails[item] = nil }
-                // The engine started a new session: show it rather than a citation it no longer holds.
+                // The engine started a new session: show the citation it took back
+                // rather than one it no longer holds.
                 if error as? DaemonError == .changed, let opening {
                     open(PickerOpenRequest(app: opening.app, file: opening.file, keepQuery: true,
-                                           language: opening.language, reload: nil, site: opening.site))
+                                           language: opening.language, reload: nil, resume: true, site: opening.site))
                     return
                 }
             }
@@ -533,8 +534,10 @@ final class PickerStore: ObservableObject {
         let attempt = UUID()
         delivery = attempt
         isDelivering = true
-        let request = PickerDeliverRequest(contentHash: preview.contentHash, paste: !copyOnly && pasteDestination != nil,
-                                           ticket: preview.ticket)
+        // The engine pastes only on the first claim of this id, in any process.
+        let request = PickerDeliverRequest(contentHash: preview.contentHash,
+                                           delivery: attempt.uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
+                                           paste: !copyOnly && pasteDestination != nil, ticket: preview.ticket)
         Task { [self] in
             do {
                 let result = try await engine.deliver(request) { [weak self] grant in

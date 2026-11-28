@@ -58,6 +58,8 @@ pub mod catalogue;
 pub mod format;
 pub mod outputs;
 
+/// Each delivery pastes at most once, across processes and restarts.
+pub mod delivered;
 /// Per-app paste choices in `apps.json`, shared by every delivering process.
 pub mod grants;
 
