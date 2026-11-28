@@ -84,6 +84,16 @@ lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchSe
 # the bundle id, so the hot key and the menu bar item always come from it.
 install_app() {
   local staging="/Applications/.Ibis.app.new" previous="/Applications/.Ibis.app.old"
+  local bundle_id other found
+  bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")
+  # The released app is also named Ibis.app; never replace a copy that is not this build's app.
+  if [[ -e "$installed" ]]; then
+    found=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$installed/Contents/Info.plist" 2>/dev/null || true)
+    if [[ "$found" != "$bundle_id" ]]; then
+      printf '%s holds %s, not %s; move it away first.\n' "$installed" "${found:-another app}" "$bundle_id" >&2
+      exit 1
+    fi
+  fi
   rm -rf "$staging" "$previous"
   ditto "$app" "$staging"
   codesign --verify --strict "$staging"
@@ -94,9 +104,7 @@ install_app() {
   mv "$staging" "$installed"
   rm -rf "$previous"
   # Forget every other copy that claims the bundle id, built here or earlier.
-  local bundle_id other
-  bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$installed/Contents/Info.plist")
-  "$lsregister" -dump 2>/dev/null \
+  { "$lsregister" -dump 2>/dev/null || true; } \
     | awk -v id="$bundle_id" '/^path:/ {sub(/^path: */, ""); sub(/ \(0x[0-9a-f]+\)$/, ""); path = $0}
                              $1 == "identifier:" && $2 == id {print path}' \
     | sort -u | while IFS= read -r other; do
