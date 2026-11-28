@@ -350,6 +350,42 @@ extension EngineClientTests {
     }
 }
 
+extension EngineClientTests {
+    /// A daemon that cannot start leaves the picker working: the client opens,
+    /// types and delivers through an engine of its own. One that is another
+    /// user's is reported, never bypassed.
+    @MainActor
+    func testWithNoDaemonThePickerUsesAnEngineOfItsOwn() async throws {
+        let fixture = try Fixture()
+        func standIn(_ name: String, endpointStatus: Int) throws -> URL {
+            let script = fixture.root.appendingPathComponent(name)
+            let body = "#!/bin/sh\n[ \"$1\" = __picker_endpoint ] && exit \(endpointStatus)\nexec '\(fixture.binary.path)' \"$@\"\n"
+            try body.write(to: script, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+            return script
+        }
+        let client = fixture.client(binary: try standIn("ibis-no-daemon", endpointStatus: 5))
+        _ = try await client.open(fixture.opening)
+        let state = try await client.typed("north")
+        let preview = try XCTUnwrap(state.preview)
+        let request = PickerDeliverRequest(contentHash: preview.contentHash, delivery: freshDelivery(), paste: false,
+                                           ticket: preview.ticket)
+        let delivered = try await client.deliver(request) { grant in
+            XCTAssertEqual(grant.text, preview.text)
+            return 1
+        }
+        XCTAssertNotNil(delivered)
+
+        let foreign = fixture.client(binary: try standIn("ibis-foreign-socket", endpointStatus: 7))
+        do {
+            _ = try await foreign.open(fixture.opening)
+            XCTFail("A runtime directory that is not the person's own was bypassed.")
+        } catch {
+            XCTAssertEqual(error as? DaemonError, .wrongPeer)
+        }
+    }
+}
+
 /// A new delivery id, as the picker makes one for each Return.
 private func freshDelivery() -> DeliveryId {
     UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()

@@ -720,9 +720,6 @@ fn picker_releases_a_delivery_whose_acknowledgement_stops_mid_frame() {
     assert!(start.elapsed() < Duration::from_secs(5));
 }
 
-/// One picker opening in an engine a shell started for itself over its
-/// standard streams, as when the daemon cannot be reached: open, type, then
-/// deliver with `delivery` and report the write as done.
 /// An engine a shell started for itself, answering picker turns on its
 /// standard streams as when no daemon can be reached.
 struct PrivateEngine {
@@ -772,6 +769,8 @@ impl PrivateEngine {
     }
 }
 
+/// One picker opening in a private engine: open, type, then deliver with
+/// `delivery` and report the write as done.
 fn deliver_from_a_private_engine(home: &Home, library: &Path, delivery: &str) -> Value {
     let mut engine = PrivateEngine::start(home);
     engine.call("picker/open", json!({"app":null,"file":library,"language":"en-US"}));

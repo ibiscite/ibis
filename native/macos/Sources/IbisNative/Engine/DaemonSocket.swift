@@ -45,6 +45,7 @@ struct DaemonEndpoint {
         let data = output.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         if process.terminationStatus == 6 { throw DaemonError.newerEngine }
+        if process.terminationStatus == 7 { throw DaemonError.wrongPeer }
         guard process.terminationStatus == 0 else { throw DaemonError.noEngine }
         guard let info = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let socket = info["socket"] as? String,
@@ -275,9 +276,6 @@ final class PrivateEngine: EngineLink {
         } catch {
             throw DaemonError.noEngine
         }
-        // The engine holds the other ends; ours close so its exit reads as an end.
-        try? input.fileHandleForReading.close()
-        try? output.fileHandleForWriting.close()
         let frames = Frames(input: fromEngine.fileDescriptor, output: toEngine.fileDescriptor)
         frames.readLimit = 30_000
         self.process = process
@@ -286,9 +284,10 @@ final class PrivateEngine: EngineLink {
         self.frames = frames
     }
 
-    /// Closing its input ends the engine; one that does not answer is stopped.
+    /// Closing its input ends the engine; one still running a moment later is stopped.
     deinit {
         try? toEngine.close()
+        for _ in 0..<20 where process.isRunning { usleep(10_000) }
         if process.isRunning { process.terminate() }
         try? fromEngine.close()
     }

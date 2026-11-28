@@ -184,10 +184,13 @@ final class EngineClient: @unchecked Sendable {
         if let socket { return socket }
         let connected: any EngineLink
         do {
-            connected = try DaemonSocket(DaemonEndpoint(binary: binary, configuration: configuration))
-        } catch DaemonError.noEngine, DaemonError.disconnected {
-            // No daemon to be had: an engine of the app's own serves the same
-            // turns and files. A newer engine or a wrong peer is never bypassed.
+            let endpoint = try DaemonEndpoint(binary: binary, configuration: configuration)
+            connected = try DaemonSocket(endpoint)
+        } catch DaemonError.noEngine {
+            // No daemon could be started: an engine of the app's own serves the
+            // same turns and files. Only that failure, before any daemon has
+            // answered, falls back, so a newer engine or a wrong peer is never
+            // bypassed; anything later is retried through the endpoint.
             connected = try PrivateEngine(binary: binary, configuration: configuration)
         }
         if restoring, let opening = lastOpening {

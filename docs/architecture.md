@@ -113,8 +113,9 @@ every answer reads the file and every change rewrites it under
 The daemon is meant to be a speed-up, never a requirement.
 `ibis __picker_stdio` is a private engine that answers the same picker turns
 on its standard streams. The Mac shell starts one when no daemon can be
-started or reached (`PrivateEngine` in `Engine/DaemonSocket.swift`); a newer
-engine or a socket another user owns is never bypassed this way. Nothing the picker
+started (`PrivateEngine` in `Engine/DaemonSocket.swift`). It never stands in
+for a newer engine, or for a runtime directory or socket that is not the
+person's own: those are reported instead. Nothing the picker
 needs lives only in one engine's memory. The citation being built is saved to
 `picker-draft.json` whenever it changes. A shell that reopens with
 `keep_query` gets it back, with each reference read afresh; the Mac shell does

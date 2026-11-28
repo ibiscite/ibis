@@ -49,6 +49,8 @@ fn main() -> std::process::ExitCode {
         let status = match ibis::daemon::picker_endpoint() {
             Ok(()) => 0,
             Err(error) if error.kind() == std::io::ErrorKind::Unsupported => 6,
+            // A runtime directory or socket that is not the person's own.
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => 7,
             Err(_) => 5,
         };
         termination.exit(status);
