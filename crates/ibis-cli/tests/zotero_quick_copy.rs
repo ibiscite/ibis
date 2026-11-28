@@ -45,12 +45,13 @@ fn fold(html_or_text: &str) -> String {
 /// One bibliography entry's own HTML, without the `csl-entry` block around it
 /// and, in a numeric style, without the number in its margin.
 fn entry_html(html: &str, numeric: bool) -> String {
-    // The content of the first `<div class="NAME">` and its own closing tag,
+    // The content of the first block of class NAME and its own closing tag,
     // which is the last one: these blocks hold nothing after their content.
     let inside = |html: &str, class: &str| -> Option<String> {
-        let (_, rest) = html.split_once(&format!("<div class=\"{class}\""))?;
-        let (_, rest) = rest.split_once('>')?;
-        let (content, _) = rest.trim_end().rsplit_once("</div>")?;
+        let at = html.find(&format!(" class=\"{class}\""))?;
+        let (_, name) = html[..at].rsplit_once('<')?;
+        let (_, rest) = html[at..].split_once('>')?;
+        let (content, _) = rest.trim_end().rsplit_once(&format!("</{name}>"))?;
         Some(content.trim().to_owned())
     };
     let html = inside(html, "csl-bib-body").unwrap_or_else(|| html.to_owned());
@@ -63,35 +64,43 @@ fn entry_html(html: &str, numeric: bool) -> String {
 }
 
 /// Zotero's layout as Ibis writes it for Word, its one named difference: Word
-/// reads no indent from the enclosing block, so a hanging indent moves from the
-/// body onto each entry, as the RTF's half inch.
+/// reads no indent from the enclosing block and keeps a pasted left margin only
+/// on a paragraph, so a hanging indent moves from the body onto each entry, as
+/// the RTF's half inch, with the entry's spacing below it.
 fn for_word(html: &str) -> String {
     const BODY: &str = "margin-left: 2em; text-indent:-2em;";
-    const ENTRY: &str = "margin-left: 0.5in; text-indent: -0.5in; ";
     let Some((head, entries)) = html.split_once('>') else {
         return html.to_owned();
     };
     if !head.contains(BODY) {
         return html.to_owned();
     }
-    let entries = entries
-        .replace(
-            "<div class=\"csl-entry\" style=\"",
-            &format!("<div class=\"csl-entry\" style=\"{ENTRY}"),
-        )
-        .replace(
-            "<div class=\"csl-entry\">",
-            &format!("<div class=\"csl-entry\" style=\"{ENTRY}\">"),
-        );
-    format!("{}>{entries}", head.replace(BODY, ""))
+    let mut out = format!("{}>", head.replace(BODY, ""));
+    for (index, part) in entries.split("<div class=\"csl-entry\"").enumerate() {
+        if index == 0 {
+            out.push_str(part);
+            continue;
+        }
+        let (style, rest) = part.split_once('>').unwrap_or_default();
+        let after = style
+            .trim()
+            .strip_prefix("style=\"margin-bottom: ")
+            .and_then(|value| value.strip_suffix("em;\""))
+            .unwrap_or("0");
+        let (text, rest) = rest.split_once("</div>").unwrap_or((rest, ""));
+        out.push_str(&format!(
+            "<p class=\"csl-entry\" style=\"margin: 0 0 {after}em 0.5in; text-indent: -0.5in; \">{text}</p>{rest}"
+        ));
+    }
+    out
 }
 
 /// A bibliography's layout: each block's inline style, in order. A numeric
 /// entry has no number in Ibis, so only the layout around it compares.
 fn layout(html: &str, numeric: bool) -> String {
     let mut styles = vec![];
-    for (at, _) in html.match_indices("<div class=\"") {
-        let tag = html[at + 12..].split('>').next().unwrap_or_default();
+    for (at, _) in html.match_indices(" class=\"") {
+        let tag = html[at + 8..].split('>').next().unwrap_or_default();
         if let Some((class, style)) = tag.split_once("\" style=\"") {
             styles.push(format!("{class}: {}", style.trim_end_matches('"')));
         }

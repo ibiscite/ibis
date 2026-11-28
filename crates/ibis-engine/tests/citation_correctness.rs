@@ -52,16 +52,17 @@ fn format(formatter: &Formatter, snapshot: &Snapshot, form: CitationForm) -> Cit
     formatter.format(snapshot, &request(snapshot, "apa", form)).unwrap()
 }
 
-const APA_ENTRY: &str = "<div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">";
+const APA_ENTRY: &str = "<p class=\"csl-entry\" style=\"margin: 0 0 0em 0.5in; text-indent: -0.5in; \">";
 
 /// An APA bibliography is copied with double spacing and a hanging indent on
-/// each entry, and every entry ends its paragraph; a citation has no layout.
+/// each entry, a paragraph as Word keeps it, and every entry ends its paragraph; a citation has no layout.
 fn paste(result: &CitationResult, text: &str, html: &str, rtf_body: &str) {
     let (html, settings, rtf_body) = if html.starts_with("<div class=\"csl-entry\">") {
         (
             format!(
                 "<div class=\"csl-bib-body\" style=\"line-height: 2; \">{}</div>",
                 html.replace("<div class=\"csl-entry\">", APA_ENTRY)
+                    .replace("</div>", "</p>")
             ),
             r" \li720 \fi-720 \sl480 \slmult1 \sa0 ",
             format!("{rtf_body}\\par"),
@@ -158,7 +159,7 @@ fn only_web_addresses_and_dois_become_links() {
     assert_eq!(
         result.html.as_deref(),
         Some(
-            "<div class=\"csl-bib-body\" style=\"line-height: 2; \"><div class=\"csl-entry\" style=\"margin-left: 0.5in; text-indent: -0.5in; \">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>. www.example.org/rivers</div></div>"
+            "<div class=\"csl-bib-body\" style=\"line-height: 2; \"><p class=\"csl-entry\" style=\"margin: 0 0 0em 0.5in; text-indent: -0.5in; \">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>. www.example.org/rivers</p></div>"
         )
     );
 }
