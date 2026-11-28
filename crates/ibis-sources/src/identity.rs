@@ -67,16 +67,38 @@ pub(crate) fn cache_dir() -> Option<PathBuf> {
 
 /// Use the person's saved key from the first library on, writing one if
 /// `create` allows it. Nothing is read or written until a library needs an id.
-pub fn use_saved_key(create: bool) {
-    if let Some(directory) = config_dir() {
-        use_key_file(directory.join(KEY_FILE), create);
+pub fn use_saved_key(create: bool) -> Result<(), KeyAlreadyChosen> {
+    match config_dir() {
+        Some(directory) => use_key_file(directory.join(KEY_FILE), create),
+        None => Ok(()),
     }
 }
 
-/// The first call decides, and only before the first id is made.
-pub fn use_key_file(path: PathBuf, create: bool) {
-    let _ = FILE.set((path, create));
+/// Choose the key file before the first id is made. Choosing the same file
+/// again is fine; a different choice, or one after ids were made with this
+/// process's own key, is refused, because ids already given out would no
+/// longer match.
+pub fn use_key_file(path: PathBuf, create: bool) -> Result<(), KeyAlreadyChosen> {
+    let chosen = (path, create);
+    if FILE.get().is_none() && KEY.get().is_some() {
+        return Err(KeyAlreadyChosen);
+    }
+    match FILE.set(chosen.clone()) {
+        Ok(()) => Ok(()),
+        Err(_) if FILE.get() == Some(&chosen) => Ok(()),
+        Err(_) => Err(KeyAlreadyChosen),
+    }
 }
+
+/// Library ids were already made with another key, so this process keeps it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyAlreadyChosen;
+impl std::fmt::Display for KeyAlreadyChosen {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("library ids were already made with another key")
+    }
+}
+impl std::error::Error for KeyAlreadyChosen {}
 
 /// Whether ids made in this process last beyond it.
 pub fn ids_last() -> bool {

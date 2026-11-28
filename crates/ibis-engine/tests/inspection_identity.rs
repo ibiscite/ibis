@@ -8,7 +8,7 @@ use ibis_engine::{
 fn read_only_inspection_never_creates_a_key_even_when_the_host_allows_one() {
     let directory = tempfile::tempdir().unwrap();
     let key = directory.path().join("config/library-ids.key");
-    ibis_engine::identity::use_key_file(key.clone(), true);
+    ibis_engine::identity::use_key_file(key.clone(), true).unwrap();
     let file = directory.path().join("invented.bib");
     std::fs::write(&file, "@misc{invented,title={Invented}}").unwrap();
     let engine = Engine::new().unwrap();

@@ -1,3 +1,4 @@
+use ibis_engine::agent_apps::IbisCommand;
 use ibis_os::command_install::{CommandInstall, CommandState, PROFILE_LINE};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -42,13 +43,13 @@ fn agent_full_path_is_the_cli_in_each_package_never_the_desktop_executable() {
             super::agent_environment(install.clone(), dir.path().join("config"), None)
                 .unwrap()
                 .ibis,
-            (package != "appimage").then(|| install.bundled.clone())
+            (package != "appimage").then(|| IbisCommand::Installed(install.bundled.clone()))
         );
         assert_ne!(
             super::agent_environment(install.clone(), dir.path().join("config"), None)
                 .unwrap()
                 .ibis,
-            Some(desktop)
+            Some(IbisCommand::Installed(desktop))
         );
         install.install().unwrap();
         assert_eq!(
@@ -56,7 +57,7 @@ fn agent_full_path_is_the_cli_in_each_package_never_the_desktop_executable() {
                 .unwrap()
                 .ibis
                 .unwrap(),
-            install.destination()
+            IbisCommand::Installed(install.destination())
         );
         if package == "appimage" {
             fs::set_permissions(install.destination(), fs::Permissions::from_mode(0o600)).unwrap();
@@ -78,7 +79,7 @@ fn agent_full_path_is_the_cli_in_each_package_never_the_desktop_executable() {
                 .unwrap()
                 .ibis
                 .unwrap(),
-            foreign.join("ibis")
+            IbisCommand::Installed(foreign.join("ibis"))
         );
     }
 }

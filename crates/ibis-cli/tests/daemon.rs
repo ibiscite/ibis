@@ -347,7 +347,7 @@ fn the_daemon_does_not_use_the_first_clients_working_directory() {
 fn the_socket_and_stdio_return_the_generated_methods() {
     let home = Home::new();
     let file = home.library();
-    ibis_engine::identity::use_key_file(home.config().join("com.ibiscite.ibis/library-ids.key"), true);
+    ibis_engine::identity::use_key_file(home.config().join("com.ibiscite.ibis/library-ids.key"), true).unwrap();
     let engine = Engine::new().unwrap();
     engine.open_file_observed(&file, &Cancellation::default()).unwrap();
     let _process = Process(home.command().arg("daemon").spawn().unwrap());

@@ -843,7 +843,20 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     let json = matches.get_flag("json");
     if defaults == Defaults::App {
         // Doctor writes nothing: without a saved key its ids last only for its report.
-        ibis_engine::identity::use_saved_key(matches.subcommand_name() != Some("doctor"));
+        if ibis_engine::identity::use_saved_key(matches.subcommand_name() != Some("doctor")).is_err() {
+            return emit(
+                json,
+                Err(Failure::new(
+                    ErrorCode::Internal,
+                    "library ids were already made with another key",
+                )),
+                None,
+                Presentation::default(),
+                &mut output,
+                &mut errors,
+                mode,
+            );
+        }
     }
     let engine = if matches!(matches.subcommand_name(), Some("serve" | "mcp")) {
         engine

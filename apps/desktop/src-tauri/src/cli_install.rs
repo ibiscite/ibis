@@ -61,7 +61,7 @@ pub(crate) fn agent_home(app: &tauri::AppHandle) -> Result<ibis_engine::agent_ap
     )?;
     // The package's own folder changes with each Store update; its alias stays.
     if let Some(alias) = crate::store::command() {
-        home.ibis = Some(alias);
+        home.ibis = Some(ibis_engine::agent_apps::IbisCommand::Packaged(alias));
     }
     Ok(home)
 }
@@ -87,7 +87,8 @@ fn agent_environment(
         Some(destination)
     } else {
         home.find("ibis").or(bundled)
-    };
+    }
+    .map(ibis_engine::agent_apps::IbisCommand::Installed);
     Ok(home)
 }
 

@@ -409,7 +409,7 @@ pub(super) fn run() -> io::Result<()> {
     let mut listener = endpoint.0.listen()?;
     #[cfg(target_os = "macos")]
     drop(delivery_fence);
-    ibis_engine::identity::use_saved_key(true);
+    ibis_engine::identity::use_saved_key(true).map_err(io::Error::other)?;
     #[cfg(unix)]
     ibis_sources::adapter::guard_daemon_children(std::env::current_exe()?);
     let host = Arc::new(crate::headless::Host::new().map_err(|_| io::Error::other("engine unavailable"))?);

@@ -67,7 +67,7 @@ fn known_command(home: &mut Home) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&command, fs::Permissions::from_mode(0o755)).unwrap();
     }
-    home.ibis = Some(command.clone());
+    home.ibis = Some(IbisCommand::Installed(command.clone()));
     command
 }
 
@@ -269,4 +269,53 @@ fn a_change_after_observation_is_refused() {
     assert_eq!(change.outcome.as_str(), "failed");
     assert_eq!(change.detail, CHANGED);
     assert_eq!(fs::read_to_string(path).unwrap(), saved);
+}
+
+/// The Store copy names its own alias in every connection, since PATH may not
+/// hold it or may hold another package's `ibis`; a bare `ibis` it finds is stale.
+#[test]
+fn the_store_copy_names_its_own_alias_in_every_connection() {
+    let mut home = home("packaged");
+    let alias = home.root.join("WindowsApps").join("ibis.exe");
+    home.ibis = Some(IbisCommand::Packaged(alias.clone()));
+    let alias_text = alias.to_string_lossy().into_owned();
+    for id in ["vscode", "cursor", "claude-desktop"] {
+        let client = CLIENTS.iter().find(|client| client.id == id).unwrap();
+        let Store::Json { file, key, typed, .. } = client.store else {
+            panic!("JSON client")
+        };
+        let path = file(&home).unwrap();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, format!("{{\"{key}\":{{\"ibis\":{}}}}}", entry(typed, COMMAND))).unwrap();
+        let app = plan(&home, &[id]).remove(0);
+        assert_eq!(app.state, AgentAppState::Stale, "{id}");
+        assert_eq!(
+            app.connect(&home, true, false, false).outcome,
+            Outcome::Replaced,
+            "{id}"
+        );
+        let written: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(written[key]["ibis"]["command"], alias_text.as_str(), "{id}");
+        assert_eq!(plan(&home, &[id]).remove(0).state, AgentAppState::Connected, "{id}");
+    }
+    let Store::Program { add, .. } = CLIENTS.iter().find(|client| client.id == "codex").unwrap().store else {
+        panic!("program client")
+    };
+    assert_eq!(
+        add_args(add, &alias_text),
+        [
+            "mcp",
+            "add",
+            "ibis",
+            "--",
+            alias_text.as_str(),
+            "mcp",
+            "--app-libraries"
+        ]
+    );
+    home.ibis = Some(IbisCommand::Installed(alias.clone()));
+    assert_eq!(
+        command(CLIENTS.iter().find(|client| client.id == "vscode").unwrap(), &home),
+        COMMAND
+    );
 }

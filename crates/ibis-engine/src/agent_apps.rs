@@ -172,8 +172,19 @@ pub struct Home {
     pub config: Option<PathBuf>,
     pub path: Vec<PathBuf>,
     pub codex_home: Option<PathBuf>,
-    /// A durable CLI path for apps that need one; None blocks connecting them.
-    pub ibis: Option<PathBuf>,
+    /// The `ibis` connections name; None blocks the apps that need a full path.
+    pub ibis: Option<IbisCommand>,
+}
+
+/// The `ibis` an app's connection starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IbisCommand {
+    /// A durable path, given only to apps that need a full path; the rest
+    /// name `ibis` and find it on PATH.
+    Installed(PathBuf),
+    /// The Microsoft Store package's own alias, given to every app: PATH may
+    /// not hold it, or may hold another package's `ibis`.
+    Packaged(PathBuf),
 }
 
 impl Home {
@@ -341,11 +352,14 @@ fn state(client: &Client, home: &Home) -> Found {
     match servers.get(COMMAND) {
         None => Found::Missing,
         Some(entry) if ours(entry) => {
-            let needs_path = matches!(client.store, Store::Json { absolute: true, .. })
-                && entry["command"]
-                    .as_str()
-                    .map(Path::new)
-                    .is_none_or(|path| !path.is_absolute() || !executable(path));
+            let command = entry["command"].as_str().map(Path::new);
+            let needs_path = match (&home.ibis, client.store) {
+                (Some(IbisCommand::Packaged(alias)), _) => command != Some(alias.as_path()),
+                (_, Store::Json { absolute, .. }) => {
+                    absolute && command.is_none_or(|path| !path.is_absolute() || !executable(path))
+                }
+                _ => false,
+            };
             if needs_path {
                 Found::Stale(entry.clone())
             } else {
@@ -443,18 +457,28 @@ impl Change {
     }
 }
 
-fn wanted(client: &Client, home: &Home) -> String {
-    match client.store {
-        Store::Json { typed, absolute, .. } => {
-            let command = home
-                .ibis
-                .as_ref()
-                .filter(|_| absolute)
-                .map(|path| path.to_string_lossy());
-            entry(typed, command.as_deref().unwrap_or(COMMAND))
-        }
-        _ => entry(false, COMMAND),
+/// The command a connection to `client` names: the package's alias for every
+/// app, or an installed path for those that need a full one.
+fn command(client: &Client, home: &Home) -> String {
+    match (&home.ibis, client.store) {
+        (Some(IbisCommand::Packaged(path)), _) => path.to_string_lossy().into_owned(),
+        (Some(IbisCommand::Installed(path)), Store::Json { absolute: true, .. }) => path.to_string_lossy().into_owned(),
+        _ => COMMAND.to_owned(),
     }
+}
+
+fn wanted(client: &Client, home: &Home) -> String {
+    let typed = matches!(client.store, Store::Json { typed: true, .. });
+    entry(typed, &command(client, home))
+}
+
+/// An app's own add command, naming the command its connection starts.
+fn add_args<'a>(add: &'a [&'a str], command: &'a str) -> Vec<&'a str> {
+    let starts = add.iter().position(|arg| *arg == "--").map(|separator| separator + 1);
+    add.iter()
+        .enumerate()
+        .map(|(index, arg)| if Some(index) == starts { command } else { arg })
+        .collect()
 }
 
 /// The steps for an app set up by hand, from the catalogue message `steps` names.
@@ -624,7 +648,8 @@ impl AgentApp {
                         Ok(())
                     };
                     removed.and_then(|()| {
-                        run_program(home, program, add).map_err(|reason| match &replacing {
+                        let command = command(client, home);
+                        run_program(home, program, &add_args(add, &command)).map_err(|reason| match &replacing {
                     Some(old) => {
                         format!("{reason}; the old ibis entry was taken out. To restore it, put back:\n\"ibis\": {old}")
                     }
