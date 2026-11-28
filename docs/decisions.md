@@ -164,3 +164,6 @@ the anchor older links use.
 
 ## 0067 Ibis uses whatever people have, and needs nothing
 [0067](decisions/0067-whatever-people-have.md): Ibis works on its own with one file or a folder of PDFs and takes full advantage of any manager present; Word citations as close to Zotero's and as robust as evidence allows; AI optional with everything in the CLI and MCP and nothing in the default flow; references stay in people's own files with no sync service; coauthors get references carried in the document and an optional shared file in a synced folder; plugins are small programs over the CLI and MCP; settings simple by default with depth (design open); quiet automatic updates; a web version after 1.0; Word and LaTeX excellent first, then every other writing app on the same base; the name is always Ibis.
+
+## 0068 Each layer stands on its own
+[0068](decisions/0068-layers-stand-alone.md): `ibis-os` beside a fully pure `ibis-core` (enforced by `core_does_no_io` with no exceptions) holds the shared system calls (private atomic writes, bounded file work, panic containment, the command install and toggle receipt); JSON-RPC framing, the server and the MCP runtime move to the host (`ibis-cli`) while the engine keeps the method table and result budgets, and `agent_apps` moves with MCP; the crates stay unpublished and the contract JSON is the only versioned surface.
