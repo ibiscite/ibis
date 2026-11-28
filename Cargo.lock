@@ -2154,9 +2154,7 @@ dependencies = [
  "icu_properties",
  "insta",
  "jiff",
- "lopdf",
  "nix",
- "quick-xml 0.42.0",
  "serde",
  "serde_json",
  "tempfile",
@@ -2282,7 +2280,6 @@ dependencies = [
 name = "ibis-fuzz"
 version = "0.3.13"
 dependencies = [
- "ibis",
  "ibis-core",
  "ibis-os",
  "ibis-sources",
@@ -2332,6 +2329,7 @@ dependencies = [
  "ibis-core",
  "ibis-os",
  "insta",
+ "lopdf",
  "nix",
  "notify",
  "proptest",
