@@ -45,6 +45,11 @@ nothing that macOS already draws.
 
 ### Native app direction
 
+The bar is the best app on the Mac ([0066](../decisions/0066-native-shells-use-system-parts.md)
+point 7): each screen is compared with Apple's own apps (Spotlight, Finder,
+System Settings, Preview) and is not finished while one of them does the same
+thing better.
+
 The maintainer chose these from A/B mock-ups on 2026-11-28 (round four); they
 are built in this order of need.
 
