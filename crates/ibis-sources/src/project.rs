@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use ibis_core::contract::{Fingerprint, LibraryObject, Record};
 use ibis_core::model::strip_markup;
-use ibis_core::panic_guard;
+use ibis_os::panic_guard;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

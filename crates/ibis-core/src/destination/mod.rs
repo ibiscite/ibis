@@ -31,17 +31,6 @@ pub enum System {
     Web,
 }
 
-impl System {
-    /// The system this build runs on; other Unix desktops count as Linux.
-    pub const HERE: Self = if cfg!(target_os = "macos") {
-        Self::Macos
-    } else if cfg!(windows) {
-        Self::Windows
-    } else {
-        Self::Linux
-    };
-}
-
 /// An app as the platform names it: a bundle ID on macOS, an executable name
 /// on Windows, a site name on the web. Never a window title, document name or
 /// web address.

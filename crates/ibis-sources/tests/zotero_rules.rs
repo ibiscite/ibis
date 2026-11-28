@@ -7,8 +7,8 @@
 use std::collections::BTreeMap;
 
 use ibis_core::contract::{LibraryId, LibraryObject, Record};
-use ibis_core::zotero::api::{Response, Transport, TransportError};
 use ibis_sources::zotero::{self, ZoteroItem};
+use ibis_sources::zotero_local::api::{Response, Transport, TransportError};
 use ibis_sources::zotero_source::{LiveError, ZoteroError, ZoteroSource};
 use ibis_sources::{LoadedLibrary, WarningCode};
 use serde_json::{Value, json};

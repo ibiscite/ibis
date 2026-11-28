@@ -10,8 +10,8 @@
 //! file grants nothing and keeps a durable delivery-recovery refusal until
 //! each app gets an explicit delivery choice.
 
-use ibis_core::atomic_file::{AtomicFile, open_private};
 use ibis_core::destination::{AppId, AppPaste, CopyReason, PasteSafety, has_citation_plugins, lookup};
+use ibis_os::atomic_file::{AtomicFile, open_private};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Read};

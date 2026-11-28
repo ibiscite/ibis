@@ -1,6 +1,6 @@
 //! Invented API responses; never connects to Zotero or discovers a profile.
 #![cfg(test)]
-use ibis_core::zotero::api::{Response, Transport, TransportError};
+use ibis_sources::zotero_local::api::{Response, Transport, TransportError};
 use ibis_sources::zotero_local::live::{Library, Limits, LiveError, LiveReader, LiveWarning, Refresh};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;

@@ -1,8 +1,8 @@
 //! Overlapped local named pipes and detached daemon launch.
 #![allow(unsafe_code)]
 
-use ibis_core::atomic_file::open_private;
 use ibis_core::contract::Fingerprint;
+use ibis_os::atomic_file::open_private;
 use std::fs::{self, File, TryLockError};
 use std::future::{Future, poll_fn};
 use std::io;

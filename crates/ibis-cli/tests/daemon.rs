@@ -631,7 +631,7 @@ fn restoring_settings_honors_the_apps_writer_lock_and_clears_disabled_history() 
         .to_string(),
     )
     .unwrap();
-    let file = ibis_core::atomic_file::open_private(&settings.with_extension("json.lock")).unwrap();
+    let file = ibis_os::atomic_file::open_private(&settings.with_extension("json.lock")).unwrap();
     let deadline = Instant::now() + WAIT;
     while let Err(error) = file.try_lock() {
         assert!(

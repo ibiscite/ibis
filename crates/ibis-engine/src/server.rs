@@ -262,12 +262,12 @@ mod tests {
             )
         });
         engine
-            .publish_library(
+            .publish_library(&ibis_sources::LoadedLibrary::new(
                 ibis_core::contract::LibraryId::digest(b"synthetic event"),
                 crate::LibraryKind::Snapshot,
                 crate::SourceCapability::SNAPSHOT,
-                Arc::new(ibis_core::contract::Snapshot::new(vec![]).unwrap()),
-            )
+                ibis_core::contract::Snapshot::new(vec![]).unwrap(),
+            ))
             .unwrap();
         let bytes = output.recv_timeout(Duration::from_secs(5)).unwrap();
         let message = protocol::read_frame(&mut Cursor::new(bytes)).unwrap().unwrap();

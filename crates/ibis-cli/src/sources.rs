@@ -84,7 +84,7 @@ fn read_configuration() -> Result<Configuration, &'static str> {
 }
 
 pub(crate) fn configuration_report() -> Value {
-    use ibis_engine::sources::SourceAdapter;
+    use ibis_sources::adapter::SourceAdapter;
     match configuration() {
         Ok(configured) => {
             let adapters: Vec<_> = configured

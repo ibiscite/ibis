@@ -1,4 +1,4 @@
-use ibis_core::atomic_file::{AtomicFile, create_numbered, create_private, open_private};
+use ibis_os::atomic_file::{AtomicFile, create_numbered, create_private, open_private};
 use std::fs;
 use std::io::{self, Write};
 

@@ -8,7 +8,7 @@
 //! still answered.
 
 use crate::pdf_text::{load, page_text};
-use ibis_engine::pdf::{DETAIL_PAGES, MAX_LIST, MAX_PAGE_TEXT_BYTES, MAX_VALUE_CHARS, Refusal, Said, Stated};
+use ibis_sources::pdf::{DETAIL_PAGES, MAX_LIST, MAX_PAGE_TEXT_BYTES, MAX_VALUE_CHARS, Refusal, Said, Stated};
 use lopdf::{Document, Object};
 use quick_xml::{Reader, events::Event};
 use std::collections::BTreeMap;

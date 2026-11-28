@@ -5,7 +5,7 @@
 //! settings, redirects, TLS and connection pooling, none of which this may
 //! use. Requests carry no browser `Origin` and no browser User-Agent (Zotero
 //! refuses browser-like requests), follow no redirects and give up quickly.
-//! The rules of the conversation are in [`ibis_core::zotero::api`].
+//! The rules of the conversation are in [`api`].
 //!
 //! Whatever listens on the port is believed to be Zotero, as with any client
 //! of Zotero's local API; requests carry nothing secret, and answers are
@@ -15,12 +15,16 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 
-use ibis_core::zotero::api::{Response, Transport, TransportError};
+use api::{Response, Transport, TransportError};
 
+pub mod api;
 pub mod bbt;
 pub mod closed;
 pub mod discovery;
 pub mod fulltext;
+pub mod libraries;
+/// Open an item's PDF in Zotero rather than the item, when it has one.
+pub mod open;
 
 /// Zotero's local API port.
 pub const DEFAULT_PORT: u16 = 23119;

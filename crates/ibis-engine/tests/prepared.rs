@@ -79,12 +79,12 @@ fn changed_pick_is_refused_when_copied() -> Result<(), Box<dyn std::error::Error
     };
     record.csl.insert("title".into(), json!("Changed synthetic title"));
     engine
-        .publish_library(
+        .publish_library(&ibis_sources::LoadedLibrary::new(
             record.id.library.clone(),
             ibis_engine::LibraryKind::Snapshot,
             ibis_engine::SourceCapability::SNAPSHOT,
-            Arc::new(Snapshot::new(vec![LibraryObject::Record(record)])?),
-        )
+            Snapshot::new(vec![LibraryObject::Record(record)])?,
+        ))
         .map_err(|error| format!("{:?}", error.code))?;
     assert!(matches!(
         engine.recite(&prepared, &Cancellation::default()),
@@ -112,12 +112,12 @@ fn key_collision_refuses_keys_but_not_formatted_citations() -> Result<(), Box<dy
     };
     other.id.library = LibraryId::digest(b"another synthetic library");
     engine
-        .publish_library(
+        .publish_library(&ibis_sources::LoadedLibrary::new(
             other.id.library.clone(),
             ibis_engine::LibraryKind::Snapshot,
             ibis_engine::SourceCapability::SNAPSHOT,
-            Arc::new(Snapshot::new(vec![LibraryObject::Record(other)])?),
-        )
+            Snapshot::new(vec![LibraryObject::Record(other)])?,
+        ))
         .map_err(|_| "publish")?;
     assert!(matches!(
         engine.recite(&key, &Cancellation::default()),

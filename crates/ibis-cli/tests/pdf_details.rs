@@ -2,7 +2,7 @@
 //! the extractor's child (decision 0061).
 #![cfg(test)]
 
-use ibis_engine::pdf::{PdfReader, Refusal};
+use ibis_sources::pdf::{PdfReader, Refusal};
 use std::path::PathBuf;
 use std::sync::Arc;
 

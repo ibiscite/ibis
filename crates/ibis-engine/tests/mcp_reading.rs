@@ -160,15 +160,15 @@ fn outline_projects_private_attachment_metadata_before_structured_content_and_su
     }));
     let engine = Engine::new().unwrap();
     engine
-        .publish_library(
+        .publish_library(&ibis_sources::LoadedLibrary::new(
             parent.library.clone(),
             ibis_sources::LibraryKind::File,
             &[
                 ibis_sources::SourceCapability::BibliographicRecords,
                 ibis_sources::SourceCapability::AttachmentText,
             ],
-            std::sync::Arc::new(Snapshot::new(objects).unwrap()),
-        )
+            Snapshot::new(objects).unwrap(),
+        ))
         .unwrap();
     let directory = tempfile::tempdir().unwrap();
     let mut session = mcp::Session::default().with_formats(settings(directory.path(), json!([parent.library])));

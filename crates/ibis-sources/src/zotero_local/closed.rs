@@ -357,7 +357,7 @@ impl Control {
         &self,
         operation: impl FnOnce(&Control) -> Result<T, ClosedError> + Send + 'static,
     ) -> Result<T, ClosedError> {
-        use ibis_core::file_io::{Admission, Pool, Scope};
+        use ibis_os::file_io::{Admission, Pool, Scope};
         static POOL: std::sync::OnceLock<Pool> = std::sync::OnceLock::new();
         let check = || (self.cancelled)();
         let scope = Scope {
@@ -371,8 +371,8 @@ impl Control {
                 worker.check().and_then(|()| operation(&worker))
             })
             .map_err(|error| match error {
-                ibis_core::file_io::Error::Cancelled => ClosedError::Cancelled,
-                ibis_core::file_io::Error::TimedOut => ClosedError::TimedOut,
+                ibis_os::file_io::Error::Cancelled => ClosedError::Cancelled,
+                ibis_os::file_io::Error::TimedOut => ClosedError::TimedOut,
                 _ => ClosedError::Unreadable,
             })?
     }

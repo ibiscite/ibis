@@ -10,8 +10,8 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 use ibis_core::contract::LibraryId;
-use ibis_core::zotero::api::{Response, Transport, TransportError};
 use ibis_sources::zotero::{ZoteroCreator, ZoteroItem, map_item};
+use ibis_sources::zotero_local::api::{Response, Transport, TransportError};
 use ibis_sources::zotero_local::bbt::read_only_keys;
 use ibis_sources::zotero_local::live::{Library, LiveReader};
 use serde_json::Value;

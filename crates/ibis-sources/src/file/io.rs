@@ -12,22 +12,22 @@ const MAX_IN_FLIGHT: usize = 8;
 const MAX_PROBE_BATCHES: usize = MAX_IN_FLIGHT / 2;
 const MAX_ATTACHMENT_PROBES: usize = 256;
 
-use ibis_core::file_io::{Admission, Pool};
+use ibis_os::file_io::{Admission, Pool};
 
 fn pool() -> &'static Pool {
     static POOL: OnceLock<Pool> = OnceLock::new();
     POOL.get_or_init(|| Pool::new(MAX_IN_FLIGHT, MAX_PROBE_BATCHES))
 }
-fn io_error(error: ibis_core::file_io::Error) -> SourceError {
+fn io_error(error: ibis_os::file_io::Error) -> SourceError {
     match error {
-        ibis_core::file_io::Error::Cancelled => SourceError::Cancelled,
+        ibis_os::file_io::Error::Cancelled => SourceError::Cancelled,
         _ => SourceError::Unavailable,
     }
 }
-pub(super) struct Scope<'a>(ibis_core::file_io::Scope<'a>);
+pub(super) struct Scope<'a>(ibis_os::file_io::Scope<'a>);
 impl<'a> Scope<'a> {
     pub(super) fn new(cancelled: &'a dyn Fn() -> bool) -> Self {
-        Self(ibis_core::file_io::Scope::new(cancelled, DEADLINE))
+        Self(ibis_os::file_io::Scope::new(cancelled, DEADLINE))
     }
     fn check_cancelled(&self) -> Result<(), SourceError> {
         if (self.0.cancelled)() {
@@ -345,7 +345,7 @@ mod tests {
                 pool.run(&test_scope(Duration::from_millis(10)).0, Admission::Wait, move || {
                     stuck.recv().map_err(|_| SourceError::Unavailable)
                 }),
-                Err(ibis_core::file_io::Error::TimedOut)
+                Err(ibis_os::file_io::Error::TimedOut)
             );
         }
         assert_eq!(
@@ -354,7 +354,7 @@ mod tests {
                 Admission::Wait,
                 || -> Result<(), SourceError> { panic!("the detached I/O limit was exceeded") }
             ),
-            Err(ibis_core::file_io::Error::TimedOut)
+            Err(ibis_os::file_io::Error::TimedOut)
         );
         drop(releases);
     }

@@ -3,7 +3,7 @@ use clap::{Arg, ArgAction, ArgMatches, Command};
 use headless::{Backend, KeyAdvice};
 use human::cli;
 use ibis_core::contract::*;
-use ibis_core::destination::{System, destination};
+use ibis_core::destination::destination;
 use ibis_engine::{Cancellation, Engine, Method, Reply, protocol, request::*};
 use serde_json::{Value, json};
 use std::{
@@ -1038,7 +1038,7 @@ fn zotero_profiles(engine: &Backend<'_>, cancel: &Cancellation) -> Vec<String> {
 /// `NAME` or `NAME=LIBRARY`: an adapter's name, then its library in its own terms.
 fn source_spec(value: &str) -> Result<String, String> {
     let (name, library) = split_source(value);
-    if !ibis_engine::sources::valid_name(name) {
+    if !ibis_sources::adapter::valid_name(name) {
         return Err("name an adapter in lowercase letters, digits and hyphens, such as endnote".into());
     }
     if library.is_some_and(str::is_empty) {
@@ -1074,7 +1074,7 @@ pub(crate) fn bounded<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 
 }
 
 fn bounded_for<T: Send + 'static>(timeout: Duration, operation: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    use ibis_core::file_io::{Admission, Pool, Scope};
+    use ibis_os::file_io::{Admission, Pool, Scope};
     static POOL: std::sync::OnceLock<Pool> = std::sync::OnceLock::new();
     POOL.get_or_init(|| Pool::new(8, 0))
         .run(&Scope::new(&|| false, timeout), Admission::Immediate, operation)
@@ -1855,7 +1855,7 @@ fn run_method<R: BufRead>(
                         .as_ref()
                         .ok_or_else(|| EngineError::new(ErrorCode::Internal))?;
                     let named = (args.contains_id("style") || args.contains_id("format")).then_some(&output);
-                    Some(destination(app, System::HERE, |app| {
+                    Some(destination(app, ibis_engine::SYSTEM, |app| {
                         ibis_engine::format::choose_with(settings, Some(app), named)
                     }))
                 }

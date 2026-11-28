@@ -1,12 +1,7 @@
-//! Zotero library identity, local API transport and group discovery.
+//! Zotero library identity. Talking to Zotero is a reader's job
+//! (`ibis_sources::zotero_local`).
 
 use std::fmt;
-
-pub mod api;
-pub mod libraries;
-
-#[cfg(test)]
-mod test_support;
 
 /// Which Zotero library items belong to. Identity is the library plus the
 /// item key, never a citation key (ADR 0006).

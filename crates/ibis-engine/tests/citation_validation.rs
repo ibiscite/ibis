@@ -160,12 +160,12 @@ fn recite_refuses_changed_identity_or_annotation_meaning_even_with_identical_tex
                 _ => unreachable!(),
             }
             engine
-                .publish_library(
+                .publish_library(&ibis_sources::LoadedLibrary::new(
                     request.items[0].item.library.clone(),
                     LibraryKind::Snapshot,
                     SourceCapability::SNAPSHOT,
-                    Arc::new(Snapshot::new(objects).unwrap()),
-                )
+                    Snapshot::new(objects).unwrap(),
+                ))
                 .unwrap();
             let fresh = engine.cite(&request, &Cancellation::default()).unwrap();
             assert_eq!(fresh.text, prepared.result().text, "{output}: {change}");

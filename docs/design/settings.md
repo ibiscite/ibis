@@ -64,7 +64,7 @@ replacement fails, recovery text appears under that app only, never in logs.
 Action names include the app for accessibility. Apps needing `ibis` on PATH
 point to Command line in a note under their row. One Note explains preserved settings, private numbered
 backups and the shared terminal behavior. The engine rechecks changes and uses
-`ibis_core::atomic_file` for writes. Desktop discovery includes installer PATH
+`ibis_os::atomic_file` for writes. Desktop discovery includes installer PATH
 locations and `~/.local/bin`; full paths name the CLI, never the desktop or a
 temporary mount/translocation. Without a durable CLI, full-path apps say
 **Install the ibis command first**. Visit, visible focus and successful command

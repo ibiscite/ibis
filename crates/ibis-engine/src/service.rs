@@ -505,16 +505,11 @@ impl Engine {
             receiver,
         })
     }
-    pub fn publish_library(
-        &self,
-        library: LibraryId,
-        kind: LibraryKind,
-        capabilities: &[SourceCapability],
-        snapshot: Arc<Snapshot>,
-    ) -> Result<(), EngineError> {
-        let mut info = LibraryInfo::clean(library, kind, capabilities, snapshot.fingerprints().full.clone());
-        info.objects = snapshot.objects().len();
-        self.shared.install(info, &snapshot, None)
+    /// Publish a library a caller read itself, keeping what the read found:
+    /// warnings, damaged and repeated keys, and whether it stopped short, so
+    /// lookups answer as they do for a library the engine opened.
+    pub fn publish_library(&self, loaded: &ibis_sources::LoadedLibrary) -> Result<(), EngineError> {
+        self.shared.install(sources::info(loaded), &loaded.snapshot, None)
     }
 
     /// Whether Zotero's references here came from its closed database, the

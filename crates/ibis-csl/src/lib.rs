@@ -1,5 +1,47 @@
-//! One bounded CSL formatter shared by the command line and desktop clients.
-//! The pinned Zotero processor has no filesystem, network or native-input API.
+//! The formatter: Zotero's own citeproc-js running in QuickJS, with the bundled
+//! CSL styles and locales, bounded in time and memory. The pinned processor
+//! has no filesystem, network or native-input API.
+//!
+//! It sits beside the readers in the [layers](https://github.com/ibiscite/ibis/blob/main/docs/architecture.md#layers)
+//! and uses only `ibis-core`: it formats a core snapshot, wherever it came
+//! from. The Rust API may change before 1.0.
+//!
+//! An APA citation of a one-record library:
+//!
+//! ```
+//! use ibis_core::contract::{CitationRequest, ItemRef, LibraryId, LibraryObject, Record, Snapshot};
+//! use serde_json::json;
+//!
+//! let id = ItemRef { library: LibraryId::digest(b"example library"), key: "work-1".into() };
+//! let csl = json!({"type": "book", "title": "Synthetic signals", "issued": {"date-parts": [[2026]]},
+//!     "author": [{"family": "Taylor", "given": "Avery"}]});
+//! let record = Record {
+//!     id: id.clone(),
+//!     csl: serde_json::from_value(csl)?,
+//!     citation_keys: vec![],
+//!     aliases: vec![],
+//!     warnings: vec![],
+//!     identifiers: vec![],
+//!     added_at: None,
+//! };
+//! let snapshot = Snapshot::new(vec![LibraryObject::Record(record)]).map_err(|error| format!("{error:?}"))?;
+//! let request: CitationRequest = serde_json::from_value(json!({
+//!     "items": [{"item": id}],
+//!     "output": {"kind": "csl", "style": "apa"},
+//! }))?;
+//! let formatter = ibis_csl::Formatter::new()?;
+//! let formatted = formatter.format(&snapshot, &request)?;
+//! // Insert a citation only when every item rendered; `text` alone may be partial.
+//! let content = formatted.copy_content(request.items.len()).ok_or("not every item rendered")?;
+//! assert_eq!(content.text, "(Taylor, 2026)");
+//!
+//! // A reference the library does not hold is refused, not guessed.
+//! let mut missing = request.clone();
+//! missing.items[0].item.key = "not-in-library".into();
+//! let refused = formatter.format(&snapshot, &missing)?;
+//! assert!(refused.copy_content(missing.items.len()).is_none());
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
 mod catalog;
 #[cfg(test)]

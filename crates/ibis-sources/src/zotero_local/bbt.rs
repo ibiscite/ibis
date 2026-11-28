@@ -28,7 +28,7 @@ use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 
-use ibis_core::zotero::api::TransportError;
+use crate::zotero_local::api::TransportError;
 use serde_json::{Value, json};
 
 use crate::zotero_local::{CONNECT_TIMEOUT, DEADLINE, DEFAULT_PORT, Deadline, IO_TIMEOUT, io_error, read_response};

@@ -1,24 +1,56 @@
-//! Shared contracts and pure rules for sources, search and citation output.
+//! The nouns every Ibis layer speaks: records, libraries and snapshots
+//! ([`contract`]), citation requests and results, errors with their one
+//! recovery, and the rules that need nothing but data (search, citation key
+//! syntaxes, locators, identifiers, [`destination`]).
+//!
+//! It is the bottom of the [layers](https://github.com/ibiscite/ibis/blob/main/docs/architecture.md#layers)
+//! and never touches the world: no file, socket, process, clock, environment,
+//! thread or platform branch, so it builds wherever Rust does
+//! (`core_does_no_io` in `ibis-engine` holds it there). The JSON forms of
+//! [`contract`] are the versioned contract; the Rust API may change before 1.0.
+//!
+//! A one-record library cited as Pandoc Markdown, with nothing but this crate:
+//!
+//! ```
+//! use ibis_core::contract::{CitationRequest, ItemRef, LibraryId, LibraryObject, Record, Snapshot};
+//! use serde_json::json;
+//!
+//! let id = ItemRef { library: LibraryId::digest(b"example library"), key: "work-1".into() };
+//! let record = Record {
+//!     id: id.clone(),
+//!     csl: serde_json::from_value(json!({"type": "book", "title": "Synthetic signals"}))?,
+//!     citation_keys: vec![serde_json::from_value(json!({"source": "bibtex", "value": "Taylor2026"}))?],
+//!     aliases: vec![],
+//!     warnings: vec![],
+//!     identifiers: vec![],
+//!     added_at: None,
+//! };
+//! let snapshot = Snapshot::new(vec![LibraryObject::Record(record)])?;
+//! let request: CitationRequest = serde_json::from_value(json!({
+//!     "items": [{"item": id}],
+//!     "output": {"kind": "key", "syntax": "pandoc"},
+//! }))?;
+//! let cited = ibis_core::syntax::cite(&snapshot, &request).map_err(|error| format!("{error:?}"))?;
+//! // Insert a citation only when every item rendered; `text` alone may be partial.
+//! let content = cited.copy_content(request.items.len()).ok_or("not every item rendered")?;
+//! assert_eq!(content.text, "[@Taylor2026]");
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 
-pub mod atomic_file;
 pub mod citable;
 pub mod citation;
-pub mod command_install;
 pub mod contract;
 pub mod destination;
 pub mod epoch;
-pub mod file_io;
 pub mod identifier;
 pub mod locator;
 pub mod model;
-pub mod panic_guard;
 mod scan;
 pub mod search;
 pub mod shorthand;
 pub mod source;
 pub mod summary;
 pub mod syntax;
-pub mod toggle;
 pub mod zotero;
 
 const BUILT: &str = match option_env!("IBIS_VERSION") {

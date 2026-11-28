@@ -289,7 +289,7 @@ impl Engine {
         };
         cancel.check()?;
         // A new file only: never one that appeared while formatting.
-        let created = ibis_core::atomic_file::AtomicFile::new(&output, &written).and_then(|file| file.create());
+        let created = ibis_os::atomic_file::AtomicFile::new(&output, &written).and_then(|file| file.create());
         match created {
             Ok(()) => {}
             Err(failure) if failure.kind() == std::io::ErrorKind::AlreadyExists => {

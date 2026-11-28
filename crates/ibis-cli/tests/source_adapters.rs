@@ -11,8 +11,8 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use ibis_engine::sources::SourceAdapter;
 use ibis_engine::{Cancellation, Engine, Method};
+use ibis_sources::adapter::SourceAdapter;
 use serde_json::{Value, json};
 
 fn main() {
