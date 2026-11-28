@@ -1,6 +1,5 @@
 use super::*;
 
-#[cfg(unix)]
 #[test]
 fn resource_limits_apply_in_an_isolated_child() {
     let output = std::process::Command::new(std::env::current_exe().unwrap())
@@ -20,7 +19,6 @@ fn resource_limits_apply_in_an_isolated_child() {
     );
 }
 
-#[cfg(unix)]
 #[test]
 #[ignore = "subprocess helper; lowers limits only in its own process"]
 fn resource_limits_helper() {

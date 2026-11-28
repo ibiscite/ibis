@@ -47,6 +47,7 @@ pub(crate) fn limit_resources() -> nix::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+/// Only Unix lowers limits, so only Unix has these tests.
+#[cfg(all(test, unix))]
 #[path = "pdf_text_tests.rs"]
 mod tests;
