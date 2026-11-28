@@ -76,11 +76,15 @@ are built in this order of need.
   leaves the clipboard alone if you copied something in between.
 - **The opening key is a chord** (as ⌥ Space is), offered with an
   alternative when it is taken.
-- **References in Spotlight and Shortcuts, on from the start**, on this Mac
-  only, with one switch to turn it off.
+- **Shortcuts on from the start; Spotlight asked once per library**
+  (the maintainer, 2026-11-28, after Sol and Astra noted that Spotlight makes
+  unpublished titles findable outside Ibis): when a library is first added,
+  one switch asks whether its references show in Spotlight on this Mac.
+  Settings can change it per library.
 - **Checking a document is a line in the picker:** with an empty query, the
   first row reports the document in front (“2 citations aren’t in
-  thesis.bib · Fix”); ↩ fixes, ⌘↩ opens the full report.
+  thesis.bib · Fix”); ↩ opens the findings, where each fix is accepted on its
+  own, and nothing in the document changes until it is.
 - **Agent suggestions wait in one review list** (optional AI): each with
   before and after, Accept, Reject and Undo; nothing changes until accepted.
 - **More ways in:** a Cite control in Control Center, a Services item for
