@@ -50,17 +50,24 @@ plan for a native feel on every system later. It refines the shell part of
    (type, move, add, remove, reorder, edit details, choose a format, undo,
    deliver) and draws the state each reply carries. It keeps only what is its
    own: windows, focus, hover and keys.
-4. **Other systems, when a gate or reports call for them** (0065): Windows in
-   WinUI 3 with Mica and Fluent controls, Linux in GTK 4 and libadwaita
-   (gtk4-rs), each a client of `ibisd` with the contract generated for its
-   language, and each following this decision. Until then the Tauri shell
-   serves them with its own neutral recipe.
-5. **macOS 26 and later** (the maintainer, 2026-11-28, choosing between 26, 15
-   and 13): the current and previous macOS, as Apple recommends. One code
-   path on current SwiftUI and Liquid Glass, with no older looks kept beside
-   it. Older Macs keep the Tauri build until the native app reaches parity;
-   from then they keep its last release, with no further updates (the
-   maintainer, 2026-11-28).
+4. **Native on every system: Mac, then Windows, then Linux** (the
+   maintainer, 2026-11-28). Windows follows Mac parity in WinUI 3 (C#, Mica
+   and Fluent controls, a Store MSIX); Linux follows Windows in GTK 4 with
+   libadwaita (gtk4-rs). Each is a thin client of `ibisd` with the contract
+   generated for its language, and each follows this decision. Before the
+   Windows app starts, the daemon takes the Tauri app's in-process engine,
+   its paste-consent decisions and the editor endpoint. From now on the Tauri
+   app is a daemon client that gets fixes only, no new UI logic. Each system
+   drops it once its native app reaches parity on the same user journeys,
+   never on a version number. Measurements of the Tauri app (0032's hidden
+   memory, wake-ups and summon to typeable) are the baseline each native app
+   must beat.
+5. **macOS 15 and later** (the maintainer, 2026-11-28, revising the same
+   day's choice of 26): one app for every supported Mac. It uses Liquid Glass
+   on macOS 26 and the standard materials before it, through availability
+   checks in the shared parts (`SystemGlass`); no API that exists only on 26
+   is used without a fallback. No Tauri build is kept for older Macs; the Mac
+   drops Tauri once the native app reaches parity.
 6. **Ibis Native** is the app's name, bundle and settings profile until the
    maintainer is happy with it and it replaces the Mac nightly (the
    maintainer, 2026-11-28).

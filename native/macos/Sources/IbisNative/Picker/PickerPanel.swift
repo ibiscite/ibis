@@ -10,10 +10,10 @@ import SwiftUI
 /// height follows the content.
 @MainActor
 final class PickerPanel: NSPanel, NSWindowDelegate {
-    let model: PickerModel
-    let controller: PickerController
+    let store: PickerStore
     private let host: NSHostingView<PickerView>
-    private let glass: PickerGlass
+    private let peek: PeekPanel
+    private let glass: SystemGlass
     private let chooser: (URL?) -> Void
     private var display: NSScreen?
     private var shown = false
@@ -23,22 +23,24 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     var openSettings: (() -> Void)?
 
     var pickerIsOpen: Bool { shown }
-    var searchField: NSTextField? { controller.searchField }
+    var searchField: NSTextField? { store.searchField }
     var choosingLibrary: Bool {
-        get { controller.choosingLibrary }
-        set { controller.choosingLibrary = newValue }
+        get { store.choosingLibrary }
+        set { store.choosingLibrary = newValue }
     }
 
-    init(model: PickerModel, chooseLibrary: @escaping (URL?) -> Void) {
-        self.model = model
+    init(store: PickerStore, chooseLibrary: @escaping (URL?) -> Void) {
+        self.store = store
         chooser = chooseLibrary
-        controller = PickerController(model: model)
-        host = NSHostingView(rootView: PickerView(model: model, controller: controller))
-        glass = PickerGlass(content: host)
+        host = NSHostingView(rootView: PickerView(store: store))
+        peek = PeekPanel(store: store)
+        host.safeAreaRegions = []
+        host.sizingOptions = []
+        glass = SystemGlass(content: host, corner: 26)
         super.init(contentRect: NSRect(x: 0, y: 0, width: 640, height: 56),
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
-        controller.panel = self
+        store.panel = self
         title = PickerWords.text(.panel)
         setAccessibilityLabel(title)
         isFloatingPanel = true
@@ -59,19 +61,30 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.glass.refresh() }
         })
-        model.$appearance.removeDuplicates().sink { [weak self] choice in
+        store.$appearance.removeDuplicates().sink { [weak self] choice in
             self?.appearance = switch choice {
             case .system: nil
             case .dark: NSAppearance(named: .darkAqua)
             case .light: NSAppearance(named: .aqua)
             }
         }.store(in: &preferences)
-        model.$textPercent.removeDuplicates().dropFirst().sink { [weak self] _ in
+        store.$textPercent.removeDuplicates().dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async {
                 guard let self, let display = self.screen ?? self.display else { return }
                 self.place(on: display)
             }
         }.store(in: &preferences)
+        store.objectWillChange.sink { [weak self] in
+            DispatchQueue.main.async { self?.followStore() }
+        }.store(in: &preferences)
+    }
+
+    /// The window follows the content's height, and Peek follows its reference.
+    private func followStore() {
+        guard shown else { return }
+        fitHeight()
+        peek.appearance = appearance
+        peek.show(store.peek.flatMap { item in store.rows.first { $0.id == item } }, beside: frame)
     }
 
     deinit {
@@ -91,18 +104,20 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
             app.processIdentifier == ProcessInfo.processInfo.processIdentifier || app.bundleIdentifier == "com.apple.loginwindow"
                 ? nil : app
         }
-        model.present(app: app?.bundleIdentifier, name: app?.localizedName, pid: app?.processIdentifier) {
+        store.present(app: app?.bundleIdentifier, name: app?.localizedName, pid: app?.processIdentifier) {
             let site = ibis_native_capture(windowNumber, app?.processIdentifier ?? 0)
             guard let data = site.data else { return nil }
             return String(decoding: UnsafeBufferPointer(start: data, count: site.len), as: UTF8.self)
         }
         glass.refresh()
         host.layoutSubtreeIfNeeded()
+        // Draw once before showing, so the glass never appears empty.
+        host.displayIfNeeded()
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         shown = true
         alphaValue = reduceMotion ? 1 : 0
         makeKeyAndOrderFront(nil)
-        controller.focusSearch(caretAtEnd: true)
+        store.focusSearch()
         if !reduceMotion {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.12
@@ -114,10 +129,10 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     func dismiss(forDelivery: Bool = false) {
         guard shown else { return }
         shown = false
-        controller.reset()
         commandHold?.cancel()
         commandHold = nil
-        model.dismiss(forDelivery: forDelivery)
+        store.dismiss(forDelivery: forDelivery)
+        peek.show(nil, beside: frame)
         if forDelivery || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             orderOut(nil)
         } else {
@@ -135,15 +150,15 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
 
     func focusSearch() {
         makeKeyAndOrderFront(nil)
-        controller.focusSearch(caretAtEnd: true)
+        store.focusSearch()
     }
 
-    func windowDidBecomeKey(_ notification: Notification) { controller.panelKeyChanged(true) }
+    func windowDidBecomeKey(_ notification: Notification) { store.panelKeyChanged(true) }
 
     func windowDidResignKey(_ notification: Notification) {
-        controller.panelKeyChanged(false)
-        // Peek's popover takes the keyboard; the picker stays open beneath it.
-        if shown, !choosingLibrary, controller.peek == nil { dismiss() }
+        store.panelKeyChanged(false)
+        // The details popover takes the keyboard; the picker stays open beneath it.
+        if shown, !choosingLibrary, store.editing == nil { dismiss() }
     }
 
     /// Opens a native menu at the control that owns it. Footer menus open upward.
@@ -157,9 +172,9 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     /// Spotlight's place: centred, a quarter down the screen, growing downward.
     private func place(on screen: NSScreen) {
         let area = screen.visibleFrame
-        let grid = PickerGrid(s: model.scale)
+        let grid = PickerGrid(s: store.scale)
         let width = min(grid.width, area.width * 0.9)
-        let height = min(controller.height(grid), area.height * 0.8)
+        let height = min(store.height(grid), area.height * 0.8)
         let top = min(area.maxY - 8, area.maxY - area.height / 4 + grid.header)
         setFrame(NSRect(x: area.midX - width / 2, y: top - height, width: width, height: height), display: true)
     }
@@ -167,7 +182,7 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     /// Keeps the top edge still while the content grows or shrinks.
     func fitHeight() {
         guard shown, let area = (screen ?? display)?.visibleFrame else { return }
-        let height = min(controller.height(PickerGrid(s: model.scale)), area.height * 0.8)
+        let height = min(store.height(PickerGrid(s: store.scale)), area.height * 0.8)
         guard abs(height - frame.height) > 0.5 else { return }
         setFrame(NSRect(x: frame.minX, y: frame.maxY - height, width: frame.width, height: height), display: true)
     }
@@ -219,29 +234,22 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     }
 
     func chooseLibrary(locate: Bool = false) {
-        let missing = locate ? model.catalog?.library?.file.map { URL(fileURLWithPath: $0) } : nil
+        let missing = locate ? store.catalog?.library?.file.map { URL(fileURLWithPath: $0) } : nil
         chooser(missing)
     }
 
     func openSource() {
-        if let file = model.catalog?.library?.file {
+        if let file = store.catalog?.library?.file {
             NSWorkspace.shared.open(URL(fileURLWithPath: file))
         } else if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.zotero.zotero") {
             NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
         }
     }
 
-    /// Return delivers what the footer shows. With references already added and a
-    /// result highlighted for a new search, that result joins the citation first.
-    func submit(whenReady: Bool = false) {
-        if whenReady, controller.resolveLibraryIfNeeded() { return }
-        if model.hasDraft, !model.query.isEmpty, let row = model.selection, !model.isSelectionStaged,
-           model.canChangeSelectionMembership {
-            model.toggleCitation(row)
-            model.deliver(whenReady: true) { [weak self] in self?.dismiss(forDelivery: true) }
-            return
-        }
-        model.deliver(whenReady: whenReady) { [weak self] in self?.dismiss(forDelivery: true) }
+    /// Return delivers what the footer shows; with no library yet, it finds one.
+    func submit() {
+        if store.resolveLibraryIfNeeded() { return }
+        store.deliver()
     }
 
     override func sendEvent(_ event: NSEvent) {
@@ -259,14 +267,14 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     private func flags(_ flags: NSEvent.ModifierFlags) {
         if flags.contains(.command) {
             guard commandHold == nil else { return }
-            commandHold = Task { [weak controller] in
+            commandHold = Task { [weak store] in
                 try? await Task.sleep(for: .seconds(1))
-                if !Task.isCancelled { controller?.showNumbers(true) }
+                if !Task.isCancelled { store?.showNumbers(true) }
             }
         } else {
             commandHold?.cancel()
             commandHold = nil
-            controller.showNumbers(false)
+            store.showNumbers(false)
         }
     }
 
@@ -278,121 +286,41 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         let key = event.specialKey
         let character = event.charactersIgnoringModifiers?.lowercased()
         let isReturn = key == .carriageReturn || key == .enter
-        if controller.editing != nil {
-            // The fields in the row keep Tab and typing; Return and Escape close the row.
-            if modifiers.isEmpty, isReturn || character == "\u{1b}" {
-                if !event.isARepeat { controller.closeEditing() }
-                return true
-            }
-            if modifiers.isEmpty || modifiers == [.shift] { return false }
-        }
         if character == "\t" || character == "\u{19}", modifiers.isEmpty || modifiers == [.shift] {
-            if modifiers.isEmpty, !event.isARepeat { controller.addSelection() }
+            if modifiers.isEmpty, !event.isARepeat { store.add() }
             return true
         }
         if isReturn {
-            if modifiers == [.shift] || modifiers == [.option] {
-                controller.runCommand(.membership, repeating: event.isARepeat)
+            if modifiers.isEmpty {
+                if !event.isARepeat { submit() }
                 return true
             }
-            if modifiers.isEmpty {
-                if !event.isARepeat { controller.returnKey() }
+            if modifiers == [.option] {
+                // Copy instead of pasting: the citation waits on the clipboard.
+                if !event.isARepeat { store.deliver(copyOnly: true) }
                 return true
             }
         }
         if modifiers.isEmpty, character == "\u{1b}" {
-            if !event.isARepeat, !controller.escape() { dismiss() }
+            if !event.isARepeat, !store.escape() { dismiss() }
             return true
         }
-        let inSearch = controller.searchField?.hasFocus == true
-        if inSearch, modifiers.isEmpty {
+        if store.searchField?.hasFocus == true, modifiers.isEmpty {
             if key == .upArrow || key == .downArrow {
-                controller.move(key == .upArrow ? -1 : 1)
+                store.move(key == .upArrow ? -1 : 1)
                 return true
             }
-            if key == .delete, model.query.isEmpty {
-                if model.shorthand { model.toggleShorthand(); return true }
-                if controller.deleteInEmptyField() { return true }
-            }
+            if key == .delete, store.deleteInEmptyField() { return true }
         }
-        if modifiers == [.shift], key == .upArrow || key == .downArrow,
-           controller.reorderPinned(key == .upArrow ? -1 : 1) { return true }
         if modifiers == [.command], character == "k" {
-            if !event.isARepeat { controller.openActionsMenu() }
+            if !event.isARepeat { store.openActionsMenu() }
             return true
         }
         if modifiers == [.command], let character, let number = Int(character), (1...9).contains(number) {
-            if !event.isARepeat {
-                controller.selectNumber(number)
-                submit(whenReady: true)
-            }
+            if !event.isARepeat, store.selectNumber(number) { submit() }
             return true
         }
         guard let command = PickerCommand.matching(character, modifiers: modifiers) else { return false }
-        return controller.runCommand(command, repeating: event.isARepeat)
-    }
-}
-
-/// The system's Liquid Glass behind the picker, and an opaque window with
-/// Reduce Transparency, as the system's own panels do.
-@MainActor
-private final class PickerGlass: NSView {
-    private static let corner: CGFloat = 26
-    private let content: NSView
-    private var glass: NSGlassEffectView?
-    private var reduced: Bool?
-
-    init(content: NSView) {
-        self.content = content
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.cornerRadius = Self.corner
-        layer?.cornerCurve = .continuous
-        layer?.masksToBounds = true
-        if let host = content as? NSHostingView<PickerView> {
-            host.safeAreaRegions = []
-            host.sizingOptions = []
-        }
-        refresh()
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    func refresh() {
-        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
-        layer?.borderWidth = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? 1 : 0
-        layer?.borderColor = NSColor.separatorColor.cgColor
-        guard reduced != reduce else { return }
-        reduced = reduce
-        content.removeFromSuperview()
-        glass?.removeFromSuperview()
-        glass = nil
-        if reduce {
-            layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-            addSubview(content)
-        } else {
-            layer?.backgroundColor = NSColor.clear.cgColor
-            let view = NSGlassEffectView()
-            view.style = .regular
-            view.cornerRadius = Self.corner
-            view.contentView = content
-            addSubview(view)
-            glass = view
-        }
-        needsLayout = true
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.borderColor = NSColor.separatorColor.cgColor
-            if reduced == true { layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor }
-        }
-    }
-
-    override func layout() {
-        super.layout()
-        glass?.frame = bounds
-        content.frame = bounds
+        return store.run(command, repeating: event.isARepeat)
     }
 }

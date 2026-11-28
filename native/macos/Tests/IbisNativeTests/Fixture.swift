@@ -38,7 +38,7 @@ final class Fixture {
     }
 
     var opening: PickerOpenRequest {
-        PickerOpenRequest(app: "com.apple.TextEdit", file: library.path, language: .enUS, reload: nil, site: nil)
+        PickerOpenRequest(app: "com.apple.TextEdit", file: library.path, keepQuery: nil, language: .enUS, reload: nil, site: nil)
     }
 
     var settings: URL {
@@ -77,6 +77,11 @@ final class Fixture {
 }
 
 @MainActor
+extension EngineClient {
+    /// The session's state after typing `query`, with the preview of what Return would deliver.
+    func typed(_ query: String) async throws -> PickerState { try await act(.type(query: query)) }
+}
+
 func eventually(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
     let deadline = ContinuousClock.now + .seconds(10)
     while !condition() {

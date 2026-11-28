@@ -30,7 +30,6 @@ final class EngineClient: @unchecked Sendable {
     private var socket: DaemonSocket?
     private var lastOpening: PickerOpenRequest?
     private var nextID: UInt64 = 0
-    private var session: UInt64 = 0
 
     init(binary: URL, configuration: URL? = nil) {
         self.binary = binary
@@ -40,16 +39,22 @@ final class EngineClient: @unchecked Sendable {
     func open(_ request: PickerOpenRequest) async throws -> PickerOpenResult {
         try await onQueue {
             self.lastOpening = request
-            return try self.read(PickerOpen.self, request, restoring: false)
+            return try self.read(PickerOpenMethod.self, request, restoring: false)
         }
     }
 
-    func formatScope(_ request: PickerChangeFormatRequest, for opening: PickerOpenRequest) async throws -> PickerFormatScope {
+    /// One intent to the engine's picker session. After a reconnect the
+    /// opening is replayed first, so the reply always describes a session.
+    func act(_ intent: PickerIntent) async throws -> PickerState {
+        try await onQueue { try self.read(PickerActMethod.self, intent) }
+    }
+
+    func changeFormat(_ request: PickerChangeFormatRequest, for opening: PickerOpenRequest) async throws -> PickerState {
         try await onQueue {
             guard self.lastOpening == opening else { throw DaemonError.changed }
-            if request == .readOnly { return try self.read(PickerChangeFormat.self, request) }
+            if request == .readOnly { return try self.read(PickerFormatMethod.self, request) }
             do {
-                return try self.exchange(PickerChangeFormat.self, request, on: self.connect(restoring: true))
+                return try self.exchange(PickerFormatMethod.self, request, on: self.connect(restoring: true))
             } catch let error as Rejected {
                 throw error
             } catch {
@@ -59,33 +64,19 @@ final class EngineClient: @unchecked Sendable {
         }
     }
 
-    func search(_ request: PickerSearchRequest) async throws -> (result: PickerSearchResult, session: UInt64) {
-        try await onQueue {
-            let result = try self.read(PickerSearch.self, request)
-            return (result, self.session)
-        }
-    }
-
-    func preview(_ request: PickerPreviewRequest) async throws -> (result: PickerPreviewResult, session: UInt64) {
-        try await onQueue {
-            let result = try self.read(PickerPreview.self, request)
-            return (result, self.session)
-        }
-    }
-
     func forms(_ request: PickerFormsRequest) async throws -> FormDetails {
-        try await onQueue { try self.read(PickerForms.self, request) }
+        try await onQueue { try self.read(PickerFormsMethod.self, request) }
     }
 
     func settings(_ request: SettingsRequest) async throws -> SettingsResult {
         try await onQueue {
             if request.isReadOnly {
-                return try self.read(Settings.self, request)
+                return try self.read(SettingsMethod.self, request)
             }
             // A failed reply can follow a committed change. Let the window read
             // back the saved value without replaying the write.
             do {
-                return try self.exchange(Settings.self, request, on: self.connect(restoring: true))
+                return try self.exchange(SettingsMethod.self, request, on: self.connect(restoring: true))
             } catch let error as Rejected {
                 throw error
             } catch {
@@ -117,7 +108,7 @@ final class EngineClient: @unchecked Sendable {
             guard let socket = self.socket else { throw DaemonError.changed }
             do {
                 return try socket.withDeliveryFence {
-                    let grant = try self.exchange(PickerDeliver.self, request, on: socket)
+                    let grant = try self.exchange(PickerDeliverMethod.self, request, on: socket)
                     let receipt = DispatchQueue.main.sync { socket.peerIsOpen ? write(grant) : 0 }
                     let result = receipt == 0 ? nil : (grant.paste ? ibis_native_paste(receipt) : IbisCopied)
                     do {
@@ -170,10 +161,9 @@ final class EngineClient: @unchecked Sendable {
         if let socket { return socket }
         let connected = try DaemonSocket(DaemonEndpoint(binary: binary, configuration: configuration))
         if restoring, let opening = lastOpening {
-            _ = try exchange(PickerOpen.self, opening, on: connected)
+            _ = try exchange(PickerOpenMethod.self, opening, on: connected)
         }
         socket = connected
-        session &+= 1
         return connected
     }
 

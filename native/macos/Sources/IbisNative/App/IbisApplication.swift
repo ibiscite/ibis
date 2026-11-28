@@ -38,18 +38,20 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
 
     private let launch = Launch()
     private let engine = EngineClient(binary: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/ibis"))
-    private lazy var model = PickerModel(engine: engine, file: launch.file)
+    private lazy var store = PickerStore(engine: engine, file: launch.file)
     private lazy var panel: PickerPanel = {
-        let panel = PickerPanel(model: model) { [weak self] missing in
+        let panel = PickerPanel(store: store) { [weak self] missing in
             self?.chooseLibrary(missing: missing)
         }
         panel.openSettings = { [weak self] in self?.showSettings() }
+        store.needsPasteAccess = { PermissionHelper.shared.showAtPaste() }
+        store.didDeliver = { [weak self] in self?.nod() }
         return panel
     }()
     private lazy var settings = NativeSettingsWindow(engine: engine, shortcuts: shortcuts, chooseLibrary: {
         [weak self] window, missing in self?.chooseLibrary(missing: missing, in: window)
     }, applied: { [weak self] saved, resetText in
-        self?.model.applySettings(saved, resetTextSize: resetText)
+        self?.store.applySettings(saved, resetTextSize: resetText)
     })
     private var previousApp: NSRunningApplication?
     private let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -191,13 +193,13 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
     @objc private func chooseLibraryItem() { chooseLibrary(missing: nil) }
 
     private func chooseLibrary(missing: URL?, in window: NSWindow? = nil) {
-        guard !panel.choosingLibrary, !model.isDelivering else { return }
+        guard !panel.choosingLibrary, !store.isDelivering else { return }
         let chooser = NSOpenPanel()
         chooser.prompt = PickerWords.text(.openLibrary)
         chooser.canChooseDirectories = false
         chooser.allowsMultipleSelection = false
         chooser.directoryURL = missing?.deletingLastPathComponent()
-        let extensions = window == nil ? model.catalog?.libraryExtensions ?? [] : settings.libraryExtensions
+        let extensions = window == nil ? store.catalog?.libraryExtensions ?? [] : settings.libraryExtensions
         chooser.allowedContentTypes = extensions.compactMap { UTType(filenameExtension: $0) }
         panel.choosingLibrary = true
         if window == nil { activateTitledWindow() }
@@ -216,7 +218,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
                 }
                 do {
                     let saved = try await self.engine.chooseLibrary(file)
-                    self.model.useSavedLibrary()
+                    self.store.useSavedLibrary()
                     if fromSettings {
                         self.settings.didSelectLibrary(saved)
                     } else if self.panel.pickerIsOpen {
@@ -229,7 +231,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
                         self.settings.didRejectLibrary(error)
                     } else {
                         if !self.panel.pickerIsOpen { self.panel.summon() }
-                        self.model.reportLibraryChoice(error)
+                        self.store.reportLibraryChoice(error)
                     }
                 }
             }
@@ -239,4 +241,19 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
+
+    /// After a delivery the bird in the menu bar nods once; never with Reduce Motion.
+    private func nod() {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let button = status.button else { return }
+        button.wantsLayer = true
+        guard let layer = button.layer else { return }
+        let nod = CAKeyframeAnimation(keyPath: "transform.rotation.z")
+        nod.values = [0, -0.18, 0.08, 0]
+        nod.keyTimes = [0, 0.35, 0.7, 1]
+        nod.duration = 0.45
+        nod.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        layer.position = CGPoint(x: button.bounds.midX, y: button.bounds.midY)
+        layer.add(nod, forKey: "nod")
+    }
 }

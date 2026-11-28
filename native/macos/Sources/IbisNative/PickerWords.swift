@@ -3,6 +3,9 @@ import Foundation
 
 enum PickerWord {
     case about
+    case accessDrag
+    case accessTitle
+    case accessWait
     case actionStateOff
     case actionStateOn
     case actionWordsChoose
@@ -21,7 +24,6 @@ enum PickerWord {
     case actionsTitle
     case activeToken
     case add
-    case addShort
     case after
     case allowPaste
     case app
@@ -91,8 +93,9 @@ enum PickerWord {
     case missingHint
     case missingShortcut
     case more
+    case moveEarlier
+    case moveLater
     case newerEngine
-    case noActionSelected
     case noActions
     case noDate
     case noEngine
@@ -120,14 +123,13 @@ enum PickerWord {
     case quit
     case recentlyAdded
     case recordShortcut
+    case referenceCount
     case references
     case reload
     case remove
-    case removeShort
     case removeToken
     case requestFailed
     case restoreShortcut
-    case resultHint
     case returnKey
     case runAction
     case scopeLabel
@@ -151,14 +153,12 @@ enum PickerWord {
     case shortcutNotSaved
     case shortcutReserved
     case shortcuts
-    case shorthandExample
     case showAs
     case system
     case textLarger
     case textSmaller
     case token
     case tryAgain
-    case typeCitation
     case undo
     case untitled
     case windowMenu
@@ -179,6 +179,9 @@ enum PickerWords {
     private static let words: [Language: [PickerWord: String]] = [
         .ar: [
             .about: "حول Ibis",
+            .accessDrag: "إن لم يكن في القائمة، اسحب هذه الأيقونة إليها.",
+            .accessTitle: "شغّل {IBIS_VALUE}",
+            .accessWait: "تُغلق هذه النافذة وحدها عند التشغيل. حتى ذلك الحين، تُنسخ الاستشهادات للصقها بـ ⌘V.",
             .actionStateOff: "إيقاف",
             .actionStateOn: "تشغيل",
             .actionWordsChoose: "مكتبة ملف bib zotero فتح تبديل تغيير",
@@ -197,7 +200,6 @@ enum PickerWords {
             .actionsTitle: "الإجراءات",
             .activeToken: "تحرير الاستشهاد: {IBIS_VALUE}",
             .add: "إضافة إلى الاستشهاد",
-            .addShort: "إضافة",
             .after: "نص بعده",
             .allowPaste: "السماح باللصق…",
             .app: "Ibis Native",
@@ -267,8 +269,9 @@ enum PickerWords {
             .missingHint: "ربما نُقل الملف أو تغيّر اسمه.",
             .missingShortcut: "اختصار Ibis Native غير متاح.",
             .more: "المزيد",
+            .moveEarlier: "نقل إلى الأمام",
+            .moveLater: "نقل إلى الخلف",
             .newerEngine: "يعمل إصدار أحدث من محرك Ibis. ابنِ التطبيق الأصلي بالإصدار الأحدث.",
-            .noActionSelected: "لم يُحدَّد أي إجراء",
             .noActions: "لا توجد إجراءات مطابقة",
             .noDate: "بلا تاريخ",
             .noEngine: "تعذّر على Ibis تشغيل محركه المحلي.",
@@ -296,14 +299,13 @@ enum PickerWords {
             .quit: "إنهاء Ibis Native",
             .recentlyAdded: "أُضيفت مؤخرًا",
             .recordShortcut: "اكتب اختصارًا…",
+            .referenceCount: "{IBIS_VALUE} مراجع",
             .references: "المراجع",
             .reload: "إعادة تحميل المكتبة",
             .remove: "إزالة من الاستشهاد",
-            .removeShort: "إزالة",
             .removeToken: "إزالة {IBIS_VALUE} من الاستشهاد",
             .requestFailed: "تعذّر على Ibis إكمال الطلب. حاول مجددًا.",
             .restoreShortcut: "استخدام الافتراضي",
-            .resultHint: "اكتب عنوانًا أو مؤلفًا أو سنةً أو مفتاحًا.",
             .returnKey: "مفتاح الإدخال",
             .runAction: "تنفيذ",
             .scopeLabel: "المكتبة: {IBIS_VALUE}",
@@ -327,14 +329,12 @@ enum PickerWords {
             .shortcutNotSaved: "تعذّر على Ibis تأكيد حفظ الاختصار.",
             .shortcutReserved: "هذا الاختصار مخصص لأوامر التطبيق. أضف مفتاح تعديل آخر.",
             .shortcuts: "الاختصارات",
-            .shorthandExample: "vale 2024 p12; ostrom ch3",
             .showAs: "طريقة العرض",
             .system: "النظام",
             .textLarger: "تكبير النص",
             .textSmaller: "تصغير النص",
             .token: "استشهاد: {IBIS_VALUE}",
             .tryAgain: "إعادة المحاولة",
-            .typeCitation: "كتابة استشهاد",
             .undo: "تراجع",
             .untitled: "بلا عنوان",
             .windowMenu: "نافذة",
@@ -342,6 +342,9 @@ enum PickerWords {
         ],
         .de: [
             .about: "Über Ibis",
+            .accessDrag: "Falls es nicht in der Liste steht, ziehen Sie dieses Symbol hinein.",
+            .accessTitle: "{IBIS_VALUE} einschalten",
+            .accessWait: "Dies schließt sich, sobald es eingeschaltet ist. Bis dahin werden Zitate zum Einfügen mit ⌘V kopiert.",
             .actionStateOff: "Aus",
             .actionStateOn: "Ein",
             .actionWordsChoose: "bibliothek datei bib zotero öffnen wechseln ändern",
@@ -360,7 +363,6 @@ enum PickerWords {
             .actionsTitle: "Aktionen",
             .activeToken: "Zitat bearbeiten: {IBIS_VALUE}",
             .add: "Zur Zitation hinzufügen",
-            .addShort: "Hinzufügen",
             .after: "Text danach",
             .allowPaste: "Einfügen erlauben…",
             .app: "Ibis Native",
@@ -430,8 +432,9 @@ enum PickerWords {
             .missingHint: "Die Datei wurde möglicherweise verschoben oder umbenannt.",
             .missingShortcut: "Das Tastenkürzel von Ibis Native ist nicht verfügbar.",
             .more: "Mehr",
+            .moveEarlier: "Nach vorne",
+            .moveLater: "Nach hinten",
             .newerEngine: "Eine neuere Ibis-Engine läuft. Bauen Sie die native App mit der neueren Version.",
-            .noActionSelected: "Keine Aktion ausgewählt",
             .noActions: "Keine passenden Aktionen",
             .noDate: "Ohne Datum",
             .noEngine: "Ibis konnte seine lokale Engine nicht starten.",
@@ -459,14 +462,13 @@ enum PickerWords {
             .quit: "Ibis Native beenden",
             .recentlyAdded: "Zuletzt hinzugefügt",
             .recordShortcut: "Tastenkürzel eingeben…",
+            .referenceCount: "{IBIS_VALUE} Quellen",
             .references: "Referenzen",
             .reload: "Bibliothek neu laden",
             .remove: "Aus Zitation entfernen",
-            .removeShort: "Entfernen",
             .removeToken: "{IBIS_VALUE} aus der Zitation entfernen",
             .requestFailed: "Ibis konnte die Anfrage nicht abschließen. Versuchen Sie es erneut.",
             .restoreShortcut: "Standard verwenden",
-            .resultHint: "Geben Sie einen Titel, Autor, ein Jahr oder einen Schlüssel ein.",
             .returnKey: "Eingabetaste",
             .runAction: "Ausführen",
             .scopeLabel: "Bibliothek: {IBIS_VALUE}",
@@ -490,14 +492,12 @@ enum PickerWords {
             .shortcutNotSaved: "Ibis konnte nicht bestätigen, dass das Tastenkürzel gespeichert wurde.",
             .shortcutReserved: "Dieses Tastenkürzel ist für App-Befehle reserviert. Nehmen Sie eine weitere Sondertaste dazu.",
             .shortcuts: "Tastenkürzel",
-            .shorthandExample: "vale 2024 Seite12; ostrom Kapitel3",
             .showAs: "Anzeigen als",
             .system: "System",
             .textLarger: "Größere Schrift",
             .textSmaller: "Kleinere Schrift",
             .token: "Zitat: {IBIS_VALUE}",
             .tryAgain: "Erneut versuchen",
-            .typeCitation: "Zitat eingeben",
             .undo: "Rückgängig",
             .untitled: "Ohne Titel",
             .windowMenu: "Fenster",
@@ -505,6 +505,9 @@ enum PickerWords {
         ],
         .enUS: [
             .about: "About Ibis",
+            .accessDrag: "If it’s not in the list, drag this icon in.",
+            .accessTitle: "Switch on {IBIS_VALUE}",
+            .accessWait: "This closes by itself once it’s on. Until then, citations are copied for ⌘V.",
             .actionStateOff: "Off",
             .actionStateOn: "On",
             .actionWordsChoose: "library file bib zotero open switch change",
@@ -523,7 +526,6 @@ enum PickerWords {
             .actionsTitle: "Actions",
             .activeToken: "Editing citation: {IBIS_VALUE}",
             .add: "Add to Citation",
-            .addShort: "Add",
             .after: "Text after",
             .allowPaste: "Allow Paste…",
             .app: "Ibis Native",
@@ -593,8 +595,9 @@ enum PickerWords {
             .missingHint: "It may have moved or been renamed.",
             .missingShortcut: "The Ibis Native shortcut is unavailable.",
             .more: "More",
+            .moveEarlier: "Move Earlier",
+            .moveLater: "Move Later",
             .newerEngine: "A newer Ibis engine is running. Build the native app with the newer Ibis.",
-            .noActionSelected: "No action selected",
             .noActions: "No matching actions",
             .noDate: "No date",
             .noEngine: "Ibis could not start its local engine.",
@@ -622,14 +625,13 @@ enum PickerWords {
             .quit: "Quit Ibis Native",
             .recentlyAdded: "Recently added",
             .recordShortcut: "Type a shortcut…",
+            .referenceCount: "{IBIS_VALUE} References",
             .references: "References",
             .reload: "Reload Library",
             .remove: "Remove from Citation",
-            .removeShort: "Remove",
             .removeToken: "Remove {IBIS_VALUE} from citation",
             .requestFailed: "Ibis couldn’t finish this request. Try again.",
             .restoreShortcut: "Use Default",
-            .resultHint: "Type a title, author, year or key.",
             .returnKey: "Return",
             .runAction: "Run",
             .scopeLabel: "Library: {IBIS_VALUE}",
@@ -653,14 +655,12 @@ enum PickerWords {
             .shortcutNotSaved: "Ibis could not confirm that the shortcut was saved.",
             .shortcutReserved: "That shortcut is used for app commands. Add another modifier.",
             .shortcuts: "Shortcuts",
-            .shorthandExample: "vale 2024 p12; ostrom ch3",
             .showAs: "Show as",
             .system: "System",
             .textLarger: "Larger Text",
             .textSmaller: "Smaller Text",
             .token: "Citation: {IBIS_VALUE}",
             .tryAgain: "Try Again",
-            .typeCitation: "Type a Citation",
             .undo: "Undo",
             .untitled: "Untitled",
             .windowMenu: "Window",

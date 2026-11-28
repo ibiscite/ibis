@@ -74,76 +74,50 @@ final class PickerTests: XCTestCase {
     }
 
     @MainActor
-    func testLocatorAndPopoverEditsStayWithTheirReference() async throws {
+    func testTypedPagesAndDetailsStayWithTheirReference() async throws {
         let fixture = try Fixture()
         try fixture.identifyDaemon()
-        let model = PickerModel(engine: fixture.client(), file: fixture.library)
-        model.present(app: fixture.opening.app)
-        defer { model.dismiss() }
-        try await eventually { model.canDeliver }
-        let first = model.selected
-        model.move(1)
-        XCTAssertNotEqual(first, model.selected)
-        XCTAssertFalse(model.canDeliver)
-        try await eventually { model.canDeliver }
+        let store = PickerStore(engine: fixture.client(), file: fixture.library)
+        store.present(app: fixture.opening.app)
+        defer { store.dismiss() }
+        try await eventually { store.canDeliver && store.settled }
+        store.useFormatOnce("apa")
+        let first = try XCTUnwrap(store.highlight)
+        store.move(1)
+        try await eventually { store.settled && store.highlight != first }
+        let second = try XCTUnwrap(store.highlight)
 
-        model.format = "apa"
-        let second = try XCTUnwrap(model.citationItem)
-        model.changeDetails(for: second) {
-            $0.form = .narrative
-            $0.locator = "12"
-            $0.prefix = "See "
-        }
-        XCTAssertFalse(model.canDeliver)
-        try await eventually { model.canDeliver }
-        XCTAssertNil(model.preview?.problem)
-        XCTAssertTrue(model.preview?.text.contains("12") == true)
-        XCTAssertTrue(model.preview?.text.contains("See") == true)
+        // What is typed around a search becomes the highlighted reference's page and prefix.
+        store.type("see north 12")
+        try await eventually { store.settled && store.canDeliver }
+        XCTAssertEqual(store.citation.first?.details.prefix, "see")
+        XCTAssertEqual(store.citation.first?.note, "p. 12")
+        XCTAssertNotNil(store.state?.readsAs)
+        XCTAssertTrue(store.state?.preview?.text.contains("12") == true)
 
-        model.query = "north"
-        XCTAssertFalse(model.canDeliver)
-        try await eventually { model.canDeliver && model.rows.count == 1 }
-        XCTAssertEqual(model.selected, first)
-        XCTAssertTrue(model.escape())
-        XCTAssertTrue(model.query.isEmpty)
-        XCTAssertFalse(model.escape())
-        try await eventually { model.canDeliver && model.rows.count == 2 }
+        // Tab adds it and clears the field; the citation stays while browsing.
+        store.add()
+        XCTAssertEqual(store.query, "")
+        try await eventually { store.settled && store.added.count == 1 }
+        let ticket = store.state?.preview?.ticket
+        store.type("invented nonexistent result")
+        try await eventually { store.settled && store.rows.isEmpty }
+        XCTAssertEqual(store.added.count, 1)
+        XCTAssertEqual(store.state?.preview?.ticket, ticket)
+        XCTAssertTrue(store.escape())
+        try await eventually { store.settled && store.query.isEmpty }
 
-        let firstItem = try XCTUnwrap(first)
-        model.toggleCitation(try XCTUnwrap(model.rows.first { $0.id == firstItem }))
-        model.changeDetails(for: firstItem) { $0.locator = "7" }
-        try await eventually { model.canDeliver }
-        let draft = try XCTUnwrap(model.preview)
-        model.select(second)
-        XCTAssertTrue(model.canDeliver)
-        XCTAssertEqual(model.citationItem, firstItem)
-        XCTAssertEqual(model.preview?.ticket, draft.ticket)
-
-        model.query = "invented nonexistent result"
-        XCTAssertTrue(model.canDeliver)
-        try await eventually { model.rows.isEmpty }
-        XCTAssertTrue(model.canDeliver)
-        XCTAssertEqual(model.citationItem, firstItem)
-        XCTAssertEqual(model.preview?.ticket, draft.ticket)
-        XCTAssertTrue(model.escape())
-        try await eventually { model.rows.count == 2 }
-        XCTAssertEqual(model.preview?.ticket, draft.ticket)
-
-        model.toggleCitation(try XCTUnwrap(model.rows.first { $0.id == second }))
-        XCTAssertEqual(model.citationItem, second)
-        XCTAssertEqual(model.details(for: second).locator, "12")
-        model.changeDetails(for: second) { $0.form = nil }
-        model.beginCitationEdit(firstItem)
-        XCTAssertEqual(model.editingCitation, firstItem)
-        XCTAssertEqual(model.citationItem, firstItem)
-        XCTAssertEqual(model.details(for: firstItem).locator, "7")
-        model.changeDetails(for: firstItem) { $0.suffix = " under glass" }
-        model.endCitationEdit()
-        try await eventually { model.previewEntries.contains { $0.details.suffix == " under glass" } }
-        XCTAssertTrue(model.canDeliver, model.preview?.problem?.text ?? "The group is not ready.")
-        XCTAssertTrue(model.preview?.text.contains("under glass") == true)
-        XCTAssertEqual(model.details(for: second).locator, "12")
-        XCTAssertTrue(model.preview?.text.contains("12") == true)
+        // Details edit one reference; a second added one keeps its own.
+        let added = try XCTUnwrap(store.added.first)
+        store.changeDetails(added.row.id, to: added.details.with(suffix: " under glass"))
+        try await eventually { store.settled && store.state?.preview?.text.contains("under glass") == true }
+        store.toggle(added.row.id == second ? first : second)
+        try await eventually { store.settled && store.added.count == 2 }
+        XCTAssertEqual(store.entry(added.row.id)?.details.suffix, " under glass")
+        XCTAssertTrue(store.deleteInEmptyField())
+        try await eventually { store.settled && store.added.count == 1 }
+        store.undo()
+        try await eventually { store.settled && store.added.count == 2 }
     }
 
     @MainActor
@@ -153,59 +127,60 @@ final class PickerTests: XCTestCase {
         let fixture = try Fixture()
         try fixture.identifyDaemon()
         let engine = fixture.client()
-        let model = PickerModel(engine: engine)
+        let store = PickerStore(engine: engine)
         var choseLibrary = false
-        let panel = PickerPanel(model: model, chooseLibrary: { _ in choseLibrary = true })
+        let panel = PickerPanel(store: store, chooseLibrary: { _ in choseLibrary = true })
         panel.summon()
         defer { panel.dismiss() }
-        try await eventually { model.catalog != nil }
-        XCTAssertFalse(model.libraryReady)
-        model.query = "invented"
+        try await eventually { store.catalog != nil }
+        XCTAssertFalse(store.libraryReady)
+        XCTAssertEqual(store.emptyState, .choose)
         try send("\r", key: UInt16(kVK_Return), to: panel)
         XCTAssertTrue(choseLibrary)
         _ = try await engine.chooseLibrary(fixture.library)
-        model.useSavedLibrary()
-        try await eventually { model.canDeliver && model.rows.count == 2 }
-        XCTAssertEqual(model.query, "invented")
+        store.useSavedLibrary()
+        try await eventually { store.canDeliver && store.rows.count == 2 }
+        store.type("invented")
+        try await eventually { store.settled && store.rows.count == 2 }
+        store.add()
+        try await eventually { store.settled && store.added.count == 1 }
 
-        let previous = try XCTUnwrap(model.selection)
-        model.toggleCitation(previous)
-        model.changeDetails(for: previous.id) { $0.locator = "417" }
         let replacement = fixture.root.appendingPathComponent("Replacement.csljson")
         try Data("""
         [{"id":"replacement","citation-key":"invented-replacement","type":"book",
           "title":"Invented replacement","author":[{"family":"Vale"}],"issued":{"date-parts":[[2024]]}}]
         """.utf8).write(to: replacement)
+        store.type("invented")
+        try await eventually { store.settled }
         _ = try await engine.chooseLibrary(replacement)
-        model.useSavedLibrary()
-        try await eventually { model.preview != nil && model.rows.count == 1 }
-        XCTAssertTrue(model.canDeliver, model.preview?.problem?.text ?? "The new citation should be ready.")
-        XCTAssertEqual(model.query, "invented")
-        XCTAssertFalse(model.hasDraft)
-        XCTAssertNotEqual(model.citationItem, previous.id)
-        XCTAssertFalse(model.preview?.text.contains("417") ?? true)
+        store.useSavedLibrary()
+        try await eventually { store.settled && store.rows.count == 1 }
+        XCTAssertEqual(store.query, "invented", "A new library keeps the search")
+        XCTAssertTrue(store.added.isEmpty, "and starts a new citation.")
+        XCTAssertTrue(store.canDeliver, store.state?.preview?.problem?.text ?? "The new citation should be ready.")
     }
 
     @MainActor
-    func testOneTimeFormatKeepsTheDraftAndExpiresAtTheNextOpening() async throws {
+    func testOneTimeFormatKeepsTheCitationAndExpiresAtTheNextOpening() async throws {
         let fixture = try Fixture()
         try fixture.identifyDaemon()
-        let model = PickerModel(engine: fixture.client(), file: fixture.library)
-        model.present(app: "com.apple.TextEdit", name: "TextEdit")
-        defer { model.dismiss() }
-        try await eventually { model.canDeliver }
-        let initial = model.format
-        let row = try XCTUnwrap(model.selection)
-        model.toggleCitation(row)
-        model.changeDetails(for: row.id) { $0.locator = "417" }
-        model.useFormatOnce("pandoc")
-        try await eventually { model.canDeliver && model.format == "pandoc" }
-        XCTAssertTrue(model.formatIsHeld)
-        XCTAssertEqual(model.citationItem, row.id)
-        XCTAssertEqual(model.details(for: row.id).locator, "417")
-        model.present(app: "com.apple.TextEdit", name: "TextEdit")
-        try await eventually { model.canDeliver && model.format == initial }
-        XCTAssertFalse(model.formatIsHeld)
+        let store = PickerStore(engine: fixture.client(), file: fixture.library)
+        store.present(app: "com.apple.TextEdit", name: "TextEdit")
+        defer { store.dismiss() }
+        try await eventually { store.canDeliver && store.settled }
+        let initial = store.state?.format
+        store.type("north 417")
+        try await eventually { store.settled }
+        store.add()
+        try await eventually { store.settled && store.added.count == 1 }
+        store.useFormatOnce("pandoc")
+        try await eventually { store.settled && store.state?.format == "pandoc" }
+        XCTAssertEqual(store.state?.formatHeld, true)
+        XCTAssertEqual(store.added.first?.note, "p. 417")
+        store.present(app: "com.apple.TextEdit", name: "TextEdit")
+        try await eventually { store.settled && store.state?.format == initial }
+        XCTAssertEqual(store.state?.formatHeld, false)
+        XCTAssertTrue(store.added.isEmpty)
     }
 
     @MainActor
@@ -221,9 +196,8 @@ final class PickerTests: XCTestCase {
         }
         try JSONSerialization.data(withJSONObject: records).write(to: fixture.library)
         try fixture.identifyDaemon()
-        let model = PickerModel(engine: fixture.client(), file: fixture.library)
-        let panel = PickerPanel(model: model, chooseLibrary: { _ in })
-        let controller = panel.controller
+        let store = PickerStore(engine: fixture.client(), file: fixture.library)
+        let panel = PickerPanel(store: store, chooseLibrary: { _ in })
         let owner = NSWorkspace.shared.menuBarOwningApplication?.processIdentifier
         panel.summon()
         defer { panel.dismiss() }
@@ -232,65 +206,52 @@ final class PickerTests: XCTestCase {
         XCTAssertTrue(panel.canBecomeKey)
         XCTAssertFalse(panel.canBecomeMain)
         XCTAssertEqual(NSWorkspace.shared.menuBarOwningApplication?.processIdentifier, owner)
-        model.query = "invented"
-        try await eventually { model.canDeliver && model.rows.count == 14 }
+        store.type("invented")
+        try await eventually { store.settled && store.canDeliver && store.rows.count == 16 }
         let search = try XCTUnwrap(panel.searchField)
         XCTAssertTrue(search.hasFocus)
         XCTAssertEqual(search.accessibilityLabel(), "Search references")
-        XCTAssertTrue(controller.resultEmphasis, "The highlighted result is what Return delivers.")
-        try await eventually { abs(panel.frame.height - controller.height(PickerGrid(s: model.scale))) < 1 }
+        try await eventually { abs(panel.frame.height - store.height(PickerGrid(s: store.scale))) < 1 }
 
-        // Tab adds the highlighted result and clears the field for the next search.
+        // Down moves the highlight; Tab adds it and clears the field for the next search.
+        let first = store.highlight
         try send("\u{f701}", key: 125, to: panel) // Down
-        let added = try XCTUnwrap(model.selected)
-        try await eventually { model.canChangeSelectionMembership }
+        try await eventually { store.settled && store.highlight != first }
+        let added = try XCTUnwrap(store.highlight)
         try send("\t", key: 48, to: panel)
-        XCTAssertEqual(model.citations.map(\.row.id), [added])
-        XCTAssertEqual(model.query, "")
+        XCTAssertEqual(store.query, "")
+        try await eventually { store.settled && store.added.map(\.row.id) == [added] }
         XCTAssertTrue(search.hasFocus)
 
-        // Up from the first result reaches the added reference; Return opens it in place.
-        model.query = "invented"
-        try await eventually { model.canDeliver && model.rows.count == 14 }
-        for _ in 0..<20 where model.selected != model.rows.first?.id { try send("\u{f700}", key: 126, to: panel) }
-        try send("\u{f700}", key: 126, to: panel)
-        XCTAssertEqual(controller.pinned, added)
-        XCTAssertFalse(controller.resultEmphasis)
-        try send("\r", key: 36, to: panel)
-        XCTAssertEqual(controller.editing, added)
-        XCTAssertEqual(model.editingCitation, added)
-        try await eventually { controller.locatorField?.hasFocus == true }
+        // ⌘L opens the page popover for the citation; Escape closes it.
+        try send("l", key: 37, flags: [.command], to: panel)
+        XCTAssertEqual(store.editing, added)
         try send("\u{1b}", key: 53, to: panel)
-        XCTAssertNil(controller.editing)
-        XCTAssertNil(model.editingCitation)
-        XCTAssertTrue(search.hasFocus)
+        XCTAssertNil(store.editing)
 
-        // Delete in an empty field removes the highlighted added reference.
-        model.query = ""
-        try await eventually { model.canDeliver }
+        // Delete in an empty field takes back the last added reference.
         try send("\u{7f}", key: 51, to: panel)
-        XCTAssertTrue(model.citations.isEmpty)
+        try await eventually { store.settled && store.added.isEmpty }
 
         for _ in 0..<10 {
             try send("=", key: 24, flags: [.command], to: panel)
         }
-        XCTAssertEqual(model.scale, 2)
+        XCTAssertEqual(store.scale, 2)
         try await eventually { panel.frame.width > 700 }
         let screen = try XCTUnwrap(panel.screen)
         XCTAssertTrue(screen.visibleFrame.insetBy(dx: -1, dy: -1).contains(panel.frame))
 
-        model.query = "invented"
-        try await eventually { model.canDeliver && model.rows.count == 14 }
-        controller.showNumbers(true)
-        try await eventually { !controller.visibleRows.isEmpty }
-        let target = controller.visibleRows[0]
-        XCTAssertEqual(controller.number(for: target), 1)
-        controller.selectNumber(1)
-        XCTAssertEqual(model.selected, target)
+        store.type("invented")
+        try await eventually { store.settled && store.rows.count == 16 }
+        store.showNumbers(true)
+        try await eventually { !store.visibleRows.isEmpty }
+        let target = store.visibleRows[0]
+        XCTAssertEqual(store.number(for: target), 1)
+        XCTAssertTrue(store.selectNumber(1))
+        try await eventually { store.settled && store.highlight == target }
 
-        model.query = ""
-        try await eventually { model.canDeliver }
-        try send("\u{1b}", key: 53, to: panel)
+        try send("\u{1b}", key: 53, to: panel) // Clears the field.
+        try send("\u{1b}", key: 53, to: panel) // Closes the picker.
         try await eventually { !panel.isVisible }
     }
 

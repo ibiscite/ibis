@@ -9,7 +9,7 @@ let rustLibrary = URL(fileURLWithPath: rustTarget).appendingPathComponent("debug
 
 let package = Package(
     name: "IbisNative",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v15)],
     targets: [
         .systemLibrary(name: "CIbisNative"),
         .executableTarget(

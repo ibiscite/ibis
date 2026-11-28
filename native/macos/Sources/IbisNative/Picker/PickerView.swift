@@ -11,49 +11,57 @@ struct PickerGrid {
     var lead: CGFloat { 48 * s }
     var trailing: CGFloat { 16 * s }
     var header: CGFloat { 56 * s }
+    var hint: CGFloat { 22 * s }
     var heading: CGFloat { 26 * s }
-    var footer: CGFloat { 40 * s }
+    var footer: CGFloat { 44 * s }
     var status: CGFloat { 30 * s }
-    var editor: CGFloat { 40 * s }
-    var empty: CGFloat { 220 * s }
+    /// Room for an empty state's symbol, two lines and a button, at any text size.
+    var empty: CGFloat { 170 + 50 * s }
     func row(_ density: Density) -> CGFloat { (density == .compact ? 44 : 52) * s }
     func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font { .system(size: size * s, weight: weight) }
 }
 
 struct PickerView: View {
-    @ObservedObject var model: PickerModel
-    @ObservedObject var controller: PickerController
+    @ObservedObject var store: PickerStore
 
     var body: some View {
-        let grid = PickerGrid(s: model.scale)
+        let grid = PickerGrid(s: store.scale)
         VStack(spacing: 0) {
-            SearchHeader(model: model, controller: controller, grid: grid)
-            if let state = controller.emptyState {
-                Divider()
-                EmptyStateView(state: state, controller: controller, grid: grid).frame(height: grid.empty)
-            } else if controller.showsList {
-                Divider()
-                ResultsList(model: model, controller: controller, grid: grid)
-                    .frame(height: controller.listHeight(grid))
+            SearchHeader(store: store, grid: grid)
+            if let readsAs = store.state?.readsAs {
+                Text(readsAs)
+                    .font(grid.font(12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .padding(.leading, grid.lead)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: grid.hint, alignment: .top)
+                    .accessibilityLabel(readsAs)
             }
-            if let problem = controller.problem {
-                StatusLine(text: problem.text, status: problem.status, controller: controller, grid: grid)
-            }
-            if controller.showsFooter {
+            if let empty = store.emptyState {
                 Divider()
-                Footer(model: model, controller: controller, grid: grid)
+                EmptyStateView(state: empty, store: store, grid: grid).frame(height: grid.empty)
+            } else if store.showsList {
+                Divider()
+                ResultsList(store: store, grid: grid).frame(height: store.listHeight(grid))
+            }
+            if let problem = store.problem {
+                StatusLine(text: problem.text, status: problem.status, store: store, grid: grid)
+            }
+            if store.showsFooter {
+                Divider()
+                Footer(store: store, grid: grid)
             }
             Spacer(minLength: 0)
         }
-        .onPreferenceChange(AnchorFrames.self) { controller.anchors = $0 }
+        .onPreferenceChange(AnchorFrames.self) { store.anchors = $0 }
     }
 }
 
 // MARK: Search
 
 private struct SearchHeader: View {
-    @ObservedObject var model: PickerModel
-    @ObservedObject var controller: PickerController
+    @ObservedObject var store: PickerStore
     let grid: PickerGrid
 
     var body: some View {
@@ -61,25 +69,17 @@ private struct SearchHeader: View {
             BrandMark()
                 .frame(width: 24 * grid.s, height: 24 * grid.s)
                 .frame(width: grid.lead - 8 * grid.s)
-            if model.shorthand {
-                Text(PickerWords.text(.citation))
-                    .font(grid.font(13, .medium))
-                    .foregroundStyle(Color.accentColor)
-                    .padding(.horizontal, 8 * grid.s)
-                    .padding(.vertical, 3 * grid.s)
-                    .background(Capsule().fill(Color.accentColor.opacity(0.14)))
-            }
             NativeTextField(
-                text: model.query,
-                placeholder: PickerWords.text(model.shorthand ? .shorthandExample : .search),
+                text: store.query,
+                placeholder: PickerWords.text(.search),
                 label: PickerWords.text(.search),
                 style: .plain,
                 font: .systemFont(ofSize: 22 * grid.s),
-                register: { controller.searchField = $0 },
+                register: { store.searchField = $0 },
                 began: {},
-                change: { model.query = $0 }
+                change: { store.type($0) }
             )
-            if model.isOpening {
+            if store.isOpening {
                 ProgressView().controlSize(.small)
             }
         }
@@ -127,26 +127,18 @@ private struct RowFrames: PreferenceKey {
 }
 
 private struct ResultsList: View {
-    @ObservedObject var model: PickerModel
-    @ObservedObject var controller: PickerController
+    @ObservedObject var store: PickerStore
     let grid: PickerGrid
 
     var body: some View {
-        let added = Set(controller.addedOrder)
         GeometryReader { viewport in
             ScrollViewReader { scroll in
                 ScrollView(.vertical) {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        if model.hasDraft {
-                            SectionHeading(title: PickerWords.text(.cited), grid: grid)
-                            ForEach(model.citations, id: \.row.id) { entry in
-                                addedRow(entry.row)
-                            }
-                        }
-                        ForEach(Array(model.sections.enumerated()), id: \.offset) { _, section in
+                        ForEach(Array(store.sections.enumerated()), id: \.offset) { _, section in
                             SectionHeading(title: section.kind.label, grid: grid)
                             ForEach(section.rows, id: \.id) { row in
-                                resultRow(row, added: added.contains(row.id))
+                                resultRow(row)
                             }
                         }
                     }
@@ -155,94 +147,51 @@ private struct ResultsList: View {
                 .scrollIndicators(.automatic)
                 .coordinateSpace(name: "results")
                 .onPreferenceChange(RowFrames.self) { frames in
-                    controller.visibleRows = frames
+                    store.visibleRows = frames
                         .filter { $0.value.minY >= -0.5 && $0.value.maxY <= viewport.size.height + 0.5 }
                         .sorted { $0.value.minY < $1.value.minY }
                         .map(\.key)
                 }
-                .onChange(of: controller.revealedRow) {
-                    if let target = controller.pinned.map({ "added-\($0.key)-\($0.library)" }) {
-                        scroll.scrollTo(target)
-                    } else if let selected = model.selected {
-                        scroll.scrollTo(selected)
-                    }
+                .onChange(of: store.revealed) {
+                    if let highlight = store.highlight { scroll.scrollTo(highlight) }
                 }
             }
         }
         .accessibilityLabel(PickerWords.text(.references))
     }
 
-    private func addedRow(_ row: PickerRow) -> some View {
-        let selected = controller.pinned == row.id
-        return VStack(spacing: 0) {
-            ResultRow(row: row, selected: selected, emphasized: selected && controller.isKey && controller.editing == nil,
-                      added: true, note: controller.locatorLabel(for: row.id), number: nil,
-                      density: model.density, grid: grid,
-                      actions: RowActions(remove: { controller.remove(row.id) }))
-                .onTapGesture { controller.edit(row.id) }
-                .contextMenu { rowMenu(row, added: true) }
-            if controller.editing == row.id { DetailsEditor(model: model, controller: controller, item: row.id, grid: grid) }
-        }
-        .id("added-\(row.id.key)-\(row.id.library)")
-    }
-
-    private func resultRow(_ row: PickerRow, added: Bool) -> some View {
-        let selected = row.id == model.selected && controller.pinned == nil
-        return VStack(spacing: 0) {
-            ResultRow(row: row, selected: selected, emphasized: selected && controller.resultEmphasis,
-                      added: added, note: nil, number: controller.number(for: row.id),
-                      density: model.density, grid: grid,
-                      actions: RowActions(add: added ? nil : { add(row) }, peek: { controller.togglePeek(row.id) }))
-                .background(GeometryReader { geometry in
-                    Color.clear.preference(key: RowFrames.self, value: [row.id: geometry.frame(in: .named("results"))])
-                })
-                .onTapGesture { click(row) }
-                .contextMenu { rowMenu(row, added: added) }
-                .popover(isPresented: Binding(
-                    get: { controller.peek == row.id },
-                    set: { if !$0, controller.peek == row.id { controller.peekClosed() } }
-                ), arrowEdge: .trailing) {
-                    PeekView(row: row)
-                }
-            if !model.hasDraft, controller.editing == row.id {
-                DetailsEditor(model: model, controller: controller, item: row.id, grid: grid)
-            }
-        }
-        .id(row.id)
+    private func resultRow(_ row: PickerRow) -> some View {
+        let highlighted = row.id == store.highlight
+        let added = store.isAdded(row.id)
+        return ResultRow(row: row, highlighted: highlighted, emphasized: highlighted && store.isKey,
+                         added: added, note: store.entry(row.id)?.note, number: store.number(for: row.id),
+                         density: store.density, grid: grid,
+                         actions: RowActions(toggle: { store.toggle(row.id) }, peek: { store.togglePeek(row.id) }))
+            .background(GeometryReader { geometry in
+                Color.clear.preference(key: RowFrames.self, value: [row.id: geometry.frame(in: .named("results"))])
+            })
+            .onTapGesture { click(row) }
+            .contextMenu { rowMenu(row, added: added) }
+            .id(row.id)
     }
 
     @ViewBuilder private func rowMenu(_ row: PickerRow, added: Bool) -> some View {
-        Button(model.deliveryTitle) {
-            model.select(row.id)
-            controller.panel?.submit(whenReady: true)
-        }
-        if added {
-            Button(PickerWords.text(.page)) { controller.edit(row.id) }
-            Button(PickerWords.text(.remove)) { controller.remove(row.id) }
-        } else {
-            Button(PickerWords.text(.add)) { add(row) }
-        }
-        Button(PickerWords.text(.peek)) { controller.togglePeek(row.id) }
-    }
-
-    private func add(_ row: PickerRow) {
-        model.select(row.id)
-        if !model.isSelectionStaged { model.toggleCitation(row) }
-        controller.focusSearch(caretAtEnd: true)
+        Button(PickerWords.text(added ? .remove : .add)) { store.toggle(row.id) }
+        if added { Button(PickerWords.text(.editPage)) { store.edit(row.id) } }
+        Button(PickerWords.text(.peek)) { store.togglePeek(row.id) }
     }
 
     private func click(_ row: PickerRow) {
         let event = NSApp.currentEvent
         if event?.modifierFlags.contains(.command) == true {
-            model.select(row.id)
-            model.toggleCitation(row)
-        } else if (event?.clickCount ?? 1) >= 2, row.id == model.selected {
-            controller.panel?.submit(whenReady: true)
+            store.toggle(row.id)
+        } else if (event?.clickCount ?? 1) >= 2, row.id == store.highlight {
+            store.deliver()
             return
         } else {
-            model.select(row.id)
+            store.highlight(row.id)
         }
-        controller.focusSearch(caretAtEnd: true)
+        store.focusSearch()
     }
 }
 
@@ -263,14 +212,15 @@ private struct SectionHeading: View {
 }
 
 struct RowActions {
-    var add: (() -> Void)?
-    var remove: (() -> Void)?
+    var toggle: (() -> Void)?
     var peek: (() -> Void)?
 }
 
+/// Two lines: the title, then who, when and any page. A reference in the
+/// citation carries a check; the highlighted one takes the selection colour.
 struct ResultRow: View {
     let row: PickerRow
-    let selected: Bool
+    let highlighted: Bool
     let emphasized: Bool
     let added: Bool
     let note: String?
@@ -286,7 +236,7 @@ struct ResultRow: View {
         HStack(spacing: 0) {
             Group {
                 if let number {
-                    Text("\(number)").font(grid.font(13, .medium)).monospacedDigit().foregroundStyle(quiet)
+                    Text(verbatim: "\(number)").font(grid.font(13, .medium)).monospacedDigit().foregroundStyle(quiet)
                 } else if added {
                     Image(systemName: "checkmark.circle.fill")
                         .font(grid.font(16))
@@ -319,11 +269,11 @@ struct ResultRow: View {
             Spacer(minLength: 8 * grid.s)
             if hovered {
                 HStack(spacing: 6 * grid.s) {
-                    if let add = actions.add { HoverButton(symbol: "plus", label: .add, ink: ink, grid: grid, perform: add) }
-                    if let peek = actions.peek { HoverButton(symbol: "eye", label: .peek, ink: ink, grid: grid, perform: peek) }
-                    if let remove = actions.remove {
-                        HoverButton(symbol: "xmark", label: .remove, ink: ink, grid: grid, perform: remove)
+                    if let toggle = actions.toggle {
+                        HoverButton(symbol: added ? "minus" : "plus", label: added ? .remove : .add, ink: ink,
+                                    grid: grid, perform: toggle)
                     }
+                    if let peek = actions.peek { HoverButton(symbol: "eye", label: .peek, ink: ink, grid: grid, perform: peek) }
                 }
             }
             if emphasized {
@@ -334,10 +284,7 @@ struct ResultRow: View {
         .padding(.leading, 10 * grid.s)
         .padding(.trailing, 12 * grid.s)
         .frame(height: grid.row(density))
-        .background(
-            RoundedRectangle(cornerRadius: 10 * grid.s, style: .continuous)
-                .fill(fill)
-        )
+        .background(RoundedRectangle(cornerRadius: 10 * grid.s, style: .continuous).fill(fill))
         .padding(.horizontal, 8 * grid.s)
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
@@ -348,17 +295,16 @@ struct ResultRow: View {
             + row.matchReasons + (added ? [PickerWords.text(.cited)] : []) + [note, row.citationKey].compactMap { $0 })
             .joined(separator: ", "))
         .accessibilityHint(number.map { "⌘\($0)" } ?? "")
-        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
+        .accessibilityAddTraits(highlighted ? [.isSelected, .isButton] : .isButton)
         .accessibilityActions {
-            if let add = actions.add { Button(PickerWords.text(.add), action: add) }
-            if let remove = actions.remove { Button(PickerWords.text(.remove), action: remove) }
+            if let toggle = actions.toggle { Button(PickerWords.text(added ? .remove : .add), action: toggle) }
             if let peek = actions.peek { Button(PickerWords.text(.peek), action: peek) }
         }
     }
 
     private var fill: Color {
         if emphasized { return Color(nsColor: .selectedContentBackgroundColor) }
-        if selected { return Color(nsColor: .unemphasizedSelectedContentBackgroundColor) }
+        if highlighted { return Color(nsColor: .unemphasizedSelectedContentBackgroundColor) }
         return hovered ? Color.primary.opacity(0.06) : .clear
     }
 }
@@ -410,110 +356,16 @@ extension PickerRowKind {
     }
 }
 
-private struct PeekView: View {
-    let row: PickerRow
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(row.kindLabel, systemImage: row.kind.symbol).font(.caption).foregroundStyle(.secondary)
-            Text(row.title ?? PickerWords.text(.untitled)).font(.title3.weight(.semibold))
-            Text(row.fullByline).foregroundStyle(.secondary)
-            if let journal = row.journal { Text(journal).italic().foregroundStyle(.secondary) }
-            if let key = row.citationKey {
-                Text(key).font(.callout.monospaced()).foregroundStyle(.secondary).padding(.top, 4)
-            }
+extension PickerSectionKind {
+    var label: String {
+        let word: PickerWord = switch self {
+        case .best: .best
+        case .closest: .closest
+        case .citedHere: .citedHere
+        case .recentlyAdded: .recentlyAdded
+        case .pasted: .pasted
         }
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(width: 340, alignment: .leading)
-        .padding(16)
-    }
-}
-
-// MARK: Editing in place
-
-/// The page, prefix and suffix of one reference, opened inside its row.
-private struct DetailsEditor: View {
-    @ObservedObject var model: PickerModel
-    @ObservedObject var controller: PickerController
-    let item: ItemRef
-    let grid: PickerGrid
-
-    var body: some View {
-        let details = model.details(for: item)
-        let options = model.catalog?.locators ?? []
-        let term = options.first { $0.term == details.term }
-        let name = term?.name ?? PickerWords.text(.page)
-        let choices = self.choices(details)
-        HStack(spacing: 8 * grid.s) {
-            Menu {
-                ForEach(options, id: \.term) { option in
-                    Button {
-                        model.changeDetails(for: item) { $0.term = option.term }
-                    } label: {
-                        if option.term == details.term { Label(option.name, systemImage: "checkmark") } else { Text(option.name) }
-                    }
-                }
-            } label: {
-                Text(term?.shortName ?? PickerWords.text(.pageShort))
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .disabled(options.isEmpty)
-            .help(name)
-            .accessibilityLabel(PickerWords.text(.locatorType))
-            NativeTextField(
-                text: details.locator, placeholder: name, label: name, style: .rounded,
-                font: .systemFont(ofSize: 13 * grid.s),
-                register: { controller.locatorField = $0 },
-                began: {},
-                change: { text in model.changeDetails(for: item) { $0.locator = text } }
-            )
-            .frame(width: 64 * grid.s)
-            TextField(PickerWords.text(.before), text: binding(\.prefix), prompt: Text(PickerWords.text(.beforeExample)))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 96 * grid.s)
-            TextField(PickerWords.text(.after), text: binding(\.suffix), prompt: Text(PickerWords.text(.after)))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 96 * grid.s)
-            if choices.count > 1 {
-                Picker(PickerWords.text(.showAs), selection: Binding(
-                    get: { details.form ?? .normal },
-                    set: { form in model.changeDetails(for: item) { $0.form = form } }
-                )) {
-                    ForEach(choices) { choice in Text(choice.form.name).tag(choice.form.form) }
-                }
-                .labelsHidden()
-                .fixedSize()
-                .help(PickerWords.text(.showAs))
-            }
-            Spacer(minLength: 0)
-        }
-        .font(grid.font(13))
-        .controlSize(grid.s >= 1.4 ? .regular : .small)
-        .padding(.leading, 58 * grid.s)
-        .padding(.trailing, 20 * grid.s)
-        .frame(height: grid.editor)
-    }
-
-    private func binding(_ field: WritableKeyPath<CitationDetails, String>) -> Binding<String> {
-        Binding(get: { model.details(for: item)[keyPath: field] },
-                set: { text in model.changeDetails(for: item) { $0[keyPath: field] = text } })
-    }
-
-    private struct Choice: Identifiable {
-        let form: PickerForm
-        var id: CitationForm { form.form }
-    }
-
-    private func choices(_ details: CitationDetails) -> [Choice] {
-        let selected = details.form ?? .normal
-        return [CitationForm.normal, .narrative, .yearOnly].compactMap { choice in
-            guard let option = model.forms.first(where: { $0.form == choice }) else { return nil }
-            let example = model.formExamples.first { $0.form == choice }
-            let usable = example.map { $0.reason == nil && !($0.example ?? "").isEmpty } ?? false
-            return usable || selected == choice ? Choice(form: option) : nil
-        }
+        return PickerWords.text(word)
     }
 }
 
@@ -522,7 +374,7 @@ private struct DetailsEditor: View {
 private struct StatusLine: View {
     let text: String
     let status: PickerStatus?
-    let controller: PickerController
+    let store: PickerStore
     let grid: PickerGrid
 
     var body: some View {
@@ -534,7 +386,7 @@ private struct StatusLine: View {
             Text(text).font(grid.font(12)).foregroundStyle(.secondary).lineLimit(1).help(text)
             Spacer(minLength: 8 * grid.s)
             if let status, let fix = status.fix {
-                Button(controller.fixTitle(fix)) { controller.runFix(status) }
+                Button(store.fixTitle(fix)) { store.runFix(status) }
                     .buttonStyle(.link)
                     .font(grid.font(12))
             }
@@ -546,23 +398,23 @@ private struct StatusLine: View {
 }
 
 private struct EmptyStateView: View {
-    let state: PickerController.EmptyState
-    let controller: PickerController
+    let state: PickerStore.EmptyState
+    let store: PickerStore
     let grid: PickerGrid
 
     var body: some View {
         let content = self.content
         ContentUnavailableView {
-            Label(content.title, systemImage: content.symbol)
+            Label(content.title, systemImage: content.symbol).foregroundStyle(.primary)
         } description: {
             Text(PickerWords.text(content.hint))
         } actions: {
             if let primary = content.primary {
-                Button(primary) { controller.emptyAction(primary: true) }
+                Button(primary) { store.emptyAction(primary: true) }
                     .buttonStyle(.borderedProminent)
             }
             if let secondary = content.secondary {
-                Button(secondary) { controller.emptyAction(primary: false) }.buttonStyle(.link)
+                Button(secondary) { store.emptyAction(primary: false) }.buttonStyle(.link)
             }
         }
         .controlSize(grid.s >= 1.4 ? .large : .regular)
@@ -589,15 +441,14 @@ private struct EmptyStateView: View {
 
 /// One line: the format, exactly what Return delivers, and the two keys.
 private struct Footer: View {
-    @ObservedObject var model: PickerModel
-    @ObservedObject var controller: PickerController
+    @ObservedObject var store: PickerStore
     let grid: PickerGrid
 
     var body: some View {
         HStack(spacing: 12 * grid.s) {
-            Button { controller.openFormatMenu() } label: {
+            Button { store.openFormatMenu() } label: {
                 HStack(spacing: 3 * grid.s) {
-                    Text(model.formatName).lineLimit(1)
+                    Text(store.formatName).lineLimit(1)
                     Image(systemName: "chevron.up.chevron.down").font(grid.font(8, .semibold))
                 }
                 .frame(maxWidth: 140 * grid.s)
@@ -605,18 +456,29 @@ private struct Footer: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.primary)
-            .disabled(!model.canChooseFormat)
-            .help(model.formatContext.isEmpty ? model.formatName : model.formatContext)
-            .accessibilityLabel(PickerWords.text(.formatValue, model.formatName))
-            .accessibilityHint(model.formatContext)
+            .disabled(!store.canChooseFormat)
+            .help(store.formatContext.isEmpty ? store.formatName : store.formatContext)
+            .accessibilityLabel(PickerWords.text(.formatValue, store.formatName))
+            .accessibilityHint(store.formatContext)
             .anchor(.format)
 
-            preview
+            CitationPreview(store: store, grid: grid)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .anchor(.citation)
+                .popover(isPresented: Binding(
+                    get: { store.editing != nil },
+                    set: { if !$0 { store.editingClosed() } }
+                ), arrowEdge: .top) {
+                    if let item = store.editing { DetailsPopover(store: store, item: item) }
+                }
 
-            Button { controller.panel?.submit(whenReady: true) } label: {
+            Button { store.deliver() } label: {
                 HStack(spacing: 5 * grid.s) {
-                    Text(model.deliveryTitle).lineLimit(1)
+                    if let icon = store.destinationIcon {
+                        Image(nsImage: icon).resizable().frame(width: 16 * grid.s, height: 16 * grid.s)
+                            .accessibilityHidden(true)
+                    }
+                    Text(store.deliveryTitle).lineLimit(1)
                     KeyCap("↩", grid: grid)
                 }
             }
@@ -624,19 +486,17 @@ private struct Footer: View {
             .foregroundStyle(.primary)
             .fontWeight(.medium)
             .fixedSize()
-            .disabled(!model.canDeliver)
-            .accessibilityLabel(model.deliveryTitle)
+            .disabled(!store.canDeliver)
+            .accessibilityLabel(store.deliveryTitle)
             .accessibilityHint(PickerWords.text(.returnKey))
 
-            Button { controller.openActionsMenu() } label: {
-                HStack(spacing: 5 * grid.s) {
-                    Text(PickerWords.text(.more))
-                    KeyCap("⌘K", grid: grid)
-                }
+            Button { store.openActionsMenu() } label: {
+                KeyCap("⌘K", grid: grid)
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
             .fixedSize()
+            .help(PickerWords.text(.actionsTitle))
             .accessibilityLabel(PickerWords.text(.actionsTitle))
             .anchor(.actions)
         }
@@ -645,24 +505,118 @@ private struct Footer: View {
         .padding(.trailing, 14 * grid.s)
         .frame(height: grid.footer)
     }
+}
 
-    @ViewBuilder private var preview: some View {
-        let parts = CitationLine.parts(model, scale: grid.s * 0.92)
-        if parts.isEmpty {
-            Text(model.isFormatting ? PickerWords.text(.formatting) : "").foregroundStyle(.tertiary)
-        } else {
-            Text(parts.reduce(into: AttributedString()) { line, part in line += part.text })
+/// The citation exactly as Return delivers it. With several references a
+/// count opens their menu: page, order and removal live there, not in a tray.
+private struct CitationPreview: View {
+    @ObservedObject var store: PickerStore
+    let grid: PickerGrid
+
+    var body: some View {
+        let citation = store.citation
+        HStack(spacing: 8 * grid.s) {
+            if let preview = store.state?.preview, !preview.text.isEmpty {
+                Text(CitationText.styled(preview.display, fallback: preview.text, scale: grid.s * 0.92))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .opacity(store.canDeliver ? 1 : 0.6)
+                    .help(preview.text)
+                    .accessibilityLabel(PickerWords.text(.token, preview.text))
+                    .onTapGesture { store.edit() }
+            }
+            if citation.count > 1 {
+                Button { store.openCitationMenu() } label: {
+                    HStack(spacing: 2 * grid.s) {
+                        Text(PickerWords.text(.referenceCount, citation.count.formatted()))
+                        Image(systemName: "chevron.up.chevron.down").font(grid.font(8, .semibold))
+                    }
+                    .fixedSize()
+                }
+                .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .opacity(model.canDeliver ? 1 : 0.6)
-                .help(parts.map(\.plain).joined())
-                .accessibilityLabel(PickerWords.text(.token, parts.map(\.plain).joined()))
+            }
         }
     }
 }
 
-private struct KeyCap: View {
+/// The page, the words before and after, and the form of one reference.
+private struct DetailsPopover: View {
+    @ObservedObject var store: PickerStore
+    let item: ItemRef
+
+    var body: some View {
+        let entry = store.entry(item)
+        let details = entry?.details ?? .empty
+        let options = store.catalog?.locators ?? []
+        let term = details.locator?.term ?? .page
+        let name = options.first { $0.term == term }?.name ?? PickerWords.text(.page)
+        Form {
+            if let title = entry?.row.title { Text(title).font(.headline).lineLimit(2) }
+            LabeledContent {
+                HStack(spacing: 6) {
+                    Picker(PickerWords.text(.locatorType), selection: Binding(
+                        get: { term },
+                        set: { next in
+                            store.changeDetails(item, to: details.with(locator: Locator(term: next, value: details.locator?.value ?? "")))
+                        }
+                    )) {
+                        ForEach(options, id: \.term) { Text($0.name).tag($0.term) }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    NativeTextField(
+                        text: details.locator?.value ?? "", placeholder: name, label: name, style: .rounded,
+                        font: .systemFont(ofSize: NSFont.systemFontSize),
+                        register: { store.locatorField = $0 },
+                        began: {},
+                        change: { value in
+                            store.changeDetails(item, to: details.with(locator: Locator(term: term, value: value)))
+                        }
+                    )
+                    .frame(width: 90)
+                }
+            } label: {
+                Text(name)
+            }
+            TextField(PickerWords.text(.before), text: Binding(
+                get: { details.prefix ?? "" },
+                set: { store.changeDetails(item, to: details.with(prefix: $0)) }
+            ), prompt: Text(PickerWords.text(.beforeExample)))
+            TextField(PickerWords.text(.after), text: Binding(
+                get: { details.suffix ?? "" },
+                set: { store.changeDetails(item, to: details.with(suffix: $0)) }
+            ))
+            let forms = formChoices(details)
+            if forms.count > 1 {
+                Picker(PickerWords.text(.showAs), selection: Binding(
+                    get: { details.form ?? .normal },
+                    set: { store.changeDetails(item, to: details.with(form: $0 == .normal ? nil : $0)) }
+                )) {
+                    ForEach(forms, id: \.form) { option in Text(option.name).tag(option.form) }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 340)
+        .fixedSize(horizontal: false, vertical: true)
+        .onSubmit { store.closeEditing() }
+    }
+
+    /// Only forms this format writes for this reference, shown with the engine's names.
+    private func formChoices(_ details: PickerDetails) -> [PickerForm] {
+        let offered = store.state?.forms ?? []
+        return (store.catalog?.forms ?? []).filter { option in
+            guard offered.contains(option.form) else { return false }
+            if option.form == (details.form ?? .normal) { return true }
+            let example = store.formExamples.first { $0.form == option.form }
+            return example.map { $0.reason == nil && !($0.example ?? "").isEmpty } ?? false
+        }
+    }
+}
+
+struct KeyCap: View {
     let key: String
     let grid: PickerGrid
     init(_ key: String, grid: PickerGrid) {
@@ -680,19 +634,43 @@ private struct KeyCap: View {
     }
 }
 
+/// The engine's rich runs as text: italics, small caps and superscripts kept.
+enum CitationText {
+    static func styled(_ display: DisplayTree, fallback: String, scale: CGFloat) -> AttributedString {
+        let runs = display.nodes.flatMap(\.content)
+        guard !runs.isEmpty else { return AttributedString(fallback) }
+        var text = AttributedString()
+        for run in runs {
+            let shift = run.script == .superscript ? 1 : (run.script == .`subscript` ? -1 : 0)
+            var part = AttributedString(run.text.replacingOccurrences(of: "\n", with: " "))
+            var font = Font.system(size: (shift == 0 ? 13 : 10) * scale, weight: run.bold == true ? .semibold : .regular)
+            if run.italic == true { font = font.italic() }
+            if run.smallCaps == true { font = font.lowercaseSmallCaps() }
+            part[AttributeScopes.SwiftUIAttributes.FontAttribute.self] = font
+            if shift != 0 {
+                part[AttributeScopes.SwiftUIAttributes.BaselineOffsetAttribute.self] = CGFloat(shift * 3) * scale
+            }
+            if run.underline == true {
+                part[AttributeScopes.SwiftUIAttributes.UnderlineStyleAttribute.self] = Text.LineStyle.single
+            }
+            text += part
+        }
+        return text
+    }
+}
+
 // MARK: Helpers
 
 struct AnchorFrames: PreferenceKey {
-    static let defaultValue: [PickerController.Anchor: CGRect] = [:]
-    static func reduce(value: inout [PickerController.Anchor: CGRect],
-                       nextValue: () -> [PickerController.Anchor: CGRect]) {
+    static let defaultValue: [PickerStore.Anchor: CGRect] = [:]
+    static func reduce(value: inout [PickerStore.Anchor: CGRect], nextValue: () -> [PickerStore.Anchor: CGRect]) {
         value.merge(nextValue()) { $1 }
     }
 }
 
 private extension View {
     /// Records where a control sits, so its native menu opens at it.
-    func anchor(_ anchor: PickerController.Anchor) -> some View {
+    func anchor(_ anchor: PickerStore.Anchor) -> some View {
         background(GeometryReader { geometry in
             Color.clear.preference(key: AnchorFrames.self, value: [anchor: geometry.frame(in: .global)])
         })

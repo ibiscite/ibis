@@ -81,9 +81,13 @@ if [[ "$mode" == shots ]]; then
       IBIS_CONFIG_DIR="$config" "$app/Contents/MacOS/IbisNative" "${args[@]}" >"$log" 2>/dev/null &
       pid=$!
       for _ in $(seq 100); do grep -q '^ready' "$log" && break; sleep 0.2; done
-      window=$(awk '/^ready/ {print $2; exit}' "$log")
-      if [[ -n "$window" ]]; then
-        screencapture -o -x -l "$window" "$out/$appearance-$state.png"
+      # `ready WINDOW` names one window; `ready rect X,Y,W,H` a screen area
+      # holding the picker with its Peek or popover.
+      ready=$(awk '/^ready/ {print $2, $3; exit}' "$log")
+      if [[ "$ready" == rect* ]]; then
+        screencapture -o -x -R "${ready#rect }" "$out/$appearance-$state.png"
+      elif [[ -n "$ready" ]]; then
+        screencapture -o -x -l "${ready% }" "$out/$appearance-$state.png"
       else
         printf 'No window for %s (%s)\n' "$state" "$appearance" >&2
       fi

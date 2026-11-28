@@ -49,6 +49,11 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSSearch
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(sender)
+        // The search field waits for ⌘F or a click, rather than taking focus on open.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.window?.firstResponder === self.searchField.currentEditor() else { return }
+            self.window?.makeFirstResponder(nil)
+        }
         preferences.refreshPasteAccess()
         preferences.read()
     }
@@ -214,10 +219,7 @@ private final class NativePreferences: ObservableObject {
     func openPasteAccess() {
         refreshPasteAccess()
         guard saved?.paste == true, !pasteGranted else { return }
-        ibis_native_request_paste_access()
-        if let pane = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(pane)
-        }
+        PermissionHelper.shared.show { [weak self] in self?.refreshPasteAccess() }
     }
 
     func change(appearance: Appearance? = nil, density: Density? = nil, largerText: Bool? = nil, paste: Bool? = nil) {

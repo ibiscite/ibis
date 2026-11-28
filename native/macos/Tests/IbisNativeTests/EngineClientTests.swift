@@ -9,7 +9,7 @@ final class EngineClientTests: XCTestCase {
         let fixture = try Fixture()
         try fixture.identifyDaemon()
         let settings = fixture.client()
-        let opening = PickerOpenRequest(app: nil, file: nil, language: .enUS, reload: nil, site: nil)
+        let opening = PickerOpenRequest(app: nil, file: nil, keepQuery: nil, language: .enUS, reload: nil, site: nil)
         let empty = try await settings.open(opening)
         XCTAssertNil(empty.library)
         let saved = try await settings.chooseLibrary(fixture.library)
@@ -22,12 +22,10 @@ final class EngineClientTests: XCTestCase {
         XCTAssertEqual(opened.library?.condition, .ready)
         XCTAssertEqual(opened.formats.first { $0.id == "apa" }?.canKeepOrder, true)
         XCTAssertEqual(opened.formats.first { $0.id == "pandoc" }?.canKeepOrder, false)
-        let reply = try await picker.search(PickerSearchRequest(query: "north", shorthand: false)).result
-        let row = try XCTUnwrap(reply.sections.first?.rows.first)
-        let preview = try await picker.preview(PickerPreviewRequest(
-            entries: [PickerPreviewEntry(cite: row.cite, form: nil, item: row.id, locator: nil, prefix: nil, suffix: nil)],
-            format: "apa", keepOrder: false
-        )).result
+        _ = try await picker.act(.useFormat(id: "apa"))
+        let reply = try await picker.typed("north")
+        XCTAssertNotNil(reply.sections.first?.rows.first)
+        let preview = try XCTUnwrap(reply.preview)
         let missing = fixture.root.appendingPathComponent("Missing.csljson")
         do {
             _ = try await picker.chooseLibrary(missing)
@@ -59,30 +57,30 @@ final class EngineClientTests: XCTestCase {
         let client = fixture.client()
         let text = fixture.opening
         let initial = try await client.open(text).formatScope
-        let stored = try await client.formatScope(
+        let stored = try XCTUnwrap(try await client.changeFormat(
             PickerChangeFormatRequest(expected: initial, forget: nil, remember: "modern-language-association"), for: text
-        )
+        ).formatScope)
         XCTAssertEqual(stored.format, "modern-language-association")
         XCTAssertEqual(stored.from, .app)
         XCTAssertEqual(stored.rememberedFor, text.app)
 
         func browser(_ site: String) -> PickerOpenRequest {
-            PickerOpenRequest(app: "com.apple.Safari", file: fixture.library.path, language: .enUS, reload: nil, site: site)
+            PickerOpenRequest(app: "com.apple.Safari", file: fixture.library.path, keepQuery: nil, language: .enUS, reload: nil, site: site)
         }
         let overleaf = browser("overleaf.com")
         let googleDocs = browser("docs.google.com")
         let latex = try await client.open(overleaf).formatScope
         XCTAssertEqual(latex.remembersFor, "overleaf.com")
         XCTAssertNil(latex.rememberedFor)
-        let savedSite = try await client.formatScope(
+        let savedSite = try XCTUnwrap(try await client.changeFormat(
             PickerChangeFormatRequest(expected: latex, forget: nil, remember: "pandoc"), for: overleaf
-        )
+        ).formatScope)
         XCTAssertEqual(savedSite.rememberedFor, "overleaf.com")
         let docs = try await client.open(googleDocs).formatScope
         XCTAssertEqual(docs.format, "apa")
         XCTAssertNil(docs.rememberedFor)
         do {
-            _ = try await client.formatScope(
+            _ = try await client.changeFormat(
                 PickerChangeFormatRequest(expected: savedSite, forget: true, remember: nil), for: overleaf
             )
             XCTFail("An earlier opening must never change the new destination.")
@@ -93,23 +91,20 @@ final class EngineClientTests: XCTestCase {
         let otherClient = fixture.client()
         let reopened = try await otherClient.open(overleaf).formatScope
         XCTAssertEqual(reopened, savedSite)
-        let reset = try await otherClient.formatScope(
+        let reset = try XCTUnwrap(try await otherClient.changeFormat(
             PickerChangeFormatRequest(expected: reopened, forget: true, remember: nil), for: overleaf
-        )
+        ).formatScope)
         XCTAssertEqual(reset, latex)
         let originalApp = try await otherClient.open(text).formatScope
         XCTAssertEqual(originalApp, stored)
         _ = try await client.open(text)
-        let search = try await client.search(PickerSearchRequest(query: "north", shorthand: false)).result
-        let row = try XCTUnwrap(search.sections.first?.rows.first)
-        let preview = try await client.preview(PickerPreviewRequest(
-            entries: [PickerPreviewEntry(cite: row.cite, form: nil, item: row.id, locator: nil, prefix: nil, suffix: nil)],
-            format: try XCTUnwrap(originalApp.format), keepOrder: false
-        )).result
+        let search = try await client.typed("north")
+        XCTAssertEqual(search.format, originalApp.format)
+        let preview = try XCTUnwrap(search.preview)
         XCTAssertNil(preview.problem)
-        let changed = try await otherClient.formatScope(
+        let changed = try XCTUnwrap(try await otherClient.changeFormat(
             PickerChangeFormatRequest(expected: originalApp, forget: nil, remember: "apa"), for: text
-        )
+        ).formatScope)
         do {
             _ = try await client.deliver(
                 PickerDeliverRequest(contentHash: preview.contentHash, paste: false, ticket: preview.ticket)
@@ -121,7 +116,7 @@ final class EngineClientTests: XCTestCase {
         } catch let error as DaemonError {
             XCTAssertEqual(error, .changed)
         }
-        let refreshed = try await client.formatScope(.readOnly, for: text)
+        let refreshed = try await client.changeFormat(.readOnly, for: text).formatScope
         XCTAssertEqual(refreshed, changed)
     }
 
@@ -166,24 +161,27 @@ final class EngineClientTests: XCTestCase {
         let opened = try await client.open(fixture.opening)
         XCTAssertTrue(opened.library?.condition == .ready)
         XCTAssertTrue(opened.pasteEnabled)
-        let initial = try await client.search(PickerSearchRequest(query: "", shorthand: false)).result
+        let initial = opened.state
         XCTAssertEqual(initial.sections.first?.kind, .recentlyAdded)
         let row = try XCTUnwrap(initial.sections.first?.rows.first)
+        XCTAssertEqual(initial.highlight, row.id)
         XCTAssertEqual(row.title, "Invented lanterns of North Quay")
         XCTAssertEqual(row.authors, ["Mira Vale"])
         XCTAssertEqual(row.year, "2024")
         XCTAssertEqual(row.journal, "Journal of Imaginary Cities")
-        let draft = PickerPreviewRequest(
-            entries: [PickerPreviewEntry(cite: row.cite, form: .narrative, item: row.id,
-                                         locator: Locator(term: .page, value: "chapter 12"), prefix: nil, suffix: nil)],
-            format: "apa", keepOrder: false
-        )
-        let (preview, session) = try await client.preview(draft)
+        let details = PickerDetails(form: .narrative, locator: Locator(term: .page, value: "chapter 12"),
+                                    prefix: nil, suffix: nil)
+        _ = try await client.act(.useFormat(id: "apa"))
+        let edited = try await client.act(.details(details: details, item: row.id))
+        XCTAssertEqual(edited.citation.map(\.added), [true])
+        let preview = try XCTUnwrap(edited.preview)
         XCTAssertNil(preview.problem)
         XCTAssertTrue(preview.text.contains("chapter 12"), preview.text)
-        let browse = try await client.search(PickerSearchRequest(query: "bridges", shorthand: false))
-        XCTAssertEqual(browse.session, session)
-        XCTAssertNotEqual(browse.result.sections.first?.rows.first?.id, row.id)
+        // Browsing beside an added reference keeps the citation and its ticket.
+        let browse = try await client.typed("bridges")
+        XCTAssertNotEqual(browse.sections.first?.rows.first?.id, row.id)
+        let browsed = try await client.typed("")
+        XCTAssertEqual(browsed.preview?.ticket, preview.ticket)
 
         let preferences = fixture.client()
         let disabled = try await preferences.settings(
@@ -208,7 +206,7 @@ final class EngineClientTests: XCTestCase {
             return 1 // The test acknowledges a copy without changing the system clipboard.
         }
         XCTAssertNotNil(copied)
-        let recents = try await client.search(PickerSearchRequest(query: "", shorthand: false)).result
+        let recents = try await client.open(fixture.opening).state
         XCTAssertEqual(recents.sections.map(\.kind), [.citedHere, .recentlyAdded])
         XCTAssertEqual(recents.sections.first?.rows.map(\.id), [row.id])
 
@@ -224,7 +222,8 @@ final class EngineClientTests: XCTestCase {
 
         let copyOnly = try await client.open(fixture.opening)
         XCTAssertFalse(copyOnly.pasteEnabled)
-        let copyPreview = try await client.preview(draft).result
+        _ = try await client.act(.useFormat(id: "apa"))
+        let copyPreview = try XCTUnwrap(try await client.act(.details(details: details, item: row.id)).preview)
         let enabled = try await preferences.settings(
             .patch(paste: true)
         )
@@ -245,19 +244,16 @@ final class EngineClientTests: XCTestCase {
         try fixture.identifyDaemon()
         let client = fixture.client()
         _ = try await client.open(fixture.opening)
-        let query = PickerSearchRequest(query: "north", shorthand: false)
-        let original = try await client.search(query).result
+        _ = try await client.act(.useFormat(id: "apa"))
+        let original = try await client.typed("north")
         let row = try XCTUnwrap(original.sections.first?.rows.first)
-        let preview = try await client.preview(PickerPreviewRequest(
-            entries: [PickerPreviewEntry(cite: row.cite, form: nil, item: row.id, locator: nil, prefix: nil, suffix: nil)],
-            format: "apa", keepOrder: false
-        )).result
+        let preview = try XCTUnwrap(original.preview)
         XCTAssertNil(preview.problem)
         let old = try String(contentsOf: fixture.library, encoding: .utf8)
         let changed = old.replacingOccurrences(of: "North Quay", with: "North Quay after rain")
         try changed.write(to: fixture.library, atomically: true, encoding: .utf8)
         let deadline = ContinuousClock.now + .seconds(10)
-        while try await client.search(query).result.sections.first?.rows.first?.cite == row.cite {
+        while try await client.typed("north").sections.first?.rows.first?.cite == row.cite {
             guard ContinuousClock.now < deadline else {
                 return XCTFail("The engine did not publish the changed library.")
             }
@@ -282,14 +278,13 @@ final class EngineClientTests: XCTestCase {
         let original = try fixture.identifyDaemon()
         let client = fixture.client()
         _ = try await client.open(fixture.opening)
-        let query = PickerSearchRequest(query: "north", shorthand: false)
-        let before = try await client.search(query)
+        let before = try await client.typed("north")
 
         fixture.stop(signal: SIGKILL)
         try await Task.sleep(for: .milliseconds(30))
-        let recovered = try await client.search(query)
-        XCTAssertEqual(recovered.result.sections, before.result.sections)
-        XCTAssertNotEqual(recovered.session, before.session)
+        // The reconnect replays the opening, so the reply describes a whole session.
+        let recovered = try await client.typed("north")
+        XCTAssertEqual(recovered.sections, before.sections)
         let restarted = try fixture.identifyDaemon()
         XCTAssertNotEqual(original, restarted)
 
@@ -300,13 +295,13 @@ final class EngineClientTests: XCTestCase {
                                               ofItemAtPath: newerBinary.path)
         let upgraded = fixture.client(binary: newerBinary)
         _ = try await upgraded.open(fixture.opening)
-        let upgradedRows = try await upgraded.search(query)
-        XCTAssertEqual(upgradedRows.result.sections, before.result.sections)
+        let upgradedRows = try await upgraded.typed("north")
+        XCTAssertEqual(upgradedRows.sections, before.sections)
         let replacement = try fixture.identifyDaemon(binary: newerBinary)
         XCTAssertNotEqual(replacement, restarted)
 
         do {
-            _ = try await client.search(query)
+            _ = try await client.typed("north")
             XCTFail("The older client displaced the newer engine.")
         } catch {
             XCTAssertEqual(error as? DaemonError, .newerEngine)

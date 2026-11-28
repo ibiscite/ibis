@@ -2,7 +2,7 @@
 
 This repo build is the picker and delivery from
 [decision 0065](../../docs/decisions/0065-one-warm-engine-thin-shells.md).
-It targets macOS 26 and later ([decision 0066](../../docs/decisions/0066-native-shells-use-system-parts.md))
+It targets macOS 15 and later, with Liquid Glass on macOS 26 ([decision 0066](../../docs/decisions/0066-native-shells-use-system-parts.md))
 and uses the workspace Rust toolchain and Xcode 26 or its Command Line Tools.
 
 ```sh
@@ -16,9 +16,14 @@ The interface is SwiftUI over the system's own parts, with AppKit for the
 panel, its glass, native menus, the hot key and focused text fields
 ([decision 0066](../../docs/decisions/0066-native-shells-use-system-parts.md),
 [the native recipe](../../docs/design/macos.md#the-native-recipe)).
-`PickerModel` holds the citation state from the engine, `PickerController`
-holds focus, open layers and every command, `PickerPanel` owns the window and
-routes keys, and `PickerView` draws. `shots` runs each `ReviewState` in an
+The engine owns the picker session: the query, results, highlight, the
+references added with their details, the format and the preview. Sources are
+grouped by job: `App/` (launch, hot key, review states), `Engine/` (the daemon
+client), `Picker/` (`PickerStore` sends intents and keeps the latest state,
+`PickerCommands` the commands and native menus, `PickerPanel` the window and
+keys, `PeekPanel` the Quick Look-style preview, `PickerView` draws),
+`Settings/`, `Setup/` (the permission card) and `Shared/` (`SystemGlass`, the
+text field). `shots` runs each `ReviewState` in an
 isolated profile and saves the PNGs under `target/native-macos/shots`.
 `screencapture` needs Screen Recording permission for the terminal once.
 

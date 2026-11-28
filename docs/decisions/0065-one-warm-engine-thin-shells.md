@@ -79,7 +79,7 @@ No more effort goes into making the web view imitate macOS.
      a sidebar with search
      (0062), and the menu
      bar item, Services and App Intents. It updates through Sparkle (EdDSA),
-     the Mac's standard. It targets macOS 26 and later (amended 2026-11-28,
+     the Mac's standard. It targets macOS 15 and later (amended 2026-11-28,
      [0066](0066-native-shells-use-system-parts.md)). Delivery
      (`ibis-native`: paste, focus and site reads, placement and drag) stays
      **in-process in each signed desktop shell**. The macOS Accessibility
@@ -98,14 +98,15 @@ No more effort goes into making the web view imitate macOS.
      ([0036](0036-reader-trust-boundary.md)): PDF.js receives raw bytes, and
      no native PDF parser runs beside the library. A native shell embeds it
      on demand.
-   - **Windows and Linux: the Tauri shell continues** as a daemon client. It
-     stops copying macOS metrics and uses its own neutral recipe. A native
-     shell for either system is built only when a release gate
-     ([0032](0032-release-gates.md)) or people's reports call for it, and
-     then over the same socket.
-   - **Measurement first:** whole-process memory, idle wake-ups, and summon
-     time to typeable on a 10k and a 100k library, for every shell, measured
-     against 0032's budgets.
+   - **Windows and Linux: native apps follow the Mac** (amended 2026-11-28,
+     [0066](0066-native-shells-use-system-parts.md) point 4): WinUI 3 after
+     Mac parity, then GTK 4 with libadwaita, each over the same socket. Until
+     each reaches parity on the same user journeys, the Tauri app serves that
+     system as a daemon client with fixes only, in its own neutral recipe.
+   - **Measurement is the baseline:** whole-process memory, idle wake-ups,
+     and summon time to typeable on a 10k and a 100k library, for every
+     shell, measured against 0032's budgets. Each native app must beat the
+     Tauri app's numbers on its system.
 3. **System integration is reuse, not rebuilding.** Each of these is a thin
    socket client:
    - **macOS:** Services, App Intents and Quick Look.
@@ -172,5 +173,8 @@ No more effort goes into making the web view imitate macOS.
    Tauri Mac build is retired from it; Settings, Sparkle and signing follow in
    later nightlies.
 3. Measure every shell against 0032 (memory, wake-ups, summon to typeable).
-4. Simplify the Tauri shell's recipe for Windows and Linux.
+4. Move the Tauri app's in-process engine, its paste-consent decisions and
+   the editor endpoint into the daemon (amended 2026-11-28).
+5. Build the Windows app in WinUI 3, then the Linux app in GTK 4 with
+   libadwaita. Each system drops the Tauri app at parity.
 5. Add system extensions as thin clients.

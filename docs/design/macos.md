@@ -11,8 +11,10 @@ reviewing a change. Ibis’s product rules and recorded departures are in the
 On the Mac, Ibis is becoming a native AppKit/SwiftUI app
 ([0065](../decisions/0065-one-warm-engine-thin-shells.md), amended
 2026-11-26): there, use Apple's standard controls at their own metrics rather
-than measuring and copying them. The Tauri shell stays on the Mac until the
-native one reaches parity, and on Windows and Linux after that.
+than measuring and copying them. Windows (WinUI 3) and Linux (GTK 4 with
+libadwaita) follow in that order ([0066](../decisions/0066-native-shells-use-system-parts.md));
+each system keeps the Tauri app, with fixes only, until its native app reaches
+parity.
 
 ### The native recipe
 
@@ -20,9 +22,12 @@ The [native app](../../native/macos/README.md) is layout over the system's own
 parts ([0066](../decisions/0066-native-shells-use-system-parts.md)). It draws
 nothing that macOS already draws.
 
-- **Window:** a non-activating `NSPanel` on Liquid Glass (`NSGlassEffectView`),
-  and an opaque window under Reduce Transparency. Its corners are 26 pt.
-  Increase Contrast adds a separator outline. The app targets macOS 26 and later.
+- **Window:** a non-activating `NSPanel` on Liquid Glass (`NSGlassEffectView`)
+  on macOS 26, the HUD material (`NSVisualEffectView`) on macOS 15, and an
+  opaque window under Reduce Transparency. Its corners are 26 pt. Increase
+  Contrast adds a separator outline. The app targets macOS 15 and later: any
+  API newer than 15 goes through a shared part with an availability check
+  (`SystemGlass`, `.systemGlass(corner:)`), never a screen alone.
 - **Content:** SwiftUI. It uses standard buttons (`.borderedProminent`,
   `.borderless` and `.link`), `Menu`, `Picker`, popovers, `ProgressView`,
   `ContentUnavailableView`, `Form` with the grouped style and

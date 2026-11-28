@@ -21,12 +21,22 @@ struct AppearancePreview: View {
                 .padding(.leading, 18 * grid.s)
                 .frame(height: grid.heading, alignment: .bottom)
             ForEach(Array(Self.rows.enumerated()), id: \.offset) { index, row in
-                ResultRow(row: row, selected: index == 0, emphasized: index == 0, added: index == 1,
+                ResultRow(row: row, highlighted: index == 0, emphasized: index == 0, added: index == 1,
                           note: index == 1 ? "p. 417" : nil, number: nil, density: density, grid: grid)
             }
             Spacer(minLength: 6 * grid.s)
+            Divider()
+            HStack(spacing: 12 * grid.s) {
+                Text(verbatim: "APA").foregroundStyle(.primary)
+                Text(verbatim: "(Okafor & Lin, 2019; Vale, 2021, p. 417)").foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 0)
+                KeyCap("↩", grid: grid)
+            }
+            .font(grid.font(12))
+            .padding(.horizontal, 18 * grid.s)
+            .frame(height: grid.footer * 0.85)
         }
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .systemGlass(corner: 20)
         .environment(\.colorScheme, scheme ?? systemScheme)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
