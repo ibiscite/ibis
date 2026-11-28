@@ -118,11 +118,12 @@
   // The processor links every URL and DOI by prefixing doi.org to anything
   // without a lower-case scheme, and builds the link from the escaped text.
   // Here a web address or a DOI links, with the address taken back from the
-  // text; anything else that is not a plain address stays unlinked text.
+  // text; text that cannot be one address, such as one with a space or a
+  // tag in it, stays unlinked.
   const link = (state, text) => {
     const shown = text.replace(/&#(38|60|62);/g, (_, code) => String.fromCharCode(Number(code)));
     const target = /^https?:\/\//i.test(shown) ? shown : /^10\./.test(shown) ? `https://doi.org/${shown}` : null;
-    if (!target || !/^[\x21-\x7e]+$/.test(target) || /["<>\\^`{|}]/.test(target)) return text;
+    if (!target || /[\s"<>\\]/.test(target)) return text;
     return `<a href="${target.replace(/&/g, "&#38;")}">${text}</a>`;
   };
   CSL.Output.Formats.html["@DOI/true"] = link;

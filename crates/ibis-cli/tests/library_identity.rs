@@ -169,7 +169,8 @@ fn csl_json_export_ids_are_citation_keys_never_the_files_own_ids() {
         &json!({"items":items,"output":{"kind":"key","syntax":"csl-json"}}),
     );
     let records: Vec<Value> = serde_json::from_str(exported["data"]["text"].as_str().unwrap()).unwrap();
-    let ids: Vec<_> = records.iter().map(|record| record["id"].clone()).collect();
+    let mut ids: Vec<_> = records.iter().map(|record| record["id"].clone()).collect();
+    ids.sort_by_key(Value::to_string);
     assert_eq!(ids, ["One", "Two"], "both files' item-7 leave under their keys");
     let same = json!({"items":[items[0], items[0]],"output":{"kind":"key","syntax":"csl-json"}});
     let same = asked(&engine, Method::Cite, &same);
