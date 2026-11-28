@@ -113,12 +113,12 @@ fn bibtex_url_and_doi_dashes_remain_verbatim_but_pages_use_en_dashes() {
             "@article{{work,title={{Imagined rivers}},author={{Okafor, Ada}},year={{2026}},journal={{Invented Journal}},pages={{12--19}},{field}={{{value}}}}}"
         ));
         let result = format(&formatter, &snapshot, CitationForm::BibliographyOnly);
+        let linked = ending.replace('&', "&#38;");
         paste(
             &result,
             &format!("Okafor, A. (2026). Imagined rivers. Invented Journal, 12–19. {ending}"),
             &format!(
-                "<div class=\"csl-entry\">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>, 12–19. {}</div>",
-                ending.replace('&', "&#38;")
+                "<div class=\"csl-entry\">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>, 12–19. <a href=\"{linked}\">{linked}</a></div>"
             ),
             &format!(
                 r"Okafor, A. (2026). Imagined rivers. {{\i{{}}Invented Journal}}, 12\uc0\u8211{{}}19. {}",
@@ -126,6 +126,22 @@ fn bibtex_url_and_doi_dashes_remain_verbatim_but_pages_use_en_dashes() {
             ),
         );
     }
+}
+
+#[test]
+fn only_web_addresses_and_dois_become_links() {
+    // The processor would link a bare address to doi.org; it stays text.
+    let formatter = Formatter::new().unwrap();
+    let snapshot = bib(
+        "@article{work,title={Imagined rivers},author={Okafor, Ada},year={2026},journal={Invented Journal},url={www.example.org/rivers}}",
+    );
+    let result = format(&formatter, &snapshot, CitationForm::BibliographyOnly);
+    assert_eq!(
+        result.html.as_deref(),
+        Some(
+            "<div class=\"csl-entry\">Okafor, A. (2026). Imagined rivers. <i>Invented Journal</i>. www.example.org/rivers</div>"
+        )
+    );
 }
 
 fn dates_paste(dates: &[&str]) {

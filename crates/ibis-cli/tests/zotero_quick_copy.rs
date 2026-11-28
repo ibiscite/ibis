@@ -24,20 +24,10 @@ const FIXTURE: &str = "../../fixtures/zotero/quick-copy";
 /// difference Ibis makes on purpose, or one it does not cover yet (marked).
 fn fold(html_or_text: &str) -> String {
     let mut text = html_or_text.to_owned();
-    // Not yet: Zotero links each URL and DOI in its HTML (wrap_url_and_doi).
-    while let Some(start) = text.find("<a href=\"") {
-        let Some(open_end) = text[start..].find('>').map(|at| start + at + 1) else {
-            break;
-        };
-        let Some(close) = text[open_end..].find("</a>").map(|at| open_end + at) else {
-            break;
-        };
-        text = format!("{}{}{}", &text[..start], &text[open_end..close], &text[close + 4..]);
-    }
     // The same characters, which Zotero writes again through a browser DOM:
-    // `&amp;` for the processor's `&#38;`, and no layout styles (those are
-    // compared in the Word evidence instead).
-    text = text.replace("&#38;", "&amp;");
+    // `&amp;` for the processor's `&#38;`, `&nbsp;` for its own character,
+    // and no layout styles (those are compared in the Word evidence instead).
+    text = text.replace("&#38;", "&amp;").replace("&nbsp;", "\u{a0}");
     while let Some(start) = text.find(" style=\"") {
         let Some(end) = text[start + 8..].find('"').map(|at| start + 8 + at + 1) else {
             break;

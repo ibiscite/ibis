@@ -1,4 +1,5 @@
 use crate::{FormatError, input::Prepared};
+use ibis_core::citable::PublicUrl;
 use ibis_core::contract::*;
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -620,7 +621,7 @@ fn parse_html(html: &str) -> Result<Parsed, FormatError> {
                 return Err(FormatError::Runtime);
             }
             if let Some(closing) = tag.strip_prefix('/') {
-                if !matches!(tag, "/i" | "/b" | "/sup" | "/sub" | "/span" | "/div") || stack.len() == 1 {
+                if !matches!(tag, "/i" | "/b" | "/sup" | "/sub" | "/span" | "/div" | "/a") || stack.len() == 1 {
                     return Err(FormatError::Runtime);
                 }
                 let (name, entry_start, block_index) = names.pop().ok_or(FormatError::Runtime)?;
@@ -672,6 +673,14 @@ fn parse_html(html: &str) -> Result<Parsed, FormatError> {
                     | "div class=\"csl-indent\""
                     | "div class=\"csl-left-margin\""
                     | "div class=\"csl-right-inline\"" => {}
+                    // A record's URL or DOI as a link, as Zotero writes it. Its
+                    // text is the printed value; only a public address may link.
+                    value if value.starts_with("a href=\"") && value.ends_with('"') => {
+                        let href = decode_entities(&value[8..value.len() - 1])?;
+                        if href.contains(['"', '<', '>']) || PublicUrl::new(&href).is_none() {
+                            return Err(FormatError::Runtime);
+                        }
+                    }
                     _ => return Err(FormatError::Runtime),
                 }
                 if stack.len() >= 32 {

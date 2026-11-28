@@ -55,11 +55,15 @@ fn paste(result: &CitationResult, text: &str, html: &str, rtf: &str) {
     assert!(result.copy_content(result.outcomes.len()).is_some());
 }
 
+/// `tail` is "" or " URL"; HTML links the URL, as Zotero does.
 fn apa_article(result: &CitationResult, plain: &str, html: &str, rtf: &str, tail: &str) {
+    let linked = tail
+        .strip_prefix(' ')
+        .map_or_else(String::new, |url| format!(" <a href=\"{url}\">{url}</a>"));
     paste(
         result,
         &format!("Okafor, A. (2026). {plain}. Invented Journal.{tail}"),
-        &format!("<div class=\"csl-entry\">Okafor, A. (2026). {html}. <i>Invented Journal</i>.{tail}</div>"),
+        &format!("<div class=\"csl-entry\">Okafor, A. (2026). {html}. <i>Invented Journal</i>.{linked}</div>"),
         &format!("Okafor, A. (2026). {rtf}. {{\\i{{}}Invented Journal}}.{tail}"),
     );
 }

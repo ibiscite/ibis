@@ -76,6 +76,9 @@ const expected = pristine.map((request) => {
   const items = new Map(request.items.map((item) => [item.id, item]));
   const engine = new CSL.Engine({ retrieveLocale: __ibisLocaleXml, retrieveItem: (id) => items.get(id), uppercase_subtitles: request.style === "apa" }, xml, request.locale ?? undefined, request.locale !== null);
   engine.opt.development_extensions.throw_on_empty = true;
+  // Zotero's own settings (Zotero.Style.getCiteProc).
+  engine.opt.development_extensions.wrap_url_and_doi = true;
+  engine.opt.development_extensions.parse_names = false;
   if (request.keep_order) engine.citation_sort.tokens = [];
   const output = {};
   for (const format of ["text", "html", "rtf"]) {
