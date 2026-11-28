@@ -2,10 +2,10 @@
 <!--
   The Microsoft Store package: the NSIS installer's files in an MSIX, which the
   Store signs (decision 0046). scripts/build-msix.ps1 fills the braced values.
-  - Windows 11 writes the AppData folders other programs read for real (flexible
+  - The AppData folders other programs read are written for real (flexible
     virtualization): Ibis's settings, which the ibis command shares, and the
-    agent apps' files Ibis connects. Windows 10 ignores this and keeps new
-    AppData files private to the package.
+    agent apps' files Ibis connects. Windows 10 ignores this, so the package
+    needs Windows 11; Windows 10 keeps the installer.
   - The Store updates the package; src-tauri/src/store.rs turns the updater off.
   - The startup task starts Ibis at login and starts off; Settings asks for it.
   - The app execution alias puts the ibis command on PATH.
@@ -34,7 +34,7 @@
     </virtualization:FileSystemWriteVirtualization>
   </Properties>
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
   </Dependencies>
   <Resources>
     <Resource Language="en-us" />

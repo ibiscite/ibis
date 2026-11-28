@@ -90,7 +90,9 @@ The build installs a copy signed with a throwaway certificate, runs `ibis
 is unsigned, and the Store signs what it receives. Only a numbered release's
 package (product "Ibis") goes to the Store. In Partner Center, open the app,
 start an update submission, replace the package under Packages and submit. The
-Store copy updates through the Store, so its updater is off; its startup task
+Store copy needs Windows 11, where the folders the manifest excludes from
+virtualization are honoured; Windows 10 keeps the installer. It updates through
+the Store, so its updater is off; its startup task
 and command alias replace the Run key and PATH entry (`src-tauri/src/store.rs`).
 
 The manifest's restricted capabilities need a reason in the submission:
