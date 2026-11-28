@@ -47,6 +47,13 @@ plan for a native feel on every system later. It refines the shell part of
    (gtk4-rs), each a client of `ibisd` with the contract generated for its
    language, and each following this decision. Until then the Tauri shell
    serves them with its own neutral recipe.
+5. **macOS 26 and later** (the maintainer, 2026-11-28, choosing between 26, 15
+   and 13): the current and previous macOS, as Apple recommends. One code
+   path on current SwiftUI and Liquid Glass, with no older looks kept beside
+   it. Older Macs keep the Tauri build until the native app replaces it.
+6. **Ibis Native** is the app's name, bundle and settings profile until the
+   maintainer is happy with it and it replaces the Mac nightly (the
+   maintainer, 2026-11-28).
 
 ## Consequences
 

@@ -79,7 +79,8 @@ No more effort goes into making the web view imitate macOS.
      a sidebar with search
      (0062), and the menu
      bar item, Services and App Intents. It updates through Sparkle (EdDSA),
-     the Mac's standard. It targets macOS 13 and later. Delivery
+     the Mac's standard. It targets macOS 26 and later (amended 2026-11-28,
+     [0066](0066-native-shells-use-system-parts.md)). Delivery
      (`ibis-native`: paste, focus and site reads, placement and drag) stays
      **in-process in each signed desktop shell**. The macOS Accessibility
      grant, hiding before posting and 0029's timing proofs belong to the
