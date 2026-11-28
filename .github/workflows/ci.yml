@@ -316,8 +316,6 @@ jobs:
 
       - name: Compare rendering from BibTeX and from CSL export
         if: runner.os == 'Linux' && needs.plan.outputs.workspace == 'true'
-        env:
-          IBIS_REQUIRE_PANDOC: "1"
         run: bash scripts/check.sh fidelity
 
       # The bindings, schemas, MCP tools and CLI options made from the Rust code.

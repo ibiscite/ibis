@@ -111,7 +111,9 @@ these parts, and with no arguments the script runs the parts that
 `ci-plan.mjs --local` selects for the branch against `origin/main`, so a machine
 runs CI's checks for its own system. CI alone adds the other systems, the
 picture gate, the native GUI tests, actionlint, `cargo deny` and the release
-checks. Dependencies must already be installed.
+checks. Dependencies must already be installed, Pandoc among them: `fidelity`
+fails without it rather than skip its comparisons, and `lint` and `lint-app`
+fail on warnings, as CI does.
 
 [`land.sh`](../scripts/land.sh) runs `check.sh` from a clean, named branch.
 While main's latest finished push CI failed, it refuses any title but `fix` or
@@ -146,9 +148,11 @@ unless the formatter or one of its workspace dependencies changes. Linux release
 checks (release mode, minimum Rust, performance) run if a workspace crate can
 change. Any other, generated or shared
 path (Cargo files, toolchain, `build.rs`, `fixtures/`, `.github/`, `scripts/`,
-`locales/`, `website/`, `plugins/`, `brand/`) and anything it cannot read runs the
-full suite, as do main, schedules, manual runs, the `ci:full` label (then push
-again) and the repository variable `CI_SELECTION=full`. **CI result** checks each
+`locales/`, `website/`, the other `plugins/`, `brand/`) and anything it cannot
+read runs the full suite, as do main, schedules, manual runs, the `ci:full`
+label (then push again) and the repository variable `CI_SELECTION=full`. The
+Pandoc and Obsidian plugins run the command line's checks, whose tests drive
+them. **CI result** checks each
 planned job as selected-and-passed or not-selected-and-skipped.
 Fork PRs skip every job, so their **CI result** fails; they keep read-only title
 feedback.

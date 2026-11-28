@@ -24,15 +24,17 @@ part_interface() {
 }
 part_format() { cargo fmt --all --check; }
 part_brand() { "$python" brand/build.py --check; }
-part_lint() { cargo clippy --all-targets --locked; }
-part_lint_app() { cargo clippy -p ibis-desktop -p ibis-desktop-macros --all-targets --locked; }
+# Warnings fail here as they do on CI (RUSTFLAGS there), without a rebuild.
+part_lint() { cargo clippy --all-targets --locked -- -D warnings; }
+part_lint_app() { cargo clippy -p ibis-desktop -p ibis-desktop-macros --all-targets --locked -- -D warnings; }
 part_test() { cargo test --locked; }
 part_test_app() {
   cargo test -p ibis-desktop -p ibis-desktop-macros --locked
   # Embed the built interface; a plain debug build uses localhost:5173.
   cargo build -p ibis-desktop --locked --features tauri/custom-protocol
 }
-part_fidelity() { cargo test -p ibis --test fidelity --locked; }
+# Needs Pandoc: without it the comparisons would be skipped and still pass.
+part_fidelity() { IBIS_REQUIRE_PANDOC=1 cargo test -p ibis --test fidelity --locked; }
 part_generated() { node scripts/gen.mjs --check; }
 part_csl() {
   node scripts/csl-suite.mjs
@@ -50,7 +52,8 @@ if [ "$#" -eq 0 ]; then
   case "$plan" in *rust=true*) parts+=(lint-app);; esac
   case "$plan" in *workspace=true*) parts+=(test);; esac
   case "$plan" in *rust=true*) parts+=(test-app);; esac
-  case "$plan" in *workspace=true*) parts+=(fidelity);; esac
+  # Linux only, as on CI, where Pandoc is installed for it.
+  case "$plan" in *workspace=true*) [ "$(uname -s)" != Linux ] || parts+=(fidelity);; esac
   case "$plan" in *rust=true*) parts+=(generated);; esac
   case "$plan" in *csl=true*) parts+=(csl);; esac
   case "$plan" in *pictures=true*) echo "The picture gate runs on CI; render locally with: pnpm -C apps/desktop canvas";; esac

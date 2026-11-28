@@ -134,6 +134,13 @@ test("a workspace crate change tests every crate that depends on it", () => {
   assert.doesNotMatch(plan(["crates/ibis-cli/src/lib.rs"], workspace).reason, /ibis-desktop/);
 });
 
+test("an editor plugin change runs the command line's tests, which run the plugin", () => {
+  for (const path of ["plugins/pandoc/_extensions/ibis/ibis.lua", "plugins/obsidian/main.js"]) {
+    assert.deepEqual(selected([path]), { rust: true, workspace: true, pictures: false, csl: false, full: false }, path);
+    assert.match(plan([path], workspace).reason, /\bibis\b/, path);
+  }
+});
+
 test("the CSL suite runs for changes to the formatter and its dependencies", () => {
   for (const path of ["crates/ibis-core/src/lib.rs", "crates/ibis-csl/vendor/README.md", "crates/ibis-csl/tests/conformance/driver.js"]) {
     assert.deepEqual(selected([path]), { rust: true, workspace: true, pictures: false, csl: true, full: false }, path);
