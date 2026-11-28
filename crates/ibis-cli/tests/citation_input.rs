@@ -1,7 +1,7 @@
 //! Golden cases exercise the same parser/dispatcher used by the native binary.
 use ibis_core::contract::*;
 use ibis_engine::Engine;
-use std::{collections::BTreeSet, io::Cursor, sync::Arc};
+use std::{collections::BTreeSet, io::Cursor};
 
 #[test]
 fn canonical_citation_golden_cases_replay_through_the_cli() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,12 +31,12 @@ fn canonical_citation_golden_cases_replay_through_the_cli() -> Result<(), Box<dy
                 .map(|item| item.object.clone())
                 .collect();
             engine
-                .publish_library(
+                .publish_library(&ibis_sources::LoadedLibrary::new(
                     library,
                     ibis_engine::LibraryKind::Snapshot,
                     ibis_engine::SourceCapability::SNAPSHOT,
-                    Arc::new(Snapshot::new(objects)?),
-                )
+                    Snapshot::new(objects)?,
+                ))
                 .map_err(|_| "publish")?;
         }
         let mut output = vec![];

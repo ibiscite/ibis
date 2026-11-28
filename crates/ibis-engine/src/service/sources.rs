@@ -181,7 +181,7 @@ pub(super) fn source_error(error: SourceError) -> EngineError {
         }
     })
 }
-fn info(loaded: &LoadedLibrary) -> LibraryInfo {
+pub(super) fn info(loaded: &LoadedLibrary) -> LibraryInfo {
     LibraryInfo {
         id: loaded.library.clone(),
         kind: loaded.kind,

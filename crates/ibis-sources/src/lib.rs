@@ -8,15 +8,18 @@
 //! Zotero's local API on `127.0.0.1`, and changes a library only through an
 //! edit a person confirmed ([`bibtex_edit`]). The Rust API may change before 1.0.
 //!
-//! Reading a `.bib` file without the engine:
+//! Reading BibTeX without the engine, from text a caller already holds
+//! ([`load_file`] reads a file the same way):
 //!
 //! ```
-//! let folder = tempfile::tempdir()?;
-//! let path = folder.path().join("refs.bib");
-//! std::fs::write(&path, "@book{Taylor2026, title = {Synthetic signals}, year = {2026}}")?;
-//! let loaded = ibis_sources::load_file(&path).map_err(|error| format!("{error:?}"))?;
+//! use ibis_core::contract::LibraryId;
+//!
+//! let text = "@book{Taylor2026, title = {Synthetic signals}, year = {2026}}\n@book{Broken, title = {No end}";
+//! let loaded = ibis_sources::load_text(LibraryId::digest(b"piped in"), "refs.bib", text)
+//!     .map_err(|error| format!("{error:?}"))?;
 //! assert_eq!(loaded.snapshot.objects().len(), 1);
-//! assert!(loaded.warnings.is_empty());
+//! // The damaged entry is reported, by key, rather than dropped silently.
+//! assert!(loaded.damaged_keys.contains_key("Broken"));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 /// Libraries an outside program reads for Ibis (decision 0056, step 4).
@@ -52,7 +55,7 @@ use serde::{Deserialize, Serialize};
 pub use csl_json::{RequestRecords, request_records};
 pub use file::{
     FileLoads, MAX_LIBRARY_BYTES, SourceError, SourceRevision, SourceSnapshot, SourceWatch, attachment_file,
-    attachment_files, inspect_io, library_file_extensions, load_file, load_file_snapshot, names_a_library,
+    attachment_files, inspect_io, library_file_extensions, load_file, load_file_snapshot, load_text, names_a_library,
     original_entry, reload_file, reload_file_reusing, reload_file_snapshot,
 };
 
@@ -290,6 +293,26 @@ pub struct LoadedLibrary {
     /// so a lookup can say why the key selects nothing. Warnings themselves
     /// carry no source text beyond duplicate keys; this never serializes.
     pub damaged_keys: BTreeMap<String, SourceWarning>,
+}
+impl LoadedLibrary {
+    /// A library read in full with nothing to report, such as one built in memory.
+    pub fn new(
+        library: LibraryId,
+        kind: LibraryKind,
+        capabilities: &'static [SourceCapability],
+        snapshot: Snapshot,
+    ) -> Self {
+        Self {
+            library,
+            kind,
+            capabilities,
+            snapshot,
+            warnings: vec![],
+            cut_short: false,
+            duplicate_keys: BTreeMap::new(),
+            damaged_keys: BTreeMap::new(),
+        }
+    }
 }
 impl std::fmt::Debug for LoadedLibrary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

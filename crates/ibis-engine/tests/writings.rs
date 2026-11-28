@@ -154,12 +154,12 @@ fn a_writing_doi_conflict_never_returns_copyable_key_output() {
     };
     record.csl.insert("DOI".into(), json!("10.1000/intended"));
     engine
-        .publish_library(
+        .publish_library(&ibis_sources::LoadedLibrary::new(
             record.id.library.clone(),
             LibraryKind::Snapshot,
             SourceCapability::SNAPSHOT,
-            Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()),
-        )
+            Snapshot::new(vec![LibraryObject::Record(record)]).unwrap(),
+        ))
         .unwrap();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("refs.bib");
