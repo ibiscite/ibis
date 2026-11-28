@@ -612,7 +612,7 @@ pub(super) fn selection_paths(files: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 fn absolute_params(method: Method, params: &mut Value) -> Result<(), EngineError> {
-    let field = match method {
+    let fields: &[&str] = match method {
         Method::Call => {
             if let Some(method) = params["method"].as_str().and_then(|name| Method::parse(name).ok())
                 && method != Method::Call
@@ -622,13 +622,16 @@ fn absolute_params(method: Method, params: &mut Value) -> Result<(), EngineError
             }
             return Ok(());
         }
-        Method::Libraries if params["action"] == "open-file" => "path",
-        Method::Project => "path",
-        Method::Share => "destination",
+        Method::Libraries if params["action"] == "open-file" => &["path"],
+        Method::Project => &["path"],
+        Method::Check => &["document", "set"],
+        Method::Share => &["destination"],
         _ => return Ok(()),
     };
-    if let Some(path) = params[field].as_str().filter(|path| !path.is_empty()) {
-        params[field] = encode(absolute(Path::new(path))?)?;
+    for &field in fields {
+        if let Some(path) = params[field].as_str().filter(|path| !path.is_empty()) {
+            params[field] = encode(absolute(Path::new(path))?)?;
+        }
     }
     Ok(())
 }

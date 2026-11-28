@@ -246,6 +246,14 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `BIB_FILE` | The .bib the document compiles against; it is never changed |
 | `KEY…` | Citation keys, exactly as the document uses them |
 
+**`ibis check`**: Check a manuscript's citations before it builds or is shared
+
+| Option | Does |
+| --- | --- |
+| `MANUSCRIPT` | The manuscript: Markdown, Quarto, R Markdown, LaTeX or Typst; it is never changed |
+| `--set SET_FILE` | A reference set (CSL-JSON) the cited records must still match |
+| `--quotes` | Look for each quotation on the cited page of its reference's PDF text |
+
 **`ibis entry`**: Print a reference's original BibTeX entry, with what it needs to stand alone
 
 | Option | Does |
@@ -584,11 +592,31 @@ Input is one UTF-8 JSON value, read to EOF with a 1 MiB limit. stdout holds
 the citation or `--json` envelope; reasons go to stderr. RPC cancellation
 answers `cancelled` without affecting the next request.
 
+### Checking a manuscript
+
+```sh
+ibis check thesis.md --file library.bib
+ibis check thesis.tex --set references.json --quotes
+```
+
+`check` reads a Markdown, Quarto, R Markdown, LaTeX or Typst manuscript and
+never changes it. It prints one line per problem, at its line and column, and
+then how many citations, keys and problems it read. Problems are keys no open
+library holds or holds twice, damaged citations and old keys a library has
+renamed. With `--set`, it also names keys the [reference set](reference-set.md)
+lacks or holds twice, and records that changed since the set was written. With
+`--quotes`, it looks for each quotation just before a citation in the cited
+reference's PDF text, on the cited page. Exit 0 means nothing to fix and 1
+means findings, so it can gate a build. A manuscript read only in part never
+passes. `--json` gives each finding's `problem`, `place` and `key`. The report
+holds keys and page numbers, never the manuscript's or the source's text.
+
 ### A reference set
 
 A [reference set](reference-set.md) is a document's records as one CSL-JSON
 file that co-authors and build tools share. `ibis cite KEY… --format csl-json`
-writes its records, and `--file references.json` reads it back as a library.
+writes its records, `--file references.json` reads it back as a library, and
+`ibis check MANUSCRIPT --set references.json` checks a manuscript against it.
 
 ### A project's own bibliography
 

@@ -210,6 +210,7 @@ pub enum Reply {
     Show(Box<health::Checked<SnapshotObject>>),
     Citation(Box<health::Checked<CitationResult>>),
     Project(health::Checked<ProjectResult>),
+    Check(health::Checked<CheckResult>),
     Entry(health::Checked<EntryResult>),
     Outline(health::Checked<OutlineResult>),
     Read(health::Checked<ReadResult>),

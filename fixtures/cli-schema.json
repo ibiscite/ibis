@@ -9910,6 +9910,1172 @@
     },
     {
       "contract": 1,
+      "method": "check",
+      "needs": "records",
+      "network": "offline",
+      "palette": [],
+      "params": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "Check a manuscript's citations against the open libraries.",
+        "properties": {
+          "document": {
+            "description": "The manuscript: Markdown, Quarto, R Markdown, LaTeX or Typst.",
+            "type": "string"
+          },
+          "quotes": {
+            "description": "Check each quotation just before a citation against the text of the\ncited reference's attachments, and on the cited page.",
+            "type": "boolean"
+          },
+          "set": {
+            "description": "A reference set (a CSL-JSON file `export` wrote) the cited records\nmust still match: a lock file for co-authors and builds.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "CheckRequest",
+        "type": "object"
+      },
+      "result": {
+        "$defs": {
+          "Checked": {
+            "description": "What reading a manuscript found.",
+            "properties": {
+              "citations": {
+                "description": "Citations read.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "cites_everything": {
+                "description": "`\\nocite{*}`: every entry of the bibliography counts as cited.",
+                "type": "boolean"
+              },
+              "complete": {
+                "description": "The whole manuscript was read. A text read only in part never passes.",
+                "type": "boolean"
+              },
+              "findings": {
+                "description": "Every problem, in document order, then those against the set.",
+                "items": {
+                  "$ref": "#/$defs/Finding"
+                },
+                "type": "array"
+              },
+              "keys": {
+                "description": "Different keys cited.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "$ref": "#/$defs/TextKind"
+              }
+            },
+            "required": [
+              "kind",
+              "citations",
+              "keys",
+              "findings",
+              "complete",
+              "cites_everything"
+            ],
+            "type": "object"
+          },
+          "CitationSurface": {
+            "description": "Wording context only; operations choose their recovery before presentation.",
+            "enum": [
+              "bibliography"
+            ],
+            "type": "string"
+          },
+          "ErrorCode": {
+            "enum": [
+              "usage",
+              "bad-input",
+              "not-found",
+              "source-unavailable",
+              "resource-limit",
+              "newer-format",
+              "internal",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "ErrorReason": {
+            "description": "Why a request failed, when the code alone cannot tell a caller what to change.\nFront ends choose their words from it; they never guess a reason from the code.",
+            "oneOf": [
+              {
+                "const": "strict-citation",
+                "description": "Strict citation policy found losses, refusals or unhealthy evidence.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-style",
+                "description": "No style has the requested id; `styles` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-output",
+                "description": "No output has the requested id; `outputs` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-locale",
+                "description": "The requested locale is not bundled; `styles` lists the locales.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate-key",
+                "description": "The key is repeated in a library, so every entry under it is skipped.",
+                "type": "string"
+              },
+              {
+                "const": "damaged-entry",
+                "description": "The entry with this key is damaged, so it is skipped; the library's\nwarnings say where and why.",
+                "type": "string"
+              },
+              {
+                "const": "ambiguous-key",
+                "description": "Several references share the key.",
+                "type": "string"
+              },
+              {
+                "const": "missing-key",
+                "description": "A key output needs a citation key this reference does not have.",
+                "type": "string"
+              },
+              {
+                "const": "missing-file",
+                "description": "The selected library file was moved, renamed or removed.",
+                "type": "string"
+              },
+              {
+                "const": "app-missing",
+                "description": "The program started as the Ibis app does not exist.",
+                "type": "string"
+              },
+              {
+                "const": "not-ibis",
+                "description": "The program started as the Ibis app is not Ibis.",
+                "type": "string"
+              },
+              {
+                "const": "no-answer",
+                "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-sharing-off",
+                "description": "Zotero is running but does not let other applications read it.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-profile-needed",
+                "description": "Zotero is closed and which profile to read is not settled; name one.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-needs-opening",
+                "description": "A closed read is unsafe or impossible here; opening Zotero is the fix.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-not-found",
+                "description": "No Zotero library is on this computer.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-no-space",
+                "description": "A closed read needs a private copy and there is no room for it.",
+                "type": "string"
+              },
+              {
+                "const": "csv-template",
+                "description": "A CSV file's first row does not name the columns of Ibis's template.",
+                "type": "string"
+              },
+              {
+                "const": "library-cut-short",
+                "description": "Nothing has the key in what was read, and a library was too large to read whole.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-format",
+                "description": "Neither the file's name nor its contents identify a supported library format.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate-record",
+                "description": "Two records a request sends share an `id`, `1` and `\"1\"` included.",
+                "type": "string"
+              },
+              {
+                "const": "rejected-record",
+                "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
+                "type": "string"
+              },
+              {
+                "const": "no-attachment-text",
+                "description": "The attachment has no text Ibis can read: Zotero has not indexed it,\nit is a link, or its file is missing, damaged or one Ibis cannot read.",
+                "type": "string"
+              },
+              {
+                "const": "attachment-outside-library",
+                "description": "The resolved attachment file is outside its library's folder, and\nthis computer has not explicitly allowed reading it.",
+                "type": "string"
+              },
+              {
+                "const": "no-such-pages",
+                "description": "The attachment has no text for the pages asked for, or its pages are\nnot known; `outline` says which.",
+                "type": "string"
+              },
+              {
+                "const": "destination-exists",
+                "description": "Something is already where a pack of references was to be written;\nIbis never replaces it.",
+                "type": "string"
+              },
+              {
+                "const": "destination-unwritable",
+                "description": "A pack of references could not be written there: the place is not an\nabsolute path, its folder is missing or read-only, or the disk is full.",
+                "type": "string"
+              },
+              {
+                "const": "source-not-found",
+                "description": "No built-in or explicitly configured adapter could be started.",
+                "type": "string"
+              },
+              {
+                "const": "source-manager-closed",
+                "description": "The reference manager must be open to be read.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-needed",
+                "description": "Several of the manager's libraries could be meant; name one.",
+                "type": "string"
+              },
+              {
+                "const": "source-library-not-found",
+                "description": "None of the manager's libraries has the name given.",
+                "type": "string"
+              },
+              {
+                "const": "source-permission",
+                "description": "The operating system did not let Ibis ask the reference manager.",
+                "type": "string"
+              },
+              {
+                "const": "source-failed",
+                "description": "The source adapter did not read the library: it could not, it\nstopped, it took too long or its answer was not one Ibis accepts.",
+                "type": "string"
+              }
+            ]
+          },
+          "Finding": {
+            "description": "One problem, where it is.",
+            "properties": {
+              "current": {
+                "description": "For a renamed key, the key the library uses now.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "key": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pages": {
+                "description": "For a quotation found on other pages, the printed pages it is on.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "place": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Place"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Where in the manuscript; none for a problem of the set as a whole."
+              },
+              "problem": {
+                "$ref": "#/$defs/Problem"
+              }
+            },
+            "required": [
+              "problem"
+            ],
+            "type": "object"
+          },
+          "FocusTarget": {
+            "enum": [
+              "format-picker",
+              "library-picker",
+              "source-file",
+              "zotero-sharing-help",
+              "search",
+              "results",
+              "locator",
+              "citation",
+              "citation-form",
+              "session-references",
+              "language",
+              "recovery-action",
+              "project-name",
+              "project-menu",
+              "settings",
+              "request"
+            ],
+            "type": "string"
+          },
+          "HealthStatus": {
+            "oneOf": [
+              {
+                "enum": [
+                  "ok",
+                  "findings"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "LibraryId": {
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "type": "string"
+          },
+          "Message": {
+            "properties": {
+              "args": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "context": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationSurface"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "args"
+            ],
+            "type": "object"
+          },
+          "NoRecoveryReason": {
+            "enum": [
+              "cancelled",
+              "in-progress"
+            ],
+            "type": "string"
+          },
+          "Place": {
+            "additionalProperties": false,
+            "description": "Where something is, as a person finds it in an editor: line and\ncharacter, both from 1.",
+            "properties": {
+              "column": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "line": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "line",
+              "column"
+            ],
+            "type": "object"
+          },
+          "Problem": {
+            "oneOf": [
+              {
+                "const": "unclosed",
+                "description": "A citation opened and never closed; the rest of its paragraph is unread.",
+                "type": "string"
+              },
+              {
+                "const": "without-key",
+                "description": "A citation part with no key.",
+                "type": "string"
+              },
+              {
+                "const": "two-keys",
+                "description": "Two keys with no `;` between them.",
+                "type": "string"
+              },
+              {
+                "const": "locator",
+                "description": "A braced locator that is not one.",
+                "type": "string"
+              },
+              {
+                "const": "too-long",
+                "description": "Reading stopped here: the text is too large or too tangled to read whole.",
+                "type": "string"
+              },
+              {
+                "const": "missing",
+                "description": "No open library has this key.",
+                "type": "string"
+              },
+              {
+                "const": "ambiguous",
+                "description": "Several references answer to it.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate",
+                "description": "Its library holds the key twice and Ibis reads neither.",
+                "type": "string"
+              },
+              {
+                "const": "damaged",
+                "description": "Its library entry could not be read.",
+                "type": "string"
+              },
+              {
+                "const": "cut-short",
+                "description": "A library was too large to read whole, so the key may be there.",
+                "type": "string"
+              },
+              {
+                "const": "invalid",
+                "description": "Not a key Ibis can look up.",
+                "type": "string"
+              },
+              {
+                "const": "not-in-set",
+                "description": "The reference set has no record for this key.",
+                "type": "string"
+              },
+              {
+                "const": "changed",
+                "description": "The record changed since the reference set was written.",
+                "type": "string"
+              },
+              {
+                "const": "twice-in-set",
+                "description": "The reference set holds this key twice, as a merge can leave it.",
+                "type": "string"
+              },
+              {
+                "const": "uncompared",
+                "description": "The record could not be written out to compare it with the set.",
+                "type": "string"
+              },
+              {
+                "const": "renamed",
+                "description": "The key is an old name: the library now calls the reference `current`.",
+                "type": "string"
+              },
+              {
+                "const": "cites-everything",
+                "description": "`\\nocite{*}`: the export holds what is cited by key, not the whole bibliography.",
+                "type": "string"
+              },
+              {
+                "const": "quote-not-found",
+                "description": "The quotation's words are not in the cited reference's attachments.",
+                "type": "string"
+              },
+              {
+                "const": "quote-on-other-page",
+                "description": "The quotation is in the reference, but not on the cited page.",
+                "type": "string"
+              },
+              {
+                "const": "quote-page-unknown",
+                "description": "The quotation is in the reference, whose printed pages are not known,\nso the cited page could not be checked.",
+                "type": "string"
+              },
+              {
+                "const": "quote-unchecked",
+                "description": "The cited reference has no attachment whose text could be read.",
+                "type": "string"
+              }
+            ]
+          },
+          "Recovery": {
+            "description": "Exactly one next action; absence must have an explicit, machine-readable reason.",
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-output",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-style",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-form",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "locate-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero-sharing-help",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-zotero",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "retry",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "rename-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-project",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reopen-project-menu",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "finish-editor-request",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-settings",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-citation",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-locator",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "edit-input",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "search-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "select-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "reduce-selection",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "remove-references",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "close",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-locale",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "review-library",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "free-disk-space",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "upgrade-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-backup",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "download-file",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "choose-shortcut",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "list-proposals",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "propose-again",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "none",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/NoRecoveryReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Refusal": {
+            "description": "Why a document was not read: fixed reasons, never its text or path.",
+            "oneOf": [
+              {
+                "const": "missing",
+                "description": "Nothing is at the path.",
+                "type": "string"
+              },
+              {
+                "const": "not-local",
+                "description": "Not a plain file on this computer.",
+                "type": "string"
+              },
+              {
+                "const": "timed-out",
+                "description": "Reading did not finish in time, or was cancelled.",
+                "type": "string"
+              },
+              {
+                "const": "unsupported",
+                "description": "A kind of document Ibis does not read.",
+                "type": "string"
+              },
+              {
+                "const": "too-large",
+                "description": "Over a size or count bound.",
+                "type": "string"
+              },
+              {
+                "const": "not-text",
+                "description": "Text that is not UTF-8.",
+                "type": "string"
+              },
+              {
+                "const": "damaged",
+                "description": "Not a valid file of its kind.",
+                "type": "string"
+              },
+              {
+                "const": "unavailable",
+                "description": "The document reader could not be started.",
+                "type": "string"
+              },
+              {
+                "const": "unsafe",
+                "description": "Entry names that leave the archive's folder, repeated names, or a\ndocument type declaration.",
+                "type": "string"
+              },
+              {
+                "const": "mismatch",
+                "description": "The replacements do not fit the document as the child read it again.",
+                "type": "string"
+              }
+            ]
+          },
+          "SourceFinding": {
+            "description": "A problem with one library a result consulted. Codes only: no source text.",
+            "oneOf": [
+              {
+                "description": "The library changed and could not be read again; the result used the\nreferences from its last successful read.",
+                "properties": {
+                  "code": {
+                    "const": "refresh-failed",
+                    "type": "string"
+                  },
+                  "error": {
+                    "$ref": "#/$defs/ErrorCode"
+                  },
+                  "focus": {
+                    "$ref": "#/$defs/FocusTarget"
+                  },
+                  "last_successful_read_ms": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "library": {
+                    "$ref": "#/$defs/LibraryId"
+                  },
+                  "message": {
+                    "$ref": "#/$defs/Message"
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/ErrorReason"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "recovery": {
+                    "$ref": "#/$defs/Recovery"
+                  }
+                },
+                "required": [
+                  "code",
+                  "library",
+                  "error",
+                  "message",
+                  "recovery",
+                  "focus",
+                  "last_successful_read_ms"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "Entries were skipped or read with problems; `ibis libraries` lists them.",
+                "properties": {
+                  "code": {
+                    "const": "source-warnings",
+                    "type": "string"
+                  },
+                  "count": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "library": {
+                    "$ref": "#/$defs/LibraryId"
+                  }
+                },
+                "required": [
+                  "code",
+                  "library",
+                  "count"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "SourceHealth": {
+            "description": "Whether the sources behind one result were healthy, read from the same\nlibrary state the result came from: a later refresh never changes it.",
+            "properties": {
+              "findings": {
+                "description": "One entry per problem, in library order; empty when `status` is `ok`.",
+                "items": {
+                  "$ref": "#/$defs/SourceFinding"
+                },
+                "type": "array"
+              },
+              "status": {
+                "$ref": "#/$defs/HealthStatus"
+              }
+            },
+            "required": [
+              "status",
+              "findings"
+            ],
+            "type": "object"
+          },
+          "TextKind": {
+            "description": "How a manuscript writes its citations.",
+            "oneOf": [
+              {
+                "const": "markdown",
+                "description": "Markdown, Quarto and R Markdown: Pandoc's `[@key, p. 4]` and `@key`.",
+                "type": "string"
+              },
+              {
+                "const": "latex",
+                "description": "LaTeX with BibTeX, natbib or BibLaTeX commands.",
+                "type": "string"
+              },
+              {
+                "const": "typst",
+                "description": "Typst's `@key` and `#cite(<key>)`.",
+                "type": "string"
+              }
+            ]
+          },
+          "Which": {
+            "enum": [
+              "document",
+              "set"
+            ],
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "A result with the health of the sources it consulted.",
+        "oneOf": [
+          {
+            "$ref": "#/$defs/Checked",
+            "properties": {
+              "outcome": {
+                "const": "checked",
+                "type": "string"
+              }
+            },
+            "required": [
+              "outcome"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "The manuscript or the set could not be read; nothing was checked.",
+            "properties": {
+              "file": {
+                "$ref": "#/$defs/Which"
+              },
+              "outcome": {
+                "const": "refused",
+                "type": "string"
+              },
+              "reason": {
+                "$ref": "#/$defs/Refusal"
+              }
+            },
+            "required": [
+              "outcome",
+              "file",
+              "reason"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "source_health": {
+            "$ref": "#/$defs/SourceHealth"
+          }
+        },
+        "required": [
+          "source_health"
+        ],
+        "title": "Checked",
+        "type": "object"
+      }
+    },
+    {
+      "contract": 1,
       "method": "entry",
       "needs": "original-entries",
       "network": "offline",
@@ -15047,6 +16213,7 @@
               "cite",
               "records",
               "project",
+              "check",
               "entry",
               "outline",
               "read",
@@ -15088,6 +16255,7 @@
               "cite",
               "records",
               "project",
+              "check",
               "entry",
               "outline",
               "read",
@@ -15244,6 +16412,7 @@
               "cite",
               "records",
               "project",
+              "check",
               "entry",
               "outline",
               "read",
@@ -15492,6 +16661,97 @@
             ],
             "type": "object"
           },
+          "Checked10": {
+            "description": "A result with the health of the sources it consulted.",
+            "properties": {
+              "attachment": {
+                "type": "string"
+              },
+              "complete": {
+                "description": "False when more passages hold the words than one answer gives.",
+                "type": "boolean"
+              },
+              "pages_known": {
+                "type": "boolean"
+              },
+              "passages": {
+                "items": {
+                  "$ref": "#/$defs/Passage"
+                },
+                "type": "array"
+              },
+              "source_health": {
+                "$ref": "#/$defs/SourceHealth"
+              }
+            },
+            "required": [
+              "attachment",
+              "passages",
+              "complete",
+              "pages_known",
+              "source_health"
+            ],
+            "type": "object"
+          },
+          "Checked11": {
+            "description": "A result with the health of the sources it consulted.",
+            "properties": {
+              "files": {
+                "description": "Each file in the pack, by its place in it, with `/` between folders.",
+                "items": {
+                  "$ref": "#/$defs/PackFile"
+                },
+                "type": "array"
+              },
+              "not_in_bibtex": {
+                "description": "References without a usable citation key, which the `.bib` leaves out.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "not_in_list": {
+                "description": "References the style could not write, so the reading list leaves them\nout: their zero-based places in `items`.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "source_health": {
+                "$ref": "#/$defs/SourceHealth"
+              },
+              "total_bytes": {
+                "description": "The files' bytes together; a zip adds about a hundred bytes a file.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "without_pdf": {
+                "description": "With PDFs asked for, references none of whose PDFs could be added: it\nhas none, or they are outside its library's folder, missing, linked,\nnot on this computer or over 256 MiB.",
+                "items": {
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "written": {
+                "description": "The pack was written; false when no destination was given.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "written",
+              "files",
+              "total_bytes",
+              "source_health"
+            ],
+            "type": "object"
+          },
           "Checked2": {
             "description": "A result with the health of the sources it consulted.",
             "properties": {
@@ -15655,6 +16915,98 @@
             "description": "A result with the health of the sources it consulted.",
             "oneOf": [
               {
+                "$ref": "#/$defs/Checked6",
+                "properties": {
+                  "outcome": {
+                    "const": "checked",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "outcome"
+                ],
+                "type": "object"
+              },
+              {
+                "description": "The manuscript or the set could not be read; nothing was checked.",
+                "properties": {
+                  "file": {
+                    "$ref": "#/$defs/Which"
+                  },
+                  "outcome": {
+                    "const": "refused",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/Refusal"
+                  }
+                },
+                "required": [
+                  "outcome",
+                  "file",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ],
+            "properties": {
+              "source_health": {
+                "$ref": "#/$defs/SourceHealth"
+              }
+            },
+            "required": [
+              "source_health"
+            ],
+            "type": "object"
+          },
+          "Checked6": {
+            "description": "What reading a manuscript found.",
+            "properties": {
+              "citations": {
+                "description": "Citations read.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "cites_everything": {
+                "description": "`\\nocite{*}`: every entry of the bibliography counts as cited.",
+                "type": "boolean"
+              },
+              "complete": {
+                "description": "The whole manuscript was read. A text read only in part never passes.",
+                "type": "boolean"
+              },
+              "findings": {
+                "description": "Every problem, in document order, then those against the set.",
+                "items": {
+                  "$ref": "#/$defs/Finding"
+                },
+                "type": "array"
+              },
+              "keys": {
+                "description": "Different keys cited.",
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "$ref": "#/$defs/TextKind"
+              }
+            },
+            "required": [
+              "kind",
+              "citations",
+              "keys",
+              "findings",
+              "complete",
+              "cites_everything"
+            ],
+            "type": "object"
+          },
+          "Checked7": {
+            "description": "A result with the health of the sources it consulted.",
+            "oneOf": [
+              {
                 "description": "The entry as written, with the `@string`, `crossref` and `xdata` it needs.",
                 "properties": {
                   "key": {
@@ -15702,7 +17054,7 @@
             ],
             "type": "object"
           },
-          "Checked6": {
+          "Checked8": {
             "description": "A result with the health of the sources it consulted.",
             "properties": {
               "attachments": {
@@ -15721,7 +17073,7 @@
             ],
             "type": "object"
           },
-          "Checked7": {
+          "Checked9": {
             "description": "A result with the health of the sources it consulted.",
             "properties": {
               "attachment": {
@@ -15755,97 +17107,6 @@
               "attachment",
               "pages",
               "pages_known",
-              "source_health"
-            ],
-            "type": "object"
-          },
-          "Checked8": {
-            "description": "A result with the health of the sources it consulted.",
-            "properties": {
-              "attachment": {
-                "type": "string"
-              },
-              "complete": {
-                "description": "False when more passages hold the words than one answer gives.",
-                "type": "boolean"
-              },
-              "pages_known": {
-                "type": "boolean"
-              },
-              "passages": {
-                "items": {
-                  "$ref": "#/$defs/Passage"
-                },
-                "type": "array"
-              },
-              "source_health": {
-                "$ref": "#/$defs/SourceHealth"
-              }
-            },
-            "required": [
-              "attachment",
-              "passages",
-              "complete",
-              "pages_known",
-              "source_health"
-            ],
-            "type": "object"
-          },
-          "Checked9": {
-            "description": "A result with the health of the sources it consulted.",
-            "properties": {
-              "files": {
-                "description": "Each file in the pack, by its place in it, with `/` between folders.",
-                "items": {
-                  "$ref": "#/$defs/PackFile"
-                },
-                "type": "array"
-              },
-              "not_in_bibtex": {
-                "description": "References without a usable citation key, which the `.bib` leaves out.",
-                "items": {
-                  "format": "uint",
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              "not_in_list": {
-                "description": "References the style could not write, so the reading list leaves them\nout: their zero-based places in `items`.",
-                "items": {
-                  "format": "uint",
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              "source_health": {
-                "$ref": "#/$defs/SourceHealth"
-              },
-              "total_bytes": {
-                "description": "The files' bytes together; a zip adds about a hundred bytes a file.",
-                "format": "uint64",
-                "minimum": 0,
-                "type": "integer"
-              },
-              "without_pdf": {
-                "description": "With PDFs asked for, references none of whose PDFs could be added: it\nhas none, or they are outside its library's folder, missing, linked,\nnot on this computer or over 256 MiB.",
-                "items": {
-                  "format": "uint",
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              "written": {
-                "description": "The pack was written; false when no destination was given.",
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "written",
-              "files",
-              "total_bytes",
               "source_health"
             ],
             "type": "object"
@@ -16741,6 +18002,49 @@
               }
             ]
           },
+          "Finding": {
+            "description": "One problem, where it is.",
+            "properties": {
+              "current": {
+                "description": "For a renamed key, the key the library uses now.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "key": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pages": {
+                "description": "For a quotation found on other pages, the printed pages it is on.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "place": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Place"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Where in the manuscript; none for a problem of the set as a whole."
+              },
+              "problem": {
+                "$ref": "#/$defs/Problem"
+              }
+            },
+            "required": [
+              "problem"
+            ],
+            "type": "object"
+          },
           "Fingerprint": {
             "pattern": "^[0-9a-f]{64}$",
             "type": "string"
@@ -17521,6 +18825,7 @@
               "cite",
               "records",
               "project",
+              "check",
               "entry",
               "outline",
               "read",
@@ -17911,6 +19216,136 @@
               "missing"
             ],
             "type": "object"
+          },
+          "Place": {
+            "additionalProperties": false,
+            "description": "Where something is, as a person finds it in an editor: line and\ncharacter, both from 1.",
+            "properties": {
+              "column": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "line": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "line",
+              "column"
+            ],
+            "type": "object"
+          },
+          "Problem": {
+            "oneOf": [
+              {
+                "const": "unclosed",
+                "description": "A citation opened and never closed; the rest of its paragraph is unread.",
+                "type": "string"
+              },
+              {
+                "const": "without-key",
+                "description": "A citation part with no key.",
+                "type": "string"
+              },
+              {
+                "const": "two-keys",
+                "description": "Two keys with no `;` between them.",
+                "type": "string"
+              },
+              {
+                "const": "locator",
+                "description": "A braced locator that is not one.",
+                "type": "string"
+              },
+              {
+                "const": "too-long",
+                "description": "Reading stopped here: the text is too large or too tangled to read whole.",
+                "type": "string"
+              },
+              {
+                "const": "missing",
+                "description": "No open library has this key.",
+                "type": "string"
+              },
+              {
+                "const": "ambiguous",
+                "description": "Several references answer to it.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate",
+                "description": "Its library holds the key twice and Ibis reads neither.",
+                "type": "string"
+              },
+              {
+                "const": "damaged",
+                "description": "Its library entry could not be read.",
+                "type": "string"
+              },
+              {
+                "const": "cut-short",
+                "description": "A library was too large to read whole, so the key may be there.",
+                "type": "string"
+              },
+              {
+                "const": "invalid",
+                "description": "Not a key Ibis can look up.",
+                "type": "string"
+              },
+              {
+                "const": "not-in-set",
+                "description": "The reference set has no record for this key.",
+                "type": "string"
+              },
+              {
+                "const": "changed",
+                "description": "The record changed since the reference set was written.",
+                "type": "string"
+              },
+              {
+                "const": "twice-in-set",
+                "description": "The reference set holds this key twice, as a merge can leave it.",
+                "type": "string"
+              },
+              {
+                "const": "uncompared",
+                "description": "The record could not be written out to compare it with the set.",
+                "type": "string"
+              },
+              {
+                "const": "renamed",
+                "description": "The key is an old name: the library now calls the reference `current`.",
+                "type": "string"
+              },
+              {
+                "const": "cites-everything",
+                "description": "`\\nocite{*}`: the export holds what is cited by key, not the whole bibliography.",
+                "type": "string"
+              },
+              {
+                "const": "quote-not-found",
+                "description": "The quotation's words are not in the cited reference's attachments.",
+                "type": "string"
+              },
+              {
+                "const": "quote-on-other-page",
+                "description": "The quotation is in the reference, but not on the cited page.",
+                "type": "string"
+              },
+              {
+                "const": "quote-page-unknown",
+                "description": "The quotation is in the reference, whose printed pages are not known,\nso the cited page could not be checked.",
+                "type": "string"
+              },
+              {
+                "const": "quote-unchecked",
+                "description": "The cited reference has no attachment whose text could be read.",
+                "type": "string"
+              }
+            ]
           },
           "ProjectKey": {
             "description": "One key against the chosen file.",
@@ -18443,6 +19878,61 @@
                   "reason"
                 ],
                 "type": "object"
+              }
+            ]
+          },
+          "Refusal": {
+            "description": "Why a document was not read: fixed reasons, never its text or path.",
+            "oneOf": [
+              {
+                "const": "missing",
+                "description": "Nothing is at the path.",
+                "type": "string"
+              },
+              {
+                "const": "not-local",
+                "description": "Not a plain file on this computer.",
+                "type": "string"
+              },
+              {
+                "const": "timed-out",
+                "description": "Reading did not finish in time, or was cancelled.",
+                "type": "string"
+              },
+              {
+                "const": "unsupported",
+                "description": "A kind of document Ibis does not read.",
+                "type": "string"
+              },
+              {
+                "const": "too-large",
+                "description": "Over a size or count bound.",
+                "type": "string"
+              },
+              {
+                "const": "not-text",
+                "description": "Text that is not UTF-8.",
+                "type": "string"
+              },
+              {
+                "const": "damaged",
+                "description": "Not a valid file of its kind.",
+                "type": "string"
+              },
+              {
+                "const": "unavailable",
+                "description": "The document reader could not be started.",
+                "type": "string"
+              },
+              {
+                "const": "unsafe",
+                "description": "Entry names that leave the archive's folder, repeated names, or a\ndocument type declaration.",
+                "type": "string"
+              },
+              {
+                "const": "mismatch",
+                "description": "The replacements do not fit the document as the child read it again.",
+                "type": "string"
               }
             ]
           },
@@ -19019,6 +20509,26 @@
               }
             ]
           },
+          "TextKind": {
+            "description": "How a manuscript writes its citations.",
+            "oneOf": [
+              {
+                "const": "markdown",
+                "description": "Markdown, Quarto and R Markdown: Pandoc's `[@key, p. 4]` and `@key`.",
+                "type": "string"
+              },
+              {
+                "const": "latex",
+                "description": "LaTeX with BibTeX, natbib or BibLaTeX commands.",
+                "type": "string"
+              },
+              {
+                "const": "typst",
+                "description": "Typst's `@key` and `#cite(<key>)`.",
+                "type": "string"
+              }
+            ]
+          },
           "TextRun": {
             "additionalProperties": false,
             "description": "Fixed-depth rich text: styling is data, never arbitrary HTML or executable markup.",
@@ -19253,6 +20763,13 @@
             ],
             "type": "string"
           },
+          "Which": {
+            "enum": [
+              "document",
+              "set"
+            ],
+            "type": "string"
+          },
           "WritingName": {
             "additionalProperties": false,
             "description": "The writing that chose a format.",
@@ -19336,9 +20853,6 @@
             "$ref": "#/$defs/Checked5"
           },
           {
-            "$ref": "#/$defs/Checked6"
-          },
-          {
             "$ref": "#/$defs/Checked7"
           },
           {
@@ -19346,6 +20860,12 @@
           },
           {
             "$ref": "#/$defs/Checked9"
+          },
+          {
+            "$ref": "#/$defs/Checked10"
+          },
+          {
+            "$ref": "#/$defs/Checked11"
           },
           {
             "$ref": "#/$defs/StylesResult"

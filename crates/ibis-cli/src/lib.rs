@@ -451,6 +451,36 @@ fn command() -> Command {
                         .num_args(1..)
                         .help("Citation keys, exactly as the document uses them"),
                 ),
+            Method::Check => subcommand
+                .about("Check a manuscript's citations before it builds or is shared")
+                .after_help(
+                    "Each problem is named at its line and column: keys no library holds or holds twice,\n\
+                     damaged citations and, with --set, keys the reference set lacks and records that changed\n\
+                     since it was written. Exit 0 means nothing to fix; 1 means findings.\n\n\
+                     Examples:\n  \
+                     ibis check thesis.md --file library.bib\n  \
+                     ibis check thesis.tex --set references.json --quotes --json",
+                )
+                .arg(
+                    Arg::new("document")
+                        .value_name("MANUSCRIPT")
+                        .required(true)
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .help("The manuscript: Markdown, Quarto, R Markdown, LaTeX or Typst; it is never changed"),
+                )
+                .arg(
+                    Arg::new("set")
+                        .long("set")
+                        .value_name("SET_FILE")
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .help("A reference set (CSL-JSON) the cited records must still match"),
+                )
+                .arg(
+                    Arg::new("quotes")
+                        .long("quotes")
+                        .action(ArgAction::SetTrue)
+                        .help("Look for each quotation on the cited page of its reference's PDF text"),
+                ),
             Method::Entry => subcommand
                 .about("Print a reference's original BibTeX entry, with what it needs to stand alone")
                 .after_help(
@@ -947,11 +977,14 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
 }
 
 fn reads_attachment_text(matches: &ArgMatches) -> bool {
-    matches!(matches.subcommand_name(), Some("outline" | "read" | "find-in"))
-        || matches
-            .subcommand_matches("call")
-            .and_then(|call| call.get_one::<String>("method"))
-            .is_some_and(|method| matches!(method.as_str(), "outline" | "read" | "find-in"))
+    // `check` reads attachments to find quotations.
+    matches!(
+        matches.subcommand_name(),
+        Some("outline" | "read" | "find-in" | "check")
+    ) || matches
+        .subcommand_matches("call")
+        .and_then(|call| call.get_one::<String>("method"))
+        .is_some_and(|method| matches!(method.as_str(), "outline" | "read" | "find-in" | "check"))
 }
 
 /// The library options of this run, as they would be typed again.
@@ -1965,6 +1998,25 @@ fn run_method<R: BufRead>(
                     code => human::code_sentence(code),
                 },
             )?;
+            return Ok(Execution::Result(
+                human::with_summary(result, matches.get_flag("json"), holdings(), &names, out),
+                None,
+            ));
+        }
+        Method::Check => {
+            // The engine reads only absolute paths; these are the shell's.
+            let path = |name| {
+                args.get_one::<PathBuf>(name)
+                    .map(|path| std::path::absolute(path).unwrap_or_else(|_| path.clone()))
+            };
+            let mut params = json!({"document": path("document").unwrap_or_default()});
+            if let Some(set) = path("set") {
+                params["set"] = json!(set);
+            }
+            if args.get_flag("quotes") {
+                params["quotes"] = json!(true);
+            }
+            let result = dispatch(engine, method, &params, &cancel)?;
             return Ok(Execution::Result(
                 human::with_summary(result, matches.get_flag("json"), holdings(), &names, out),
                 None,

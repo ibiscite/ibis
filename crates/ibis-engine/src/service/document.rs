@@ -65,7 +65,7 @@ pub struct ExportRequest {
 }
 
 /// What a check found.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
 pub enum CheckResult {
     Checked(Checked),
@@ -100,14 +100,14 @@ pub enum Which {
     Set,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Checked {
     #[serde(flatten)]
     pub read: Read,
 }
 
 /// What reading a manuscript found.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Read {
     pub kind: TextKind,
     /// Citations read.
@@ -136,7 +136,7 @@ impl CheckResult {
 }
 
 /// One problem, where it is.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Finding {
     /// Where in the manuscript; none for a problem of the set as a whole.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -152,7 +152,7 @@ pub struct Finding {
     pub pages: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Problem {
     /// A citation opened and never closed; the rest of its paragraph is unread.

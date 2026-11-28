@@ -77,9 +77,9 @@ between them.
 ## Checking against a set
 
 A check reads a manuscript, looks up each key it cites in the person's
-libraries, and compares those records with the set by key. The engine does
-this today; the `ibis check` command that runs it is not built yet
-([#1386](https://github.com/ibiscite/ibis/issues/1386)).
+libraries, and compares those records with the set by key:
+`ibis check MANUSCRIPT --set references.json`, or the `check` method with
+`set` ([CLI](cli.md#checking-a-manuscript)).
 
 | Finding | When |
 | --- | --- |

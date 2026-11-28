@@ -67,7 +67,8 @@
   ],
   "nightly": [
     {
-      "text": "Nothing beyond the current release yet."
+      "text": "Check a manuscript before it builds",
+      "note": "With the ibis command: keys no library holds, records that changed since the project’s reference set, and quotations not on the cited page"
     }
   ],
   "planned": [
@@ -83,9 +84,6 @@
     },
     {
       "text": "Search Zotero highlights and notes, with the page they came from."
-    },
-    {
-      "text": "Check a manuscript for missing citation keys before building it."
     },
     {
       "text": "Pasting on Linux desktops."
