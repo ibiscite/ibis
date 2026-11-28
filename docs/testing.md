@@ -22,15 +22,10 @@ definition does not certify a passing run. Plans live in
 
 ## Local commands
 
-Setup is in [CONTRIBUTING.md](../CONTRIBUTING.md#setup). Run the focused check
-for the changed behaviour; `land.sh` runs fast local checks before requesting
-auto-merge on hosted CI.
+Everyday commands (setup, focused tests, landing) are in
+[development](development.md#one-command-per-job). These are the specialised ones:
 
 ```sh
-bash scripts/land.sh
-cargo test -p ibis-engine --locked TEST_FILTER
-cargo test -p ibis-desktop --locked TEST_FILTER
-pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1
 node --test scripts/doc-links.test.mjs
 node scripts/gen.mjs --check
 node scripts/contract-compat.mjs --base refs/tags/vX.Y.Z
