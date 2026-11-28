@@ -261,8 +261,11 @@ fn private_extra_urls_remove_the_entire_line_including_braces_and_lone_cr() {
 }
 
 struct SyntheticApi(Vec<serde_json::Value>);
-impl ibis_core::zotero::api::Transport for SyntheticApi {
-    fn get(&mut self, path: &str) -> Result<ibis_core::zotero::api::Response, ibis_core::zotero::api::TransportError> {
+impl ibis_sources::zotero_local::api::Transport for SyntheticApi {
+    fn get(
+        &mut self,
+        path: &str,
+    ) -> Result<ibis_sources::zotero_local::api::Response, ibis_sources::zotero_local::api::TransportError> {
         let body = if path.ends_with("format=versions") {
             self.0
                 .iter()
@@ -272,7 +275,7 @@ impl ibis_core::zotero::api::Transport for SyntheticApi {
         } else {
             json!(self.0)
         };
-        Ok(ibis_core::zotero::api::Response {
+        Ok(ibis_sources::zotero_local::api::Response {
             status: 200,
             body: serde_json::to_vec(&body).unwrap(),
             headers: [

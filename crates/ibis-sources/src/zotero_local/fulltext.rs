@@ -12,9 +12,9 @@
 //! moves every break. So page breaks are trusted only when they separate exactly
 //! the number of pages Zotero recorded; otherwise the text has no pages.
 
+use crate::zotero_local::api::{Transport, TransportError};
 use ibis_core::contract::Fingerprint;
 use ibis_core::zotero::Library;
-use ibis_core::zotero::api::{Transport, TransportError};
 use serde_json::Value;
 
 /// The most text one attachment may hold for Ibis to read it.
@@ -189,7 +189,7 @@ pub fn indexed(transport: &mut impl Transport, library: Library, key: &str) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ibis_core::zotero::api::Response;
+    use crate::zotero_local::api::Response;
 
     struct Fake(Vec<(&'static str, u16, String)>);
     impl Transport for Fake {

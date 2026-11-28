@@ -3,12 +3,35 @@
 Ibis has a Rust engine, a command line and a Tauri desktop app. This page
 describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 
+## Layers
+
+Each layer uses only the ones below it and is usable without the ones above;
+`engine_boundary.rs` in `ibis-engine` checks the crate graph and that core
+does no I/O. Each library crate's documentation opens with an example that
+uses it alone, and `cargo test` runs it.
+
+| Layer | Crates | Usable alone as |
+| --- | --- | --- |
+| Core | `ibis-core` | The nouns and pure rules: no file, socket, process, clock or platform branch |
+| Readers and formatter | `ibis-sources`, `ibis-csl` | A library file or Zotero read into a snapshot; a snapshot formatted with a CSL style |
+| Engine | `ibis-engine` | One `Engine` answering every method of the table, in process |
+| Background engine | `ibis daemon` in `ibis-cli` | The same methods over a same-user socket ([below](#warm-local-engine)) |
+| Apps | `ibis-cli`, the desktop app, `ibis-native` | The `ibis` command, the picker, native paste |
+
+`ibis-os` sits beside core under everything else: the operating system calls
+the layers share (private atomic writes, bounded filesystem work, contained
+parser panics, the `ibis` command's place on the system), so core stays pure.
+The versioned surface is the contract's JSON ([the CLI reference](cli.md#output-for-scripts-and-agents));
+the Rust crates are not published and their APIs may change before 1.0
+([0056](decisions/0056-open-layer-for-research-material.md)).
+
 ## Crates and clients
 
 | Location | Responsibility |
 | --- | --- |
 | `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search and delivery rules. |
-| `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API, closed database and Better BibTeX), discovery, database snapshots and file watches. Includes the built-in EndNote [source adapter](source-adapters.md). Each reader declares what its library offers. |
+| `crates/ibis-os` | Whole-file private writes, the bounded filesystem worker, parser panic containment, and installing the `ibis` command and its toggle receipt. Depends on no Ibis crate. |
+| `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API and its rules, the closed database and Better BibTeX), discovery, database snapshots and file watches. Includes the built-in EndNote [source adapter](source-adapters.md). Each reader declares what its library offers. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
 | `crates/ibis-cli` | The `ibis` executable, its same-user daemon and the child processes for PDFs, documents and built-in source adapters. Depends on core and engine, and enables the EndNote reader and the document readers in `ibis-sources` for those processes. |

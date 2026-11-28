@@ -403,12 +403,12 @@ pub(super) fn private_lock(path: &Path, control: &Control) -> Result<FileLease, 
         ClosedError::PrivateStorage
     };
     #[cfg(not(windows))]
-    let file = ibis_core::atomic_file::open_private(path).map_err(|_| failure)?;
+    let file = ibis_os::atomic_file::open_private(path).map_err(|_| failure)?;
     #[cfg(windows)]
     let file = {
         use std::os::windows::fs::OpenOptionsExt;
         use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
-        match ibis_core::atomic_file::create_private(path) {
+        match ibis_os::atomic_file::create_private(path) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => std::fs::OpenOptions::new()
                 .read(true)
@@ -484,7 +484,7 @@ pub(super) fn exclude_backups(path: &Path, control: &Control) -> Result<(), Clos
     let tag = path.join("CACHEDIR.TAG");
     match std::fs::symlink_metadata(&tag) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let mut file = ibis_core::atomic_file::create_private(&tag).map_err(|_| ClosedError::PrivateStorage)?;
+            let mut file = ibis_os::atomic_file::create_private(&tag).map_err(|_| ClosedError::PrivateStorage)?;
             file.write_all(TAG)
                 .and_then(|_| file.sync_all())
                 .map_err(|_| ClosedError::PrivateStorage)?;

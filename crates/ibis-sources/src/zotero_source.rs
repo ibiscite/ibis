@@ -1,11 +1,14 @@
 //! Raw live acquisition and immutable publication through the shared mapper.
 use crate::pdf::PdfReader;
 use crate::reading::{DocumentText, SourceAttachment, TextState};
+use crate::zotero_local::api::{Transport, TransportError};
 use crate::zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
 use crate::zotero_local::closed;
 pub use crate::zotero_local::closed::ClosedError;
 pub use crate::zotero_local::discovery;
 use crate::zotero_local::fulltext;
+use crate::zotero_local::libraries;
+pub use crate::zotero_local::libraries::Group;
 pub use crate::zotero_local::live::{Library, LiveError};
 use crate::zotero_local::live::{Limits, LiveReader, LiveWarning};
 pub use crate::zotero_local::{DEFAULT_PORT, LocalZotero};
@@ -15,9 +18,6 @@ use crate::{
 };
 use ibis_core::contract::ItemRef;
 use ibis_core::contract::{CitationKeySource, ErrorReason, LibraryId, LibraryObject, Snapshot};
-use ibis_core::zotero::api::{Transport, TransportError};
-use ibis_core::zotero::libraries;
-pub use ibis_core::zotero::libraries::Group;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::{
@@ -936,8 +936,8 @@ pub fn installed() -> bool {
 /// The groups a running Zotero lists; reads no library.
 pub fn live_groups(port: u16) -> Result<Vec<Group>, ZoteroError> {
     libraries::groups(&mut crate::zotero_local::LocalZotero::on_port(port)).map_err(|error| match error {
-        ibis_core::zotero::api::ZoteroError::NotAllowed => LiveError::NotAllowed.into(),
-        ibis_core::zotero::api::ZoteroError::Transport(transport) => LiveError::Transport(transport).into(),
+        crate::zotero_local::api::ZoteroError::NotAllowed => LiveError::NotAllowed.into(),
+        crate::zotero_local::api::ZoteroError::Transport(transport) => LiveError::Transport(transport).into(),
         _ => LiveError::Incomplete.into(),
     })
 }
@@ -1044,7 +1044,7 @@ fn here() -> Result<discovery::Discovery, ZoteroError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ibis_core::zotero::api::Response;
+    use crate::zotero_local::api::Response;
     use serde_json::{Value, json};
 
     #[test]

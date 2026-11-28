@@ -1,6 +1,6 @@
 //! Shared settings backup operations. Reads have a deadline; a requested write
 //! finishes before returning. Paths and restore plans remain native.
-use ibis_core::file_io::{Admission, Pool, Scope};
+use ibis_os::file_io::{Admission, Pool, Scope};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;

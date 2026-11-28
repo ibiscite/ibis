@@ -19,7 +19,7 @@ impl<T> MutexExt<T> for Mutex<T> {
 
 /// Contain a panic and retain its message for diagnosis.
 pub(crate) fn attempt<T>(work: impl FnOnce() -> T) -> std::thread::Result<T> {
-    ibis_core::panic_guard::attempt(work).inspect_err(|payload| {
+    ibis_os::panic_guard::attempt(work).inspect_err(|payload| {
         let message = payload
             .downcast_ref::<&str>()
             .copied()

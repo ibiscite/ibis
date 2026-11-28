@@ -11,9 +11,9 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::zotero_local::api::{Response, Transport, TransportError};
 use ibis_core::source::IdentityClaims;
 pub use ibis_core::zotero::Library;
-use ibis_core::zotero::api::{Response, Transport, TransportError};
 use serde_json::Value;
 
 const KEY_BATCH: usize = 50;

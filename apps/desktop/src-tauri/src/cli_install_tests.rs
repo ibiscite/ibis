@@ -1,4 +1,4 @@
-use ibis_core::command_install::{CommandInstall, CommandState, PROFILE_LINE};
+use ibis_os::command_install::{CommandInstall, CommandState, PROFILE_LINE};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use tempfile::TempDir;

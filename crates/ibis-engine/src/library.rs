@@ -22,7 +22,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime};
 
 use ibis_core::contract::{EngineError, ErrorCode};
-use ibis_core::file_io::{Admission, Pool, Scope};
+use ibis_os::file_io::{Admission, Pool, Scope};
 use serde_json::json;
 
 use crate::citations::SessionId;
@@ -1110,11 +1110,11 @@ fn supervise_with<T: Send + 'static>(
     in_flight
         .run(&Scope::new(&check, deadline), Admission::Immediate, operation)
         .map_err(|error| match error {
-            ibis_core::file_io::Error::TimedOut => {
+            ibis_os::file_io::Error::TimedOut => {
                 cancel.cancel();
                 unavailable
             }
-            ibis_core::file_io::Error::Capacity => unavailable,
+            ibis_os::file_io::Error::Capacity => unavailable,
             _ => LoadError::Stopped,
         })?
 }

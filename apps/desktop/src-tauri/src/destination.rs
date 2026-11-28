@@ -335,7 +335,7 @@ fn write(path: &Path, apps: &[Remembered], recovery: bool) -> io::Result<()> {
     if let Some(directory) = path.parent() {
         fs::create_dir_all(directory)?;
     }
-    ibis_core::atomic_file::AtomicFile::new(path, format!("{json}\n").as_bytes())?.replace()
+    ibis_os::atomic_file::AtomicFile::new(path, format!("{json}\n").as_bytes())?.replace()
 }
 
 /// The per-app file beside the settings file.

@@ -3,7 +3,7 @@
 
 use thiserror::Error;
 
-use super::Library;
+use ibis_core::zotero::Library;
 
 /// A response from Zotero. Header names are matched without regard to case.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

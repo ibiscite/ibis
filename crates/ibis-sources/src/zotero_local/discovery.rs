@@ -18,7 +18,7 @@ use std::fs::{File, OpenOptions};
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
-use ibis_core::zotero::libraries::clean_name;
+use crate::zotero_local::libraries::clean_name;
 
 mod preferences;
 #[cfg(all(

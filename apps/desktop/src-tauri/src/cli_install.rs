@@ -1,6 +1,6 @@
 //! Fixed native command locations; Settings never supplies a path or executable.
 use crate::errors::NativeFailure;
-use ibis_core::command_install::{CommandInstall, CommandStatus, PROFILE_LINE};
+use ibis_os::command_install::{CommandInstall, CommandStatus, PROFILE_LINE};
 use tauri::Manager;
 
 fn installer(app: &tauri::AppHandle) -> Result<CommandInstall, NativeFailure> {
@@ -33,7 +33,7 @@ fn installer(app: &tauri::AppHandle) -> Result<CommandInstall, NativeFailure> {
         ])
         .collect();
     #[cfg(target_os = "linux")]
-    let appimage = ibis_core::command_install::appimage_for(
+    let appimage = ibis_os::command_install::appimage_for(
         &exe,
         std::env::var_os("APPIMAGE").map(std::path::PathBuf::from),
         std::env::var_os("APPDIR").map(std::path::PathBuf::from),

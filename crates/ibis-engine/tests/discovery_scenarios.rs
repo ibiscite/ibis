@@ -1,9 +1,7 @@
 #![cfg(test)]
-use ibis_core::{
-    contract::ErrorCode,
-    zotero::api::{Response, Transport, TransportError},
-};
+use ibis_core::contract::ErrorCode;
 use ibis_engine::{Cancellation, discovery::Discovery, health::InspectionPolicy};
+use ibis_sources::zotero_local::api::{Response, Transport, TransportError};
 
 struct Probe(u16, Option<Cancellation>);
 impl Transport for Probe {

@@ -30,7 +30,7 @@ use biblatex::Bibliography;
 use crate::candidates::Candidates;
 use crate::{ParsedLibrary, SourceWarning, WarningCause, WarningCode};
 use ibis_core::contract::{LibraryId, Record, Snapshot};
-use ibis_core::panic_guard;
+use ibis_os::panic_guard;
 use lexer::{Block, RawEntry, header_key, parse_entry, parse_string, split_blocks};
 use resolve::Resolver;
 

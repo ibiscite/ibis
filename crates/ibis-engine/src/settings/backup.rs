@@ -101,7 +101,7 @@ pub fn export(settings: &Settings, version: &str) -> Result<String, BackupError>
     let backup = serde_json::json!({
         MARKER: FORMAT,
         "made_by": version,
-        "made_on": System::HERE,
+        "made_on": crate::SYSTEM,
         "settings": settings.portable,
     });
     let text =
@@ -122,7 +122,7 @@ pub fn save(path: &Path, text: &str, replace: bool) -> io::Result<()> {
     if !replace && fs::symlink_metadata(path).is_ok() {
         return Err(io::ErrorKind::AlreadyExists.into());
     }
-    let file = ibis_core::atomic_file::AtomicFile::new(path, text.as_bytes())?;
+    let file = ibis_os::atomic_file::AtomicFile::new(path, text.as_bytes())?;
     if replace { file.replace() } else { file.create() }
 }
 
@@ -204,7 +204,7 @@ fn classify(text: &str, recovery: bool) -> Result<Backup, BackupError> {
         let settings = super::parse_value(Value::Object(backup));
         if recovery {
             return Ok(Backup {
-                made_on: System::HERE,
+                made_on: crate::SYSTEM,
                 made_by: "unknown".into(),
                 settings: settings?.portable,
             });
@@ -317,7 +317,8 @@ pub fn plan(current: &Settings, backup: &Backup, exists: impl FnOnce(&Path) -> b
     let mut notes = Vec::new();
     // Each system keeps its own shortcut unless the backup has one for it.
     let mut shortcuts: BTreeMap<System, String> = current.portable.shortcut.by_system().clone();
-    if !backup.settings.shortcut.by_system().contains_key(&System::HERE) && current.portable.shortcut.here().is_some() {
+    if !backup.settings.shortcut.by_system().contains_key(&crate::SYSTEM) && current.portable.shortcut.here().is_some()
+    {
         notes.push(Note::ShortcutKept);
     }
     shortcuts.extend(backup.settings.shortcut.by_system().clone());

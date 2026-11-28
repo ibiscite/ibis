@@ -197,7 +197,7 @@ pub(crate) fn chosen(args: &ArgMatches) -> Result<Context, Failure> {
     let writing = if let Some(name) = name {
         Some(writings::find(&settings, name).cloned().map_err(failure)?)
     } else if let Some(app) = app {
-        let app = ibis_core::destination::AppId::named(app, ibis_core::destination::System::HERE);
+        let app = ibis_core::destination::AppId::named(app, ibis_engine::SYSTEM);
         for_app(&settings, &app)?
     } else {
         writings::from_context(&settings, document.map(PathBuf::as_path), None, None).map_err(failure)?

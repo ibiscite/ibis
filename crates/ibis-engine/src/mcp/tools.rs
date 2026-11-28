@@ -15,7 +15,7 @@ use ibis_core::contract::{
     CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, EngineError, ErrorCode, ItemOutcome,
     LibraryObject, OutputSpec, Script, Snapshot, SnapshotObject, TextRun,
 };
-use ibis_core::destination::{System, destination};
+use ibis_core::destination::destination;
 use serde_json::{Map, Value, json};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -719,7 +719,7 @@ fn cite_submitted(
                 Formats::Defaults => crate::settings::Settings::default(),
             };
             let named = (arguments.contains_key("format") || arguments.contains_key("style")).then_some(&output);
-            let destination = destination(app, System::HERE, |app| {
+            let destination = destination(app, crate::SYSTEM, |app| {
                 crate::format::choose_with(&settings, Some(app), named)
             });
             writing = destination

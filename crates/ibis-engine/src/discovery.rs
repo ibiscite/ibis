@@ -4,10 +4,8 @@ use crate::{
     Cancellation,
     health::{InspectionPolicy, bounded},
 };
-use ibis_core::{
-    contract::{EngineError, ErrorCode},
-    zotero::api::{self, Presence},
-};
+use ibis_core::contract::{EngineError, ErrorCode};
+use ibis_sources::zotero_local::api::{self, Presence};
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},

@@ -16,6 +16,7 @@ fuzzing = ["dep:libfuzzer-sys"]
 [dependencies]
 ibis = { path = "../crates/ibis-cli" }
 ibis-core = { path = "../crates/ibis-core" }
+ibis-os = { path = "../crates/ibis-os" }
 ibis-sources = { path = "../crates/ibis-sources", features = ["endnote"] }
 libfuzzer-sys = { version = "=0.4.13", optional = true }
 serde_json = "1.0.154"

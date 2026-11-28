@@ -98,10 +98,10 @@ fn a_file_without_details_says_nothing_and_a_non_pdf_is_refused() {
 fn the_child_answers_details_when_asked() {
     let pdf = invented_pdf_with_details(&["Invented page."], &[("Title", "Invented Info Title")], None);
     let mut output = Vec::new();
-    let status = crate::pdf_text::child(&[ibis_engine::pdf::DETAILS.into()], pdf.as_slice(), &mut output);
+    let status = crate::pdf_text::child(&[ibis_sources::pdf::DETAILS.into()], pdf.as_slice(), &mut output);
     assert_eq!(status, 0);
-    let answer: ibis_engine::pdf::Answer = serde_json::from_slice(&output).unwrap();
-    let ibis_engine::pdf::Answer::Details(said) = answer else {
+    let answer: ibis_sources::pdf::Answer = serde_json::from_slice(&output).unwrap();
+    let ibis_sources::pdf::Answer::Details(said) = answer else {
         panic!("a details answer")
     };
     assert_eq!(said.info.title.as_deref(), Some("Invented Info Title"));

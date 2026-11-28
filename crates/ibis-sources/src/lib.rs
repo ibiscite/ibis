@@ -1,4 +1,24 @@
-//! Read-only library sources producing the shared engine snapshot contract.
+//! Readers: every library Ibis can read (BibTeX, CSL-JSON, RIS, CSV, a folder
+//! of PDFs, Zotero on this computer, outside source adapters) turned into one
+//! [`LoadedLibrary`] holding a core [`Snapshot`] and what the library declares
+//! it offers.
+//!
+//! The [layer](https://github.com/ibiscite/ibis/blob/main/docs/architecture.md#layers)
+//! above core: it uses only `ibis-core` and `ibis-os`, talks to no network but
+//! Zotero's local API on `127.0.0.1`, and changes a library only through an
+//! edit a person confirmed ([`bibtex_edit`]). The Rust API may change before 1.0.
+//!
+//! Reading a `.bib` file without the engine:
+//!
+//! ```
+//! let folder = tempfile::tempdir()?;
+//! let path = folder.path().join("refs.bib");
+//! std::fs::write(&path, "@book{Taylor2026, title = {Synthetic signals}, year = {2026}}")?;
+//! let loaded = ibis_sources::load_file(&path).map_err(|error| format!("{error:?}"))?;
+//! assert_eq!(loaded.snapshot.objects().len(), 1);
+//! assert!(loaded.warnings.is_empty());
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
 /// Libraries an outside program reads for Ibis (decision 0056, step 4).
 pub mod adapter;
 mod attachments;
