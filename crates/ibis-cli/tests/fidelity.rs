@@ -224,3 +224,53 @@ fn pandoc_reads_back_keys_prefixes_and_suffixes_exactly() {
         );
     }
 }
+
+/// The Pandoc and Quarto filter fills in what a document cites from the
+/// libraries Ibis reads, and Pandoc renders it as it renders the `.bib`.
+#[test]
+fn pandoc_filter_renders_what_the_bib_renders() {
+    if !pandoc_available() {
+        assert!(
+            std::env::var("IBIS_REQUIRE_PANDOC").is_err(),
+            "pandoc is required but not installed"
+        );
+        eprintln!("pandoc not found; filter comparison skipped");
+        return;
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let bib = root.join("fixtures/bibtex/fidelity.bib");
+    let filter = root.join("plugins/pandoc/_extensions/ibis/ibis.lua");
+    let body = "See @particles2017 [p. 4] and [@conf2022; @chapter2022], @thesis2014 and @missing2001.\n";
+    let render = |front: String| {
+        let doc = Path::new(env!("CARGO_TARGET_TMPDIR")).join("filter-doc.md");
+        std::fs::write(&doc, format!("---\n{front}nocite: '@web2024'\n---\n{body}")).unwrap_or_else(|e| panic!("{e}"));
+        let out = Command::new("pandoc")
+            .env("IBIS", env!("CARGO_BIN_EXE_ibis"))
+            .arg("--lua-filter")
+            .arg(&filter)
+            .args(["--citeproc", "-t", "plain", "--wrap=none"])
+            .arg(&doc)
+            .output()
+            .unwrap_or_else(|e| panic!("cannot run pandoc: {e}"));
+        assert!(
+            out.status.success(),
+            "pandoc failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        )
+    };
+    let path = serde_json::to_string(&bib.to_string_lossy()).unwrap_or_else(|e| panic!("{e}"));
+    let (from_bib, _) = render(format!("bibliography: {path}\n"));
+    let (from_ibis, warnings) = render(format!("ibis:\n  file: {path}\n"));
+    assert_eq!(from_ibis, from_bib);
+    assert!(from_ibis.contains("Particles and Suffixes in Names"), "{from_ibis}");
+    assert!(
+        from_ibis.contains("Live Status of a Synthetic Service"),
+        "nocite: {from_ibis}"
+    );
+    assert!(warnings.contains("citation missing2001 not found"), "{warnings}");
+    assert!(!warnings.contains("ibis:"), "{warnings}");
+}
