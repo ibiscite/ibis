@@ -1,10 +1,10 @@
 //! Setup discovery owns native paths and one-use, expiring choices.
-use crate::sync::MutexExt;
 use crate::{
     Cancellation,
     health::{InspectionPolicy, bounded},
 };
 use ibis_core::contract::{EngineError, ErrorCode};
+use ibis_os::sync::MutexExt;
 use ibis_sources::zotero_local::api::{self, Presence};
 use std::{
     path::{Path, PathBuf},

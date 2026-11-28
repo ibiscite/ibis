@@ -1,7 +1,7 @@
 //! Compact MCP text; structuredContent retains the complete answer.
 //! Keep findings and page attribution, flatten library line breaks, and mark
 //! library text as data. JSON-quote citations so they cannot forge warning lines.
-use crate::catalogue;
+use ibis_engine::catalogue;
 use serde_json::{Map, Value};
 
 /// Authors named in one search line before "et al.".

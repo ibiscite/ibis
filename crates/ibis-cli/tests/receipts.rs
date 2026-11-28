@@ -1,7 +1,8 @@
 //! A receipt describes the citation a client received, even after newer work.
 #![cfg(test)]
+use ibis::mcp;
 use ibis_core::contract::ErrorCode;
-use ibis_engine::{Cancellation, Engine, Method, mcp};
+use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::{Value, json};
 
 fn library() -> (tempfile::TempDir, Engine, Value) {
@@ -51,7 +52,7 @@ fn rpc(engine: &Engine, request: &Value) -> Value {
     )
     .unwrap();
     let mut output = Vec::new();
-    ibis_engine::server::serve(engine.clone(), input.as_slice(), &mut output).unwrap();
+    ibis::server::serve(engine.clone(), input.as_slice(), &mut output).unwrap();
     ibis_engine::protocol::read_frame(&mut std::io::Cursor::new(output))
         .unwrap()
         .unwrap()

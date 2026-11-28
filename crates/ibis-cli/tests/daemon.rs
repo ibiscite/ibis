@@ -196,7 +196,7 @@ fn simultaneous_cli_and_mcp_clients_share_a_warm_library() {
         json!({
             "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
                 "name":"search","arguments":{"query":"lantern"},"_meta":{
-                    "io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,
+                    "io.modelcontextprotocol/protocolVersion":ibis::mcp::PROTOCOL_VERSION,
                     "io.modelcontextprotocol/clientCapabilities":{}
                 }
             }
@@ -383,8 +383,8 @@ fn the_socket_and_stdio_return_the_generated_methods() {
             _ => Value::Null,
         };
         let expected = match engine.dispatch(method, &params, &Cancellation::default()) {
-            Ok(result) => ibis_engine::rpc::success(&ibis_engine::rpc::RequestId::Number(1.into()), result.data),
-            Err(error) => ibis_engine::rpc::failure(Some(&ibis_engine::rpc::RequestId::Number(1.into())), error),
+            Ok(result) => ibis::rpc::success(&ibis::rpc::RequestId::Number(1.into()), result.data),
+            Err(error) => ibis::rpc::failure(Some(&ibis::rpc::RequestId::Number(1.into())), error),
         };
         assert_eq!(
             comparable(expected.clone()),
@@ -507,7 +507,7 @@ fn check_mcp_reconnect(upgrade: bool) {
         }
     });
     writeln!(input, "{}", json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-        "protocolVersion":ibis_engine::mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"invented","version":"1"}
+        "protocolVersion":ibis::mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"invented","version":"1"}
     }})).unwrap();
     let initialized = receive.recv_timeout(WAIT).unwrap();
     assert!(initialized.get("result").is_some());

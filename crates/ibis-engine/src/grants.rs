@@ -8,29 +8,30 @@
 //! change rewrites it under a lock that other Ibis processes share, so a
 //! desktop app and the daemon never undo each other's choices. An unreadable
 //! file grants nothing and keeps a durable delivery-recovery refusal until
-//! each app gets an explicit delivery choice.
+//! each app gets an explicit delivery choice. So does a missing file once
+//! the store has been written: `apps.json.lock` stays behind, and a store
+//! that is gone may have held a Copy only choice.
 
 use ibis_core::destination::{AppId, AppPaste, CopyReason, PasteSafety, has_citation_plugins, lookup};
-use ibis_os::atomic_file::{AtomicFile, open_private};
+use ibis_os::atomic_file::{AtomicFile, lock_within, open_private};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// Apps remembered; the least recently chosen goes first.
 pub const MAX_APPS: usize = 200;
 /// A file this large was not written by Ibis.
 const MAX_BYTES: u64 = 256 * 1024;
+/// A change waits this long for another process's change, then fails.
+const LOCK_WAIT: Duration = Duration::from_secs(2);
 const VERSION: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Remembered {
     app: AppId,
-    /// Formats moved to settings.json (decision 0040); one written here before
-    /// is read and dropped, so the delivery choices beside it keep working.
-    #[serde(default, skip_serializing, deserialize_with = "dropped")]
-    output: (),
     #[serde(default, skip_serializing_if = "Option::is_none")]
     paste: Option<AppPaste>,
     /// Only unlisted apps approved for Paste need a location binding.
@@ -49,10 +50,6 @@ struct File {
     /// Lost delivery choices remain refused until deliberately resolved.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     recovery: bool,
-}
-
-fn dropped<'de, D: serde::Deserializer<'de>>(value: D) -> Result<(), D::Error> {
-    serde::de::IgnoredAny::deserialize(value).map(|_| ())
 }
 
 fn normalized(app: &AppId) -> AppId {
@@ -110,12 +107,17 @@ impl Grants {
         let identity = (paste == AppPaste::Paste && lookup(&app).is_none())
             .then_some(identity)
             .flatten();
+        if !valid_app(&app) || !identity.as_deref().is_none_or(valid_identity) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "not an app Ibis can remember",
+            ));
+        }
         self.change(|apps| {
             let noted = apps.iter().any(|entry| entry.app == app && entry.noted);
             apps.retain(|entry| entry.app != app);
             apps.push(Remembered {
                 app,
-                output: (),
                 paste: Some(paste),
                 identity,
                 noted,
@@ -132,6 +134,9 @@ impl Grants {
             return false;
         }
         let app = normalized(app);
+        if !valid_app(&app) {
+            return false;
+        }
         self.change(|apps| match apps.iter_mut().find(|entry| entry.app == app) {
             Some(entry) if entry.noted => Err(io::ErrorKind::AlreadyExists.into()),
             Some(entry) => {
@@ -141,7 +146,6 @@ impl Grants {
             None => {
                 apps.push(Remembered {
                     app,
-                    output: (),
                     paste: None,
                     identity: None,
                     noted: true,
@@ -153,12 +157,23 @@ impl Grants {
     }
 
     /// The saved file, or an empty one that needs recovery when what is saved
-    /// is not a file Ibis wrote. A read that fails for another reason, such as
-    /// a moment's sharing violation on Windows, is an error and changes nothing.
+    /// is not a file Ibis wrote, or was written once and is gone. A read that
+    /// fails for another reason, such as a moment's sharing violation on
+    /// Windows, is an error and changes nothing.
     fn current(&self) -> io::Result<File> {
+        self.current_after(self.lock_path().exists())
+    }
+
+    /// `written` says whether this store has been written before: its lock
+    /// file outlives every change, so only a new profile has neither.
+    fn current_after(&self, written: bool) -> io::Result<File> {
         match read(&self.path) {
             Ok(file) => Ok(file),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(File::default()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound && !written => Ok(File::default()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(File {
+                recovery: true,
+                ..File::default()
+            }),
             Err(error) if error.kind() == io::ErrorKind::InvalidData => Ok(File {
                 recovery: true,
                 ..File::default()
@@ -173,14 +188,29 @@ impl Grants {
         if let Some(directory) = self.path.parent().filter(|directory| !directory.as_os_str().is_empty()) {
             fs::create_dir_all(directory)?;
         }
-        let lock = open_private(&self.path.with_extension("json.lock"))?;
-        lock.lock()?;
-        let mut file = self.current()?;
+        let written = self.lock_path().exists();
+        let lock = open_private(&self.lock_path())?;
+        lock_within(&lock, LOCK_WAIT)?;
+        let mut file = self.current_after(written)?;
         change(&mut file.apps)?;
         let excess = file.apps.len().saturating_sub(MAX_APPS);
         file.apps.drain(..excess);
         write(&self.path, &file)
     }
+
+    fn lock_path(&self) -> PathBuf {
+        self.path.with_extension("json.lock")
+    }
+}
+
+/// An app ID Ibis can store: what the reader accepts, checked before writing.
+fn valid_app(app: &AppId) -> bool {
+    !app.id.is_empty() && !app.id.chars().any(char::is_control)
+}
+
+/// A program location digest, as the desktop's capture makes one.
+fn valid_identity(identity: &str) -> bool {
+    identity.len() == 64 && identity.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn read(path: &Path) -> io::Result<File> {
@@ -199,13 +229,9 @@ fn read(path: &Path) -> io::Result<File> {
     let mut ids = std::collections::HashSet::new();
     for entry in &mut file.apps {
         entry.app = normalized(&entry.app);
-        if entry.app.id.is_empty() || entry.app.id.chars().any(char::is_control) || !ids.insert(entry.app.clone()) {
-            return Err(io::Error::from(io::ErrorKind::InvalidData));
-        }
-        if entry
-            .identity
-            .as_ref()
-            .is_some_and(|identity| identity.len() != 64 || !identity.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        if !valid_app(&entry.app)
+            || !ids.insert(entry.app.clone())
+            || !entry.identity.as_deref().is_none_or(valid_identity)
         {
             return Err(io::Error::from(io::ErrorKind::InvalidData));
         }

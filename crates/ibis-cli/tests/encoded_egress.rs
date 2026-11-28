@@ -154,7 +154,7 @@ fn mcp_is_private(records: Value) {
     for (id, (name, arguments)) in calls.enumerate() {
         let call = json!({"jsonrpc":"2.0", "id":id, "method":"tools/call", "params":{
             "name":name, "arguments":arguments, "_meta":{
-                "io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,
+                "io.modelcontextprotocol/protocolVersion":ibis::mcp::PROTOCOL_VERSION,
                 "io.modelcontextprotocol/clientCapabilities":{}
             }
         }});

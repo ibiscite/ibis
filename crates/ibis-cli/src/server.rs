@@ -1,10 +1,10 @@
 //! Ordered JSON-RPC execution. The reader can cancel running or queued requests.
-use crate::{
+use crate::rpc::{self, Message, RequestId};
+use ibis_core::contract::{EngineError, ErrorCode};
+use ibis_engine::{
     Cancellation, DispatchResult, Engine, LibrarySubscription, Method,
     protocol::{self, FrameError},
-    rpc::{self, Message, RequestId},
 };
-use ibis_core::contract::{EngineError, ErrorCode};
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -19,7 +19,7 @@ struct Job {
     method: Method,
     params: Value,
     cancel: Cancellation,
-    citation: Option<crate::citations::SubmittedCitation>,
+    citation: Option<ibis_engine::citations::ReservedCitation>,
 }
 
 pub fn serve<R: BufRead, W: Write + Send>(engine: Engine, reader: R, writer: W) -> Result<(), FrameError> {
@@ -46,7 +46,7 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
     mut reader: R,
     writer: W,
     changes: Option<LibrarySubscription>,
-    connection: Option<(Engine, crate::citations::SessionId)>,
+    connection: Option<(Engine, ibis_engine::citations::SessionId)>,
 ) -> Result<(), FrameError> {
     thread::scope(|scope| {
         let (output, frames) = mpsc::sync_channel::<Value>(8);
@@ -76,14 +76,14 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
         let worker_output = output.clone();
         let working = scope.spawn(move || {
             for job in jobs {
-                let result = crate::sync::attempt(|| {
+                let result = ibis_os::sync::attempt(|| {
                     job.cancel.check()?;
                     let result = if let Some(citation) = job.citation {
                         let request: ibis_core::contract::CitationRequest = serde_json::from_value(job.params.clone())
                             .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
                         let prepared = citation.prepare(&request, false)?;
                         DispatchResult::citation(
-                            crate::health::Checked {
+                            ibis_engine::health::Checked {
                                 value: prepared.result().clone(),
                                 source_health: prepared.source_health().clone(),
                             },
@@ -103,7 +103,7 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                         Ok(result) => rpc::success(&id, result.data),
                         Err(error) => rpc::failure(Some(&id), error),
                     };
-                    if crate::wire::encode(&reply, protocol::MAX_RESPONSE_BYTES).is_err() {
+                    if ibis_engine::wire::encode(&reply, protocol::MAX_RESPONSE_BYTES).is_err() {
                         reply = rpc::failure(Some(&id), EngineError::new(ErrorCode::ResourceLimit));
                     }
                     // Retire this token before exposing its reply, so ID reuse is fresh.
@@ -153,7 +153,7 @@ fn run_with_changes<R: BufRead, W: Write + Send>(
                                 citation: if request.method == Method::Cite {
                                     connection
                                         .as_ref()
-                                        .map(|(engine, session)| engine.citations().submit(*session, cancel.clone()))
+                                        .map(|(engine, session)| engine.citations().reserve(*session, cancel.clone()))
                                         .transpose()
                                         .map_err(|_| FrameError::Io)?
                                 } else {
@@ -264,8 +264,8 @@ mod tests {
         engine
             .publish_library(&ibis_sources::LoadedLibrary::new(
                 ibis_core::contract::LibraryId::digest(b"synthetic event"),
-                crate::LibraryKind::Snapshot,
-                crate::SourceCapability::SNAPSHOT,
+                ibis_engine::LibraryKind::Snapshot,
+                ibis_engine::SourceCapability::SNAPSHOT,
                 ibis_core::contract::Snapshot::new(vec![]).unwrap(),
             ))
             .unwrap();

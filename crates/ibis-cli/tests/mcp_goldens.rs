@@ -1,8 +1,9 @@
 //! Every canonical golden case an agent can ask for gives the same text,
 //! warnings, notices and losses through `ibis mcp` as through the command line.
 #![cfg(test)]
+use ibis::mcp;
 use ibis_core::contract::*;
-use ibis_engine::{Cancellation, Engine, mcp};
+use ibis_engine::{Cancellation, Engine};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 

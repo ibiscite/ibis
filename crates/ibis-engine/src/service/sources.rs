@@ -1,6 +1,6 @@
 //! Source handles stay outside Shared: callbacks upgrade only publication state.
 use super::*;
-use crate::sync::MutexExt;
+use ibis_os::sync::MutexExt;
 use ibis_sources::adapter::{AdapterError, SourceAdapter};
 use ibis_sources::zotero_local::api::TransportError;
 use ibis_sources::zotero_source::{Library, LiveError, ZoteroError, ZoteroSource};
@@ -301,8 +301,8 @@ impl Engine {
             origin: Arc::downgrade(&self.shared),
             base: expected,
             next,
-            source: crate::sync::recover(resources.zotero.into_inner()),
-            closed_groups: crate::sync::recover(resources.closed_groups.into_inner()),
+            source: ibis_os::sync::recover(resources.zotero.into_inner()),
+            closed_groups: ibis_os::sync::recover(resources.closed_groups.into_inner()),
             outcome,
             cancel: cancel.clone(),
         })
