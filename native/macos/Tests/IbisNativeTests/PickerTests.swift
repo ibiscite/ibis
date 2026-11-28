@@ -216,6 +216,7 @@ final class PickerTests: XCTestCase {
         try fixture.identifyDaemon()
         let model = PickerModel(engine: fixture.client(), file: fixture.library)
         let panel = PickerPanel(model: model, chooseLibrary: { _ in })
+        let controller = panel.controller
         panel.summon()
         defer { panel.dismiss() }
         try await eventually { model.canDeliver }
@@ -226,96 +227,69 @@ final class PickerTests: XCTestCase {
         model.changeDetails(for: row.id) { $0.locator = "417" }
         try await eventually { model.canDeliver }
         let expected = try XCTUnwrap(model.preview)
-        let content = try XCTUnwrap(panel.contentView)
-        let canvas = try XCTUnwrap(descendants(of: content).compactMap { $0 as? PickerCanvas }.first)
-        canvas.focusSearch()
-        panel.searchField?.currentEditor()?.selectedRange = NSRange(location: 2, length: 0)
-        let actionSearchFields = {
-            NSApp.windows.compactMap(\.contentView).flatMap { self.descendants(of: $0) }
-                .compactMap { $0 as? PickerSearchField }
-                .filter { $0.accessibilityLabel() == PickerWords.text(.searchActions) }
-        }
+        let search = try XCTUnwrap(panel.searchField)
+        search.focus(restoring: NSRange(location: 2, length: 0))
 
         try send("k", key: UInt16(kVK_ANSI_K), flags: [.command], to: panel)
-        XCTAssertTrue(canvas.hasOpenActions)
-        let previousField = try XCTUnwrap(actionSearchFields().first)
+        XCTAssertTrue(controller.actionsOpen)
+        try await eventually { controller.actionsField?.hasFocus == true }
         try send("\u{1b}", key: UInt16(kVK_Escape), to: panel)
-        XCTAssertFalse(canvas.hasOpenActions)
-        XCTAssertTrue(panel.searchField?.currentEditor() === panel.firstResponder)
-        XCTAssertEqual(panel.searchField?.currentEditor()?.selectedRange, NSRange(location: 2, length: 0))
+        XCTAssertFalse(controller.actionsOpen)
+        XCTAssertTrue(search.hasFocus)
+        XCTAssertEqual(search.currentEditor()?.selectedRange, NSRange(location: 2, length: 0))
 
         try send("k", key: UInt16(kVK_ANSI_K), flags: [.command], to: panel)
-        let field = try XCTUnwrap(actionSearchFields().first { $0 !== previousField })
-        field.change?("invented no action")
+        controller.actionsQuery = "invented no action"
+        XCTAssertNil(controller.highlighted)
         try send("\r", key: UInt16(kVK_Return), to: panel)
-        guard canvas.hasOpenActions else {
-            XCTFail("Return with no actions must not close the palette.")
-            return
-        }
-        field.change?("locator")
+        XCTAssertTrue(controller.actionsOpen, "Return with no actions must not close the list.")
+        controller.actionsQuery = "locator"
+        XCTAssertEqual(controller.highlighted?.command, .page)
         try send("\r", key: UInt16(kVK_Return), to: panel)
-        XCTAssertFalse(canvas.hasOpenActions)
-        XCTAssertTrue(canvas.locatorHasFocus)
+        XCTAssertFalse(controller.actionsOpen)
+        XCTAssertTrue(controller.locatorField?.hasFocus == true)
         XCTAssertEqual(model.query, "north")
         XCTAssertEqual(model.citationItem, row.id)
         XCTAssertEqual(model.details(for: row.id).locator, "417")
         XCTAssertEqual(model.preview?.ticket, expected.ticket)
 
-        let pageEditor = try XCTUnwrap(panel.firstResponder as? NSTextView)
-        pageEditor.selectedRange = NSRange(location: 1, length: 1)
+        let page = try XCTUnwrap(controller.locatorField)
+        page.currentEditor()?.selectedRange = NSRange(location: 1, length: 1)
         try send("k", key: UInt16(kVK_ANSI_K), flags: [.command], to: panel)
         try send("\u{1b}", key: UInt16(kVK_Escape), to: panel)
-        XCTAssertTrue(canvas.locatorHasFocus)
-        XCTAssertEqual((panel.firstResponder as? NSTextView)?.selectedRange, NSRange(location: 1, length: 1))
+        XCTAssertTrue(page.hasFocus)
+        XCTAssertEqual(page.currentEditor()?.selectedRange, NSRange(location: 1, length: 1))
         try send("k", key: UInt16(kVK_ANSI_K), flags: [.command], to: panel)
-        XCTAssertTrue(canvas.hasOpenActions)
         try send("\t", key: UInt16(kVK_Tab), to: panel)
-        XCTAssertFalse(canvas.hasOpenActions)
-        XCTAssertTrue(panel.searchField?.currentEditor() === panel.firstResponder)
+        XCTAssertFalse(controller.actionsOpen)
+        XCTAssertTrue(search.hasFocus)
         XCTAssertEqual(model.preview?.ticket, expected.ticket)
     }
 
     @MainActor
-    func testActionSearchUpdatesTheReturnTargetAfterEditing() throws {
-        guard CGSessionCopyCurrentDictionary() != nil else { throw XCTSkip("A WindowServer session is needed.") }
-        _ = NSApplication.shared
-        let details = PickerAction(command: .details, title: "Citation details", group: "Citation",
-                                   aliases: "", shortcut: "", checked: nil,
-                                   reference: ItemRef(key: "first", library: "invented"))
-        let peek = PickerAction(command: .peek, title: "Peek at Reference", group: "Citation",
-                                aliases: "details", shortcut: "", checked: nil)
-        let actions = PickerActionsView(actions: [details, peek], metrics: PickerMetrics(scale: 1, density: .compact))
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: actions.contentSize), styleMask: .titled,
-                              backing: .buffered, defer: false)
-        window.contentViewController = actions
-        var chosen: PickerCommand?
-        actions.chosen = { chosen = $0.command }
-        let field = actions.search
-        field.stringValue = "detail"
-        field.change?(field.stringValue)
-        let down = try keyEvent("\u{f701}", key: UInt16(kVK_DownArrow), flags: [], to: window)
-        let submit = try keyEvent("\r", key: UInt16(kVK_Return), flags: [], to: window)
-        XCTAssertTrue(actions.handleKey(down))
-        XCTAssertTrue(actions.handleKey(submit))
-        XCTAssertEqual(chosen, .peek)
+    func testActionHighlightOnlyKeepsAStillValidReturnTarget() async throws {
+        let fixture = try Fixture()
+        try fixture.identifyDaemon()
+        let model = PickerModel(engine: fixture.client(), file: fixture.library)
+        let controller = PickerController(model: model)
+        model.present(app: fixture.opening.app)
+        defer { model.dismiss() }
+        try await eventually { model.canDeliver && model.rows.count > 1 }
+        controller.showActions()
+        controller.actionsQuery = "peek"
+        XCTAssertEqual(controller.highlighted?.command, .peek)
+        let end = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+            characters: "\u{f72b}", charactersIgnoringModifiers: "\u{f72b}", isARepeat: false, keyCode: UInt16(kVK_End)))
+        XCTAssertFalse(controller.actionKey(end), "End belongs to the search field while editing.")
 
-        field.stringValue = "details"
-        field.change?(field.stringValue)
-        let end = try keyEvent("\u{f72b}", key: UInt16(kVK_End), flags: [], to: window)
-        XCTAssertFalse(actions.handleKey(end), "End belongs to the search field while editing.")
-        XCTAssertTrue(actions.handleKey(submit))
-        XCTAssertEqual(chosen, .details)
-
-        var replacement = details
-        replacement.reference = ItemRef(key: "second", library: "invented")
-        actions.update([replacement, peek])
-        XCTAssertEqual(field.stringValue, "details")
-        chosen = nil
-        XCTAssertTrue(actions.handleKey(submit))
-        XCTAssertNil(chosen, "A refreshed command with a different reference must await a new choice.")
-        XCTAssertTrue(actions.handleKey(down))
-        XCTAssertTrue(actions.handleKey(submit))
-        XCTAssertEqual(chosen, .details)
+        // Peek names the highlighted reference; a new highlight retires the old target.
+        model.move(1)
+        controller.refreshActions(newQuery: false)
+        XCTAssertNil(controller.highlighted)
+        XCTAssertEqual(controller.actionsQuery, "peek")
+        controller.moveAction(1)
+        XCTAssertEqual(controller.highlighted?.reference, model.selected)
     }
 
     @MainActor
@@ -333,6 +307,7 @@ final class PickerTests: XCTestCase {
         try fixture.identifyDaemon()
         let model = PickerModel(engine: fixture.client(), file: fixture.library)
         let panel = PickerPanel(model: model, chooseLibrary: { _ in })
+        let controller = panel.controller
         let owner = NSWorkspace.shared.menuBarOwningApplication?.processIdentifier
         panel.summon()
         defer { panel.dismiss() }
@@ -341,124 +316,57 @@ final class PickerTests: XCTestCase {
         XCTAssertFalse(panel.canBecomeMain)
         XCTAssertEqual(NSWorkspace.shared.menuBarOwningApplication?.processIdentifier, owner)
         try await eventually { model.canDeliver }
-        XCTAssertTrue(panel.searchField?.currentEditor() === panel.firstResponder)
-        XCTAssertEqual(panel.searchField?.accessibilityLabel(), "Search references")
-        XCTAssertEqual(panel.searchField?.focusRingType, NSFocusRingType.none)
-        let contentView = try XCTUnwrap(panel.contentView)
-        contentView.layoutSubtreeIfNeeded()
-        let membership = try XCTUnwrap(descendants(of: contentView).compactMap { $0 as? NSButton }
-            .first { $0.accessibilityLabel() == PickerWords.text(.add) })
-        XCTAssertTrue(membership.isEnabled)
-        XCTAssertFalse(membership.isHidden)
+        let search = try XCTUnwrap(panel.searchField)
+        XCTAssertTrue(search.hasFocus)
+        XCTAssertEqual(search.accessibilityLabel(), "Search references")
+        XCTAssertTrue(controller.quickDelivery, "With no draft the highlighted row is what Return delivers.")
 
         let first = model.selected
-        let quickPage = try XCTUnwrap(descendants(of: contentView).compactMap { $0 as? NSTextField }
-            .first { $0.accessibilityLabel() == PickerWords.text(.page) })
-        let pagePosition = quickPage.convert(quickPage.bounds, to: contentView)
-        let quickList = try XCTUnwrap(resultTable(in: panel)?.enclosingScrollView)
-        let quickListFrame = quickList.convert(quickList.bounds, to: contentView)
-        let formatButton = try XCTUnwrap(descendants(of: contentView).compactMap { $0 as? NSButton }
-            .first { $0.accessibilityLabel() == PickerWords.text(.formatValue, model.formatName) })
-        let formatPosition = formatButton.convert(formatButton.bounds, to: contentView)
-        XCTAssertEqual(pagePosition.midY, formatPosition.midY, accuracy: 2)
         try send("\u{f701}", key: 125, to: panel) // Down
         XCTAssertNotEqual(model.selected, first)
         try await eventually { model.canDeliver }
-        contentView.layoutSubtreeIfNeeded()
-        XCTAssertEqual(quickPage.convert(quickPage.bounds, to: contentView), pagePosition)
         try send("\r", key: 36, flags: [.shift], to: panel)
         XCTAssertEqual(model.citations.map(\.row.id), [model.selected].compactMap { $0 })
+        XCTAssertFalse(controller.quickDelivery, "A draft moves the emphasis to the delivery button.")
         try await eventually { model.canDeliver }
-        contentView.layoutSubtreeIfNeeded()
-        XCTAssertEqual(membership.accessibilityLabel(), PickerWords.text(.remove))
-        XCTAssertEqual(quickList.convert(quickList.bounds, to: contentView), quickListFrame)
-        XCTAssertEqual(quickPage.convert(quickPage.bounds, to: contentView), pagePosition)
-        XCTAssertEqual(formatButton.convert(formatButton.bounds, to: contentView), formatPosition)
-        let beforePopover = try XCTUnwrap(resultTable(in: panel)?.enclosingScrollView?.frame)
         try send("i", key: 34, flags: [.command], to: panel)
         XCTAssertEqual(model.editingCitation, model.selected)
-        XCTAssertEqual(resultTable(in: panel)?.enclosingScrollView?.frame, beforePopover)
-        try send("\u{1b}", key: 53, to: panel)
+        XCTAssertEqual(controller.layer, .details(try XCTUnwrap(model.selected)))
+        controller.closeLayer(restoring: true)
         XCTAssertNil(model.editingCitation)
         try send("l", key: 37, flags: [.command], to: panel)
-        let page = try XCTUnwrap(descendants(of: try XCTUnwrap(panel.contentView))
-            .compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == PickerWords.text(.page) })
-        XCTAssertTrue(page.currentEditor() === panel.firstResponder)
-        let resultsTable = try XCTUnwrap(resultTable(in: panel))
-        let selectedRow = try XCTUnwrap(resultsTable.rowView(atRow: resultsTable.selectedRow, makeIfNecessary: true))
-        XCTAssertFalse(selectedRow.isEmphasized)
-        XCTAssertTrue(panel.makeFirstResponder(resultsTable))
-        XCTAssertTrue(selectedRow.isEmphasized)
-        XCTAssertTrue(panel.makeFirstResponder(page))
-        XCTAssertEqual(page.stringValue, "")
+        XCTAssertTrue(controller.locatorField?.hasFocus == true)
         try send("\t", key: 48, to: panel)
-        XCTAssertTrue(panel.searchField?.currentEditor() === panel.firstResponder)
-        XCTAssertTrue(panel.makeFirstResponder(panel.searchField))
-        try send("\u{f700}", key: 126, to: panel) // Up
+        XCTAssertTrue(search.hasFocus)
+        try send("\u{f701}", key: 125, flags: [.command], to: panel) // ⌘↓ reaches the token
+        XCTAssertEqual(controller.focus, .token(try XCTUnwrap(model.citationItem)))
+        try send("\u{f700}", key: 126, to: panel) // Up returns to search
+        XCTAssertTrue(search.hasFocus)
+        try send("\u{f700}", key: 126, to: panel)
         XCTAssertEqual(model.selected, first)
         for _ in 0..<10 {
             try send("=", key: 24, flags: [.command], to: panel)
         }
         XCTAssertEqual(model.scale, 2)
         try await eventually { panel.frame.width > 720 }
-        contentView.layoutSubtreeIfNeeded()
         let screen = try XCTUnwrap(panel.screen)
         XCTAssertTrue(screen.visibleFrame.insetBy(dx: -1, dy: -1).contains(panel.frame))
-        let scaledSearch = try XCTUnwrap(panel.searchField)
-        XCTAssertTrue(contentView.bounds.contains(scaledSearch.convert(scaledSearch.bounds, to: contentView)))
-        let frame = panel.frame
-        panel.setFrame(NSRect(x: frame.minX, y: frame.maxY - 720, width: 960, height: 720), display: true)
+
         model.query = "invented"
         try await eventually { model.canDeliver && model.rows.count == 16 }
-        let content = try XCTUnwrap(panel.contentView)
-        let views = descendants(of: content)
-        let scroll = try XCTUnwrap(views.compactMap { $0 as? NSScrollView }
-            .first { $0.documentView is NSTableView })
-        let table = try XCTUnwrap(scroll.documentView as? NSTableView)
-        XCTAssertEqual(table.rowHeight, 72)
-        XCTAssertGreaterThan(table.rect(ofRow: table.numberOfRows - 1).maxY, scroll.contentView.bounds.height)
-        let library = try XCTUnwrap(views.compactMap { $0 as? NSButton }
-            .first { $0.accessibilityLabel() == PickerWords.text(.scopeLabel, fixture.library.lastPathComponent) })
-        XCTAssertFalse(library.isHidden)
-        let buttons = try [PickerWords.text(.add), model.deliveryTitle, PickerWords.text(.more)].map { label in
-            try XCTUnwrap(views.compactMap { $0 as? NSButton }
-                .first { $0.accessibilityLabel() == label && !$0.isHidden })
-        }
-        let placements = buttons.map { $0.convert($0.bounds, to: content) }
-        XCTAssertTrue(placements.allSatisfy { $0.height == 56 && content.bounds.contains($0) })
-        XCTAssertTrue(zip(placements, placements.dropFirst()).allSatisfy { $0.maxX < $1.minX })
-        XCTAssertFalse(library.convert(library.bounds, to: content).intersects(placements[0]))
-
-        let canvas = try XCTUnwrap(views.compactMap { $0 as? PickerCanvas }.first)
-        canvas.showNumbers(true)
-        content.layoutSubtreeIfNeeded()
-        let partlyVisible = 3
-        scroll.contentView.scroll(to: NSPoint(x: 0, y: table.rect(ofRow: partlyVisible).midY))
-        scroll.reflectScrolledClipView(scroll.contentView)
-        let firstWhole = partlyVisible + 1
-        let clipped = try XCTUnwrap(table.view(atColumn: 0, row: partlyVisible, makeIfNecessary: true))
-        let numbered = try XCTUnwrap(table.view(atColumn: 0, row: firstWhole, makeIfNecessary: true))
-        XCTAssertNil(clipped.accessibilityHelp())
-        XCTAssertEqual(numbered.accessibilityHelp(), "⌘1")
+        controller.showNumbers(true)
+        try await eventually { !controller.visibleRows.isEmpty }
         let draft = model.citations.map(\.row.id)
+        let target = controller.visibleRows[0]
+        XCTAssertEqual(controller.number(for: target), 1)
         try send("1", key: UInt16(kVK_ANSI_1), flags: [.command], to: panel)
-        XCTAssertEqual(model.selected, model.rows[firstWhole].id)
+        XCTAssertEqual(model.selected, target)
         XCTAssertEqual(model.citations.map(\.row.id), draft)
 
         model.query = ""
         try await eventually { model.canDeliver }
         try send("\u{1b}", key: 53, to: panel)
         try await eventually { !panel.isVisible }
-    }
-
-    @MainActor
-    private func descendants(of view: NSView) -> [NSView] {
-        view.subviews.flatMap { [$0] + descendants(of: $0) }
-    }
-
-    @MainActor
-    private func resultTable(in panel: PickerPanel) -> NSTableView? {
-        panel.contentView.flatMap { descendants(of: $0).compactMap { $0 as? NSTableView }.first }
     }
 
     @MainActor

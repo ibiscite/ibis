@@ -21,13 +21,16 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSSearch
         let window = SettingsHostWindow(shortcuts: shortcuts)
         window.isReleasedWhenClosed = false
         super.init(window: window)
-        window.contentView = NSHostingView(rootView: NativeSettingsForm(
+        let content = NSHostingController(rootView: NativeSettingsForm(
             preferences: preferences, shortcuts: shortcuts, searchField: searchField,
             chooseLibrary: { [weak window] file in
                 if let window { chooseLibrary(window, file) }
             }, select: { [weak self] pane in self?.select(pane) },
             reveal: { [weak self] row in self?.reveal(row) }
         ))
+        content.sizingOptions = []
+        window.contentViewController = content
+        window.setContentSize(NSSize(width: 720, height: 520))
         window.center()
         window.delegate = self
         let prompt = PickerWords.text(.settingsSearch)
@@ -58,6 +61,11 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSSearch
     }
 
     func showPaste() { reveal(.paste) }
+
+    func show(_ pane: SettingsPane) {
+        select(pane)
+        showWindow(nil)
+    }
     var libraryExtensions: [String] { preferences.saved?.libraryExtensions ?? [] }
     func setLibraryBusy(_ busy: Bool) { preferences.libraryBusy = busy }
     func didSelectLibrary(_ saved: SettingsResult) { preferences.useSaved(saved, resetText: false) }
@@ -153,10 +161,12 @@ private final class SettingsHostWindow: NSWindow {
 
     init(shortcuts: OpeningShortcuts) {
         self.shortcuts = shortcuts
-        super.init(contentRect: NSRect(x: 0, y: 0, width: 744, height: 500),
-                   styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        contentMinSize = NSSize(width: 620, height: 390)
-        titleVisibility = .hidden
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+                   styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                   backing: .buffered, defer: false)
+        contentMinSize = NSSize(width: 640, height: 400)
+        titlebarAppearsTransparent = true
+        toolbarStyle = .unified
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -265,19 +275,20 @@ private struct NativeSettingsForm: View {
     let reveal: (SettingsSearchRow) -> Void
 
     var body: some View {
-        HSplitView {
-            sidebar.frame(minWidth: 172, idealWidth: 192, maxWidth: 226)
-            detail.frame(minWidth: 410)
+        NavigationSplitView {
+            sidebar.navigationSplitViewColumnWidth(min: 200, ideal: 215, max: 260)
+        } detail: {
+            detail
         }
+        .navigationSplitViewStyle(.balanced)
     }
 
     private var sidebar: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             SettingsSearchHost(field: searchField)
-                .frame(height: 26)
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
-
+                .frame(height: 28)
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
             if preferences.search.isSearching {
                 searchResults.onAppear { flashed = nil }
             } else {
@@ -286,46 +297,35 @@ private struct NativeSettingsForm: View {
                     set: { pane in if let pane { select(pane) } }
                 )) {
                     ForEach(SettingsPane.allCases, id: \.self) { pane in
-                        Text(pane.title).tag(pane)
+                        Label { Text(pane.title) } icon: { PaneIcon(pane: pane) }.tag(pane)
                     }
                 }
                 .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
             }
         }
-        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private var detail: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(preferences.pane.title)
-                .font(.title2.weight(.semibold))
-                .accessibilityAddTraits(.isHeader)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 17)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Divider()
-            ScrollViewReader { scroll in
-                settingsForm
-                    .id(preferences.pane)
-                    .task(id: revealWhenAvailable) {
-                        guard let target = revealWhenAvailable else { return }
-                        await Task.yield()
-                        guard !Task.isCancelled else { return }
-                        scroll.scrollTo(target, anchor: .center)
-                        flashed = target
-                        focused = target
-                        spoken = target
-                        preferences.revealed = nil
-                    }
-                    .task(id: flashed) {
-                        guard flashed != nil else { return }
-                        try? await Task.sleep(for: .seconds(2))
-                        if !Task.isCancelled { flashed = nil }
-                    }
-            }
+        ScrollViewReader { scroll in
+            settingsForm
+                .id(preferences.pane)
+                .task(id: revealWhenAvailable) {
+                    guard let target = revealWhenAvailable else { return }
+                    await Task.yield()
+                    guard !Task.isCancelled else { return }
+                    scroll.scrollTo(target, anchor: .center)
+                    flashed = target
+                    focused = target
+                    spoken = target
+                    preferences.revealed = nil
+                }
+                .task(id: flashed) {
+                    guard flashed != nil else { return }
+                    try? await Task.sleep(for: .seconds(2))
+                    if !Task.isCancelled { flashed = nil }
+                }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .navigationTitle(preferences.pane.title)
     }
 
     private var revealWhenAvailable: SettingsSearchRow? {
@@ -340,26 +340,32 @@ private struct NativeSettingsForm: View {
                     .foregroundStyle(.secondary)
             }
             ForEach(preferences.search.matches) { row in
+                let highlighted = row == preferences.search.highlighted
                 Button { reveal(row) } label: {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(row.title)
-                        if row.title != row.pane.title {
-                            Text(row.pane.title).font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        PaneIcon(pane: row.pane)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(row.title)
+                            if row.title != row.pane.title {
+                                Text(row.pane.title).font(.caption).opacity(0.7)
+                            }
                         }
                     }
-                    .padding(.vertical, 3)
+                    .foregroundStyle(highlighted ? Color(nsColor: .alternateSelectedControlTextColor) : .primary)
+                    .padding(.vertical, 2)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text(row.title))
                 .accessibilityValue(Text(row.pane.title))
-                .accessibilityAddTraits(row == preferences.search.highlighted ? .isSelected : [])
-                .listRowBackground(row == preferences.search.highlighted ? Color.accentColor.opacity(0.14) : nil)
+                .accessibilityAddTraits(highlighted ? .isSelected : [])
+                .listRowBackground(highlighted
+                    ? RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .selectedContentBackgroundColor)).padding(.horizontal, 10)
+                    : nil)
             }
         }
         .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
         .accessibilityLabel(Text(PickerWords.text(.settingsSearchResults)))
     }
 
@@ -372,11 +378,14 @@ private struct NativeSettingsForm: View {
                         shortcutSection
                         pasteSection(saved)
                     case .appearance:
-                        pickerSection(saved)
                         Section {
-                            AppearancePreview(appearance: saved.appearance, density: saved.density, largerText: saved.largerText)
-                                .padding(.vertical, 6)
+                            AppearancePreview(appearance: saved.appearance, density: saved.density,
+                                              largerText: saved.largerText)
+                                .frame(maxWidth: 420)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
                         }
+                        pickerSection(saved)
                     case .library:
                         librarySection(saved)
                     }
@@ -385,17 +394,19 @@ private struct NativeSettingsForm: View {
             }
 
             if let problem = preferences.problem {
-                if preferences.saved == nil {
-                    LabeledContent {
-                        Button(PickerWords.text(.tryAgain)) { preferences.read() }
-                    } label: {
+                Section {
+                    if preferences.saved == nil {
+                        LabeledContent {
+                            Button(PickerWords.text(.tryAgain)) { preferences.read() }
+                        } label: {
+                            Text(problem).foregroundStyle(.secondary)
+                        }
+                    } else {
                         Text(problem).foregroundStyle(.secondary)
                     }
-                } else {
-                    Text(problem).foregroundStyle(.secondary)
                 }
             } else if preferences.busy && preferences.saved == nil {
-                ProgressView().controlSize(.small)
+                ProgressView().controlSize(.small).frame(maxWidth: .infinity)
             }
         }
         .formStyle(.grouped)
@@ -423,15 +434,22 @@ private struct NativeSettingsForm: View {
                         }
                     }
                 } label: {
-                    Text(saved.library?.name ?? PickerWords.text(.noLibrarySelected))
+                    Label {
+                        Text(saved.library?.name ?? PickerWords.text(.noLibrarySelected))
+                        if let problem = preferences.libraryProblem {
+                            Text(problem)
+                        } else if let library = saved.library, library.missing {
+                            Text(PickerWords.text(.libraryMissing, library.name))
+                        } else if let file = saved.library?.file {
+                            Text(file).truncationMode(.middle)
+                        } else if saved.library == nil {
+                            Text(PickerWords.text(.chooseHint))
+                        }
+                    } icon: {
+                        Image(systemName: saved.library?.missing == true ? "questionmark.folder" : "books.vertical")
+                            .foregroundStyle(.secondary)
+                    }
                 }
-            }
-            if let problem = preferences.libraryProblem {
-                Text(problem).foregroundStyle(.secondary)
-            } else if let library = saved.library, library.missing {
-                Text(PickerWords.text(.libraryMissing, library.name)).foregroundStyle(.secondary)
-            } else if saved.library == nil {
-                Text(PickerWords.text(.chooseHint)).foregroundStyle(.secondary)
             }
             if preferences.libraryBusy { ProgressView().controlSize(.small) }
         }
@@ -441,21 +459,26 @@ private struct NativeSettingsForm: View {
         Section(PickerWords.text(.shortcuts)) {
             destination(.shortcut) {
                 LabeledContent {
-                    let label = shortcuts.active?.label ?? PickerWords.text(.shortcutNotAssigned)
-                    control(.shortcut) {
-                        Button(shortcuts.recording ? PickerWords.text(.recordShortcut) : label) { shortcuts.beginRecording() }
+                    HStack(spacing: 8) {
+                        if shortcuts.hasCustomShortcut {
+                            Button(PickerWords.text(.restoreShortcut)) { shortcuts.useDefault() }
+                                .buttonStyle(.link)
+                        }
+                        let label = shortcuts.active?.label ?? PickerWords.text(.shortcutNotAssigned)
+                        control(.shortcut) {
+                            Button { shortcuts.beginRecording() } label: {
+                                Text(shortcuts.recording ? PickerWords.text(.recordShortcut) : label)
+                                    .monospaced(!shortcuts.recording && shortcuts.active != nil)
+                                    .frame(minWidth: 96)
+                            }
                             .accessibilityLabel(Text(SettingsSearchRow.shortcut.title))
                             .accessibilityValue(Text(shortcuts.recording ? PickerWords.text(.recordShortcut) : label))
-                    }
-                    if shortcuts.hasCustomShortcut {
-                        Button(PickerWords.text(.restoreShortcut)) { shortcuts.useDefault() }
+                        }
                     }
                 } label: {
                     Text(SettingsSearchRow.shortcut.title)
+                    if let issue = shortcuts.issue { Text(PickerWords.text(issue)) }
                 }
-            }
-            if let issue = shortcuts.issue {
-                Text(PickerWords.text(issue)).foregroundStyle(.secondary)
             }
         }
     }
@@ -464,26 +487,34 @@ private struct NativeSettingsForm: View {
         Section(PickerWords.text(.pasteSettings)) {
             destination(.paste) {
                 control(.paste) {
-                    Toggle(SettingsSearchRow.paste.title, isOn: Binding(
+                    Toggle(isOn: Binding(
                         get: { preferences.saved?.paste ?? saved.paste }, set: { preferences.change(paste: $0) }
-                    ))
+                    )) {
+                        Text(SettingsSearchRow.paste.title)
+                        if !saved.paste || preferences.pasteGranted {
+                            Text(PickerWords.text(saved.paste ? .pasteReady : .copyMode))
+                        }
+                    }
+                    .toggleStyle(.switch)
                 }
             }
-            if !saved.paste || preferences.pasteGranted {
-                Text(PickerWords.text(saved.paste ? .pasteReady : .copyMode))
-                    .foregroundStyle(.secondary)
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(PickerWords.text(.pasteNeedsAccess)).foregroundStyle(.secondary)
+            if saved.paste && !preferences.pasteGranted {
+                LabeledContent {
                     Button(PickerWords.text(.openSystemSettings)) { preferences.openPasteAccess() }
-                    Text(PickerWords.text(.pasteTryAgain)).foregroundStyle(.secondary)
+                } label: {
+                    Label {
+                        Text(PickerWords.text(.pasteNeedsAccess))
+                        Text(PickerWords.text(.pasteTryAgain))
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill").symbolRenderingMode(.multicolor)
+                    }
                 }
             }
         }
     }
 
     private func pickerSection(_ saved: SettingsResult) -> some View {
-        Section {
+        Section(PickerWords.text(.pickerPreferences)) {
             destination(.appearance) {
                 control(.appearance) {
                     Picker(SettingsSearchRow.appearance.title, selection: Binding(
@@ -493,6 +524,7 @@ private struct NativeSettingsForm: View {
                         Text(PickerWords.text(.light)).tag(Appearance.light)
                         Text(PickerWords.text(.dark)).tag(Appearance.dark)
                     }
+                    .pickerStyle(.segmented)
                 }
             }
             destination(.density) {
@@ -510,8 +542,28 @@ private struct NativeSettingsForm: View {
                     Toggle(SettingsSearchRow.largerText.title, isOn: Binding(
                         get: { preferences.saved?.largerText ?? saved.largerText }, set: { preferences.change(largerText: $0) }
                     ))
+                    .toggleStyle(.switch)
                 }
             }
         }
+    }
+}
+
+/// System Settings' pane icon: a white symbol on a coloured rounded square.
+private struct PaneIcon: View {
+    let pane: SettingsPane
+
+    var body: some View {
+        let style: (symbol: String, color: Color) = switch pane {
+        case .general: ("gearshape.fill", .gray)
+        case .appearance: ("circle.lefthalf.filled", .indigo)
+        case .library: ("books.vertical.fill", .orange)
+        }
+        Image(systemName: style.symbol)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 20, height: 20)
+            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(style.color.gradient))
+            .accessibilityHidden(true)
     }
 }

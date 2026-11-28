@@ -14,6 +14,8 @@ node scripts/gen.mjs                       # regenerate bindings, schemas and th
 cargo test -p ibis-desktop --locked        # the app's Rust side; plain cargo test skips it
 pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1
 node scripts/pr-lint.mjs --title "fix: explain the change"
+bash scripts/native-macos.sh dev            # Mac: rebuild the native app and open it on the review library
+bash scripts/native-macos.sh shots          # Mac: screenshot every review state, light and dark
 ```
 
 ## Working
@@ -21,7 +23,7 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 - Start from the tracking issue: **Plan** gives the order, **Now** what is in flight. Run `git fetch origin --prune` and `git status`; keep work you did not make. Everything needed to resume lives in the repository and on GitHub, never only in a chat or a local file. Each open pull request ends with a short handoff: what is left, the next command, any blocker.
 - One branch from `origin/main` per piece of work, one worktree per session with its own Cargo target directory (never shared). Never push to `main`. Related changes go in one pull request. Overlapping paths with an open pull request: finish that one first.
 - The 10-core, 16 GB Mac is shared: run one focused check (`cargo check -p CRATE`, one test filter, one Vitest file) and leave the rest to the gate. A piece still failing after three rounds is cut: land the part that is right, put the rest in one line on its issue.
-- Build the simplest correct form at the place that owns the problem. If the same fix is needed, or would be copied, at a second place, change the shared piece instead; a root-cause change lands as a series (the new primitive beside the old path, then callers moved, then the old path deleted). Never change a test's expected result to reach green unless the behaviour was meant to change, and say so on the pull request. Delete what you replace; write no compatibility code before 1.0 ([ROADMAP.md](ROADMAP.md) › How we build). UI changes go through `tokens.css`, a shared component in `apps/desktop/src/ui/` or the part's page under `docs/design/`, never one screen alone. Logos and icons come only from `brand/`.
+- Build the simplest correct form at the place that owns the problem. If the same fix is needed, or would be copied, at a second place, change the shared piece instead; a root-cause change lands as a series (the new primitive beside the old path, then callers moved, then the old path deleted). Never change a test's expected result to reach green unless the behaviour was meant to change, and say so on the pull request. Delete what you replace; write no compatibility code before 1.0 ([ROADMAP.md](ROADMAP.md) › How we build). UI changes go through the shared piece, never one screen alone: in the Tauri app `tokens.css`, a component in `apps/desktop/src/ui/` or the part's page under `docs/design/`; in the native Mac app (`native/macos`) the system's own controls, colours and SF Symbols and the shared views there ([decision 0066](docs/decisions/0066-native-shells-use-system-parts.md)). Logos come only from `brand/`; the Tauri app's icons too.
 - A change people can see lands with its explanation, in the same pull request: the website (`website/content/`, `website/pages/`) and the docs that say what Ibis does, cannot do yet, and how (the maintainer, 2026-11-26).
 - When the maintainer approves a plan or answers a question, record it the same day in the file it changes and link it from the tracking issue.
 

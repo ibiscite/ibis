@@ -637,7 +637,7 @@ def ui_marks(root):
 
 
 def picker_pdfs():
-    """Native picker marks and template icons at their AppKit point sizes."""
+    """The native picker's brand marks. Its other icons are SF Symbols (decision 0066)."""
     directory = OUT / "macos-picker"
     directory.mkdir(parents=True, exist_ok=True)
 
@@ -663,11 +663,6 @@ def picker_pdfs():
         pdf(name, SET["picker"]["size"], bird["viewBox"], bird["body"], colour)
     box, body = SYM["beak"]
     pdf("ibis-quote-beak", 20, " ".join(f"{value:g}" for value in box), body)
-    for name in ("article", "book", "chapter", "thesis", "web", "report", "other",
-                 "check", "library", "close", "warning", "error"):
-        icon = ElementTree.fromstring((HERE / "icons" / f"{name}.svg").read_text(encoding="utf-8"))
-        body = "".join(ElementTree.tostring(shape, encoding="unicode") for shape in icon)
-        pdf(name, 20, icon.attrib["viewBox"], f'<g fill="currentColor">{body}</g>')
 
 
 def main(root=HERE.parent):

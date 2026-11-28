@@ -20,6 +20,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
     private struct Launch {
         let file: URL?
         let show: Bool
+        let appearance: NSAppearance.Name?
 
         init() {
             let arguments = CommandLine.arguments
@@ -28,6 +29,10 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
                 return URL(fileURLWithPath: arguments[index + 1]).standardizedFileURL
             }
             show = arguments.contains("--show")
+            appearance = arguments.firstIndex(of: "--appearance").flatMap { index in
+                guard arguments.indices.contains(index + 1) else { return nil }
+                return arguments[index + 1] == "dark" ? .darkAqua : .aqua
+            }
         }
     }
 
@@ -102,7 +107,12 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.shortcuts.layoutChanged() }
         }
-        if launch.show { panel.summon() }
+        if let appearance = launch.appearance { NSApp.appearance = NSAppearance(named: appearance) }
+        if let state = ReviewState.requested {
+            Task { await state.run(panel: panel, settings: settings) }
+        } else if launch.show {
+            panel.summon()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -213,8 +223,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
                     if fromSettings {
                         self.settings.didSelectLibrary(saved)
                     } else if self.panel.pickerIsOpen {
-                        self.panel.makeKeyAndOrderFront(nil)
-                        self.panel.makeFirstResponder(self.panel.searchField)
+                        self.panel.focusSearch()
                     } else {
                         self.panel.summon()
                     }

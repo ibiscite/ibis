@@ -1,8 +1,8 @@
 # Settings
 
-## Native macOS repo build
+## Native macOS app
 
-Settings is a resizable native window reached from the Ibis menu, menu bar item or ⌘,. The sidebar keeps General, Appearance and Library in reach. General groups the shortcut and paste behavior. Appearance has a live picker preview with invented references alongside its display controls. Its theme, Rows and Larger Text save through the daemon and update the picker. ⌘+ and ⌘− are temporary picker zoom. The Ibis menu opens the standard About window.
+Settings is a resizable native window reached from the Ibis menu, the menu bar item or ⌘,. It is laid out like System Settings: a `NavigationSplitView` with the search field at the top of the sidebar, pane icons as white symbols on coloured tiles, and grouped `Form` cards with switches, pop-ups and a segmented theme control. The sidebar keeps General, Appearance and Library in reach. General groups the shortcut and paste behavior. Appearance has a live preview above its display controls, drawn with the picker's own rows and invented references. Its theme, Rows and Larger Text save through the daemon and update the picker. ⌘+ and ⌘− are temporary picker zoom. The Ibis menu opens the standard About window.
 
 Library shows the saved source and opens the file chooser as a sheet. Ibis checks that a replacement can open before saving the change. If the saved file moves, Find opens the chooser for a replacement. The picker shows the source it is actually searching, including temporary overrides. Press ⌘F to search Settings by name or task. Return reveals the actual control on its page.
 

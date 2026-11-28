@@ -1,37 +1,46 @@
 import AppKit
 import ApplicationServices
 import CIbisNative
+import Combine
 import SwiftUI
 
 /// A nonactivating panel takes text without replacing the captured application.
+/// It owns the window, its glass and the keyboard; SwiftUI draws the content.
 @MainActor
 final class PickerPanel: NSPanel, NSWindowDelegate {
     private static let preferred = CGSize(width: 720, height: 480)
     private static let minimum = CGSize(width: 480, height: 360)
-    private let model: PickerModel
-    private let surface: PickerSurface
+    let model: PickerModel
+    let controller: PickerController
+    private let host: NSHostingView<PickerView>
+    private let glass: PickerGlass
     private let chooser: (URL?) -> Void
     private let sizes: UserDefaults?
-    private weak var canvas: PickerCanvas?
     private var display: NSScreen?
     private var shown = false
-    private var lastScale: CGFloat = 1
-    private var lastAppearance: Appearance = .system
     private var commandHold: Task<Void, Never>?
-    private var displayOptions: NSObjectProtocol?
-    var choosingLibrary = false
+    private var observers: [NSObjectProtocol] = []
+    private var preferences: Set<AnyCancellable> = []
     var openSettings: (() -> Void)?
 
-    var searchField: NSTextField? { canvas?.search }
     var pickerIsOpen: Bool { shown }
+    var searchField: NSTextField? { controller.searchField }
+    var choosingLibrary: Bool {
+        get { controller.choosingLibrary }
+        set { controller.choosingLibrary = newValue }
+    }
 
     init(model: PickerModel, sizes: UserDefaults? = nil, chooseLibrary: @escaping (URL?) -> Void) {
         self.model = model
         self.sizes = sizes
         chooser = chooseLibrary
-        surface = PickerSurface(view: NSHostingView(rootView: PickerView(model: model)))
+        controller = PickerController(model: model)
+        host = NSHostingView(rootView: PickerView(model: model, controller: controller))
+        glass = PickerGlass(content: host)
         super.init(contentRect: NSRect(origin: .zero, size: Self.preferred),
-                   styleMask: [.borderless, .nonactivatingPanel, .resizable], backing: .buffered, defer: false)
+                   styleMask: [.borderless, .nonactivatingPanel, .resizable],
+                   backing: .buffered, defer: false)
+        controller.panel = self
         title = PickerWords.text(.panel)
         setAccessibilityLabel(title)
         isFloatingPanel = true
@@ -45,28 +54,34 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         acceptsMouseMovedEvents = true
         isExcludedFromWindowsMenu = true
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        autorecalculatesKeyViewLoop = false
-        contentView = surface
+        contentView = glass
         delegate = self
-        displayOptions = NSWorkspace.shared.notificationCenter.addObserver(
+        observers.append(NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshSurface() }
-        }
+            MainActor.assumeIsolated { self?.glass.refresh() }
+        })
+        model.$appearance.removeDuplicates().sink { [weak self] choice in
+            self?.appearance = switch choice {
+            case .system: nil
+            case .dark: NSAppearance(named: .darkAqua)
+            case .light: NSAppearance(named: .aqua)
+            }
+        }.store(in: &preferences)
+        model.$textPercent.removeDuplicates().dropFirst().sink { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self, let display = self.screen ?? self.display else { return }
+                self.place(on: display)
+            }
+        }.store(in: &preferences)
     }
 
     deinit {
-        if let displayOptions { NSWorkspace.shared.notificationCenter.removeObserver(displayOptions) }
+        observers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
     }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
-
-    func attach(_ canvas: PickerCanvas) {
-        self.canvas = canvas
-        initialFirstResponder = canvas.search
-        if isKeyWindow { makeFirstResponder(canvas.search) }
-    }
 
     func summon() {
         let target = NSWorkspace.shared.frontmostApplication
@@ -83,14 +98,13 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
             guard let data = site.data else { return nil }
             return String(decoding: UnsafeBufferPointer(start: data, count: site.len), as: UTF8.self)
         }
-        contentView?.layoutSubtreeIfNeeded()
-        invalidateShadow()
+        glass.refresh()
+        host.layoutSubtreeIfNeeded()
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         shown = true
         alphaValue = reduceMotion ? 1 : 0
-        makeFirstResponder(searchField)
         makeKeyAndOrderFront(nil)
-        canvas?.focusSearch()
+        controller.focusSearch(caretAtEnd: true)
         if !reduceMotion {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.12
@@ -102,10 +116,11 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     func dismiss(forDelivery: Bool = false) {
         guard shown else { return }
         shown = false
-        canvas?.closePopover()
+        controller.layer = nil
+        controller.closeActions(restoring: false)
         commandHold?.cancel()
         commandHold = nil
-        canvas?.showNumbers(false)
+        controller.showNumbers(false)
         model.dismiss(forDelivery: forDelivery)
         if forDelivery || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             orderOut(nil)
@@ -122,19 +137,17 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         }
     }
 
-    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
-        let accepted = super.makeFirstResponder(responder)
-        if accepted { canvas?.refreshReturnTarget() }
-        return accepted
+    func focusSearch() {
+        makeKeyAndOrderFront(nil)
+        controller.focusSearch(caretAtEnd: true)
     }
 
-    func windowDidBecomeKey(_ notification: Notification) {
-        canvas?.refreshReturnTarget()
-    }
+    func windowDidBecomeKey(_ notification: Notification) { controller.panelKeyChanged(true) }
 
     func windowDidResignKey(_ notification: Notification) {
-        canvas?.refreshReturnTarget()
-        if shown, !choosingLibrary, canvas?.hasOpenPopover != true { dismiss() }
+        controller.panelKeyChanged(false)
+        // A popover takes the keyboard for its fields; the picker stays open beneath it.
+        if shown, !choosingLibrary, controller.layer == nil { dismiss() }
     }
 
     func windowDidEndLiveResize(_ notification: Notification) {
@@ -143,26 +156,12 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         sizes?.set([Double(frame.width / scale), Double(frame.height / scale)], forKey: key)
     }
 
-    func viewPreferencesChanged() {
-        if model.appearance != lastAppearance {
-            lastAppearance = model.appearance
-            appearance = switch lastAppearance {
-            case .system: nil
-            case .dark: NSAppearance(named: .darkAqua)
-            case .light: NSAppearance(named: .aqua)
-            }
-        }
-        if model.scale != lastScale {
-            lastScale = model.scale
-            if let display = screen ?? display { place(on: display) }
-            refreshSurface()
-        }
-    }
-
-    private func refreshSurface() {
-        surface.configure(scale: model.scale)
-        canvas?.refresh()
-        invalidateShadow()
+    /// Opens a native menu under the control that owns it.
+    func popUp(_ menu: NSMenu, at anchor: CGRect?) {
+        let rect = anchor ?? CGRect(x: 16, y: host.bounds.height - 48, width: 0, height: 0)
+        let y = host.isFlipped ? rect.maxY + 4 : host.bounds.height - rect.maxY - 4
+        menu.autoenablesItems = false
+        menu.popUp(positioning: nil, at: NSPoint(x: rect.minX, y: y), in: host)
     }
 
     private func keyForDisplay(_ screen: NSScreen) -> String? {
@@ -239,228 +238,176 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     }
 
     func openSource() {
-        if let file = model.catalog?.library?.file { NSWorkspace.shared.open(URL(fileURLWithPath: file)) }
-        else { openZotero() }
-    }
-
-    func openZotero() {
-        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.zotero.zotero") {
+        if let file = model.catalog?.library?.file {
+            NSWorkspace.shared.open(URL(fileURLWithPath: file))
+        } else if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.zotero.zotero") {
             NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
         }
     }
 
     func submit(whenReady: Bool = false) {
-        guard canvas?.hasOpenActions != true else { return }
-        if whenReady, canvas?.resolveLibraryIfNeeded() == true { return }
+        guard !controller.actionsOpen else { return }
+        if whenReady, controller.resolveLibraryIfNeeded() { return }
         model.deliver(whenReady: whenReady) { [weak self] in self?.dismiss(forDelivery: true) }
     }
 
     override func sendEvent(_ event: NSEvent) {
-        if let canvas {
-            if event.type == .flagsChanged { flags(event.modifierFlags, view: canvas) }
-            if event.type == .keyDown, routeKey(event, view: canvas) { return }
-        }
+        if event.type == .flagsChanged { flags(event.modifierFlags) }
+        if event.type == .keyDown, routeKey(event) { return }
         super.sendEvent(event)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        // Route Command keys before AppKit asks the search field to handle them.
-        if isKeyWindow, let canvas, routeKey(event, view: canvas) { return true }
+        // Route Command keys before AppKit asks the focused field to handle them.
+        if isKeyWindow, routeKey(event) { return true }
         return super.performKeyEquivalent(with: event)
     }
 
-    private func flags(_ flags: NSEvent.ModifierFlags, view: PickerCanvas) {
+    private func flags(_ flags: NSEvent.ModifierFlags) {
         if flags.contains(.command) {
             guard commandHold == nil else { return }
-            commandHold = Task { [weak view] in
+            commandHold = Task { [weak controller] in
                 try? await Task.sleep(for: .seconds(1))
-                if !Task.isCancelled { view?.showNumbers(true) }
+                if !Task.isCancelled { controller?.showNumbers(true) }
             }
         } else {
             commandHold?.cancel()
             commandHold = nil
-            view.showNumbers(false)
+            controller.showNumbers(false)
         }
     }
 
-    func routeKey(_ event: NSEvent, view: PickerCanvas) -> Bool {
-        if view.hasOpenActions { return view.handleActionKey(event) }
+    /// One router for the picker's keys, so every command works from every control.
+    func routeKey(_ event: NSEvent) -> Bool {
         let responder = (event.window ?? self).firstResponder
         guard (responder as? NSTextInputClient)?.hasMarkedText() != true else { return false }
+        if controller.actionsOpen { return controller.actionKey(event) }
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let key = event.specialKey
         let character = event.charactersIgnoringModifiers?.lowercased()
-        let inSearch = searchField?.currentEditor() === responder || searchField === responder
-        if modifiers.isEmpty, character == "\t", view.locatorHasFocus {
-            view.focusSearch()
+        let inSearch = controller.searchField?.hasFocus == true
+        if modifiers.isEmpty || modifiers == [.shift], character == "\t" || character == "\u{19}" {
+            if inSearch, modifiers.isEmpty, model.citationItem != nil { controller.focusLocator() }
+            else { controller.focusSearch() }
             return true
         }
         if key == .carriageReturn || key == .enter {
             if modifiers == [.shift] {
-                view.runCommand(.membership, repeating: event.isARepeat)
+                controller.runCommand(.membership, repeating: event.isARepeat)
                 return true
             }
             if modifiers.isEmpty || modifiers == [.option] {
                 if !event.isARepeat {
-                    if modifiers.contains(.option) { view.runCommand(.membership) } else { submit(whenReady: true) }
+                    if modifiers.contains(.option) { controller.runCommand(.membership) } else { submit(whenReady: true) }
                 }
                 return true
             }
         }
         if modifiers.isEmpty, character == "\u{1b}" {
-            if !event.isARepeat, !view.escape() { dismiss() }
+            if !event.isARepeat, !controller.escape() { dismiss() }
             return true
         }
-        if inSearch {
-            if modifiers.isEmpty, key == .upArrow || key == .downArrow {
-                view.move(key == .upArrow ? -1 : 1)
+        if inSearch, modifiers.isEmpty {
+            if key == .upArrow || key == .downArrow {
+                controller.move(key == .upArrow ? -1 : 1)
                 return true
             }
-            if modifiers.isEmpty, key == .delete, model.shorthand, model.query.isEmpty {
+            if key == .delete, model.shorthand, model.query.isEmpty {
                 model.toggleShorthand()
                 return true
             }
         }
-        if modifiers.isEmpty || modifiers == [.shift], view.tokenKey(key, shift: modifiers.contains(.shift)) { return true }
+        if modifiers.isEmpty || modifiers == [.shift],
+           controller.tokenKey(key, shift: modifiers.contains(.shift)) { return true }
         if modifiers == [.command], character == "k" {
-            if !event.isARepeat { view.showActions() }
+            if !event.isARepeat { controller.showActions() }
             return true
         }
         if modifiers == [.command], let character, let number = Int(character), (1...9).contains(number) {
-            view.number(number - 1)
+            controller.selectNumber(number)
             return true
         }
         guard let command = PickerCommand.matching(character, modifiers: modifiers) else { return false }
-        return view.runCommand(command, repeating: event.isARepeat)
+        return controller.runCommand(command, repeating: event.isARepeat)
     }
 }
 
+/// The system's glass behind the picker: Liquid Glass on macOS 26, the popover
+/// material before it, and an opaque window with Reduce Transparency.
 @MainActor
-private final class PickerSurface: NSView {
-    private let host: NSHostingView<PickerView>
+private final class PickerGlass: NSView {
+    private let content: NSView
     private var material: NSView?
-    private var tint: NSView?
-    private let outline = PickerOutline()
-    private var corner: CGFloat = 16
-    private var reducedTransparency: Bool?
-    private let tintAmount = 0.70
+    private var reduced: Bool?
+    private let corner: CGFloat
 
-    init(view: NSHostingView<PickerView>) {
-        host = view
+    init(content: NSView) {
+        self.content = content
+        if #available(macOS 26.0, *) { corner = 26 } else { corner = 16 }
         super.init(frame: .zero)
-        if #available(macOS 13.3, *) { host.safeAreaRegions = [] }
-        if #available(macOS 13.0, *) { host.sizingOptions = [] }
         wantsLayer = true
+        layer?.cornerRadius = corner
+        layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
-        configure(scale: 1)
+        if let host = content as? NSHostingView<PickerView> {
+            if #available(macOS 13.3, *) { host.safeAreaRegions = [] }
+            host.sizingOptions = []
+        }
+        refresh()
     }
 
     required init?(coder: NSCoder) { nil }
 
-    func configure(scale: CGFloat) {
-        corner = 16 * scale
-        layer?.cornerRadius = corner
-        outline.corner = corner
-        outline.thickness = scale
-        outline.isHidden = !NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-        outline.needsDisplay = true
+    func refresh() {
         let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
-        if reducedTransparency == reduce {
-            #if compiler(>=6.2)
-            if #available(macOS 26.0, *), let glass = material as? NSGlassEffectView {
-                glass.cornerRadius = corner
-            }
-            #endif
-            (material as? NSVisualEffectView)?.layer?.cornerRadius = corner
-            return
-        }
-        reducedTransparency = reduce
-        host.removeFromSuperview()
+        layer?.borderWidth = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? 1 : 0
+        layer?.borderColor = NSColor.separatorColor.cgColor
+        guard reduced != reduce else { return }
+        reduced = reduce
+        content.removeFromSuperview()
         material?.removeFromSuperview()
-        tint?.removeFromSuperview()
-        outline.removeFromSuperview()
         material = nil
-        tint = nil
         if reduce {
-            addSubview(host)
+            layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+            addSubview(content)
         } else {
-            #if compiler(>=6.2)
-            if #available(macOS 26.0, *) {
-                let glass = NSGlassEffectView()
-                glass.style = .regular
-                glass.cornerRadius = corner
-                glass.contentView = host
-                addSubview(glass)
-                material = glass
-            } else {
-                addPopover()
-            }
-            #else
-            addPopover()
-            #endif
+            layer?.backgroundColor = NSColor.clear.cgColor
+            material = makeMaterial()
         }
-        addSubview(outline)
-        colors()
         needsLayout = true
     }
 
-    private func addPopover() {
-        let popover = NSVisualEffectView()
-        popover.material = .popover
-        popover.blendingMode = .behindWindow
-        popover.state = .active
-        popover.wantsLayer = true
-        popover.layer?.cornerRadius = corner
-        popover.layer?.masksToBounds = true
-        let overlay = NSView()
-        overlay.wantsLayer = true
-        addSubview(popover)
-        addSubview(overlay)
-        addSubview(host)
-        material = popover
-        tint = overlay
-    }
-
-    private func colors() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = (material == nil ? NSColor.windowBackgroundColor : .clear).cgColor
-            let tinted = NSColor.windowBackgroundColor.usingColorSpace(.sRGB)?.withAlphaComponent(tintAmount)
-            tint?.layer?.backgroundColor = tinted?.cgColor
-            #if compiler(>=6.2)
-            if #available(macOS 26.0, *), let glass = material as? NSGlassEffectView {
-                glass.tintColor = tinted
-            }
-            #endif
+    private func makeMaterial() -> NSView {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.style = .regular
+            glass.cornerRadius = corner
+            glass.contentView = content
+            addSubview(glass)
+            return glass
         }
+        #endif
+        let effect = NSVisualEffectView()
+        effect.material = .popover
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        addSubview(effect)
+        addSubview(content)
+        return effect
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        colors()
-        outline.needsDisplay = true
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.borderColor = NSColor.separatorColor.cgColor
+            if reduced == true { layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor }
+        }
     }
 
     override func layout() {
         super.layout()
         material?.frame = bounds
-        tint?.frame = bounds
-        host.frame = bounds
-        outline.frame = bounds
-    }
-}
-
-private final class PickerOutline: NSView {
-    var corner: CGFloat = 16
-    var thickness: CGFloat = 1
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let inset = thickness / 2
-        let radius = corner - inset
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: inset, dy: inset), xRadius: radius, yRadius: radius)
-        path.lineWidth = thickness
-        NSColor.separatorColor.setStroke()
-        path.stroke()
+        content.frame = bounds
     }
 }

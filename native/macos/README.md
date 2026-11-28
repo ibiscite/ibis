@@ -6,10 +6,21 @@ It targets macOS 13 or later and uses the workspace Rust toolchain and
 Xcode Command Line Tools with Swift 5.9 or later.
 
 ```sh
-scripts/native-macos.sh build
-scripts/native-macos.sh run --file apps/desktop/src-tauri/resources/samples.csljson --show
+scripts/native-macos.sh dev      # rebuild, quit the running copy, open the picker on Review.csljson
+scripts/native-macos.sh shots    # screenshot every review state in light and dark
 scripts/native-macos.sh test
+scripts/native-macos.sh run --file apps/desktop/src-tauri/resources/samples.csljson --show
 ```
+
+The interface is SwiftUI over the system's own parts, with AppKit for the
+panel, its glass, native menus, the hot key and focused text fields
+([decision 0066](../../docs/decisions/0066-native-shells-use-system-parts.md),
+[the native recipe](../../docs/design/macos.md#the-native-recipe)).
+`PickerModel` holds the citation state from the engine, `PickerController`
+holds focus, open layers and every command, `PickerPanel` owns the window and
+routes keys, and `PickerView` draws. `shots` runs each `ReviewState` in an
+isolated profile and saves the PNGs under `target/native-macos/shots`.
+`screencapture` needs Screen Recording permission for the terminal once.
 
 The build produces `target/native-macos/Ibis Native.app` with the bundle ID
 `com.ibiscite.ibis.native` and a local ad-hoc signature. `--show` explicitly

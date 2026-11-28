@@ -158,3 +158,6 @@ the anchor older links use.
 
 ## 0065 One warm engine, thin native shells
 [0065](decisions/0065-one-warm-engine-thin-shells.md): one per-user daemon, `ibisd`, holds libraries, settings, sessions and status for every client over a same-user socket; shells are thin clients; delivery stays in-process in the signed shell; the macOS native shell goes ahead now (amended 2026-11-26: the web view cannot feel native) and replaces the Tauri Mac build in the one nightly stream, and the Tauri shell stays for Windows and Linux; the Reader stays an isolated web view; system integrations are thin socket clients.
+
+## 0066 Native shells use the system's own parts
+[0066](decisions/0066-native-shells-use-system-parts.md): a native shell is layout over the platform's own controls, materials, symbols, menus and accent and draws nothing the system draws; on macOS SwiftUI first with AppKit for the panel, glass, menus and exact focus; SF Symbols replace the picker's icon copies; the engine owns words, status and next the command table, so later WinUI 3 (Windows) and GTK 4 with libadwaita (Linux) shells render the same picker.

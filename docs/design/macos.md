@@ -14,12 +14,30 @@ On the Mac, Ibis is becoming a native AppKit/SwiftUI app
 than measuring and copying them. The Tauri shell stays on the Mac until the
 native one reaches parity, and on Windows and Linux after that.
 
-The [native repo build](../../native/macos/README.md) uses a system search
-field, list, pop-up buttons and disclosure for citation details. The header
-belongs to search. The title and byline always occupy the same two lines.
-Page, Format and delivery live together in an inset tray that stays in place
-while the user browses or stages a draft. The menu bar offers the picker,
-the current shortcut, a library file chooser and the paste permission action.
+### The native recipe
+
+The [native app](../../native/macos/README.md) is layout over the system's own
+parts ([0066](../decisions/0066-native-shells-use-system-parts.md)). It draws
+nothing that macOS already draws.
+
+- **Window:** a non-activating `NSPanel` on Liquid Glass (`NSGlassEffectView`)
+  on macOS 26, the popover material before that, and an opaque window under
+  Reduce Transparency. Its corners are 26 pt on macOS 26 and 16 pt before.
+  Increase Contrast adds a separator outline.
+- **Content:** SwiftUI. It uses standard buttons (`.borderedProminent` for the
+  delivery when there is a draft, `.bordered`, `.borderless` and `.link`
+  otherwise), `Menu`, `Picker`, popovers, `ProgressView`, `Form` with the
+  grouped style and `NavigationSplitView`. Text fields that need exact focus
+  and caret control are `NSTextField`s.
+- **Colour and symbols:** semantic system colours and the person's accent.
+  Icons are SF Symbols. The bird and the quote beak are the brand's.
+- **Menus:** the format and library menus are `NSMenu`s, opened under the
+  control that owns them.
+- **Grid:** one scale multiplies every size, so Larger Text and ⌘+ scale the
+  whole picker. The lead column (48 pt) holds the bird, kind symbols and the
+  beak. Text starts after it.
+- **Review:** `scripts/native-macos.sh shots` saves every review state in
+  light and dark from the invented [review library](../../native/macos/Review.csljson).
 
 ## What the interface does
 

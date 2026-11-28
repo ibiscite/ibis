@@ -8,8 +8,13 @@ fi
 
 mode=${1:-}
 case "$mode" in
-  build|test|run) shift ;;
-  *) printf '%s\n' 'Usage: scripts/native-macos.sh build|test|run [--file LIBRARY] [--show]' >&2; exit 2 ;;
+  build|test|run|dev|shots) shift ;;
+  *)
+    printf '%s\n' 'Usage: scripts/native-macos.sh build|test|run [--file LIBRARY] [--show]' \
+      '       scripts/native-macos.sh dev     rebuild, quit the running copy, open the picker on the review library' \
+      '       scripts/native-macos.sh shots [DIR]  screenshot every review state in light and dark' >&2
+    exit 2
+    ;;
 esac
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -45,11 +50,47 @@ cp "$swift_bin/IbisNative" "$app/Contents/MacOS/IbisNative"
 cp -p "$CARGO_TARGET_DIR/debug/ibis" "$app/Contents/MacOS/ibis"
 cp "$root/apps/desktop/src-tauri/icons/icon.icns" "$app/Contents/Resources/"
 cp "$root/brand/exports/png/ibis-menu-bar.png" "$app/Contents/Resources/"
-cp "$root/brand/exports/colors.json" "$app/Contents/Resources/"
 cp -R "$root/brand/exports/macos-picker" "$app/Contents/Resources/"
 codesign --force --sign - "$app"
 codesign --verify --strict "$app"
 printf 'Built %s\n' "$app"
+
+review="$package/Review.csljson"
+
+if [[ "$mode" == dev ]]; then
+  pkill -x IbisNative 2>/dev/null && sleep 0.5 || true
+  open -a "$app" --args --file "$review" --show
+  exit
+fi
+
+if [[ "$mode" == shots ]]; then
+  # One isolated profile and daemon for every state; nothing touches your own settings.
+  out=${1:-"$root/target/native-macos/shots"}
+  mkdir -p "$out"
+  config=$(mktemp -d)
+  states=(results search draft details actions peek no-matches larger choose
+          settings-general settings-appearance settings-library)
+  for appearance in light dark; do
+    for state in "${states[@]}"; do
+      args=(--state "$state" --appearance "$appearance")
+      [[ "$state" == choose ]] || args+=(--file "$review")
+      log="$config/$state.log"
+      IBIS_CONFIG_DIR="$config" "$app/Contents/MacOS/IbisNative" "${args[@]}" >"$log" 2>/dev/null &
+      pid=$!
+      for _ in $(seq 100); do grep -q '^ready' "$log" && break; sleep 0.2; done
+      window=$(awk '/^ready/ {print $2; exit}' "$log")
+      if [[ -n "$window" ]]; then
+        screencapture -o -x -l "$window" "$out/$appearance-$state.png"
+      else
+        printf 'No window for %s (%s)\n' "$state" "$appearance" >&2
+      fi
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    done
+  done
+  printf 'Screenshots in %s\n' "$out"
+  exit
+fi
 
 if [[ "$mode" == run ]]; then
   launch=(-a "$app")

@@ -1,738 +1,897 @@
 import AppKit
 import SwiftUI
 
-struct PickerView: NSViewRepresentable {
+// The picker's content: search, results and the delivery bar, laid out with
+// the system's own controls. Every size is a multiple of the picker's scale.
+
+private struct PickerScaleKey: EnvironmentKey { static let defaultValue: CGFloat = 1 }
+
+extension EnvironmentValues {
+    var pickerScale: CGFloat {
+        get { self[PickerScaleKey.self] }
+        set { self[PickerScaleKey.self] = newValue }
+    }
+}
+
+/// The picker's column grid: the lead column holds glyphs, text starts after it.
+struct PickerGrid {
+    let s: CGFloat
+    var lead: CGFloat { 48 * s }
+    var trailing: CGFloat { 16 * s }
+    var header: CGFloat { 56 * s }
+    var heading: CGFloat { 28 * s }
+    func row(_ density: Density) -> CGFloat { (density == .compact ? 38 : 50) * s }
+    func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font { .system(size: size * s, weight: weight) }
+}
+
+struct PickerView: View {
     @ObservedObject var model: PickerModel
+    @ObservedObject var controller: PickerController
 
-    func makeNSView(context: Context) -> PickerCanvas { PickerCanvas(model: model) }
-    func updateNSView(_ view: PickerCanvas, context: Context) { view.refresh() }
-}
-
-@MainActor
-final class PickerCanvas: NSView {
-    private enum ActionsFocus {
-        case search(NSRange)
-        case locator(NSRange?)
-        case responder(NSResponder)
-    }
-
-    let search = PickerSearchField()
-    private let header = PickerDragView()
-    private let bird = NSImageView()
-    private let mode = PickerCapsule()
-    private let modeLabel = pickerLabel(PickerWords.text(.citation))
-    private let headerRule = PickerRule()
-    private let searchFocus = PickerRule()
-    private let heading = pickerLabel()
-    private let count = pickerLabel()
-    private let source = PickerButton()
-    private let spinner = NSProgressIndicator()
-    private let statusGlyph = NSImageView()
-    private let fixButton = PickerButton()
-    private let results = PickerResults()
-    private let empty = PickerEmpty()
-    private let shelf = PickerShelf()
-    private let popover: PickerPopover
-    private let model: PickerModel
-    private var statusAction: PickerStatus?
-    private var numbers = false
-    private var announcement: Task<Void, Never>?
-    private var announcedRevision = 0
-    private var announcedQuery = ""
-    private var activeMenu: NSMenu?
-    private var actionsFocus: ActionsFocus?
-
-    override var isFlipped: Bool { true }
-    private var panel: PickerPanel? { window as? PickerPanel }
-    var hasOpenPopover: Bool { popover.isOpen }
-    var hasOpenActions: Bool { popover.subject == .actions }
-    var locatorHasFocus: Bool { shelf.locatorHasFocus }
-    private var metrics: PickerMetrics { PickerMetrics(scale: model.scale, density: model.density) }
-
-    init(model: PickerModel) {
-        self.model = model
-        popover = PickerPopover(model: model)
-        super.init(frame: .zero)
-        [header, mode, search, headerRule, searchFocus, heading, count, source, spinner, statusGlyph, fixButton,
-         results, empty, shelf].forEach(addSubview)
-        header.addSubview(bird)
-        mode.addSubview(modeLabel)
-        bird.imageScaling = .scaleProportionallyUpOrDown
-        bird.setAccessibilityElement(false)
-        bird.unregisterDraggedTypes()
-        search.setAccessibilityLabel(PickerWords.text(.search))
-        search.isBezeled = false
-        search.isBordered = false
-        search.drawsBackground = false
-        search.focusRingType = .none
-        (search.cell as? NSSearchFieldCell)?.searchButtonCell = nil
-        searchFocus.color = .keyboardFocusIndicatorColor
-        search.change = { [weak model] in model?.query = $0 }
-        shelf.format.perform = { [weak self] in self?.openFormat() }
-        heading.setAccessibilityElement(true)
-        count.alignment = .right
-        count.setAccessibilityElement(true)
-        source.surface = .link
-        source.captionSize = 11
-        source.perform = { [weak self] in self?.libraryMenu() }
-        spinner.style = .spinning
-        spinner.isDisplayedWhenStopped = false
-        statusGlyph.imageScaling = .scaleProportionallyUpOrDown
-        statusGlyph.contentTintColor = .secondaryLabelColor
-        fixButton.surface = .link
-        fixButton.perform = { [weak self] in self?.runFix(self?.statusAction) }
-        empty.primary.perform = { [weak self] in self?.emptyAction(primary: true) }
-        empty.secondary.perform = { [weak self] in self?.emptyAction(primary: false) }
-        results.didSelect = { [weak model] in model?.select($0) }
-        results.didAdd = { [weak model] in model?.toggleCitation($0) }
-        results.didDoubleClick = { [weak self] in self?.panel?.submit(whenReady: true) }
-        results.restoreSearch = { [weak self] in self?.focusSearch(caretAtEnd: true) }
-        shelf.membership.perform = { [weak self] in self?.toggleSelectionMembership() }
-        shelf.action.perform = { [weak self] in self?.panel?.submit() }
-        shelf.more.perform = { [weak self] in self?.showActions() }
-        shelf.edit = { [weak self] id in self?.showDetails(id) }
-        shelf.select = { [weak model] id in model?.selectCitation(id) }
-        shelf.remove = { [weak self] id in self?.removeToken(id) }
-        popover.routeKey = { [weak self] event in
-            guard let self else { return false }
-            return panel?.routeKey(event, view: self) ?? false
-        }
-        popover.closed = { [weak self] subject, restore in self?.popoverClosed(subject, restore: restore) }
-        popover.actionChosen = { [weak self] action in
-            guard let self, describe(action.command) == action else { return }
-            runCommand(action.command)
-        }
-        popover.actionsTabBack = { [weak self] in self?.focusSearch() }
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        panel?.attach(self)
-    }
-
-    func refresh() {
-        panel?.viewPreferencesChanged()
-        if announcedQuery != model.query {
-            announcement?.cancel()
-            announcedQuery = model.query
-        }
-        if announcedRevision != model.searchRevision {
-            announcedRevision = model.searchRevision
-            announcement?.cancel()
-            if let label = model.searchReply?.countLabel {
-                announcement = Task { [weak self] in
-                    try? await Task.sleep(for: .milliseconds(500))
-                    guard !Task.isCancelled, let self, window?.isKeyWindow == true else { return }
-                    NSAccessibility.post(element: search, notification: .announcementRequested,
-                                         userInfo: [.announcement: label, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    var body: some View {
+        let grid = PickerGrid(s: model.scale)
+        GeometryReader { window in
+            let stacked = window.size.width - 560 * grid.s < 150 * grid.s
+            VStack(spacing: 0) {
+                SearchHeader(model: model, controller: controller, grid: grid)
+                Divider()
+                HeadingLine(model: model, controller: controller, grid: grid)
+                ZStack {
+                    ResultsList(model: model, controller: controller, grid: grid)
+                    if let state = controller.emptyState {
+                        EmptyStateView(state: state, controller: controller, grid: grid)
+                    }
+                }
+                .frame(maxHeight: .infinity)
+                if model.libraryReady && !model.isOpening {
+                    Divider()
+                    DeliveryBar(model: model, controller: controller, grid: grid, stacked: stacked)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if controller.actionsOpen {
+                    ActionsPanel(controller: controller, grid: grid)
+                        .padding(.trailing, 12 * grid.s)
+                        .padding(.bottom, (stacked ? 92 : 52) * grid.s + 6 * grid.s)
+                        .transition(.opacity)
                 }
             }
         }
-        needsLayout = true
+        .environment(\.pickerScale, grid.s)
+        .onPreferenceChange(AnchorFrames.self) { controller.anchors = $0 }
     }
+}
 
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        needsLayout = true
+// MARK: Search
+
+private struct SearchHeader: View {
+    @ObservedObject var model: PickerModel
+    @ObservedObject var controller: PickerController
+    let grid: PickerGrid
+
+    var body: some View {
+        HStack(spacing: 8 * grid.s) {
+            BrandMark()
+                .frame(width: 24 * grid.s, height: 24 * grid.s)
+                .frame(width: grid.lead - 8 * grid.s)
+            if model.shorthand {
+                Text(PickerWords.text(.citation))
+                    .font(grid.font(13, .medium))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 8 * grid.s)
+                    .padding(.vertical, 3 * grid.s)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+            }
+            NativeTextField(
+                text: model.query,
+                placeholder: PickerWords.text(model.shorthand ? .shorthandExample : .search),
+                label: PickerWords.text(.search),
+                style: .plain,
+                font: .systemFont(ofSize: 22 * grid.s),
+                register: { controller.searchField = $0 },
+                began: { controller.fieldBegan(.search) },
+                change: { model.query = $0 }
+            )
+        }
+        .padding(.trailing, grid.trailing)
+        .frame(height: grid.header)
+        .background(WindowDragArea())
     }
+}
 
-    override func layout() {
-        super.layout()
-        let m = metrics
-        let width = bounds.width
-        let height = bounds.height
-        guard width > 0, height > 0 else { return }
-        arrangeHeader(width: width, metrics: m)
-        let headingY = m.header + m.line
-        let hasHeading = arrangeHeading(width: width, y: headingY, metrics: m)
-        let resultsY = headingY + (hasHeading ? m.section : 0)
-        shelf.isHidden = !model.libraryReady || model.isOpening
-        let shelfHeight = shelf.isHidden ? 0 : shelf.height(metrics: m, width: width)
-        let shelfY = height - shelfHeight
-        results.frame = NSRect(x: 0, y: resultsY, width: width, height: max(0, shelfY - resultsY))
-        results.configure(sections: model.sections, metrics: m, recent: model.searchReply?.total == nil,
-                          selected: model.selected, cited: Set(model.citations.map { $0.row.id }),
-                          numbers: numbers && !hasOpenPopover, quickDelivery: quickDelivery)
-        empty.frame = results.frame
-        empty.configure(state: emptyState, actionsOpen: hasOpenActions, metrics: m)
-        shelf.frame = NSRect(x: 0, y: shelfY, width: width, height: shelfHeight)
-        if !shelf.isHidden { shelf.configure(model: model, actionsOpen: hasOpenActions, metrics: m, width: width) }
-        makeKeyLoop()
-        if hasOpenActions { popover.updateActions(availableActions()) }
-        popover.refresh(m)
+/// The bird, from the brand.
+struct BrandMark: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        if let image = PickerArt.image(scheme == .dark ? "pickerMark-dark" : "pickerMark") {
+            Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                .accessibilityHidden(true)
+        }
     }
+}
 
-    private func arrangeHeader(width: CGFloat, metrics m: PickerMetrics) {
-        header.frame = NSRect(x: 0, y: 0, width: width, height: m.header)
-        let markSize = m.pt(32)
-        bird.image = PickerArt.image(PickerArt.isDark(effectiveAppearance) ? "pickerMark-dark" : "pickerMark")
-        bird.frame = NSRect(x: m.tileCenter - markSize / 2, y: (m.header - markSize) / 2, width: markSize, height: markSize)
-        headerRule.frame = NSRect(x: 0, y: m.header, width: width, height: m.line)
+enum PickerArt {
+    private static let images: [String: NSImage] = {
+        guard let folder = Bundle.main.resourceURL?.appendingPathComponent("macos-picker"),
+              let urls = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+        else { return [:] }
+        return Dictionary(uniqueKeysWithValues: urls.compactMap { url in
+            guard url.pathExtension == "pdf", let image = NSImage(contentsOf: url) else { return nil }
+            let name = url.deletingPathExtension().lastPathComponent
+            image.isTemplate = !name.hasPrefix("pickerMark")
+            return (name, image)
+        })
+    }()
 
-        mode.isHidden = !model.shorthand
-        mode.scarlet = true
-        mode.radius = m.pt(6)
-        modeLabel.font = m.font(13, .medium)
-        modeLabel.textColor = PickerArt.accent(effectiveAppearance)
-        let modeWidth = pickerWidth(modeLabel.stringValue, font: m.font(13, .medium)) + m.pt(16)
-        mode.frame = NSRect(x: m.column, y: (m.header - m.pt(24)) / 2, width: modeWidth, height: m.pt(24))
-        pickerLine(modeLabel, x: m.pt(8), y: 0, width: modeWidth - m.pt(16), height: mode.bounds.height)
-        let left = m.column + (model.shorthand ? modeWidth + m.pt(8) : 0)
-        search.controlSize = .large
-        search.font = m.searchFont
-        search.placeholderString = PickerWords.text(model.shorthand ? .shorthandExample : .search)
-        let searchHeight = m.searchHeight
-        search.frame = NSRect(x: left, y: (m.header - searchHeight) / 2,
-                              width: max(1, width - m.inset - left), height: searchHeight)
-        searchFocus.frame = NSRect(x: left, y: search.frame.maxY - m.line, width: search.frame.width, height: m.line)
-        searchFocus.isHidden = !searchHasFocus
-        search.show(model.query)
-    }
+    static func image(_ name: String) -> NSImage? { images[name] }
+}
 
-    private func arrangeHeading(width: CGFloat, y: CGFloat, metrics m: PickerMetrics) -> Bool {
-        let status = model.isOpening || !model.libraryReady ? nil
-            : (model.preview?.problem ?? model.searchReply?.status.first ?? model.catalog?.status.first)
-        let notice = if model.isOpening { PickerWords.text(.opening) }
-            else if model.formatScope?.requiresBibliography == true { model.formatContext }
-            else { model.notice }
-        let label = notice ?? status?.text ?? model.sections.first?.kind.label
-        let countText = model.searchReply?.countLabel ?? ""
-        let isStatus = notice != nil || status != nil
-        heading.isHidden = label == nil
-        heading.stringValue = label ?? ""
-        count.isHidden = label == nil || countText.isEmpty || isStatus
-        count.stringValue = countText
-        count.textColor = .secondaryLabelColor
-        count.font = m.font(11)
-        heading.font = m.font(12, .medium)
-        heading.textColor = .secondaryLabelColor
-        heading.toolTip = isStatus ? label : nil
-        statusGlyph.isHidden = !isStatus || model.isOpening
-        statusGlyph.image = PickerArt.image(status?.kind == .citation ? "error" : "warning")
-        spinner.isHidden = !model.isOpening
-        if model.isOpening { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+// MARK: Heading
 
-        statusAction = notice == nil ? status : nil
-        fixButton.metrics = m
-        fixButton.isHidden = statusAction?.fix == nil
-        fixButton.text = statusAction?.fix.map(fixTitle) ?? ""
-        fixButton.setAccessibilityLabel(fixButton.text)
-        let fixWidth = fixButton.isHidden ? 0 : fixButton.preferredWidth + m.pt(8)
-        let countWidth = count.isHidden ? 0 : pickerWidth(countText, font: m.font(11))
+private struct HeadingLine: View {
+    @ObservedObject var model: PickerModel
+    @ObservedObject var controller: PickerController
+    let grid: PickerGrid
+
+    var body: some View {
+        let heading = controller.heading
         let library = model.libraryReady && !model.isOpening ? model.catalog?.library : nil
-        source.isHidden = library == nil
-        source.metrics = m
-        source.maxCaption = min(m.pt(145), width * 0.24)
-        source.icon = "library"
-        source.text = width >= m.pt(540) && !isStatus ? library?.name ?? "" : ""
-        source.key = source.text.isEmpty ? "" : "⌄"
-        source.toolTip = library?.name
-        source.setAccessibilityLabel(library.map { PickerWords.text(.scopeLabel, $0.name) } ?? PickerWords.text(.library))
-        let sourceWidth = source.isHidden ? 0 : source.preferredWidth + m.pt(6)
-        let left = m.column
-        let right = width - m.inset - sourceWidth
-        let maxHeading = right - left - fixWidth - countWidth - m.pt(8)
-        let headingWidth = count.isHidden ? maxHeading : min(maxHeading, pickerWidth(label ?? "", font: m.font(12, .medium)))
-        pickerLine(heading, x: left, y: y + m.pt(2), width: headingWidth, height: m.section)
-        pickerLine(count, x: left + max(0, headingWidth) + m.pt(6), y: y + m.pt(2),
-                   width: countWidth, height: m.section)
-        source.frame = NSRect(x: right + (sourceWidth > 0 ? m.pt(6) : 0), y: y + m.pt(2),
-                              width: max(0, sourceWidth - m.pt(6)), height: m.section)
-        let glyph = NSRect(x: m.tileCenter - m.pt(7), y: y + m.pt(7), width: m.pt(14), height: m.pt(14))
-        spinner.frame = glyph
-        statusGlyph.frame = glyph
-        fixButton.frame = NSRect(x: right - fixWidth - m.pt(4), y: y, width: fixWidth, height: m.section)
-        return label != nil || library != nil
-    }
-
-    private var emptyState: PickerEmpty.State? {
-        guard results.shown.isEmpty, !model.isOpening else { return nil }
-        if let catalog = model.catalog {
-            if let library = catalog.library {
-                switch library.condition {
-                case .missing:
-                    return .missing(catalog.status.first?.text ?? library.name, library.name)
-                case .unreadable: return .unreadable(catalog.status.first?.text ?? library.name)
-                case .ready: return model.searchReply?.total == nil ? .newLibrary : .noMatches
+        if heading != nil || library != nil {
+            HStack(spacing: 6 * grid.s) {
+                Group {
+                    if model.isOpening {
+                        ProgressView().controlSize(.small).scaleEffect(grid.s)
+                    } else if heading?.isProblem == true {
+                        Image(systemName: heading?.status?.kind == .citation ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                            .font(grid.font(12))
+                            .symbolRenderingMode(.multicolor)
+                    }
+                }
+                .frame(width: grid.lead - 6 * grid.s)
+                if let heading {
+                    Text(heading.text)
+                        .font(grid.font(12, .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .help(heading.isProblem ? heading.text : "")
+                    if let count = heading.count {
+                        Text(count).font(grid.font(11)).foregroundStyle(.tertiary).monospacedDigit()
+                    }
+                }
+                Spacer(minLength: 8 * grid.s)
+                if let status = heading?.status, let fix = status.fix {
+                    Button(controller.fixTitle(fix)) { controller.runFix(status) }
+                        .buttonStyle(.link)
+                        .font(grid.font(12))
+                }
+                if let library {
+                    LibraryButton(library: library, controller: controller, grid: grid,
+                                  showsName: heading?.isProblem != true)
                 }
             }
-            return .choose
-        }
-        return model.notice == nil ? nil : .choose
-    }
-
-    private func fixTitle(_ fix: PickerFix) -> String {
-        switch fix {
-        case .chooseLibrary: PickerWords.text(.choose)
-        case .locateLibrary: PickerWords.text(.findLibrary, model.catalog?.library?.name ?? "")
-        case .reloadLibrary: PickerWords.text(.reload)
-        case .clearSearch: PickerWords.text(.clear)
-        case .chooseFormat: PickerWords.text(.format)
-        case .editLocator: PickerWords.text(.page)
-        case .editCitation: PickerWords.text(.details)
+            .padding(.trailing, grid.trailing)
+            .frame(height: grid.heading)
         }
     }
+}
 
-    private func runFix(_ status: PickerStatus?) {
-        switch status?.fix {
-        case .chooseLibrary: panel?.chooseLibrary()
-        case .locateLibrary: panel?.chooseLibrary(locate: true)
-        case .reloadLibrary: model.reload()
-        case .clearSearch: model.query = ""; focusSearch()
-        case .chooseFormat: openFormat()
-        case .editLocator: focusLocator(status?.item)
-        case .editCitation: showDetails(status?.item)
-        case nil: break
+private struct LibraryButton: View {
+    let library: PickerLibrary
+    let controller: PickerController
+    let grid: PickerGrid
+    let showsName: Bool
+
+    var body: some View {
+        Button { controller.openLibraryMenu() } label: {
+            ViewThatFits(in: .horizontal) {
+                if showsName {
+                    HStack(spacing: 4 * grid.s) {
+                        Image(systemName: "books.vertical")
+                        Text(library.name).lineLimit(1).truncationMode(.middle).frame(maxWidth: 160 * grid.s)
+                        Image(systemName: "chevron.down").font(grid.font(8, .semibold))
+                    }
+                }
+                Image(systemName: "books.vertical")
+            }
+            .font(grid.font(12))
+            .foregroundStyle(.secondary)
         }
+        .buttonStyle(.borderless)
+        .help(library.name)
+        .accessibilityLabel(PickerWords.text(.scopeLabel, library.name))
+        .anchor(.library)
     }
+}
 
-    private func emptyAction(primary: Bool) {
-        switch emptyState {
-        case .choose:
-            if primary { panel?.chooseLibrary() } else { panel?.openSettings?() }
-        case .unreadable: panel?.chooseLibrary()
-        case .missing: panel?.chooseLibrary(locate: primary)
-        case .noMatches:
-            if primary { model.query = ""; focusSearch() }
-        default: break
+// MARK: Results
+
+private struct RowFrames: PreferenceKey {
+    static let defaultValue: [ItemRef: CGRect] = [:]
+    static func reduce(value: inout [ItemRef: CGRect], nextValue: () -> [ItemRef: CGRect]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+private struct ResultsList: View {
+    @ObservedObject var model: PickerModel
+    @ObservedObject var controller: PickerController
+    let grid: PickerGrid
+
+    var body: some View {
+        let cited = Set(model.citations.map(\.row.id))
+        GeometryReader { viewport in
+            ScrollViewReader { scroll in
+                ScrollView(.vertical) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(model.sections.enumerated()), id: \.offset) { index, section in
+                            if index > 0 {
+                                Text(section.kind.label)
+                                    .font(grid.font(12, .medium))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.leading, grid.lead)
+                                    .frame(height: grid.heading, alignment: .bottom)
+                                    .accessibilityAddTraits(.isHeader)
+                            }
+                            ForEach(section.rows, id: \.id) { row in
+                                rowView(row, cited: cited.contains(row.id))
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4 * grid.s)
+                }
+                .coordinateSpace(name: "results")
+                .onPreferenceChange(RowFrames.self) { frames in
+                    controller.visibleRows = frames
+                        .filter { $0.value.minY >= -0.5 && $0.value.maxY <= viewport.size.height + 0.5 }
+                        .sorted { $0.value.minY < $1.value.minY }
+                        .map(\.key)
+                }
+                .onChange(of: controller.revealedRow) { _ in
+                    if let selected = model.selected { scroll.scrollTo(selected) }
+                }
+            }
         }
+        .accessibilityLabel(PickerWords.text(.references))
     }
 
-    func resolveLibraryIfNeeded() -> Bool {
-        switch emptyState {
-        case .choose, .missing, .unreadable:
-            emptyAction(primary: true)
-            return true
-        default: return false
-        }
-    }
-
-    private func makeKeyLoop() {
-        let list = results.shown.isEmpty ? [] : [results.keyView]
-        let options: [NSView] = empty.isHidden ? [] : [empty.primary, empty.secondary]
-        let keyViews = [search, source] + list + options + (shelf.isHidden ? [] : shelf.keyViews)
-        let enabled = keyViews.filter { !$0.isHidden && (($0 as? NSControl)?.isEnabled ?? true) }
-        for (index, view) in enabled.enumerated() {
-            view.nextKeyView = enabled[(index + 1) % enabled.count]
-        }
-    }
-
-    private var searchHasFocus: Bool {
-        guard let window, window.isKeyWindow, !hasOpenPopover, activeMenu == nil,
-              let responder = window.firstResponder else { return false }
-        return search === responder || search.currentEditor() === responder
-    }
-
-    private var quickDelivery: Bool { !model.hasDraft && searchHasFocus }
-
-    func refreshReturnTarget() {
-        searchFocus.isHidden = !searchHasFocus
-        results.showQuickDelivery(quickDelivery)
-    }
-
-    func focusSearch(caretAtEnd: Bool = false) {
-        guard let window else { return }
-        if search.currentEditor() !== window.firstResponder { window.makeFirstResponder(search) }
-        if caretAtEnd {
-            search.currentEditor()?.selectedRange = NSRange(location: model.query.utf16.count, length: 0)
-        }
-    }
-
-    func move(_ step: Int) { model.move(step, within: results.shown) }
-
-    func number(_ index: Int) {
-        guard !hasOpenPopover, let reference = results.numberedReference(at: index) else { return }
-        model.select(reference)
-    }
-
-    func showNumbers(_ show: Bool) {
-        if numbers != show { numbers = show; refresh() }
-    }
-
-    func openFormat() {
-        guard model.canChooseFormat, let scope = model.formatScope, let formats = model.catalog?.formats else { return }
-        let menu = NSMenu()
-        menu.addItem(formatHeading(model.formatContext))
-        let remember = scope.project == nil && model.formatOwner != nil
-        if model.formatIsHeld {
-            let usual = formats.first { $0.id == scope.format }?.name ?? PickerWords.text(.formatDefault)
-            menu.addItem(PickerMenuItem(PickerWords.text(.formatLibraryUsual, usual)) { [weak model] in
-                model?.useFormatOnce(nil)
+    private func rowView(_ row: PickerRow, cited: Bool) -> some View {
+        let selected = row.id == model.selected
+        return ResultRow(row: row, selected: selected, emphasized: selected && controller.quickDelivery,
+                         cited: cited, number: controller.number(for: row.id), density: model.density, grid: grid)
+            .id(row.id)
+            .background(GeometryReader { geometry in
+                Color.clear.preference(key: RowFrames.self, value: [row.id: geometry.frame(in: .named("results"))])
             })
-        }
-        if let owner = model.rememberedFormatOwner {
-            let forget = PickerMenuItem(PickerWords.text(.formatForget, owner)) { [weak model] in model?.forgetFormat() }
-            if let usual = formats.first(where: { $0.id == scope.usualFormat }) {
-                forget.toolTip = PickerWords.text(.formatLibraryUsual, usual.name)
+            .onTapGesture { click(row) }
+            .popover(isPresented: Binding(
+                get: { controller.layer == .peek(row.id) },
+                set: { if !$0, controller.layer == .peek(row.id) { controller.layerClosed() } }
+            ), arrowEdge: .trailing) {
+                PeekView(row: row)
             }
-            menu.addItem(forget)
-        }
-        if remember, let owner = model.formatOwner {
-            let once = NSMenu()
-            once.autoenablesItems = false
-            addFormats(formats, to: once, remembering: false)
-            let action = NSMenuItem(title: PickerWords.text(.formatForOne), action: nil, keyEquivalent: "")
-            action.submenu = once
-            menu.addItem(action)
-            menu.addItem(.separator())
-            menu.addItem(formatHeading(PickerWords.text(.formatRememberFor, owner)))
-        } else {
-            menu.addItem(.separator())
-            menu.addItem(formatHeading(PickerWords.text(.formatForOne)))
-        }
-        addFormats(formats, to: menu, remembering: remember)
-        open(menu, at: shelf.format)
     }
 
-    private func addFormats(_ formats: [PickerFormat], to menu: NSMenu, remembering: Bool) {
-        for styles in [false, true] {
-            let group = formats.filter { $0.canKeepOrder == styles }
-            guard !group.isEmpty else { continue }
-            menu.addItem(formatHeading(PickerWords.text(styles ? .formatStyleGroup : .formatKeyGroup)))
-            for option in group {
-                let item = PickerMenuItem(option.name) { [weak model] in
-                    if remembering { model?.rememberFormat(option.id) }
-                    else { model?.useFormatOnce(option.id) }
-                }
-                item.state = model.format == option.id && (remembering ? !model.formatIsHeld : model.formatIsHeld || model.formatOwner == nil)
-                    ? .on : .off
-                menu.addItem(item)
-            }
-        }
-    }
-
-    private func formatHeading(_ name: String) -> NSMenuItem {
-        let item = NSMenuItem(title: name, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        return item
-    }
-
-    func toggleSelectionMembership() {
-        if let row = model.selection { model.toggleCitation(row) }
-    }
-
-    func focusTokens() { if let item = model.citationItem { _ = shelf.focus(item) } }
-
-    func tokenKey(_ key: NSEvent.SpecialKey?, shift: Bool) -> Bool {
-        guard let token = shelf.focused, let index = shelf.displayed.firstIndex(of: token) else { return false }
-        switch key {
-        case .leftArrow, .rightArrow:
-            let step = key == .leftArrow ? -1 : 1
-            if shift { model.reorder(token, by: step, displayed: shelf.displayed) }
-            else if shelf.displayed.indices.contains(index + step) { _ = shelf.focus(shelf.displayed[index + step]) }
-        case .delete, .deleteForward: removeToken(token)
-        case .downArrow: showDetails(token)
-        case .upArrow: focusSearch()
-        default: return false
-        }
-        return true
-    }
-
-    private func removeToken(_ token: ItemRef) {
-        model.remove(token)
-        focusSearch()
-    }
-
-    func showDetails(_ id: ItemRef? = nil) {
-        guard let item = id ?? shelf.focused ?? model.citationItem else { return }
-        if popover.subject == .citation(item) {
-            popover.close(restoringFocus: true)
+    private func click(_ row: PickerRow) {
+        let event = NSApp.currentEvent
+        if event?.modifierFlags.contains(.command) == true {
+            model.select(row.id)
+            model.toggleCitation(row)
+        } else if (event?.clickCount ?? 1) >= 2, row.id == model.selected {
+            controller.panel?.submit(whenReady: true)
             return
+        } else {
+            model.select(row.id)
         }
-        layoutSubtreeIfNeeded()
-        guard let anchor = shelf.anchor(for: item) else { return }
-        popover.showCitation(item, at: anchor, metrics: metrics)
+        controller.focusSearch(caretAtEnd: true)
     }
+}
 
-    func focusLocator(_ item: ItemRef? = nil) {
-        closePopover()
-        if let item {
-            model.selectCitation(item)
-            needsLayout = true
-            layoutSubtreeIfNeeded()
-        }
-        if window?.isKeyWindow == false { window?.makeKey() }
-        shelf.focusLocator()
-    }
+struct ResultRow: View {
+    let row: PickerRow
+    let selected: Bool
+    let emphasized: Bool
+    let cited: Bool
+    let number: Int?
+    let density: Density
+    let grid: PickerGrid
+    @State private var hovered = false
 
-    func togglePeek() {
-        guard let row = model.selection else { return }
-        if popover.subject == .peek(row.id) {
-            popover.close(restoringFocus: true)
-        } else if let anchor = results.anchor(for: row.id) {
-            popover.showPeek(row, at: anchor, metrics: metrics)
-        }
-    }
-
-    func closePopover() {
-        popover.close()
-        actionsFocus = nil
-    }
-
-    private func popoverClosed(_ subject: PickerPopover.Subject, restore: Bool) {
-        let focus = actionsFocus
-        if subject == .actions {
-            actionsFocus = nil
-            needsLayout = true
-        }
-        guard let panel, panel.pickerIsOpen else { return }
-        if restore {
-            if !panel.isKeyWindow { panel.makeKey() }
-            if case let .citation(item) = subject, shelf.focus(item) { return }
-            if subject == .actions {
-                switch focus {
-                case let .search(selection):
-                    focusSearch()
-                    search.restoreSelection(selection)
-                    return
-                case let .locator(selection):
-                    shelf.focusLocator(restoring: selection)
-                    return
-                case let .responder(responder) where panel.makeFirstResponder(responder):
-                    return
-                default: break
+    var body: some View {
+        let ink = emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : Color(nsColor: .labelColor)
+        let quiet = emphasized ? ink.opacity(0.85) : Color(nsColor: .secondaryLabelColor)
+        HStack(spacing: 0) {
+            Group {
+                if let number {
+                    Text("\(number)").font(grid.font(13, .medium)).monospacedDigit().foregroundStyle(quiet)
+                } else {
+                    Image(systemName: cited ? "checkmark.circle.fill" : row.kind.symbol)
+                        .font(grid.font(15))
+                        .foregroundStyle(cited && !emphasized ? Color.accentColor : quiet)
                 }
             }
-            focusSearch()
-        } else {
-            // AppKit returns key status after closing its transient window.
-            DispatchQueue.main.async { [weak self, weak panel] in
-                guard let panel, panel.pickerIsOpen, self?.hasOpenPopover == false,
-                      !panel.isKeyWindow, !panel.choosingLibrary else { return }
-                panel.dismiss()
+            .frame(width: grid.lead)
+            VStack(alignment: .leading, spacing: (density == .compact ? 1 : 3) * grid.s) {
+                HStack(alignment: .firstTextBaseline, spacing: 12 * grid.s) {
+                    Text(row.title ?? PickerWords.text(.untitled))
+                        .font(grid.font(14))
+                        .foregroundStyle(ink)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text(row.year ?? PickerWords.text(.noDate))
+                        .font(grid.font(12))
+                        .monospacedDigit()
+                        .foregroundStyle(quiet)
+                        .fixedSize()
+                }
+                HStack(spacing: 8 * grid.s) {
+                    Byline(options: row.bylines)
+                    if !row.matchReasons.isEmpty {
+                        Text(row.matchReasons.joined(separator: " · "))
+                            .italic()
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                    }
+                }
+                .font(grid.font(12))
+                .foregroundStyle(quiet)
             }
+            .padding(.trailing, grid.trailing)
         }
+        .frame(height: grid.row(density))
+        .background(
+            RoundedRectangle(cornerRadius: 8 * grid.s, style: .continuous)
+                .fill(fill)
+                .padding(.horizontal, 8 * grid.s)
+                .padding(.vertical, 1 * grid.s)
+        )
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 }
+        .help(([row.title ?? "", row.fullByline] + row.matchReasons + [row.citationKey ?? ""])
+            .filter { !$0.isEmpty }.joined(separator: "\n"))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(([row.title ?? PickerWords.text(.untitled), row.fullByline, row.kindLabel]
+            + row.matchReasons + (cited ? [PickerWords.text(.cited)] : []) + [row.citationKey].compactMap { $0 })
+            .joined(separator: ", "))
+        .accessibilityHint(number.map { "⌘\($0)" } ?? "")
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 
-    func escape() -> Bool {
-        if let menu = activeMenu { menu.cancelTracking(); return true }
-        if hasOpenPopover { popover.close(restoringFocus: true); return true }
-        let handled = model.escape()
-        if handled { focusSearch() }
-        return handled
-    }
-
-    private func libraryMenu() {
-        open(libraryCommands(), at: source)
-    }
-
-    private func libraryCommands() -> NSMenu {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        if let name = model.catalog?.library?.name {
-            let source = NSMenuItem(title: name, action: nil, keyEquivalent: "")
-            source.isEnabled = false
-            menu.addItem(source)
-            for command in [PickerCommand.openSource, .locateLibrary, .reload] where canRun(command) {
-                menu.addItem(menuItem(command))
-            }
-            menu.addItem(.separator())
-        }
-        menu.addItem(menuItem(.chooseLibrary))
-        return menu
-    }
-
-    func showActions() {
-        if hasOpenActions { popover.close(restoringFocus: true); return }
-        if hasOpenPopover { popover.close(restoringFocus: true) }
-        guard let window else { return }
-        if let editor = search.currentEditor(), editor === window.firstResponder {
-            actionsFocus = .search(editor.selectedRange)
-        } else if shelf.locatorHasFocus {
-            actionsFocus = .locator(shelf.locatorSelection)
-        } else if let responder = window.firstResponder {
-            actionsFocus = .responder(responder)
-        }
-        popover.showActions(availableActions(), at: shelf.isHidden ? search : shelf.more, metrics: metrics)
-        needsLayout = true
-    }
-
-    func handleActionKey(_ event: NSEvent) -> Bool {
-        popover.updateActions(availableActions())
-        return popover.handleActionKey(event)
-    }
-
-    private func availableActions() -> [PickerAction] {
-        let membershipOwnsRemoval = canRun(.membership) && model.isSelectionStaged && model.selected == model.citationItem
-        return PickerCommand.allCases.compactMap { command in
-            guard canRun(command), command != .remove || !membershipOwnsRemoval else { return nil }
-            return describe(command)
-        }
-    }
-
-    private func canRun(_ command: PickerCommand) -> Bool {
-        switch command {
-        case .format: model.canChooseFormat
-        case .typeCitation, .openSource: model.libraryReady
-        case .peek: model.selection != nil
-        case .membership: model.canChangeSelectionMembership
-        case .page, .details, .focusCitation: model.citationItem != nil
-        case .remove: model.hasDraft && model.citationItem != nil
-        case .keepOrder: model.canKeepOrder
-        case .undo: model.canUndo
-        case .locateLibrary: model.catalog?.library?.condition == .missing
-        case .reload: model.catalog?.library != nil && !model.isOpening
-        case .chooseLibrary: !model.isDelivering && panel?.choosingLibrary != true
-        case .largerText: model.textPercent < 200
-        case .smallerText: model.textPercent > 100
-        case .settings: true
-        }
-    }
-
-    private func describe(_ command: PickerCommand) -> PickerAction {
-        switch command {
-        case .typeCitation: command.action(checked: model.shorthand)
-        case .keepOrder: command.action(checked: model.keepOrder)
-        case .locateLibrary: command.action(title: fixTitle(.locateLibrary))
-        case .peek: command.action(reference: model.selected)
-        case .page, .details, .focusCitation: command.action(reference: model.citationItem)
-        case .membership:
-            if let row = model.selection, model.isSelectionStaged {
-                command.action(title: PickerWords.text(.removeToken, row.title ?? PickerWords.text(.untitled)), reference: row.id)
-            } else {
-                command.action(reference: model.selected)
-            }
-        case .remove:
-            if let row = model.citationRows.first(where: { $0.id == model.citationItem }) {
-                command.action(title: PickerWords.text(.removeToken, row.title ?? PickerWords.text(.untitled)), reference: row.id)
-            } else {
-                command.action()
-            }
-        default: command.action()
-        }
-    }
-
-    @discardableResult
-    func runCommand(_ command: PickerCommand, repeating: Bool = false) -> Bool {
-        guard canRun(command) else { return false }
-        if repeating, command != .largerText, command != .smallerText { return true }
-        switch command {
-        case .format: openFormat()
-        case .peek: togglePeek()
-        case .membership: toggleSelectionMembership()
-        case .page: focusLocator()
-        case .details: showDetails()
-        case .focusCitation: focusTokens()
-        case .remove: if let item = model.citationItem { removeToken(item) }
-        case .typeCitation: model.toggleShorthand(); focusSearch()
-        case .keepOrder: model.toggleKeepOrder()
-        case .undo: model.undoChange()
-        case .openSource: panel?.openSource()
-        case .locateLibrary: panel?.chooseLibrary(locate: true)
-        case .chooseLibrary: panel?.chooseLibrary()
-        case .reload: model.reload()
-        case .largerText: model.changeSize(10)
-        case .smallerText: model.changeSize(-10)
-        case .settings: panel?.openSettings?()
-        }
-        return true
-    }
-
-    private func open(_ menu: NSMenu, at button: NSView) {
-        menu.autoenablesItems = false
-        activeMenu = menu
-        refreshReturnTarget()
-        menu.popUp(positioning: nil, at: NSPoint(x: button.bounds.minX, y: button.bounds.maxY), in: button)
-        activeMenu = nil
-        refreshReturnTarget()
-    }
-
-    private func menuItem(_ command: PickerCommand) -> NSMenuItem {
-        let item = PickerMenuItem(describe(command).title) { [weak self] in self?.runCommand(command) }
-        item.isEnabled = canRun(command)
-        return item
+    private var fill: Color {
+        if emphasized { return Color(nsColor: .selectedContentBackgroundColor) }
+        if selected { return Color(nsColor: .unemphasizedSelectedContentBackgroundColor) }
+        return hovered ? Color.primary.opacity(0.05) : .clear
     }
 }
 
-@MainActor
-final class PickerMenuItem: NSMenuItem {
-    let perform: () -> Void
+/// The engine sends bylines longest first; show the first one that fits whole.
+private struct Byline: View {
+    let options: [String]
 
-    init(_ title: String, key: String = "", perform: @escaping () -> Void) {
-        self.perform = perform
-        super.init(title: title, action: #selector(activate), keyEquivalent: key)
-        target = self
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            ForEach(options, id: \.self) { Text($0).lineLimit(1).fixedSize() }
+            Text(options.last ?? "").lineLimit(1)
+        }
     }
-
-    required init(coder: NSCoder) { fatalError() }
-    @objc private func activate() { perform() }
 }
 
-@MainActor
-private final class PickerEmpty: NSView {
-    enum State {
-        case newLibrary
-        case noMatches
-        case choose
-        case missing(String, String)
-        case unreadable(String)
+extension PickerRowKind {
+    var symbol: String {
+        switch self {
+        case .article: "doc.text"
+        case .book: "book.closed"
+        case .chapter: "text.book.closed"
+        case .thesis: "graduationcap"
+        case .web: "globe"
+        case .report: "doc.richtext"
+        case .other: "doc"
+        }
+    }
+}
+
+private struct PeekView: View {
+    let row: PickerRow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(row.title ?? PickerWords.text(.untitled)).font(.headline)
+            Text(row.fullByline).foregroundStyle(.secondary)
+            Text([row.kindLabel, row.citationKey].compactMap { $0 }.joined(separator: " · "))
+                .foregroundStyle(.secondary)
+        }
+        .textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: 320, alignment: .leading)
+        .padding(14)
+    }
+}
+
+// MARK: Empty states
+
+private struct EmptyStateView: View {
+    let state: PickerController.EmptyState
+    let controller: PickerController
+    let grid: PickerGrid
+
+    var body: some View {
+        let content = self.content
+        VStack(spacing: 6 * grid.s) {
+            Image(systemName: content.symbol)
+                .font(grid.font(30, .light))
+                .foregroundStyle(.tertiary)
+                .padding(.bottom, 4 * grid.s)
+            Text(content.title).font(grid.font(15, .semibold)).multilineTextAlignment(.center).lineLimit(2)
+            Text(PickerWords.text(content.hint)).font(grid.font(13)).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            if content.primary != nil || content.secondary != nil {
+                HStack(spacing: 12 * grid.s) {
+                    if let primary = content.primary {
+                        Button { controller.emptyAction(primary: true) } label: {
+                            HStack(spacing: 6 * grid.s) {
+                                Text(primary)
+                                if content.returnKey { KeyHint("↩") }
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    if let secondary = content.secondary {
+                        Button(secondary) { controller.emptyAction(primary: false) }.buttonStyle(.link)
+                    }
+                }
+                .font(grid.font(13))
+                .controlSize(grid.s >= 1.4 ? .large : .regular)
+                .padding(.top, 8 * grid.s)
+            }
+        }
+        .padding(.horizontal, 32 * grid.s)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    let primary = PickerButton()
-    let secondary = PickerButton()
-    private let titleLabel = pickerLabel()
-    private let hint = pickerLabel()
-    override var isFlipped: Bool { true }
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        titleLabel.alignment = .center
-        hint.alignment = .center
-        hint.textColor = .secondaryLabelColor
-        titleLabel.setAccessibilityElement(true)
-        hint.setAccessibilityElement(true)
-        secondary.surface = .link
-        primary.surface = .primary
-        primary.medium = true
-        [titleLabel, hint, primary, secondary].forEach(addSubview)
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    func configure(state: State?, actionsOpen: Bool, metrics m: PickerMetrics) {
-        isHidden = state == nil
-        guard let state else { return }
-        let content: (title: String, hint: PickerWord, primary: String?, secondary: String?, key: String)
+    private var content: (symbol: String, title: String, hint: PickerWord, primary: String?, secondary: String?, returnKey: Bool) {
         switch state {
         case .newLibrary:
-            content = (PickerWords.text(.emptyLibrary), .emptyLibraryHint, nil, nil, "")
+            ("books.vertical", PickerWords.text(.emptyLibrary), .emptyLibraryHint, nil, nil, false)
         case .noMatches:
-            content = (PickerWords.text(.noMatches), .noMatchesHint, PickerWords.text(.clear), nil, "")
+            ("magnifyingglass", PickerWords.text(.noMatches), .noMatchesHint, PickerWords.text(.clear), nil, false)
         case .choose:
-            content = (PickerWords.text(.chooseTitle), .chooseHint, PickerWords.text(.choose), PickerWords.text(.settings), "↩")
+            ("books.vertical", PickerWords.text(.chooseTitle), .chooseHint,
+             PickerWords.text(.choose), PickerWords.text(.settings), true)
         case let .missing(title, name):
-            content = (title, .missingHint, PickerWords.text(.findLibrary, name), PickerWords.text(.choose), "↩")
+            ("questionmark.folder", title, .missingHint, PickerWords.text(.findLibrary, name), PickerWords.text(.choose), true)
         case let .unreadable(problem):
-            content = (problem, .chooseHint, PickerWords.text(.choose), nil, "↩")
+            ("exclamationmark.triangle", problem, .chooseHint, PickerWords.text(.choose), nil, true)
         }
-        titleLabel.stringValue = content.title
-        titleLabel.toolTip = content.title
-        hint.stringValue = PickerWords.text(content.hint)
-        titleLabel.font = m.font(15, .semibold)
-        hint.font = m.font(13)
-        primary.metrics = m
-        secondary.metrics = m
-        primary.text = content.primary ?? ""
-        secondary.text = content.secondary ?? ""
-        primary.key = actionsOpen ? "" : content.key
-        primary.isEnabled = !actionsOpen
-        primary.setAccessibilityLabel(primary.text)
-        secondary.setAccessibilityLabel(secondary.text)
-        primary.isHidden = content.primary == nil
-        secondary.isHidden = content.secondary == nil
-        let totalHeight = m.pt(primary.isHidden ? 47 : 85)
-        // Centre the complete action group within the list's available area.
-        let y = max(0, (bounds.height - totalHeight) / 2)
-        let width = bounds.width - m.inset * 2
-        pickerLine(titleLabel, x: m.inset, y: y, width: width, height: m.pt(24))
-        pickerLine(hint, x: m.inset, y: y + m.pt(25), width: width, height: m.pt(22))
-        let firstWidth = primary.isHidden ? 0 : primary.preferredWidth
-        let secondWidth = secondary.isHidden ? 0 : secondary.preferredWidth
-        let gap = secondary.isHidden ? 0 : m.pt(12)
-        let x = (bounds.width - firstWidth - gap - secondWidth) / 2
-        primary.frame = NSRect(x: x, y: y + m.pt(55), width: firstWidth, height: m.pt(28))
-        secondary.frame = NSRect(x: x + firstWidth + gap, y: y + m.pt(55), width: secondWidth, height: m.pt(28))
     }
+}
+
+// MARK: Delivery bar
+
+private struct DeliveryBar: View {
+    @ObservedObject var model: PickerModel
+    @ObservedObject var controller: PickerController
+    let grid: PickerGrid
+    let stacked: Bool
+
+    var body: some View {
+        Group {
+            if stacked {
+                VStack(spacing: 6 * grid.s) {
+                    citation
+                    HStack { Spacer(); commands }
+                }
+            } else {
+                HStack(spacing: 8 * grid.s) {
+                    citation
+                    commands
+                }
+            }
+        }
+        .padding(.trailing, grid.trailing)
+        .padding(.vertical, 10 * grid.s)
+        .frame(height: (stacked ? 92 : 52) * grid.s)
+        .font(grid.font(13))
+        .controlSize(grid.s >= 1.4 ? .large : .regular)
+    }
+
+    private var citation: some View {
+        HStack(spacing: 8 * grid.s) {
+            Group {
+                if let beak = PickerArt.image("ibis-quote-beak") {
+                    Image(nsImage: beak).resizable().aspectRatio(contentMode: .fit)
+                        .frame(width: 18 * grid.s, height: 18 * grid.s)
+                        .foregroundStyle(Color.accentColor)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(width: grid.lead - 8 * grid.s)
+            CitationTokens(model: model, controller: controller, grid: grid)
+            LocatorField(model: model, controller: controller, grid: grid)
+            Button { controller.openFormatMenu() } label: {
+                HStack(spacing: 3 * grid.s) {
+                    Text(model.formatName).lineLimit(1)
+                    Image(systemName: "chevron.up.chevron.down").font(grid.font(9, .semibold))
+                }
+                .frame(maxWidth: 120 * grid.s)
+            }
+            .buttonStyle(.borderless)
+            .disabled(!model.canChooseFormat || controller.actionsOpen)
+            .help(model.formatContext.isEmpty ? model.formatName : model.formatContext)
+            .accessibilityLabel(PickerWords.text(.formatValue, model.formatName))
+            .accessibilityHint(model.formatContext)
+            .anchor(.format)
+        }
+    }
+
+    private var commands: some View {
+        HStack(spacing: 8 * grid.s) {
+            let staged = model.isSelectionStaged
+            Button { controller.runCommand(.membership) } label: {
+                Image(systemName: staged ? "minus.circle" : "plus.circle").font(grid.font(15))
+            }
+            .buttonStyle(.borderless)
+            .disabled(!model.canChangeSelectionMembership || controller.actionsOpen)
+            .help(PickerWords.text(staged ? .remove : .add) + "  ⇧↩")
+            .accessibilityLabel(PickerWords.text(staged ? .remove : .add))
+
+            deliver
+                .disabled(!model.canDeliver || controller.actionsOpen)
+                .help(model.deliveryTitle)
+                .accessibilityLabel(model.deliveryTitle)
+                .accessibilityHint(PickerWords.text(.returnKey))
+
+            Button { controller.toggleActions() } label: {
+                HStack(spacing: 4 * grid.s) {
+                    Text(PickerWords.text(.more))
+                    KeyHint("⌘K")
+                }
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(PickerWords.text(.more))
+            .anchor(.more)
+        }
+        .fixedSize()
+    }
+
+    @ViewBuilder private var deliver: some View {
+        let button = Button { controller.panel?.submit() } label: {
+            HStack(spacing: 6 * grid.s) {
+                Text(model.deliveryTitle).lineLimit(1)
+                KeyHint("↩")
+            }
+        }
+        // A draft moves the emphasis from the highlighted row to the delivery.
+        if model.hasDraft { button.buttonStyle(.borderedProminent) } else { button.buttonStyle(.bordered) }
+    }
+}
+
+private struct KeyHint: View {
+    let key: String
+    init(_ key: String) { self.key = key }
+    var body: some View { Text(key).opacity(0.6).accessibilityHidden(true) }
+}
+
+private struct CitationTokens: View {
+    @ObservedObject var model: PickerModel
+    @ObservedObject var controller: PickerController
+    let grid: PickerGrid
+
+    var body: some View {
+        let parts = CitationLine.parts(model, scale: grid.s)
+        let active = model.hasDraft ? model.citationItem : nil
+        ScrollViewReader { scroll in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    if parts.isEmpty, model.isFormatting {
+                        Text(PickerWords.text(.formatting)).foregroundStyle(.secondary)
+                    }
+                    ForEach(parts) { part in
+                        if model.hasDraft, let item = part.item {
+                            let first = parts.first { $0.item == item }?.id == part.id
+                            CitationToken(part: part, item: item, first: first, active: item == active,
+                                          model: model, controller: controller, grid: grid)
+                                .id(first ? AnyHashable(item) : AnyHashable(part.id))
+                        } else {
+                            Text(part.text)
+                                .foregroundStyle(model.hasDraft ? Color.secondary : Color.primary)
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                    }
+                }
+                .frame(minHeight: 24 * grid.s)
+            }
+            .opacity(model.canDeliver || model.editingCitation != nil ? 1 : 0.55)
+            .onChange(of: active) { item in
+                if let item { withAnimation(.easeOut(duration: 0.15)) { scroll.scrollTo(item) } }
+            }
+        }
+        .frame(minWidth: 80 * grid.s, maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct CitationToken: View {
+    let part: CitationLine.Part
+    let item: ItemRef
+    let first: Bool
+    let active: Bool
+    @ObservedObject var model: PickerModel
+    @ObservedObject var controller: PickerController
+    let grid: PickerGrid
+    @State private var hovered = false
+
+    var body: some View {
+        let focused = controller.focus == .token(item)
+        HStack(spacing: 4 * grid.s) {
+            Text(part.text).lineLimit(1).frame(maxWidth: 260 * grid.s, alignment: .leading)
+            Button { controller.removeToken(item) } label: {
+                Image(systemName: "xmark.circle.fill").font(grid.font(11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .opacity(hovered || focused ? 1 : 0)
+            .accessibilityLabel(PickerWords.text(.remove))
+        }
+        .padding(.leading, 7 * grid.s)
+        .padding(.trailing, 4 * grid.s)
+        .frame(height: 22 * grid.s)
+        .background(RoundedRectangle(cornerRadius: 6 * grid.s, style: .continuous)
+            .fill(Color.accentColor.opacity(active ? 0.24 : 0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 6 * grid.s, style: .continuous)
+            .strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: focused ? 2.5 : 0))
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 }
+        .onTapGesture { controller.showDetails(item) }
+        .contextMenu {
+            Button(PickerWords.text(.details)) { controller.showDetails(item) }
+            Button(PickerWords.text(.remove)) { controller.removeToken(item) }
+        }
+        .help(([part.plain] + part.notes).joined(separator: "\n"))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(PickerWords.text(active ? .activeToken : .token, part.plain))
+        .accessibilityHint(PickerWords.text(.removeToken, part.row?.title ?? part.plain))
+        .accessibilityAddTraits(.isButton)
+        .popover(isPresented: Binding(
+            get: { first && controller.layer == .details(item) },
+            set: { if !$0, controller.layer == .details(item) { controller.layerClosed() } }
+        ), arrowEdge: .top) {
+            CitationDetailsView(model: model, item: item)
+        }
+    }
+}
+
+private struct LocatorField: View {
+    @ObservedObject var model: PickerModel
+    @ObservedObject var controller: PickerController
+    let grid: PickerGrid
+
+    var body: some View {
+        let item = model.citationItem
+        let details = item.map(model.details(for:)) ?? CitationDetails()
+        let options = model.catalog?.locators ?? []
+        let term = options.first { $0.term == details.term }
+        let name = term?.name ?? PickerWords.text(.page)
+        HStack(spacing: 2 * grid.s) {
+            Menu {
+                ForEach(options, id: \.term) { option in
+                    Button {
+                        if let item { model.changeDetails(for: item) { $0.term = option.term } }
+                    } label: {
+                        if option.term == details.term { Label(option.name, systemImage: "checkmark") } else { Text(option.name) }
+                    }
+                }
+            } label: {
+                Text(term?.shortName ?? PickerWords.text(.pageShort))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(item == nil || options.isEmpty)
+            .help(name)
+            .accessibilityLabel(PickerWords.text(.locatorType))
+            NativeTextField(
+                text: details.locator, placeholder: name, label: name, style: .rounded,
+                font: .systemFont(ofSize: 13 * grid.s), isEnabled: item != nil,
+                register: { controller.locatorField = $0 },
+                began: { controller.fieldBegan(.locator) },
+                change: { text in if let item { model.changeDetails(for: item) { $0.locator = text } } }
+            )
+            .frame(width: 64 * grid.s)
+            .help(details.locator.isEmpty ? name : details.locator)
+        }
+    }
+}
+
+private struct CitationDetailsView: View {
+    @ObservedObject var model: PickerModel
+    let item: ItemRef
+
+    var body: some View {
+        let details = model.details(for: item)
+        let choices = self.choices(details)
+        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
+            GridRow {
+                Text(PickerWords.text(.before)).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+                TextField(PickerWords.text(.before), text: binding(\.prefix),
+                          prompt: Text(PickerWords.text(.beforeExample)))
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+            }
+            GridRow {
+                Text(PickerWords.text(.after)).foregroundStyle(.secondary)
+                TextField(PickerWords.text(.after), text: binding(\.suffix)).labelsHidden().textFieldStyle(.roundedBorder)
+            }
+            GridRow {
+                Text(PickerWords.text(.showAs)).foregroundStyle(.secondary)
+                Picker(PickerWords.text(.showAs), selection: Binding(
+                    get: { details.form ?? .normal },
+                    set: { form in model.changeDetails(for: item) { $0.form = form } }
+                )) {
+                    ForEach(choices) { choice in
+                        Text(choice.example.map { "\(choice.form.name)  ·  \($0)" } ?? choice.form.name)
+                            .tag(choice.form.form)
+                    }
+                }
+                .labelsHidden()
+                .disabled(choices.count < 2)
+            }
+        }
+        .frame(width: 320)
+        .padding(14)
+    }
+
+    private func binding(_ field: WritableKeyPath<CitationDetails, String>) -> Binding<String> {
+        Binding(get: { model.details(for: item)[keyPath: field] },
+                set: { text in model.changeDetails(for: item) { $0[keyPath: field] = text } })
+    }
+
+    private struct Choice: Identifiable {
+        let form: PickerForm
+        let example: String?
+        var id: CitationForm { form.form }
+    }
+
+    private func choices(_ details: CitationDetails) -> [Choice] {
+        let selected = details.form ?? .normal
+        let canReset = selected != .normal && model.preview?.problem?.fix == .editCitation
+        return [CitationForm.normal, .narrative, .yearOnly].compactMap { choice in
+            guard let option = model.forms.first(where: { $0.form == choice }) else { return nil }
+            let example = model.formExamples.first { $0.form == choice }
+            if let text = example?.example, example?.reason == nil, !text.isEmpty { return Choice(form: option, example: text) }
+            return selected == choice || (canReset && choice == .normal) ? Choice(form: option, example: nil) : nil
+        }
+    }
+}
+
+// MARK: Actions
+
+private struct ActionsPanel: View {
+    @ObservedObject var controller: PickerController
+    let grid: PickerGrid
+
+    var body: some View {
+        let actions = controller.actions
+        let grouped = controller.actionsQuery.allSatisfy(\.isWhitespace)
+        VStack(spacing: 0) {
+            ScrollViewReader { scroll in
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if actions.isEmpty {
+                            Text(PickerWords.text(.noActions))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 18 * grid.s)
+                        }
+                        ForEach(Array(actions.enumerated()), id: \.offset) { index, action in
+                            if grouped, index == 0 || actions[index - 1].group != action.group {
+                                Text(action.group)
+                                    .font(grid.font(11, .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 10 * grid.s)
+                                    .padding(.top, (index == 0 ? 6 : 10) * grid.s)
+                                    .padding(.bottom, 3 * grid.s)
+                            }
+                            ActionRow(action: action, highlighted: action == controller.highlighted,
+                                      showsGroup: !grouped, grid: grid)
+                                .id(index)
+                                .onHover { if $0 { controller.highlight(action) } }
+                                .onTapGesture { controller.run(action) }
+                        }
+                    }
+                    .padding(5 * grid.s)
+                }
+                .frame(height: min(300, listHeight(actions, grouped: grouped)) * grid.s)
+                .onChange(of: controller.highlighted) { action in
+                    if let action, let index = actions.firstIndex(of: action) { scroll.scrollTo(index) }
+                }
+            }
+            Divider()
+            NativeTextField(
+                text: controller.actionsQuery, placeholder: PickerWords.text(.searchActions),
+                style: .plain, font: .systemFont(ofSize: 13 * grid.s),
+                register: { controller.actionsField = $0 },
+                began: { controller.fieldBegan(.actions) },
+                change: { controller.actionsQuery = $0 }
+            )
+            .padding(.horizontal, 12 * grid.s)
+            .frame(height: 36 * grid.s)
+        }
+        .font(grid.font(13))
+        .frame(width: 320 * grid.s)
+        .background(SystemMaterial(material: .menu))
+        .clipShape(RoundedRectangle(cornerRadius: 10 * grid.s, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10 * grid.s, style: .continuous)
+            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.2), radius: 16, y: 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(PickerWords.text(.actionsTitle))
+    }
+}
+
+private func listHeight(_ actions: [PickerAction], grouped: Bool) -> CGFloat {
+    guard !actions.isEmpty else { return 56 }
+    let groups = grouped ? Set(actions.map(\.group)).count : 0
+    return CGFloat(actions.count) * 26 + CGFloat(groups) * 24 + 10
+}
+
+private struct ActionRow: View {
+    let action: PickerAction
+    let highlighted: Bool
+    let showsGroup: Bool
+    let grid: PickerGrid
+
+    var body: some View {
+        let ink = highlighted ? Color(nsColor: .alternateSelectedControlTextColor) : Color(nsColor: .labelColor)
+        HStack(spacing: 6 * grid.s) {
+            if let checked = action.checked {
+                Image(systemName: "checkmark").font(grid.font(11, .semibold)).opacity(checked ? 1 : 0)
+                    .frame(width: 14 * grid.s)
+            }
+            Text(action.title).lineLimit(1)
+            Spacer(minLength: 12 * grid.s)
+            if showsGroup { Text(action.group).opacity(0.6).lineLimit(1) }
+            if !action.shortcut.isEmpty { Text(action.shortcut).opacity(0.6).fixedSize() }
+        }
+        .foregroundStyle(ink)
+        .padding(.horizontal, 10 * grid.s)
+        .frame(height: 26 * grid.s)
+        .background(RoundedRectangle(cornerRadius: 5 * grid.s, style: .continuous)
+            .fill(highlighted ? Color(nsColor: .selectedContentBackgroundColor) : .clear))
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(action.checked.map {
+            [action.title, PickerWords.text($0 ? .actionStateOn : .actionStateOff)].joined(separator: ". ")
+        } ?? action.title)
+        .accessibilityHint(action.shortcut)
+        .accessibilityAddTraits(highlighted ? [.isSelected, .isButton] : .isButton)
+    }
+}
+
+// MARK: Helpers
+
+struct AnchorFrames: PreferenceKey {
+    static let defaultValue: [PickerController.Anchor: CGRect] = [:]
+    static func reduce(value: inout [PickerController.Anchor: CGRect],
+                       nextValue: () -> [PickerController.Anchor: CGRect]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+private extension View {
+    /// Records where a control sits, so its native menu opens beneath it.
+    func anchor(_ anchor: PickerController.Anchor) -> some View {
+        background(GeometryReader { geometry in
+            Color.clear.preference(key: AnchorFrames.self, value: [anchor: geometry.frame(in: .global)])
+        })
+    }
+}
+
+/// Lets the header move the window, as a title bar would.
+private struct WindowDragArea: NSViewRepresentable {
+    final class Area: NSView {
+        override var mouseDownCanMoveWindow: Bool { false }
+        override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
+    }
+
+    func makeNSView(context: Context) -> Area { Area() }
+    func updateNSView(_ view: Area, context: Context) {}
 }
