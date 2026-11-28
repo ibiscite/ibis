@@ -12,8 +12,14 @@ fn obsidian_plugin_searches_and_inserts_a_citation() {
         return;
     }
     let tests = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/obsidian/main.test.mjs");
+    // A home with no Ibis settings, so the app's own format choice cannot leak in.
+    let home = Path::new(env!("CARGO_TARGET_TMPDIR")).join("obsidian-home");
+    std::fs::create_dir_all(&home).unwrap_or_else(|e| panic!("{e}"));
     let out = Command::new("node")
         .env("IBIS", env!("CARGO_BIN_EXE_ibis"))
+        .env("HOME", &home)
+        .env("APPDATA", &home)
+        .env("XDG_CONFIG_HOME", &home)
         .arg("--test")
         .arg(&tests)
         .output()
@@ -24,5 +30,5 @@ fn obsidian_plugin_searches_and_inserts_a_citation() {
         "{report}\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert!(report.contains("# pass 3"), "{report}");
+    assert!(report.contains("# pass 4"), "{report}");
 }
