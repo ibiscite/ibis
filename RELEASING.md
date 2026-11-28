@@ -86,12 +86,17 @@ and [`AppxManifest.xml`](apps/desktop/src-tauri/packaging/msix/AppxManifest.xml)
 The build installs a copy signed with a throwaway certificate, runs `ibis
 --version` through its alias, starts the app from Start and removes it
 (`scripts/test-msix.ps1`). The package is a workflow artifact
-(`ibis-store-x86_64-pc-windows-msvc`, kept 90 days), never a release asset: it
+(`store-x86_64-pc-windows-msvc`, kept 90 days), never a release asset: it
 is unsigned, and the Store signs what it receives. Only a numbered release's
 package (product "Ibis") goes to the Store. In Partner Center, open the app,
 start an update submission, replace the package under Packages and submit. The
 Store copy updates through the Store, so its updater is off; its startup task
 and command alias replace the Run key and PATH entry (`src-tauri/src/store.rs`).
+
+The manifest's restricted capabilities need a reason in the submission:
+`runFullTrust` because Ibis is a desktop app, and `unvirtualizedResources`
+because Ibis shares its settings with its command line and connects AI apps by
+editing their settings files in AppData (only those folders are excluded).
 
 The identity in `scripts/build-msix.ps1` must match Partner Center's
 Product identity page (package name, publisher and publisher display name).

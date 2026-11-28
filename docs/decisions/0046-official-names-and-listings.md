@@ -11,8 +11,10 @@
   Microsoft Store, as an MSIX package of the installer's files that the Store
   signs: free for an individual developer, and Store installs carry no
   SmartScreen warning. The Store copy updates through the Store and starts at
-  login through its package's startup task; write virtualization is off, so it
-  reads and writes the same files as the installer. The listing waits for the
+  login through its package's startup task. On Windows 11 its writes to Ibis's
+  settings and to the agent apps' files it connects go to the real folders
+  (flexible virtualization); everything else it creates in AppData stays
+  private to the package. The listing waits for the
   owner's Partner Center account ([RELEASING.md](../../RELEASING.md#the-microsoft-store)).
 - **Code signing.** Signing stays a 1.0 question under
   [decision 0032](0032-release-gates.md). Meanwhile, downloads are verifiable

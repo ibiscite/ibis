@@ -42,8 +42,8 @@ Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 & 7z x -y "-o$stage" $setup.FullName | Out-Null
 if ($LASTEXITCODE -ne 0) { throw '7-Zip could not open the installer.' }
 if (Test-Path "$stage/`$INSTDIR") { $stage = Join-Path $stage '$INSTDIR' }
-# What only the installer uses: its plug-ins, uninstaller and PATH helper.
-Get-ChildItem $stage -Force | Where-Object { $_.Name -like '$*' -or $_.Name -in 'uninstall.exe', 'packaging' } |
+# What only the installer uses: its plug-ins, script, uninstaller and PATH helper.
+Get-ChildItem $stage -Force | Where-Object { $_.Name -like '$*' -or $_.Name -in '[NSIS].nsi', 'uninstall.exe', 'packaging' } |
   Remove-Item -Recurse -Force
 foreach ($file in 'ibis-desktop.exe', 'ibis.exe', 'resources/samples.csljson', 'notices/LICENSE') {
   if (-not (Test-Path (Join-Path $stage $file))) { throw "The installer holds no $file." }
