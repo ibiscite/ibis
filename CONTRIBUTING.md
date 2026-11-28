@@ -53,7 +53,7 @@ libayatana-appindicator3-dev patchelf`. Other systems:
 
 [Architecture](docs/architecture.md#crates-and-clients) maps crates and app
 modules. `fixtures/` holds invented data, `brand/` generates logos/icons and
-`website/` holds the site. [Testing](docs/testing.md) lists checks;
+`website/` holds the site. [Development](docs/development.md) has one command per job, [testing](docs/testing.md) lists checks;
 [RELEASING.md](RELEASING.md) describes builds and publication.
 
 ## Pull requests

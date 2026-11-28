@@ -3,7 +3,8 @@
 Ibis is one shortcut to cite from your library in any app. Read only what your task needs:
 scope in [ROADMAP.md](ROADMAP.md) (its "How we build" is the working method), structure in
 [docs/architecture.md](docs/architecture.md), look and behaviour in [docs/design.md](docs/design.md),
-checks in [docs/testing.md](docs/testing.md), lasting decisions in [docs/decisions.md](docs/decisions.md).
+checks in [docs/testing.md](docs/testing.md), lasting decisions in [docs/decisions.md](docs/decisions.md),
+every command, machine and landing pitfall in [docs/development.md](docs/development.md).
 Current work and owners: the tracking issue (label `tracking`).
 
 ```sh
@@ -24,6 +25,8 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 - Build the simplest correct form at the place that owns the problem. If the same fix is needed, or would be copied, at a second place, change the shared piece instead; a root-cause change lands as a series (the new primitive beside the old path, then callers moved, then the old path deleted). Never change a test's expected result to reach green unless the behaviour was meant to change, and say so on the pull request. Delete what you replace; write no compatibility code before 1.0 ([ROADMAP.md](ROADMAP.md) › How we build). UI changes go through `tokens.css`, a shared component in `apps/desktop/src/ui/` or the part's page under `docs/design/`, never one screen alone. Logos and icons come only from `brand/`.
 - A change people can see lands with its explanation, in the same pull request: the website (`website/content/`, `website/pages/`) and the docs that say what Ibis does, cannot do yet, and how (the maintainer, 2026-11-26).
 - When the maintainer approves a plan or answers a question, record it the same day in the file it changes and link it from the tracking issue.
+- Skills in `.agents/skills/` (also `.claude/skills/`) find problems on demand: `verify` drives the real CLI or app, `review` checks a diff once, `audit` finds what to delete, `diagnose` builds a failing signal before a fix.
+- Encode a lesson in structure first: a type, private visibility or generated code, so the wrong version cannot be written. A new check comes second and a prose rule last; a primitive that makes a check unnecessary deletes it.
 
 ## Trust and authority
 
@@ -39,7 +42,7 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 ## Landing
 
-Pull request titles are Conventional Commits and become the release notes; link `Closes #N`. Sign off commits (`git commit -s`) with a public project or GitHub noreply identity and disclose AI help with an `Assisted-by:` or `Co-authored-by:` trailer.
+Public text (issues, pull requests, docs, commits, releases) states the result in short, plain, professional words, never the conversation, and never quotes the maintainer. Issue titles are plain outcome sentences with one `type:` label, and open issues carry a milestone. Pull request titles are Conventional Commits and become the release notes; link `Closes #N`. Sign off commits (`git commit -s`) with a public project or GitHub noreply identity and disclose AI help with an `Assisted-by:` or `Co-authored-by:` trailer.
 
 Land with `bash scripts/land.sh` from a clean branch: fast local checks, push and request squash auto-merge.
 Hosted **CI result** is the required check, with no merge queue ([decision 0049](docs/decisions/0049-local-gate.md)): a pull request runs the jobs its changed paths can affect on all three systems (the `ci:full` label runs everything), and every push to main runs everything. If main turns red, restore it first with the smallest verified repair or a revert and record the cause on its issue the same day; until main's push CI is green again, `land.sh` refuses any title but `fix` or `revert`.
