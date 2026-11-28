@@ -18,7 +18,8 @@ const COMMANDS = [
   "/opt/homebrew/bin/ibis",
   "/usr/local/bin/ibis",
 ];
-const APP_ID = "md.obsidian";
+// Obsidian's identity in Ibis's app list, where a per-app format is kept.
+const APP_ID = process.platform === "win32" ? "obsidian.exe" : "md.obsidian";
 const DEFAULTS = { command: "", file: "", zotero: false };
 const NO_MATCHES = "No matching references";
 const NOT_INSTALLED =
@@ -87,6 +88,8 @@ class CiteModal extends SuggestModal {
     super(plugin.app);
     this.plugin = plugin;
     this.editor = editor;
+    // Where the citation goes: the selection when the command ran, in the note as it was then.
+    this.target = { from: editor.getCursor("from"), to: editor.getCursor("to"), text: editor.getValue() };
     this.asked = 0;
     this.newest = { asked: 0, found: [] };
     this.setPlaceholder("Search your references by author, title, year or key");
@@ -94,9 +97,13 @@ class CiteModal extends SuggestModal {
   }
 
   async getSuggestions(query) {
-    if (!query.trim()) return [];
-    // Searches can finish out of order; never show an older answer over a newer one.
+    // Obsidian shows whichever answer arrives last, so each answer shows the
+    // current query's results: none while it is still being searched.
     const asked = ++this.asked;
+    if (!query.trim()) {
+      this.newest = { asked, found: [] };
+      return [];
+    }
     let found = [];
     let message = NO_MATCHES;
     try {
@@ -104,11 +111,11 @@ class CiteModal extends SuggestModal {
     } catch (error) {
       message = error.message;
     }
-    if (asked > this.newest.asked) {
+    if (asked === this.asked) {
       this.newest = { asked, found };
       this.emptyStateText = message;
     }
-    return this.newest.found;
+    return this.newest.asked === this.asked ? this.newest.found : [];
   }
 
   renderSuggestion(item, el) {
@@ -119,7 +126,10 @@ class CiteModal extends SuggestModal {
   async onChooseSuggestion(item) {
     if (!item.key) return new Notice("Ibis: this reference has no citation key to cite with.");
     try {
-      this.editor.replaceSelection(await cite(this.plugin, item.key));
+      const text = await cite(this.plugin, item.key);
+      const { from, to, text: note } = this.target;
+      if (this.editor.getValue() !== note) return new Notice("Ibis: the note changed while citing, so nothing was inserted. Try again.");
+      this.editor.replaceRange(text, from, to);
     } catch (error) {
       new Notice(error.message);
     }

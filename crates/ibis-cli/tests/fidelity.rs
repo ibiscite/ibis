@@ -243,7 +243,8 @@ fn pandoc_filter_renders_what_the_bib_renders() {
     let body = "See @particles2017 [p. 4] and [@conf2022; @chapter2022], @thesis2014 and @missing2001.\n";
     let render = |front: String| {
         let doc = Path::new(env!("CARGO_TARGET_TMPDIR")).join("filter-doc.md");
-        std::fs::write(&doc, format!("---\n{front}nocite: '@web2024'\n---\n{body}")).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(&doc, format!("---\n{front}nocite: ['@web2024']\n---\n{body}"))
+            .unwrap_or_else(|e| panic!("{e}"));
         let out = Command::new("pandoc")
             .env("IBIS", env!("CARGO_BIN_EXE_ibis"))
             .arg("--lua-filter")
