@@ -31,7 +31,7 @@ fn website_transcripts_match_the_cli() -> Result<(), Box<dyn std::error::Error>>
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let temporary = tempfile::tempdir()?;
-    ibis_engine::identity::use_key_file(temporary.path().join("library-ids.key"), true);
+    ibis_engine::identity::use_key_file(temporary.path().join("library-ids.key"), true).unwrap();
     let transcript = std::fs::read_to_string(root.join("website/content/terminal.txt"))?;
     let mut commands = 0;
     let blocks: Vec<_> = transcript

@@ -382,7 +382,7 @@ pub(super) fn run() -> io::Result<()> {
     std::env::set_current_dir(endpoint.0.runtime_dir())?;
     let _lifetime = endpoint.0.lock("engine")?.ok_or(io::ErrorKind::AlreadyExists)?;
     let mut listener = endpoint.0.listen()?;
-    ibis_engine::identity::use_saved_key(true);
+    ibis_engine::identity::use_saved_key(true).map_err(io::Error::other)?;
     #[cfg(unix)]
     ibis_sources::adapter::guard_daemon_children(std::env::current_exe()?);
     let host = Arc::new(crate::headless::Host::new().map_err(|_| io::Error::other("engine unavailable"))?);

@@ -79,7 +79,10 @@ fn home_here() -> Option<Home> {
         ibis: None,
         root,
     };
-    home.ibis = home.find(COMMAND).or_else(|| std::env::current_exe().ok());
+    home.ibis = home
+        .find(COMMAND)
+        .or_else(|| std::env::current_exe().ok())
+        .map(ibis_engine::agent_apps::IbisCommand::Installed);
     Some(home)
 }
 
