@@ -106,8 +106,11 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         }
         store.present(app: app?.bundleIdentifier, name: app?.localizedName, pid: app?.processIdentifier) {
             let site = ibis_native_capture(windowNumber, app?.processIdentifier ?? 0)
-            guard let data = site.data else { return nil }
-            return String(decoding: UnsafeBufferPointer(start: data, count: site.len), as: UTF8.self)
+            var bytes = [UInt8](repeating: 0, count: 1024)
+            let length = ibis_native_take_selection(&bytes, bytes.count)
+            let selection = length > 0 ? String(decoding: bytes.prefix(length), as: UTF8.self) : nil
+            return (site.data.map { String(decoding: UnsafeBufferPointer(start: $0, count: site.len), as: UTF8.self) },
+                    selection)
         }
         glass.refresh()
         host.layoutSubtreeIfNeeded()

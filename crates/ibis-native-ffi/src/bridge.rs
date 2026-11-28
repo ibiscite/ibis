@@ -23,6 +23,8 @@ thread_local! {
     static NEXT: Cell<u32> = const { Cell::new(1) };
     static WINDOW: RefCell<Option<Retained<NSWindow>>> = const { RefCell::new(None) };
     static PENDING: RefCell<Option<(u32, isize, CopyAttempt)>> = const { RefCell::new(None) };
+    /// The short selection taken at the last capture, handed to the search once.
+    static SELECTED: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 #[derive(Clone)]
@@ -92,8 +94,10 @@ extern "C" fn ibis_native_capture(window_number: isize, expected_pid: i32) -> Ib
     cancel();
     let own = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
     let (front, ()) = site::read(own, || {
-        let captured = capture::captured(System::Macos, macos::frontmost(&Host), own)
-            .unwrap_or_else(|| Captured::unknown(System::Macos));
+        let mut front = macos::frontmost(&Host);
+        SELECTED.set(front.as_mut().and_then(|front| front.search.take()).map(capture::SelectedText::into_search));
+        let captured =
+            capture::captured(System::Macos, front, own).unwrap_or_else(|| Captured::unknown(System::Macos));
         TARGET.begin_presentation(Some(captured));
         ((), TARGET.captured_window())
     });
@@ -121,8 +125,29 @@ extern "C" fn ibis_native_capture(window_number: isize, expected_pid: i32) -> Ib
     })
 }
 
+/// Main thread, once after a capture: copies the short selection the person
+/// had in the app in front into `out` and forgets it. Returns its length in
+/// bytes, or 0 when there was none or it does not fit.
+// SAFETY: This symbol is unique. The caller passes a writable buffer of
+// `capacity` bytes that it owns for the duration of the call.
+#[unsafe(no_mangle)]
+unsafe extern "C" fn ibis_native_take_selection(out: *mut u8, capacity: usize) -> usize {
+    if MainThreadMarker::new().is_none() || out.is_null() {
+        return 0;
+    }
+    let Some(text) = SELECTED.take() else { return 0 };
+    if text.len() > capacity {
+        return 0;
+    }
+    // SAFETY: `out` is non-null and valid for `capacity` bytes, checked above
+    // to hold all of `text`; the two allocations cannot overlap.
+    unsafe { std::ptr::copy_nonoverlapping(text.as_ptr(), out, text.len()) };
+    text.len()
+}
+
 fn cancel() {
     PENDING.set(None);
+    SELECTED.set(None);
     let _ = TARGET.change_destination(true, |_| Ok(()));
 }
 

@@ -128,7 +128,6 @@ pub fn shell_words(language: Language) -> BTreeMap<&'static str, String> {
         ("light", "look-light"),
         ("dark", "look-dark"),
         ("copied", "picker-native-copied"),
-        ("copiedPermission", "picker-native-copied-permission"),
         ("accessDrag", "picker-native-access-drag"),
         ("accessWait", "picker-native-access-wait"),
         ("moveEarlier", "picker-native-move-earlier"),

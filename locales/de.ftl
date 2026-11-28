@@ -2069,14 +2069,14 @@ app-failure-connect-agent-app = { ai-apps-failed }
 app-failure-disconnect-agent-app = { ai-apps-failed }
 
 # Native macOS picker and menu bar.
-picker-native-app = Ibis Native
+picker-native-app = Ibis
 picker-native-panel = Ibis, Zitationsauswahl
 picker-native-open = Ibis öffnen
-picker-native-quit = Ibis Native beenden
+picker-native-quit = Ibis beenden
 picker-native-allow-paste = Einfügen erlauben…
 picker-native-paste-copy-mode = Ibis kopiert Zitate. Drücken Sie ⌘V zum Einfügen.
 picker-native-open-library = Bibliothek öffnen
-picker-native-shortcut-unavailable = Das Tastenkürzel von Ibis Native ist nicht verfügbar.
+picker-native-shortcut-unavailable = Das Tastenkürzel von Ibis ist nicht verfügbar.
 picker-native-shortcut-not-saved = Ibis konnte nicht bestätigen, dass das Tastenkürzel gespeichert wurde.
 picker-native-format = Format
 picker-native-format-value = Format, { $format }
@@ -2106,7 +2106,6 @@ picker-native-text-larger = Größere Schrift
 picker-native-text-smaller = Kleinere Schrift
 picker-native-density = Zeilen
 picker-native-copied = Kopiert. Drücken Sie ⌘V zum Einfügen.
-picker-native-copied-permission = Kopiert. Erlauben Sie im Ibis-Menü das automatische Einfügen.
 picker-native-access-title = { $app } einschalten
 picker-native-access-drag = Falls es nicht in der Liste steht, ziehen Sie dieses Symbol hinein.
 picker-native-access-wait = Dies schließt sich, sobald es eingeschaltet ist. Bis dahin werden Zitate zum Einfügen mit ⌘V kopiert.

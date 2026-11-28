@@ -51,6 +51,8 @@ final class PickerStore: ObservableObject {
     var needsPasteAccess: (() -> Void)?
     /// A citation reached the app: the menu bar item nods.
     var didDeliver: (() -> Void)?
+    /// The citation was copied rather than pasted; the text says what to do next.
+    var didCopy: ((String) -> Void)?
 
     private let engine: EngineClient
     private var opening: PickerOpenRequest?
@@ -63,7 +65,7 @@ final class PickerStore: ObservableObject {
     private var targetPID: Int32?
     private var pasteDestination: String?
     private var lastShown: Date?
-    private var lastDelivery: String?
+    private var selectionSearch: String?
     private var hasTemporaryTextSize = false
     private var announcement: Task<Void, Never>?
     private var formsTask: Task<Void, Never>?
@@ -187,13 +189,16 @@ final class PickerStore: ObservableObject {
 
     // MARK: Opening and closing
 
-    func present(app: String?, name: String? = nil, pid: Int32? = nil, captureSite: () -> String? = { nil }) {
+    /// Opens for the app in front. `capture` reads its site and, once, the
+    /// short text selected there, which becomes the search (K5).
+    func present(app: String?, name: String? = nil, pid: Int32? = nil,
+                 capture: () -> (site: String?, selection: String?) = { (nil, nil) }) {
         dismiss()
-        let site = captureSite()
+        let (site, selection) = capture()
+        selectionSearch = selection
         let keepQuery = lastShown.map { Date().timeIntervalSince($0) < 60 } ?? false
         lastShown = Date()
-        notice = lastDelivery
-        lastDelivery = nil
+        notice = nil
         targetName = name
         targetPID = pid
         pasteDestination = nil
@@ -242,7 +247,9 @@ final class PickerStore: ObservableObject {
                 let typed = query != queryAtOpen ? query : nil
                 query = opened.state.query
                 apply(opened.state)
-                if let typed { type(typed) }
+                // What the person typed wins over the selection read from the app in front.
+                let selection = selectionSearch.take()
+                if let text = typed ?? selection { type(text) }
             } catch {
                 guard !Task.isCancelled else { return }
                 isOpening = false
@@ -428,11 +435,12 @@ final class PickerStore: ObservableObject {
                 switch result {
                 case IbisPasted: didDeliver?()
                 case IbisPermissionRequired:
-                    lastDelivery = PickerWords.text(.copiedPermission)
+                    didCopy?(PickerWords.text(.copied))
                     needsPasteAccess?()
                 case nil: notice = PickerWords.text(.copyFailed)
                 default:
-                    lastDelivery = PickerWords.text(.copied)
+                    // 8B: say so only when the citation was copied, not pasted.
+                    didCopy?(PickerWords.text(.copied))
                     didDeliver?()
                 }
                 if result != nil { query = "" }
@@ -571,5 +579,13 @@ private func withUtf8<T>(_ text: String?, _ body: (IbisUtf8) -> T) -> T {
     guard let text else { return body(IbisUtf8(data: nil, len: 0)) }
     return Array(text.utf8).withUnsafeBufferPointer { bytes in
         body(IbisUtf8(data: bytes.baseAddress, len: bytes.count))
+    }
+}
+
+private extension Optional {
+    /// The value, leaving nil behind.
+    mutating func take() -> Wrapped? {
+        defer { self = nil }
+        return self
     }
 }

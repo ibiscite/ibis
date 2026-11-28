@@ -20,6 +20,9 @@ typedef enum {
 int32_t ibis_native_command_key(uint16_t preferred, uint8_t lower_ascii);
 // A canonical site name in static UTF-8 storage, or NULL.
 IbisUtf8 ibis_native_capture(intptr_t window_number, int32_t expected_pid);
+// Main thread, once after a capture: the short selection in the app in front,
+// copied into out as UTF-8. Returns its length, or 0 when none or too long.
+size_t ibis_native_take_selection(uint8_t *out, size_t capacity);
 void ibis_native_cancel(void);
 uint32_t ibis_native_begin(void);
 // Borrow UTF-8 for this call only. NULL with length 0 means absent.

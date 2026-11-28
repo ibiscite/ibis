@@ -2088,14 +2088,14 @@ app-failure-connect-agent-app = { ai-apps-failed }
 app-failure-disconnect-agent-app = { ai-apps-failed }
 
 # Native macOS picker and menu bar.
-picker-native-app = Ibis Native
+picker-native-app = Ibis
 picker-native-panel = Ibis, citation picker
 picker-native-open = Open Ibis
-picker-native-quit = Quit Ibis Native
+picker-native-quit = Quit Ibis
 picker-native-allow-paste = Allow Paste…
 picker-native-paste-copy-mode = Ibis copies citations. Press ⌘V to paste.
 picker-native-open-library = Open Library
-picker-native-shortcut-unavailable = The Ibis Native shortcut is unavailable.
+picker-native-shortcut-unavailable = The Ibis shortcut is unavailable.
 picker-native-shortcut-not-saved = Ibis could not confirm that the shortcut was saved.
 picker-native-format = Format
 picker-native-format-value = Format, { $format }
@@ -2125,7 +2125,6 @@ picker-native-text-larger = Larger Text
 picker-native-text-smaller = Smaller Text
 picker-native-density = Rows
 picker-native-copied = Copied. Press ⌘V to paste.
-picker-native-copied-permission = Copied. Allow Paste in the Ibis menu to paste automatically.
 picker-native-access-title = Switch on { $app }
 picker-native-access-drag = If it’s not in the list, drag this icon in.
 picker-native-access-wait = This closes by itself once it’s on. Until then, citations are copied for ⌘V.
