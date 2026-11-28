@@ -321,6 +321,8 @@ exact release.
 - **WebAssembly builds** of the rules and readers: no client needs them yet.
 - **SSH beyond `ssh HOST ibis mcp`:** the person's own SSH covers the first need.
 - **More interface languages:** as translators offer them.
+- **A web version for reading and citing** ([0067](docs/decisions/0067-whatever-people-have.md)):
+  planned after 1.0 over the same engine; nothing before 1.0 may block it.
 
 ## Do not build
 

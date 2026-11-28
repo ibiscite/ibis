@@ -15,8 +15,8 @@ its limits.
    asking the person to change how they work. Each adapter declares what its
    manager can do, and the app offers only that. Ibis is still not a reference
    manager or a sync service (ROADMAP › Do not build).
-2. **Word citations as close to Zotero's and as robust as possible.** Word is
-   where most of Ibis's first writers work, beside LaTeX. The method is ours
+2. **Word citations as close to Zotero's and as robust as possible.** Most of
+   Ibis's first writers use Word or LaTeX, on Windows and Mac. The method is ours
    to choose by evidence: formatted paste and `ibis format` today, Zotero's own
    fields where the trial ([#1378](https://github.com/ibiscite/ibis/issues/1378))
    proves them robust, and fields or an add-in of Ibis's own only if they beat
@@ -26,11 +26,27 @@ its limits.
    app does is available through the CLI and MCP for agents and power users
    ([0055](0055-agent-layers-full-text-writes-remote.md)). Someone who wants no
    AI sees none of it: no prompts, panels or network use in the default flow.
-4. **Coauthors are an open question.** Shared libraries, two people citing in
-   one manuscript and handing a document between Word and LaTeX writers need
-   their own design before 1.0; the 1.0 coauthor round trip through Zotero's
-   document transfer is the first case.
-5. **The name is always Ibis**: the app on every system, the CLI and the
+4. **References live in people's own files**, offline and private. There is
+   no Ibis sync service or account; files sync however the person already
+   syncs them.
+5. **Coauthors get both routes.** A document carries the references it cites
+   (a `.bib` beside a LaTeX file, the data inside a Word or ODT file), so
+   whoever opens it can keep citing. A team can also point Ibis at one shared
+   reference file in a folder it already syncs (Dropbox, iCloud Drive, Git).
+   The 1.0 coauthor round trip through Zotero's document transfer is the first
+   case tested.
+6. **Plugins are small programs over the CLI and MCP**, not an in-app plugin
+   API or store ([0039](0039-extending-ibis-from-outside.md)).
+7. **Settings are simple by default, with full depth for those who want it.**
+   The design is still open: it goes to the maintainer as A/B mock-ups
+   rather than a plain "Advanced" section.
+8. **Updates are quiet and automatic**, with release notes one click away.
+9. **Desktop first; a web version is planned after 1.0** for reading and
+   citing, over the same engine. Nothing before 1.0 may block it.
+10. **Every writing app is served equally**: Word, LaTeX editors, Google Docs,
+   Pages, LibreOffice, Obsidian, Markdown and Typst editors. Each gets the
+   best citation its document format can hold.
+11. **The name is always Ibis**: the app on every system, the CLI and the
    brand. Working names such as "Ibis Native" are not used.
 
 ## Consequences
