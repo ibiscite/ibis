@@ -4,11 +4,25 @@ import SwiftUI
 // The picker's content: one field, one list, one footer line, laid out with
 // the system's own controls. Every size is a multiple of the picker's scale.
 
-/// The picker's grid: the lead column holds glyphs, text starts after it.
+/// The picker's grid, one set of columns for every line, as in Spotlight:
+/// the search glyph, each row's kind symbol and the status symbol share one
+/// glyph column, and the query, titles and hints start at one text edge.
+///
+///     | inset | pad | glyph | gap | text …
+///     ^ window edge   ^ edge        ^ lead
 struct PickerGrid {
     let s: CGFloat
     var width: CGFloat { 640 * s }
-    var lead: CGFloat { 48 * s }
+    /// A highlighted row's distance from the window edge.
+    var inset: CGFloat { 8 * s }
+    /// Inside a row, before its symbol.
+    var pad: CGFloat { 10 * s }
+    /// Where every line's first glyph or label starts.
+    var edge: CGFloat { inset + pad }
+    var glyph: CGFloat { 30 * s }
+    var gap: CGFloat { 10 * s }
+    /// Where the query, titles and hints start.
+    var lead: CGFloat { edge + glyph + gap }
     var trailing: CGFloat { 16 * s }
     var header: CGFloat { 56 * s }
     var hint: CGFloat { 22 * s }
@@ -65,7 +79,7 @@ private struct SearchHeader: View {
     let grid: PickerGrid
 
     var body: some View {
-        HStack(spacing: 8 * grid.s) {
+        HStack(spacing: grid.gap) {
             SearchGlyph(grid: grid)
             NativeTextField(
                 text: store.query,
@@ -81,6 +95,7 @@ private struct SearchHeader: View {
                 ProgressView().controlSize(.small)
             }
         }
+        .padding(.leading, grid.edge)
         .padding(.trailing, grid.trailing)
         .frame(height: grid.header)
         .background(WindowDragArea())
@@ -95,7 +110,7 @@ private struct SearchGlyph: View {
         Image(systemName: "magnifyingglass")
             .font(grid.font(20))
             .foregroundStyle(.secondary)
-            .frame(width: grid.lead - 8 * grid.s)
+            .frame(width: grid.glyph)
             .accessibilityHidden(true)
     }
 }
@@ -186,7 +201,7 @@ private struct SectionHeading: View {
         Text(title)
             .font(grid.font(11, .semibold))
             .foregroundStyle(.secondary)
-            .padding(.leading, 18 * grid.s)
+            .padding(.leading, grid.edge)
             .padding(.bottom, 4 * grid.s)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             .frame(height: grid.heading)
@@ -228,8 +243,8 @@ struct ResultRow: View {
                     Image(systemName: row.kind.symbol).font(grid.font(15)).foregroundStyle(quiet)
                 }
             }
-            .frame(width: 30 * grid.s)
-            .padding(.trailing, 10 * grid.s)
+            .frame(width: grid.glyph)
+            .padding(.trailing, grid.gap)
             VStack(alignment: .leading, spacing: (density == .compact ? 1 : 3) * grid.s) {
                 Text(row.title ?? PickerWords.text(.untitled))
                     .font(grid.font(14, .medium))
@@ -264,11 +279,11 @@ struct ResultRow: View {
                     .accessibilityHidden(true)
             }
         }
-        .padding(.leading, 10 * grid.s)
+        .padding(.leading, grid.pad)
         .padding(.trailing, 12 * grid.s)
         .frame(height: grid.row(density))
         .background(RoundedRectangle(cornerRadius: 10 * grid.s, style: .continuous).fill(fill))
-        .padding(.horizontal, 8 * grid.s)
+        .padding(.horizontal, grid.inset)
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
         .help(([row.title ?? "", row.fullByline] + row.matchReasons + [row.citationKey ?? ""])
@@ -361,13 +376,13 @@ private struct StatusLine: View {
 
     var body: some View {
         let status = problem.status
-        HStack(spacing: 8 * grid.s) {
+        HStack(spacing: grid.gap) {
             Image(systemName: problem.symbol
                 ?? (status?.kind == .citation ? "xmark.octagon.fill" : "exclamationmark.triangle.fill"))
                 .symbolRenderingMode(problem.symbol == nil ? .multicolor : .monochrome)
                 .foregroundStyle(.secondary)
                 .font(grid.font(12))
-                .frame(width: 30 * grid.s)
+                .frame(width: grid.glyph)
             Text(problem.text).font(grid.font(12)).foregroundStyle(.secondary).lineLimit(1).help(problem.text)
             Spacer(minLength: 8 * grid.s)
             if let status, let fix = status.fix {
@@ -376,7 +391,7 @@ private struct StatusLine: View {
                     .font(grid.font(12))
             }
         }
-        .padding(.leading, 18 * grid.s)
+        .padding(.leading, grid.edge)
         .padding(.trailing, grid.trailing)
         .frame(height: grid.status)
     }
@@ -393,7 +408,7 @@ private struct EmptyStateView: View {
             if let symbol = content.symbol {
                 Label(content.title, systemImage: symbol).foregroundStyle(.primary)
             } else {
-                Text(content.title).foregroundStyle(.primary)
+                Text(content.title).bold().foregroundStyle(.primary)
             }
         } description: {
             Text(PickerWords.text(content.hint))
@@ -492,8 +507,8 @@ private struct Footer: View {
             .anchor(.actions)
         }
         .font(grid.font(12))
-        .padding(.leading, 18 * grid.s)
-        .padding(.trailing, 14 * grid.s)
+        .padding(.leading, grid.edge)
+        .padding(.trailing, grid.trailing)
         .frame(height: grid.footer)
         // The citation is read, so the footer takes Peek's reading material.
         .readableMaterial()

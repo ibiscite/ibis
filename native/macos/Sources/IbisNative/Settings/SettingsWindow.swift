@@ -24,15 +24,28 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSSearch
         let window = SettingsHostWindow(shortcuts: shortcuts)
         window.isReleasedWhenClosed = false
         super.init(window: window)
-        let content = NSHostingController(rootView: NativeSettingsForm(
-            preferences: preferences, shortcuts: shortcuts, searchField: searchField,
-            chooseLibrary: { [weak window] file in
-                if let window { chooseLibrary(window, file) }
-            }, select: { [weak self] pane in self?.select(pane) },
+        // AppKit's own sidebar item, so macOS draws its inset, floating sidebar.
+        let sidebar = NSHostingController(rootView: SettingsSidebar(
+            preferences: preferences, searchField: searchField,
+            select: { [weak self] pane in self?.select(pane) },
             reveal: { [weak self] row in self?.reveal(row) }
         ))
-        content.sizingOptions = []
-        window.contentViewController = content
+        let detail = NSHostingController(rootView: NativeSettingsForm(
+            preferences: preferences, shortcuts: shortcuts,
+            chooseLibrary: { [weak window] file in
+                if let window { chooseLibrary(window, file) }
+            }
+        ))
+        sidebar.sizingOptions = []
+        detail.sizingOptions = []
+        let split = NSSplitViewController()
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+        sidebarItem.minimumThickness = 200
+        sidebarItem.maximumThickness = 260
+        sidebarItem.canCollapse = false
+        split.addSplitViewItem(sidebarItem)
+        split.addSplitViewItem(NSSplitViewItem(viewController: detail))
+        window.contentViewController = split
         window.setContentSize(NSSize(width: 720, height: 520))
         window.center()
         window.delegate = self
@@ -204,6 +217,8 @@ private final class NativePreferences: ObservableObject {
     @Published var pane: SettingsPane = .general
     @Published var search = SettingsSearch()
     @Published var revealed: SettingsSearchRow?
+    /// The row a search led to, tinted for a moment.
+    @Published var flashed: SettingsSearchRow?
     @Published var libraryBusy = false {
         didSet { if libraryBusy { libraryProblem = nil } }
     }
@@ -271,32 +286,17 @@ private struct SettingsSearchHost: NSViewRepresentable {
     func updateNSView(_ field: NSSearchField, context: Context) {}
 }
 
-private struct NativeSettingsForm: View {
+/// The panes, or while searching the settings that match, under the search field.
+private struct SettingsSidebar: View {
     @ObservedObject var preferences: NativePreferences
-    @ObservedObject var shortcuts: OpeningShortcuts
-    @FocusState private var focused: SettingsSearchRow?
-    @AccessibilityFocusState(for: .voiceOver) private var spoken: SettingsSearchRow?
-    @State private var flashed: SettingsSearchRow?
     let searchField: NSSearchField
-    let chooseLibrary: (URL?) -> Void
     let select: (SettingsPane) -> Void
     let reveal: (SettingsSearchRow) -> Void
 
     var body: some View {
-        NavigationSplitView {
-            sidebar.navigationSplitViewColumnWidth(min: 200, ideal: 215, max: 260)
-        } detail: {
-            detail
-        }
-        .navigationSplitViewStyle(.balanced)
-    }
-
-    /// The sidebar column is a sidebar list, so the system draws its own
-    /// sidebar; the search field sits in the list's top inset.
-    @ViewBuilder private var sidebar: some View {
         Group {
             if preferences.search.isSearching {
-                searchResults.onAppear { flashed = nil }
+                searchResults.onAppear { preferences.flashed = nil }
             } else {
                 List(selection: Binding<SettingsPane?>(
                     get: { preferences.pane },
@@ -315,34 +315,6 @@ private struct NativeSettingsForm: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
         }
-    }
-
-    private var detail: some View {
-        ScrollViewReader { scroll in
-            settingsForm
-                .id(preferences.pane)
-                .task(id: revealWhenAvailable) {
-                    guard let target = revealWhenAvailable else { return }
-                    await Task.yield()
-                    guard !Task.isCancelled else { return }
-                    scroll.scrollTo(target, anchor: .center)
-                    flashed = target
-                    focused = target
-                    spoken = target
-                    preferences.revealed = nil
-                }
-                .task(id: flashed) {
-                    guard flashed != nil else { return }
-                    try? await Task.sleep(for: .seconds(2))
-                    if !Task.isCancelled { flashed = nil }
-                }
-        }
-        .navigationTitle(preferences.pane.title)
-    }
-
-    private var revealWhenAvailable: SettingsSearchRow? {
-        guard preferences.saved != nil, !preferences.busy, !shortcuts.saving, !preferences.libraryBusy else { return nil }
-        return preferences.revealed
     }
 
     private var searchResults: some View {
@@ -379,6 +351,44 @@ private struct NativeSettingsForm: View {
         }
         .listStyle(.sidebar)
         .accessibilityLabel(Text(PickerWords.text(.settingsSearchResults)))
+    }
+}
+
+/// The chosen pane's settings, as System Settings shows one pane.
+private struct NativeSettingsForm: View {
+    @ObservedObject var preferences: NativePreferences
+    @ObservedObject var shortcuts: OpeningShortcuts
+    @FocusState private var focused: SettingsSearchRow?
+    @AccessibilityFocusState(for: .voiceOver) private var spoken: SettingsSearchRow?
+    let chooseLibrary: (URL?) -> Void
+
+    var body: some View { detail }
+
+    private var detail: some View {
+        ScrollViewReader { scroll in
+            settingsForm
+                .id(preferences.pane)
+                .task(id: revealWhenAvailable) {
+                    guard let target = revealWhenAvailable else { return }
+                    await Task.yield()
+                    guard !Task.isCancelled else { return }
+                    scroll.scrollTo(target, anchor: .center)
+                    preferences.flashed = target
+                    focused = target
+                    spoken = target
+                    preferences.revealed = nil
+                }
+                .task(id: preferences.flashed) {
+                    guard preferences.flashed != nil else { return }
+                    try? await Task.sleep(for: .seconds(2))
+                    if !Task.isCancelled { preferences.flashed = nil }
+                }
+        }
+    }
+
+    private var revealWhenAvailable: SettingsSearchRow? {
+        guard preferences.saved != nil, !preferences.busy, !shortcuts.saving, !preferences.libraryBusy else { return nil }
+        return preferences.revealed
     }
 
     private var settingsForm: some View {
@@ -433,7 +443,7 @@ private struct NativeSettingsForm: View {
 
     private func destination(_ row: SettingsSearchRow, @ViewBuilder content: () -> some View) -> some View {
         content().id(row)
-            .listRowBackground(row == flashed ? Color.accentColor.opacity(0.14) : nil)
+            .listRowBackground(row == preferences.flashed ? Color.accentColor.opacity(0.14) : nil)
     }
 
     private func librarySection(_ saved: SettingsResult) -> some View {
