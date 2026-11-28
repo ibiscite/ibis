@@ -9,7 +9,10 @@ use ibis_core::{
     destination::{CopyReason, Decision, Destination},
 };
 use ibis_engine::catalogue::{self, Audience};
-use ibis_engine::{Doubt, EntryRefusal, EntryResult, KeyCheck, ProjectKey, ProjectProblem, ProjectResult};
+use ibis_engine::{
+    CheckResult, DocumentProblem, Doubt, EntryRefusal, EntryResult, Finding, KeyCheck, ProjectKey, ProjectProblem,
+    ProjectResult, Which,
+};
 use ibis_engine::{
     LibraryInfo, Reply, SourceWarning,
     health::{SourceFinding, SourceHealth},
@@ -158,6 +161,7 @@ fn summary_reply(
                 .join("\n"),
         ),
         Reply::Project(data) => Some(project_report(&data.value)),
+        Reply::Check(data) => Some(check_report(&data.value)),
         Reply::Entry(data) => match &data.value {
             EntryResult::Entry { text, .. } => Some(text.trim_end().to_owned()),
             EntryResult::Refused { reason } => Some(entry_refusal(*reason)),
@@ -395,6 +399,89 @@ pub(super) fn project_report(result: &ProjectResult) -> String {
         report.push(format!("{}\t{status}", field(key)));
     }
     report.join("\n")
+}
+
+/// One line per problem, at its line and column, then what was read.
+fn check_report(result: &CheckResult) -> String {
+    use ibis_sources::document::Refusal;
+    let checked = match result {
+        CheckResult::Refused { file, reason } => {
+            let reason = cli(
+                match reason {
+                    Refusal::Missing => "cli-check-file-missing",
+                    Refusal::NotLocal => "cli-check-file-not-local",
+                    Refusal::TimedOut => "cli-check-file-timed-out",
+                    Refusal::Unsupported => "cli-check-file-unsupported",
+                    Refusal::TooLarge => "cli-check-file-too-large",
+                    Refusal::NotText => "cli-check-file-not-text",
+                    Refusal::Damaged | Refusal::Unsafe | Refusal::Mismatch => "cli-check-file-damaged",
+                    Refusal::Unavailable => "cli-check-file-unavailable",
+                },
+                &[],
+            );
+            return cli(
+                match file {
+                    Which::Document => "cli-check-document-unreadable",
+                    Which::Set => "cli-check-set-unreadable",
+                },
+                &[("reason", &reason)],
+            );
+        }
+        CheckResult::Checked(checked) => &checked.read,
+    };
+    let mut report: Vec<String> = checked.findings.iter().map(check_finding).collect();
+    let counts = [
+        ("citations", checked.citations.to_string()),
+        ("keys", checked.keys.to_string()),
+        ("problems", checked.findings.len().to_string()),
+    ];
+    let counts: Vec<_> = counts.iter().map(|(name, value)| (*name, value.as_str())).collect();
+    report.push(cli("cli-check-summary", &counts));
+    if !checked.complete {
+        report.push(cli("cli-check-incomplete", &[]));
+    }
+    if checked.cites_everything {
+        report.push(cli("cli-check-cites-everything", &[]));
+    }
+    report.join("\n")
+}
+
+fn check_finding(finding: &Finding) -> String {
+    let current = finding.current.as_deref().map(field).unwrap_or_default();
+    let pages = finding
+        .pages
+        .iter()
+        .map(|page| field(page))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let problem = match finding.problem {
+        DocumentProblem::Unclosed => cli("cli-check-unclosed", &[]),
+        DocumentProblem::WithoutKey => cli("cli-check-without-key", &[]),
+        DocumentProblem::TwoKeys => cli("cli-check-two-keys", &[]),
+        DocumentProblem::Locator => cli("cli-check-locator", &[]),
+        DocumentProblem::TooLong => cli("cli-check-too-long", &[]),
+        DocumentProblem::Missing => cli("cli-check-missing", &[]),
+        DocumentProblem::Ambiguous => cli("cli-check-ambiguous", &[]),
+        DocumentProblem::Duplicate => cli("cli-check-duplicate", &[]),
+        DocumentProblem::Damaged => cli("cli-check-damaged", &[]),
+        DocumentProblem::CutShort => cli("cli-check-cut-short", &[]),
+        DocumentProblem::Invalid => cli("cli-check-invalid", &[]),
+        DocumentProblem::NotInSet => cli("cli-check-not-in-set", &[]),
+        DocumentProblem::Changed => cli("cli-check-changed", &[]),
+        DocumentProblem::TwiceInSet => cli("cli-check-twice-in-set", &[]),
+        DocumentProblem::Uncompared => cli("cli-check-uncompared", &[]),
+        DocumentProblem::Renamed => cli("cli-check-renamed", &[("current", &current)]),
+        DocumentProblem::CitesEverything => cli("cli-check-cites-everything", &[]),
+        DocumentProblem::QuoteNotFound => cli("cli-check-quote-not-found", &[]),
+        DocumentProblem::QuoteOnOtherPage => cli("cli-check-quote-on-other-page", &[("pages", &pages)]),
+        DocumentProblem::QuotePageUnknown => cli("cli-check-quote-page-unknown", &[]),
+        DocumentProblem::QuoteUnchecked => cli("cli-check-quote-unchecked", &[]),
+    };
+    let place = finding
+        .place
+        .map_or_else(|| "-".to_owned(), |place| format!("{}:{}", place.line, place.column));
+    let key = finding.key.as_deref().map(field).unwrap_or_default();
+    format!("{place}\t{key}\t{problem}")
 }
 
 fn entry_refusal(reason: EntryRefusal) -> String {

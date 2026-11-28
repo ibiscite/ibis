@@ -246,6 +246,14 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `BIB_FILE` | The .bib the document compiles against; it is never changed |
 | `KEY…` | Citation keys, exactly as the document uses them |
 
+**`ibis check`**: Check a manuscript's citations before it builds or is shared
+
+| Option | Does |
+| --- | --- |
+| `MANUSCRIPT` | The manuscript: Markdown, Quarto, R Markdown, LaTeX or Typst; it is never changed |
+| `--set SET_FILE` | A reference set (CSL-JSON) the cited records must still match |
+| `--quotes` | Look for each quotation on the cited page of its reference's PDF text |
+
 **`ibis entry`**: Print a reference's original BibTeX entry, with what it needs to stand alone
 
 | Option | Does |
@@ -584,11 +592,31 @@ Input is one UTF-8 JSON value, read to EOF with a 1 MiB limit. stdout holds
 the citation or `--json` envelope; reasons go to stderr. RPC cancellation
 answers `cancelled` without affecting the next request.
 
+### Checking a manuscript
+
+```sh
+ibis check thesis.md --file library.bib
+ibis check thesis.tex --set references.json --quotes
+```
+
+`check` reads a Markdown, Quarto, R Markdown, LaTeX or Typst manuscript and
+never changes it. It prints one line per problem, at its line and column, and
+then how many citations, keys and problems it read. Problems are keys no open
+library holds or holds twice, damaged citations and old keys a library has
+renamed. With `--set`, it also names keys the [reference set](reference-set.md)
+lacks or holds twice, and records that changed since the set was written. With
+`--quotes`, it looks for each quotation just before a citation in the cited
+reference's PDF text, on the cited page. Exit 0 means nothing to fix and 1
+means findings, so it can gate a build. A manuscript read only in part never
+passes. `--json` gives each finding's `problem`, `place` and `key`. The report
+holds keys and page numbers, never the manuscript's or the source's text.
+
 ### A reference set
 
 A [reference set](reference-set.md) is a document's records as one CSL-JSON
 file that co-authors and build tools share. `ibis cite KEY… --format csl-json`
-writes its records, and `--file references.json` reads it back as a library.
+writes its records, `--file references.json` reads it back as a library, and
+`ibis check MANUSCRIPT --set references.json` checks a manuscript against it.
 
 ### A project's own bibliography
 
@@ -885,6 +913,7 @@ read-only tools over stdio:
 | `search` | `query`, optional `limit` (1–25, default 10), `shorthand` for a signal and locator; short hits with checked `ref` values, `complete` and `source_health`; shorthand adds `cited_with` and `searched_for`. |
 | `show` | `ref`; bibliographic fields and `source_health`. |
 | `cite` | Items with `ref` and optional locator/affixes/author omission, or caller [records](#records-you-send); a key-syntax `format` or any CSL `style`, locale, form, order, optional `for_app`, `strict` and `include_receipt`; citation text, notices, losses, warnings, `source_health`, and the receipt when asked. |
+| `check` | A manuscript's `text` and its `kind` (`markdown`, `latex` or `typst`), optional `set` (a [reference set](reference-set.md)'s records); `settled`, citations and keys read, and each finding with its `place`, `key` and `problem`, at most 200. The server reads no file for it, and does not check quotations; `ibis check --quotes` does. |
 | `styles` | Optional `query`, `limit` and `offset`; matching styles, total and locales. |
 | `outline` | `ref`; the reference's attachments, each with an `id` for `read` and `find_in` and whether its text can be read. |
 | `read` | `attachment`, optional `first_page`, `last_page` and `offset`; at most 5 pages or 32 KiB, each with `pdf_page` and `cite_page`, and `next`. |

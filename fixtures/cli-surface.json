@@ -1391,6 +1391,275 @@
         "subcommandRequired": false,
         "subcommands": {}
       },
+      "check": {
+        "aliases": [],
+        "arguments": {
+          "document": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "The manuscript: Markdown, Quarto, R Markdown, LaTeX or Typst; it is never changed",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": 1,
+            "last": false,
+            "long": null,
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": true,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "MANUSCRIPT",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "MANUSCRIPT"
+            ]
+          },
+          "file": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Open a BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file, or a folder of PDFs Ibis has kept; repeat for several libraries",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "file",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--file PATH",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "PATH"
+            ]
+          },
+          "help": {
+            "action": "Help",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 0,
+              "min": 0
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Print help",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "help",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": "h",
+            "shortAliases": [],
+            "spelling": "--help",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": []
+          },
+          "quotes": {
+            "action": "SetTrue",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 0,
+              "min": 0
+            },
+            "conflicts": [],
+            "default": [
+              "false"
+            ],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Look for each quotation on the cited page of its reference's PDF text",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "quotes",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--quotes",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": []
+          },
+          "set": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "A reference set (CSL-JSON) the cited records must still match",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "set",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--set SET_FILE",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "SET_FILE"
+            ]
+          },
+          "source": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a library through a source adapter, such as endnote=Invented.enl or endnote=export.xml; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "source",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--source NAME[=LIBRARY]",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME[=LIBRARY]"
+            ]
+          },
+          "zotero-group": {
+            "action": "Append",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Read a local Zotero group library by its group ID; repeat for several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "zotero-group",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--zotero-group GROUP_ID",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "GROUP_ID"
+            ]
+          },
+          "zotero-profile": {
+            "action": "Set",
+            "allowHyphenValues": false,
+            "allowNegativeNumbers": false,
+            "arity": {
+              "max": 1,
+              "min": 1
+            },
+            "conflicts": [],
+            "default": [],
+            "delimiter": null,
+            "exclusive": false,
+            "global": false,
+            "help": "Which Zotero profile to read while Zotero is closed, when there are several",
+            "hidden": false,
+            "ignoreCase": false,
+            "index": null,
+            "last": false,
+            "long": "zotero-profile",
+            "longAliases": [],
+            "possibleValues": {},
+            "requireEquals": false,
+            "required": false,
+            "short": null,
+            "shortAliases": [],
+            "spelling": "--zotero-profile NAME",
+            "terminator": null,
+            "trailingVarArg": false,
+            "valueNames": [
+              "NAME"
+            ]
+          }
+        },
+        "argumentsRequiredElseHelp": false,
+        "description": "Check a manuscript's citations before it builds or is shared",
+        "groups": {},
+        "hidden": false,
+        "longFlag": null,
+        "longFlagAliases": [],
+        "shortFlag": null,
+        "shortFlagAliases": [],
+        "subcommandRequired": false,
+        "subcommands": {}
+      },
       "cite": {
         "aliases": [],
         "arguments": {
@@ -3329,6 +3598,11 @@
                 "hidden": false
               },
               "call": {
+                "aliases": [],
+                "help": null,
+                "hidden": false
+              },
+              "check": {
                 "aliases": [],
                 "help": null,
                 "hidden": false

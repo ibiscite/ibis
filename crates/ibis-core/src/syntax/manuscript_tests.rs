@@ -292,3 +292,35 @@ fn a_latex_postnote_is_the_locator_of_its_one_key() {
         [Some("Page 12".into()), Some("Chapter 3".into()), None, None, None]
     );
 }
+
+#[test]
+fn a_typst_supplement_is_the_locator_of_its_one_key() {
+    let read = scan(
+        TextKind::Typst,
+        "See @vale2024[p. 12] and #cite(<fen2023>, supplement: [ch. 3]) and #cite(<a>, <b>, supplement: [p. 4]) and @c[see].\n",
+        &|| false,
+    );
+    let locators: Vec<(String, Option<String>)> = read
+        .citations
+        .iter()
+        .flat_map(|cited| &cited.cites)
+        .map(|cite| {
+            (
+                cite.key.clone(),
+                cite.locator
+                    .as_ref()
+                    .map(|locator| format!("{:?} {}", locator.term, locator.value)),
+            )
+        })
+        .collect();
+    assert_eq!(
+        locators,
+        [
+            ("vale2024".into(), Some("Page 12".into())),
+            ("fen2023".into(), Some("Chapter 3".into())),
+            ("a".into(), None),
+            ("b".into(), None),
+            ("c".into(), None)
+        ]
+    );
+}

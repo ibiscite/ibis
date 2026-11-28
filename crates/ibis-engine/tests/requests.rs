@@ -17,6 +17,7 @@ fn every_method_refuses_a_field_it_does_not_know() {
         Method::Cite => json!({"items":[{"item":item}],"output":{"kind":"key","syntax":"pandoc"}}),
         Method::Records => json!({"records":[{"id":"one","type":"book"}],"output":{"kind":"preset","name":"apa"}}),
         Method::Project => json!({"path":"/synthetic/refs.bib","keys":[]}),
+        Method::Check => json!({"document":"/synthetic/draft.md","set":"/synthetic/references.json","quotes":true}),
         Method::Outline => json!({"item":{"by":"key","value":"one"}}),
         Method::Read => json!({"attachment":"att:invented"}),
         Method::FindIn => json!({"attachment":"att:invented","query":"lantern"}),

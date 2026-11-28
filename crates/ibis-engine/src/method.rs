@@ -3,8 +3,8 @@ use crate::health::Checked;
 use crate::outputs::OutputsResult;
 use crate::request::*;
 use crate::service::{
-    Cancellation, DispatchResult, Engine, EntryResult, FindInResult, LibrariesResult, OutlineResult, ProjectResult,
-    ReadResult, Reply, SearchResult, ShareResult, StylesResult, answers, parameters,
+    Cancellation, CheckRequest, CheckResult, DispatchResult, Engine, EntryResult, FindInResult, LibrariesResult,
+    OutlineResult, ProjectResult, ReadResult, Reply, SearchResult, ShareResult, StylesResult, answers, parameters,
 };
 use ibis_core::contract::{CitationRequest, CitationResult, EngineError, ErrorCode, FormDetails, SnapshotObject};
 use ibis_sources::SourceCapability;
@@ -259,6 +259,14 @@ rows! {
         answer: answers::project,
         reply: Reply::Project,
         needs: Nothing,
+        network: Offline,
+        palette: [],
+    }
+    /// A manuscript's citations checked against the open libraries, a reference set and, when asked, the quoted sources.
+    Check "check": CheckRequest => Checked<CheckResult> {
+        answer: answers::check,
+        reply: Reply::Check,
+        needs: Records,
         network: Offline,
         palette: [],
     }

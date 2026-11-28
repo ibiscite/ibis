@@ -1,8 +1,8 @@
 //! The engine function behind each row of the method table (decision 0057):
 //! written by hand, routed by the table.
 use super::{
-    Cancellation, DispatchResult, Engine, EntryResult, FindInResult, LibrariesResult, OutlineResult, ProjectResult,
-    ReadResult, Reply, SearchResult, ShareResult, StylesResult, error, health,
+    Cancellation, CheckRequest, CheckResult, DispatchResult, Engine, EntryResult, FindInResult, LibrariesResult,
+    OutlineResult, ProjectResult, ReadResult, Reply, SearchResult, ShareResult, StylesResult, error, health,
 };
 use crate::Method;
 use crate::outputs::OutputsResult;
@@ -102,6 +102,16 @@ pub(crate) fn records(engine: &Engine, request: RecordsRequest, cancel: &Cancell
 
 pub(crate) fn project(engine: &Engine, request: ProjectRequest, cancel: &Cancellation) -> Checked<ProjectResult> {
     let result = engine.project(&request, cancel)?;
+    let exit_code = if result.value.settled() {
+        ExitCode::Ok
+    } else {
+        ExitCode::Findings
+    };
+    checked(result, exit_code)
+}
+
+pub(crate) fn check(engine: &Engine, request: CheckRequest, cancel: &Cancellation) -> Checked<CheckResult> {
+    let result = engine.check_document(&request, cancel)?;
     let exit_code = if result.value.settled() {
         ExitCode::Ok
     } else {

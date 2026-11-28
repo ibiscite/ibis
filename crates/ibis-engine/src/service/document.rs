@@ -65,7 +65,7 @@ pub struct ExportRequest {
 }
 
 /// What a check found.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
 pub enum CheckResult {
     Checked(Checked),
@@ -100,14 +100,14 @@ pub enum Which {
     Set,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Checked {
     #[serde(flatten)]
     pub read: Read,
 }
 
 /// What reading a manuscript found.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Read {
     pub kind: TextKind,
     /// Citations read.
@@ -136,7 +136,7 @@ impl CheckResult {
 }
 
 /// One problem, where it is.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Finding {
     /// Where in the manuscript; none for a problem of the set as a whole.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -152,7 +152,7 @@ pub struct Finding {
     pub pages: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Problem {
     /// A citation opened and never closed; the rest of its paragraph is unread.
@@ -266,11 +266,24 @@ impl Engine {
         let Some(kind) = TextKind::of(document) else {
             return Ok(Err(Refusal::Unsupported));
         };
+        if self.documents.is_none() {
+            return Ok(Err(Refusal::Unavailable));
+        }
+        match ibis_sources::document::read_text(document, MAX_TEXT_BYTES as u64, stop(cancel)) {
+            Ok(text) => self.scan(kind, &text, cancel),
+            Err(refusal) => {
+                cancel.check()?;
+                Ok(Err(refusal))
+            }
+        }
+    }
+
+    /// Scan a manuscript's text in the document child and look up every key it cites.
+    fn scan(&self, kind: TextKind, text: &str, cancel: &Cancellation) -> Result<Result<Scanned, Refusal>, EngineError> {
         let Some(reader) = &self.documents else {
             return Ok(Err(Refusal::Unavailable));
         };
-        let read = ibis_sources::document::read_text(document, MAX_TEXT_BYTES as u64, stop(cancel))
-            .and_then(|text| reader.scan_text(kind, &text, &*stop(cancel)));
+        let read = reader.scan_text(kind, text, &*stop(cancel));
         cancel.check()?;
         let manuscript = match read {
             Ok(manuscript) => manuscript,
@@ -342,13 +355,50 @@ impl Engine {
         request: &CheckRequest,
         cancel: &Cancellation,
     ) -> Result<health::Checked<CheckResult>, EngineError> {
+        let scanned = self.scan_manuscript(&request.document, cancel)?;
+        let set = match &request.set {
+            None => None,
+            Some(set) => Some(match ibis_sources::document::read(set, MAX_SET_BYTES, stop(cancel)) {
+                Ok(bytes) => match serde_json::from_slice::<Value>(&bytes) {
+                    Ok(Value::Array(records)) => Ok(records),
+                    _ => Err(Refusal::Damaged),
+                },
+                Err(reason) => {
+                    cancel.check()?;
+                    Err(reason)
+                }
+            }),
+        };
+        self.checked(scanned, set, request.quotes, cancel)
+    }
+
+    /// Check a manuscript's text, sent rather than read from a file, and
+    /// against a reference set's records. Quotations are not looked up.
+    pub fn check_text(
+        &self,
+        kind: TextKind,
+        text: &str,
+        set: Option<Vec<Value>>,
+        cancel: &Cancellation,
+    ) -> Result<health::Checked<CheckResult>, EngineError> {
+        let scanned = self.scan(kind, text, cancel)?;
+        self.checked(scanned, set.map(Ok), false, cancel)
+    }
+
+    fn checked(
+        &self,
+        scanned: Result<Scanned, Refusal>,
+        set: Option<Result<Vec<Value>, Refusal>>,
+        quotes: bool,
+        cancel: &Cancellation,
+    ) -> Result<health::Checked<CheckResult>, EngineError> {
         let checked = |value| {
             Ok(health::Checked {
                 source_health: health::SourceHealth::of(self.state()?.libraries.values()),
                 value,
             })
         };
-        let mut scanned = match self.scan_manuscript(&request.document, cancel)? {
+        let mut scanned = match scanned {
             Ok(scanned) => scanned,
             Err(reason) => {
                 return checked(CheckResult::Refused {
@@ -357,8 +407,12 @@ impl Engine {
                 });
             }
         };
-        if let Some(set) = &request.set {
-            match self.against_set(set, &scanned, cancel)? {
+        if let Some(set) = set {
+            let found = match set {
+                Ok(records) => self.against_set(records, &scanned, cancel)?,
+                Err(reason) => Err(reason),
+            };
+            match found {
                 Ok(mut findings) => scanned.findings.append(&mut findings),
                 Err(reason) => {
                     return checked(CheckResult::Refused {
@@ -368,7 +422,7 @@ impl Engine {
                 }
             }
         }
-        if request.quotes {
+        if quotes {
             let mut findings = self.quotes(&scanned, cancel)?;
             scanned.findings.append(&mut findings);
             scanned.findings.sort_by_key(|finding| finding.place);
@@ -515,20 +569,10 @@ impl Engine {
     /// CSL-JSON export, so only a change in what would be cited counts.
     fn against_set(
         &self,
-        set: &Path,
+        records: Vec<Value>,
         scanned: &Scanned,
         cancel: &Cancellation,
     ) -> Result<Result<Vec<Finding>, Refusal>, EngineError> {
-        let bytes = match ibis_sources::document::read(set, MAX_SET_BYTES, stop(cancel)) {
-            Ok(bytes) => bytes,
-            Err(reason) => {
-                cancel.check()?;
-                return Ok(Err(reason));
-            }
-        };
-        let Ok(Value::Array(records)) = serde_json::from_slice::<Value>(&bytes) else {
-            return Ok(Err(Refusal::Damaged));
-        };
         let mut keys = HashSet::new();
         let twice: HashSet<String> = records
             .iter()
@@ -621,15 +665,87 @@ impl Engine {
 /// Whether printed page `page` is in a page locator such as `12`, `12-14`
 /// or `xii, 15`.
 fn on_page(locator: &str, page: &str) -> bool {
-    locator.split([',', '&']).map(str::trim).any(|part| {
+    let printed = page_number(page);
+    locator.split([',', '&', ';']).map(str::trim).any(|part| {
+        // A label such as `A-3` is a page, not a range.
+        if part == page {
+            return true;
+        }
+        // `12f` is this page and the next; `12ff` this page on.
+        let (part, more) = if let Some(part) = part.strip_suffix("ff.").or_else(|| part.strip_suffix("ff")) {
+            (part, u64::MAX)
+        } else if let Some(part) = part.strip_suffix("f.").or_else(|| part.strip_suffix('f')) {
+            (part, 1)
+        } else {
+            (part, 0)
+        };
         let mut ends = part.splitn(2, ['-', '\u{2013}', '\u{2014}']).map(str::trim);
         let (first, last) = (ends.next().unwrap_or_default(), ends.next());
-        match (first.parse::<u64>(), last.map(str::parse::<u64>), page.parse::<u64>()) {
-            (Ok(first), Some(Ok(last)), Ok(page)) => (first..=last.max(first)).contains(&page),
-            (Ok(first), None, Ok(page)) => first == page,
-            _ => first == page || last == Some(page),
+        if first == page || last == Some(page) {
+            return true;
         }
+        let (Some(first), Some((roman, page))) = (page_number(first), printed) else {
+            return false;
+        };
+        let last = match last.map(page_number) {
+            Some(Some(last)) => last,
+            Some(None) => return false,
+            None => (first.0, first.1.saturating_add(more)),
+        };
+        // Arabic and Roman pages are two sequences: `ii` is never page 2.
+        first.0 == roman && last.0 == roman && (first.1..=last.1.max(first.1)).contains(&page)
     })
+}
+
+/// A printed page as a number, and whether it is a Roman numeral: `12`,
+/// `12a` (a lettered part of page 12) or `xiv`.
+fn page_number(text: &str) -> Option<(bool, u64)> {
+    let text = text.trim();
+    let digits = text.trim_end_matches(|c: char| c.is_ascii_lowercase());
+    if !digits.is_empty() && digits.len() + 1 >= text.len() && digits.bytes().all(|b| b.is_ascii_digit()) {
+        return digits.parse().ok().map(|page| (false, page));
+    }
+    roman(text).map(|page| (true, page))
+}
+
+/// A Roman numeral's value, only when it is written the usual way.
+fn roman(text: &str) -> Option<u64> {
+    const NUMERALS: [(u64, &str); 13] = [
+        (1000, "m"),
+        (900, "cm"),
+        (500, "d"),
+        (400, "cd"),
+        (100, "c"),
+        (90, "xc"),
+        (50, "l"),
+        (40, "xl"),
+        (10, "x"),
+        (9, "ix"),
+        (5, "v"),
+        (4, "iv"),
+        (1, "i"),
+    ];
+    let lower = text.to_ascii_lowercase();
+    if lower.is_empty() || lower.len() > 16 || (lower != text && text.to_ascii_uppercase() != text) {
+        return None;
+    }
+    let (mut rest, mut value) = (lower.as_str(), 0);
+    for (amount, numeral) in NUMERALS {
+        while let Some(after) = rest.strip_prefix(numeral) {
+            value += amount;
+            rest = after;
+        }
+    }
+    // Written again from its value, the numeral must come out the same.
+    let mut again = String::new();
+    let mut left = value;
+    for (amount, numeral) in NUMERALS {
+        while left >= amount {
+            again.push_str(numeral);
+            left -= amount;
+        }
+    }
+    (rest.is_empty() && again == lower).then_some(value)
 }
 
 /// CSL-JSON records by citation key, without the file-local `id`.

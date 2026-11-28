@@ -402,6 +402,145 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
+    "description": "Check the citations in a manuscript's text against the user's library and, with set, a reference set: each key no library holds, damaged citation or changed record, at its line and column.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "description": "markdown for Markdown, Quarto and R Markdown; latex for BibTeX, natbib or BibLaTeX commands; typst.",
+          "enum": [
+            "markdown",
+            "latex",
+            "typst"
+          ],
+          "type": "string"
+        },
+        "set": {
+          "description": "A reference set: the CSL-JSON records the manuscript was written against, as its references.json holds them.",
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "text": {
+          "description": "The manuscript's whole text, as saved.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "name": "check",
+    "outputSchema": {
+      "oneOf": [
+        {
+          "properties": {
+            "citations": {
+              "type": "integer"
+            },
+            "cites_everything": {
+              "type": "boolean"
+            },
+            "complete": {
+              "type": "boolean"
+            },
+            "file": {
+              "type": "string"
+            },
+            "findings": {
+              "items": {
+                "properties": {
+                  "current": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "place": {
+                    "properties": {
+                      "column": {
+                        "type": "integer"
+                      },
+                      "line": {
+                        "type": "integer"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "problem": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "problem"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "keys": {
+              "type": "integer"
+            },
+            "more": {
+              "type": "integer"
+            },
+            "outcome": {
+              "enum": [
+                "checked",
+                "refused"
+              ],
+              "type": "string"
+            },
+            "provenance": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "settled": {
+              "type": "boolean"
+            },
+            "source_health": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "outcome",
+            "settled"
+          ]
+        },
+        {
+          "properties": {
+            "error": {
+              "required": [
+                "code",
+                "message",
+                "recovery",
+                "focus"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "error"
+          ]
+        }
+      ],
+      "type": "object"
+    },
+    "title": "Check a manuscript's citations"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
     "description": "Find CSL style ids by journal or style name, and the locales cite accepts.",
     "inputSchema": {
       "additionalProperties": false,

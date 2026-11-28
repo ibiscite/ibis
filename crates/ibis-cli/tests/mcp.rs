@@ -96,7 +96,7 @@ fn a_session_runs_over_newline_delimited_stdio() {
         .iter()
         .map(|tool| tool["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["search", "show", "cite", "styles"]);
+    assert_eq!(names, ["search", "show", "cite", "check", "styles"]);
     for tool in replies[1]["result"]["tools"].as_array().unwrap() {
         assert_eq!(tool["annotations"]["readOnlyHint"], true);
         assert_eq!(tool["annotations"]["openWorldHint"], false);

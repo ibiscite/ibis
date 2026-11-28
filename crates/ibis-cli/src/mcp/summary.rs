@@ -18,6 +18,7 @@ pub(super) fn text(tool: &str, data: &Value) -> String {
         "show" => show(data),
         "cite" => cite(data),
         "styles" => styles(data),
+        "check" => check(data),
         "outline" => outline(data),
         "read" => read(data),
         "find_in" => find_in(data),
@@ -259,6 +260,50 @@ fn cite(data: &Map<String, Value>) -> Vec<String> {
     }
     if data.contains_key("receipt") {
         lines.push("The audit receipt is in receipt.".to_owned());
+    }
+    lines
+}
+
+/// What was read, then one line per problem: place, key, problem.
+fn check(data: &Map<String, Value>) -> Vec<String> {
+    let text = |value: &Value| value.as_str().map(line).unwrap_or_default();
+    if data.get("outcome").and_then(Value::as_str) == Some("refused") {
+        return vec![format!(
+            "Not checked: the {} could not be read ({}).",
+            text(&data["file"]),
+            text(&data["reason"])
+        )];
+    }
+    let findings = array(data, "findings");
+    let count = |name: &str| data.get(name).and_then(Value::as_u64).unwrap_or_default();
+    let mut lines = vec![format!(
+        "Checked {} citation(s) of {} key(s): {}.",
+        count("citations"),
+        count("keys"),
+        match findings.len() as u64 + count("more") {
+            0 => "nothing to fix".to_owned(),
+            problems => format!("{problems} problem(s)"),
+        }
+    )];
+    for finding in findings {
+        let place = match (finding["place"]["line"].as_u64(), finding["place"]["column"].as_u64()) {
+            (Some(row), Some(column)) => format!("{row}:{column}"),
+            _ => "whole text".to_owned(),
+        };
+        let mut entry = format!("{place} · {} · {}", text(&finding["key"]), text(&finding["problem"]));
+        if finding["current"].is_string() {
+            entry.push_str(&format!(" · now {}", text(&finding["current"])));
+        }
+        lines.push(entry);
+    }
+    if count("more") > 0 {
+        lines.push(format!("{} more; fix these and check again.", count("more")));
+    }
+    if data.get("complete").and_then(Value::as_bool) == Some(false) {
+        lines.push("Part of the text was not read, so the check does not settle.".to_owned());
+    }
+    if data.get("cites_everything").and_then(Value::as_bool) == Some(true) {
+        lines.push("\\nocite{*} cites the whole bibliography; only keys cited by name were checked.".to_owned());
     }
     lines
 }

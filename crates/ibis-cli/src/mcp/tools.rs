@@ -62,7 +62,7 @@ pub(super) enum Answer {
     Lists(Write),
 }
 
-pub(super) const TOOLS: [Tool; 4] = [
+pub(super) const TOOLS: [Tool; 5] = [
     Tool {
         name: "search",
         title: "Search references",
@@ -91,6 +91,15 @@ pub(super) const TOOLS: [Tool; 4] = [
         answer: Answer::Reads(cite),
     },
     Tool {
+        name: "check",
+        title: "Check a manuscript's citations",
+        description: "Check the citations in a manuscript's text against the user's library and, with set, a reference set: each key no library holds, damaged citation or changed record, at its line and column.",
+        input: checking::check_input,
+        output: checking::check_output,
+        reads_library: |_| true,
+        answer: Answer::Reads(checking::check),
+    },
+    Tool {
         name: "styles",
         title: "Find citation styles",
         description: "Find CSL style ids by journal or style name, and the locales cite accepts.",
@@ -101,6 +110,7 @@ pub(super) const TOOLS: [Tool; 4] = [
     },
 ];
 
+mod checking;
 mod reading;
 pub(super) use reading::{offered_list, offered_tool};
 mod writing;

@@ -77,9 +77,9 @@ between them.
 ## Checking against a set
 
 A check reads a manuscript, looks up each key it cites in the person's
-libraries, and compares those records with the set by key. The engine does
-this today; the `ibis check` command that runs it is not built yet
-([#1386](https://github.com/ibiscite/ibis/issues/1386)).
+libraries, and compares those records with the set by key:
+`ibis check MANUSCRIPT --set references.json`, or the `check` method with
+`set` ([CLI](cli.md#checking-a-manuscript)).
 
 | Finding | When |
 | --- | --- |
@@ -118,7 +118,10 @@ left out. Nothing is guessed or paraphrased.
 
 A citation of several references passes when one of them holds the words on
 its cited page. Pages are printed pages, from the PDF's own labels, never
-the file's page numbers.
+the file's page numbers. A cited `12f` holds pages 12 and 13, `12ff` page 12
+on, `12a` page 12, and `i-iii` the Roman pages between; Roman and Arabic
+pages are never mixed. In Typst, the page is the supplement of a one-key
+citation, `@key[p. 12]` or `#cite(<key>, supplement: [p. 12])`.
 
 ## Co-authors on different managers
 
