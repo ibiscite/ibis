@@ -31,10 +31,10 @@ the Rust crates are not published and their APIs may change before 1.0
 | --- | --- |
 | `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search and delivery rules. |
 | `crates/ibis-os` | Whole-file private writes, the bounded filesystem worker, parser panic containment, and installing the `ibis` command and its toggle receipt. Depends on no Ibis crate. |
-| `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API and its rules, the closed database and Better BibTeX), discovery, database snapshots and file watches. Includes the built-in EndNote [source adapter](source-adapters.md). Each reader declares what its library offers. |
+| `crates/ibis-sources` | Read-only file and Zotero readers (`zotero_local`: the local API and its rules, the closed database and Better BibTeX), discovery, database snapshots and file watches. Includes the built-in EndNote [source adapter](source-adapters.md) and, behind the `pdf-reader` feature, the PDF parser that only `ibis __extract-pdf` runs. Each reader declares what its library offers. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
 | `crates/ibis-engine` | Typed methods, source lifecycle, prepared citations, settings owner, recents, JSON-RPC and MCP. |
-| `crates/ibis-cli` | The `ibis` executable, its same-user daemon and the child processes for PDFs, documents and built-in source adapters. Depends on core and engine, and enables the EndNote reader and the document readers in `ibis-sources` for those processes. |
+| `crates/ibis-cli` | The `ibis` executable, its same-user daemon and the child processes for PDFs, documents and built-in source adapters. Depends on core and engine, and enables the EndNote reader, the document readers and the PDF reader in `ibis-sources` for those processes. |
 | `crates/ibis-native` | Native paste with no window toolkit: the target capture, its proofs and their platform calls, and every `unsafe` block they need. The host supplies windows, the paste setting and the keyboard layout. Depends on core only. |
 | `crates/ibis-native-ffi` | The Mac picker’s in-process C ABI and the macOS clipboard writer shared by the desktop shells. |
 | `native/macos` | The repo-built macOS picker. AppKit owns the window and shortcut, SwiftUI presents the picker, and the daemon handles the library and citations. |

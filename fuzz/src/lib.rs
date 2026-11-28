@@ -50,7 +50,7 @@ static PANICKED: AtomicBool = AtomicBool::new(false);
 /// Run serially: this standalone harness observes process-wide parser panics.
 pub(crate) fn watch_panics() {
     INSTALL_HOOK.call_once(|| {
-        ibis_os::panic_guard::attempt(|| ()).unwrap_or_else(|_| panic!("panic guard setup failed"));
+        ibis_os::panic_guard::install();
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
             PANICKED.store(true, Ordering::Relaxed);

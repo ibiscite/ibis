@@ -86,7 +86,7 @@ fn values_and_lists_are_bounded_here_too() {
 
 #[test]
 fn a_file_without_details_says_nothing_and_a_non_pdf_is_refused() {
-    let said = details(&crate::pdf_text::invented_pdf(&["Invented page."], None)).unwrap();
+    let said = details(&super::super::read::invented_pdf(&["Invented page."], None)).unwrap();
     assert_eq!((said.info, said.xmp), (Stated::default(), Stated::default()));
     assert_eq!(
         details(b"Invented notes saved as text.").map(|_| ()),
@@ -98,10 +98,10 @@ fn a_file_without_details_says_nothing_and_a_non_pdf_is_refused() {
 fn the_child_answers_details_when_asked() {
     let pdf = invented_pdf_with_details(&["Invented page."], &[("Title", "Invented Info Title")], None);
     let mut output = Vec::new();
-    let status = crate::pdf_text::child(&[ibis_sources::pdf::DETAILS.into()], pdf.as_slice(), &mut output);
+    let status = super::super::read::child(&[super::super::DETAILS.into()], pdf.as_slice(), &mut output);
     assert_eq!(status, 0);
-    let answer: ibis_sources::pdf::Answer = serde_json::from_slice(&output).unwrap();
-    let ibis_sources::pdf::Answer::Details(said) = answer else {
+    let answer: crate::pdf::Answer = serde_json::from_slice(&output).unwrap();
+    let crate::pdf::Answer::Details(said) = answer else {
         panic!("a details answer")
     };
     assert_eq!(said.info.title.as_deref(), Some("Invented Info Title"));

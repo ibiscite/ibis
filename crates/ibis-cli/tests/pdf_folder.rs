@@ -28,7 +28,7 @@ impl Folder {
         std::fs::create_dir_all(papers.join("older")).unwrap();
         std::fs::write(
             papers.join("atlas.pdf"),
-            ibis::pdf_details::invented_pdf_with_details(
+            ibis_sources::pdf::read_details::invented_pdf_with_details(
                 &[
                     "An Invented Atlas of Tides\nAda Lee",
                     "A brass lantern on the second page.",
@@ -40,7 +40,7 @@ impl Folder {
         .unwrap();
         std::fs::write(
             papers.join("older/Tide_tables-1931.pdf"),
-            ibis::pdf_text::invented_pdf(&["Invented tide tables with a copper buoy."], None),
+            ibis_sources::pdf::read::invented_pdf(&["Invented tide tables with a copper buoy."], None),
         )
         .unwrap();
         std::fs::write(papers.join("notes.pdf"), "Invented notes saved as text.").unwrap();
@@ -158,7 +158,7 @@ fn a_persons_edits_win_and_keeping_only_appends() {
     std::fs::write(folder.papers.join("ibis-references.bib"), &edited).unwrap();
     std::fs::write(
         folder.papers.join("second.pdf"),
-        ibis::pdf_text::invented_pdf(&["Invented second paper."], None),
+        ibis_sources::pdf::read::invented_pdf(&["Invented second paper."], None),
     )
     .unwrap();
     assert_eq!(folder.run(&["sources", "keep", "--file", &papers]).0, 0);
@@ -176,7 +176,7 @@ fn names_that_look_like_drives_or_start_with_a_space_are_kept_once() {
     for name in ["d:e.pdf", " spaced.pdf"] {
         std::fs::write(
             folder.papers.join(name),
-            ibis::pdf_text::invented_pdf(&["Invented page."], None),
+            ibis_sources::pdf::read::invented_pdf(&["Invented page."], None),
         )
         .unwrap();
     }
