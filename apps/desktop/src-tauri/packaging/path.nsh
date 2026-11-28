@@ -19,7 +19,9 @@
   ${EndIf}
   ; The Microsoft Store copy shares this copy's settings folder
   ; (packaging/msix/AppxManifest.xml), so while it is installed "Delete app
-  ; data" leaves that folder alone. Its package folder exists once it has run.
+  ; data" leaves that folder alone. Its package folder exists once it has run;
+  ; this is the last hook before Tauri deletes app data, so a Store copy
+  ; installed after the uninstaller starts is not seen.
   !if "${BUNDLEID}" == "com.ibiscite.ibis"
     !define IBIS_STORE_PACKAGE "Ibiscite.Ibis"
   !else

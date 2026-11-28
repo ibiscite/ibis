@@ -28,8 +28,9 @@ not in the Store yet. That copy updates through the Store, starts at login
 through Windows' startup task and puts `ibis` on PATH itself, so About says the
 updater is off. Both copies keep one settings folder, so switching keeps your
 choices. From Ibis 0.4.0, uninstalling the installer copy leaves that folder in
-place while the Store copy is installed; with an older installer copy, leave
-"Delete app data" unticked when you uninstall it. Windows 10 keeps the installer.
+place when the Store copy is already installed; install the Store copy first.
+With an older installer copy, leave "Delete app data" unticked when you
+uninstall it. Windows 10 keeps the installer.
 
 Windows needs Microsoft Edge WebView2. The installer downloads it when
 missing; that step needs internet access. Its Microsoft update service is
