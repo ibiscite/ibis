@@ -119,25 +119,46 @@ pub struct Endpoint(Address);
 
 impl Endpoint {
     pub fn new(config: &Path, program: &Path, runtime_root: Option<&Path>) -> io::Result<Self> {
-        Address::new(&Self::namespace(config, program), runtime_root).map(Self)
+        Address::new(
+            &Self::namespace(config, &Self::installation(program, None)),
+            runtime_root,
+        )
+        .map(Self)
     }
 
-    /// Sixteen hex digits of the configuration and the program's resolved
-    /// folder, so a socket path stays short and a pipe name stays valid. A
-    /// command linked elsewhere, such as `~/.local/bin/ibis`, resolves to the
-    /// folder it lives in and joins that installation's engine.
-    pub fn namespace(config: &Path, program: &Path) -> String {
+    /// The installation a program belongs to: the resolved folder it lives in,
+    /// so a command linked elsewhere, such as `~/.local/bin/ibis`, joins the
+    /// installation it points at. An AppImage mounts anew at every launch, so
+    /// its image file is the installation instead.
+    pub fn installation(program: &Path, image: Option<PathBuf>) -> PathBuf {
+        if let Some(image) = image {
+            return std::fs::canonicalize(&image).unwrap_or(image);
+        }
         let program = std::fs::canonicalize(program).unwrap_or_else(|_| program.to_path_buf());
-        let folder = program.parent().unwrap_or(&program);
+        program.parent().map_or_else(|| program.clone(), Path::to_path_buf)
+    }
+
+    /// Sixteen hex digits of the configuration and the installation, so a
+    /// socket path stays short and a pipe name stays valid.
+    pub fn namespace(config: &Path, installation: &Path) -> String {
         let mut key = config.as_os_str().as_encoded_bytes().to_vec();
         key.push(0);
-        key.extend_from_slice(folder.as_os_str().as_encoded_bytes());
+        key.extend_from_slice(installation.as_os_str().as_encoded_bytes());
         Fingerprint::of_bytes(&key).as_str()[..16].to_owned()
     }
 
     pub fn current() -> io::Result<Self> {
         let config = ibis_engine::identity::config_dir().ok_or(io::ErrorKind::NotFound)?;
         let program = std::env::current_exe()?;
+        let image = if cfg!(target_os = "linux") {
+            ibis_os::command_install::appimage_for(
+                &program,
+                std::env::var_os("APPIMAGE").map(PathBuf::from),
+                std::env::var_os("APPDIR").map(PathBuf::from),
+            )
+        } else {
+            None
+        };
         let root = if cfg!(target_os = "linux") {
             std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from)
         } else if cfg!(windows) {
@@ -145,7 +166,12 @@ impl Endpoint {
         } else {
             None
         };
-        Self::new(&std::path::absolute(config)?, &program, root.as_deref())
+        let installation = Self::installation(&program, image);
+        Address::new(
+            &Self::namespace(&std::path::absolute(config)?, &installation),
+            root.as_deref(),
+        )
+        .map(Self)
     }
 
     /// Connect to an existing daemon's public method-table transport.

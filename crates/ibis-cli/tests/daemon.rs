@@ -58,7 +58,10 @@ impl Home {
 
     #[cfg(unix)]
     fn socket_path(&self) -> PathBuf {
-        let name = format!("{}.sock", Endpoint::namespace(&self.config(), Path::new(IBIS)));
+        let name = format!(
+            "{}.sock",
+            Endpoint::namespace(&self.config(), &Endpoint::installation(Path::new(IBIS), None))
+        );
         if cfg!(target_os = "linux") {
             return self.0.path().join("ibis").join(name);
         }
@@ -871,25 +874,33 @@ fn a_delivery_asked_for_again_of_another_engine_never_pastes_twice() {
 fn each_installation_keeps_its_own_engine_and_an_update_in_place_shares_one() {
     let home = Home::new();
     let config = home.config();
-    let here = Endpoint::namespace(&config, Path::new(IBIS));
+    let at = |program: &Path| Endpoint::namespace(&config, &Endpoint::installation(program, None));
+    let here = at(Path::new(IBIS));
     assert_eq!(here.len(), 16, "a short name keeps socket paths and pipe names valid");
     // Another build in the same folder is an update in place: the same engine.
-    assert_eq!(
-        here,
-        Endpoint::namespace(&config, &Path::new(IBIS).with_file_name("ibis-updated"))
-    );
+    assert_eq!(here, at(&Path::new(IBIS).with_file_name("ibis-updated")));
     // Another installation gets its own engine over the same files.
     let elsewhere = home.0.path().join("Other Ibis.app/Contents/MacOS/ibis");
-    assert_ne!(here, Endpoint::namespace(&config, &elsewhere));
+    assert_ne!(here, at(&elsewhere));
     assert_ne!(
         here,
-        Endpoint::namespace(&home.0.path().join("isolated"), Path::new(IBIS))
+        Endpoint::namespace(
+            &home.0.path().join("isolated"),
+            &Endpoint::installation(Path::new(IBIS), None)
+        )
     );
+    // An AppImage mounts anew at every launch; its image file is the installation,
+    // so two images in one folder stay apart and each launch finds the same engine.
+    let folder = home.0.path().join("Applications");
+    let image =
+        |name: &str| Endpoint::installation(Path::new("/tmp/.mount_random/usr/bin/ibis"), Some(folder.join(name)));
+    assert_eq!(image("Ibis.AppImage"), image("Ibis.AppImage"));
+    assert_ne!(image("Ibis.AppImage"), image("Ibis-Nightly.AppImage"));
     // A command linked elsewhere joins the installation it points at.
     #[cfg(unix)]
     {
         let link = home.0.path().join("ibis");
         std::os::unix::fs::symlink(IBIS, &link).unwrap();
-        assert_eq!(Endpoint::namespace(&config, &link), here);
+        assert_eq!(at(&link), here);
     }
 }

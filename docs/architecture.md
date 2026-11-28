@@ -84,6 +84,8 @@ to its AI app and relays that session to the daemon's existing MCP runtime.
   of their hash so socket paths and pipe names stay short. A command linked
   elsewhere, such as `~/.local/bin/ibis`, joins the installation it points
   to, so the native app and an installed Nightly never refuse each other.
+  An AppImage mounts anew at every launch, so its image file names the
+  installation instead of its folder.
   Every instance shares the person's files. A startup lock serializes launches. The daemon holds a separate
   lock for its lifetime. Both ends exchange a protocol version and build
   identity before dispatch. A newer client of the same installation asks an
