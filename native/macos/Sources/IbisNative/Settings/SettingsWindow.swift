@@ -43,6 +43,7 @@ final class NativeSettingsWindow: NSWindowController, NSWindowDelegate, NSSearch
         sidebarItem.minimumThickness = 200
         sidebarItem.maximumThickness = 260
         sidebarItem.canCollapse = false
+        sidebarItem.allowsFullHeightLayout = true
         split.addSplitViewItem(sidebarItem)
         split.addSplitViewItem(NSSplitViewItem(viewController: detail))
         window.contentViewController = split
@@ -188,6 +189,8 @@ private final class SettingsHostWindow: NSWindow {
                    backing: .buffered, defer: false)
         contentMinSize = NSSize(width: 640, height: 400)
         titlebarAppearsTransparent = true
+        // A toolbar, as System Settings has, so the sidebar floats beside the content.
+        toolbar = NSToolbar(identifier: "Settings")
         toolbarStyle = .unified
     }
 
@@ -243,9 +246,11 @@ private final class NativePreferences: ObservableObject {
         PermissionHelper.shared.show { [weak self] in self?.refreshPasteAccess() }
     }
 
-    func change(appearance: Appearance? = nil, density: Density? = nil, largerText: Bool? = nil, paste: Bool? = nil) {
+    func change(appearance: Appearance? = nil, density: Density? = nil, largerText: Bool? = nil, paste: Bool? = nil,
+                searchGlyph: SearchGlyph? = nil) {
         guard saved != nil else { return }
-        send(.patch(appearance: appearance, density: density, largerText: largerText, paste: paste), changing: true)
+        send(.patch(appearance: appearance, density: density, largerText: largerText, paste: paste,
+                    searchGlyph: searchGlyph), changing: true)
     }
 
     func useSaved(_ reply: SettingsResult, resetText: Bool) {
@@ -404,7 +409,7 @@ private struct NativeSettingsForm: View {
                         pickerSection(saved)
                         Section {
                             AppearancePreview(appearance: saved.appearance, density: saved.density,
-                                              largerText: saved.largerText)
+                                              largerText: saved.largerText, searchGlyph: saved.searchGlyph)
                                 .frame(maxWidth: 420)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
@@ -550,6 +555,18 @@ private struct NativeSettingsForm: View {
                         Text(PickerWords.text(.dark)).tag(Appearance.dark)
                     }
                     .pickerStyle(.segmented)
+                }
+            }
+            destination(.searchGlyph) {
+                control(.searchGlyph) {
+                    Picker(SettingsSearchRow.searchGlyph.title, selection: Binding(
+                        get: { preferences.saved?.searchGlyph ?? saved.searchGlyph },
+                        set: { preferences.change(searchGlyph: $0) }
+                    )) {
+                        Text(PickerWords.text(.searchGlyphBird)).tag(SearchGlyph.bird)
+                        Text(PickerWords.text(.searchGlyphMagnifier)).tag(SearchGlyph.magnifier)
+                        Text(PickerWords.text(.searchGlyphNone)).tag(SearchGlyph.none)
+                    }
                 }
             }
             destination(.density) {

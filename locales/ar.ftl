@@ -2242,6 +2242,11 @@ picker-native-form-narrative = الاسم في النص
 picker-native-copy-citation = نسخ الاستشهاد
 picker-native-paste-short = لصق
 picker-native-no-matches-in = لا نتائج في { $name }
+picker-native-search-glyph = رمز حقل البحث
+picker-native-search-glyph-bird = طائر Ibis
+picker-native-search-glyph-magnifier = عدسة مكبّرة
+picker-native-search-glyph-none = بلا
+picker-native-search-glyph-words = رمز شعار طائر عدسة شريط البحث
 
 picker-native-remember-format = تذكّر التنسيق لـ { $app }
 picker-native-format-project = المشروع: { $name }

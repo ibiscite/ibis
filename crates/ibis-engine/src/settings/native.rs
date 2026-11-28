@@ -1,4 +1,6 @@
-use super::{Appearance, DEFAULTS, Density, LibrarySetting, Owner, Portable, SettingsError, unless_default};
+use super::{
+    Appearance, DEFAULTS, Density, LibrarySetting, Owner, Portable, SearchGlyph, SettingsError, unless_default,
+};
 use crate::settings_backup::settings_code;
 use ibis_core::contract::{EngineError, ErrorCode};
 use schemars::JsonSchema;
@@ -12,6 +14,7 @@ pub struct SettingsRequest {
     pub density: Option<Density>,
     pub larger_text: Option<bool>,
     pub paste: Option<bool>,
+    pub search_glyph: Option<SearchGlyph>,
     pub shortcut: Option<ShortcutSetting>,
     pub library_file: Option<String>,
 }
@@ -29,6 +32,7 @@ pub struct SettingsResult {
     pub density: Density,
     pub larger_text: bool,
     pub paste: bool,
+    pub search_glyph: SearchGlyph,
     pub shortcut: Option<String>,
     pub library: Option<SettingsLibrary>,
     pub library_extensions: Vec<String>,
@@ -53,6 +57,7 @@ impl SettingsRequest {
             && self.density.is_none()
             && self.larger_text.is_none()
             && self.paste.is_none()
+            && self.search_glyph.is_none()
             && self.shortcut.is_none()
             && self.library_file.is_none()
         {
@@ -97,6 +102,9 @@ impl SettingsRequest {
                 if let Some(paste) = self.paste {
                     portable.paste = unless_default(paste, DEFAULTS.paste);
                 }
+                if let Some(glyph) = self.search_glyph {
+                    portable.search_glyph = unless_default(glyph, SearchGlyph::default());
+                }
                 if let Some(shortcut) = self.shortcut {
                     portable.shortcut.set_here(shortcut.binding);
                 }
@@ -117,6 +125,7 @@ impl From<&Portable> for SettingsResult {
             density: portable.density(),
             larger_text: portable.larger_text(),
             paste: portable.paste(),
+            search_glyph: portable.search_glyph(),
             shortcut: portable.shortcut.here().map(str::to_owned),
             library: portable.library.as_ref().map(SettingsLibrary::from),
             library_extensions: crate::library_file_extensions().map(str::to_owned).collect(),

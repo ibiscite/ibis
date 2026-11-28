@@ -34,13 +34,21 @@ nothing that macOS already draws.
   `NavigationSplitView`. Text fields that need exact focus and caret control
   are `NSTextField`s.
 - **Colour and symbols:** semantic system colours and the person's accent.
-  Icons are SF Symbols. The bird is the brand's and appears only in the menu bar and the app icon.
+  Icons are SF Symbols. The bird is the brand's: the menu bar, the app icon
+  and, by default, the search field. The search field shows the colour bird by
+  default, on the icon column; Settings › Appearance offers the magnifying glass
+  or none (the maintainer, 2026-11-28). More appearance choices later, in the
+  spirit of Alfred's themes.
 - **Menus:** Actions (⌘K), the format menu and row menus are `NSMenu`s, opened
   at the control that owns them, with system section headers.
 - **Grid:** one scale multiplies every size, so Larger Text and ⌘+ scale the
-  whole picker. The lead column (48 pt) holds the search glyph and kind symbols. Text
-  starts after it.
-- **Footer:** the citation in primary text on Peek's reading material; a
+  whole picker. One grid (`PickerGrid`) sets every x: icons, section headings
+  and the footer start on `edge` (18 pt); the search glyph, kind symbols and
+  status symbol share the 30 pt icon column; the query, hint, titles and
+  bylines start on `title` (58 pt); the selection fill keeps `rowInset` (8 pt).
+  Review shots fail when the glyph and the first row's icon, or the query and
+  its title, differ by more than half a point.
+- **Footer:** the citation in primary text on the panel's own glass; a
   match not yet added is drawn in secondary text, and the count names only
   added references. A click opens Details for one reference and the references
   menu for several. The delivery button falls back to one word ("Paste",

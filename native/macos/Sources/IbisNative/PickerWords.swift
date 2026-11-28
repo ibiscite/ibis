@@ -136,6 +136,10 @@ enum PickerWord {
     case scopeLabel
     case search
     case searchActions
+    case searchGlyph
+    case searchGlyphBird
+    case searchGlyphMagnifier
+    case searchGlyphNone
     case settings
     case settingsAppearanceWords
     case settingsNoResults
@@ -143,6 +147,7 @@ enum PickerWord {
     case settingsReadFailed
     case settingsSaveFailed
     case settingsSearch
+    case settingsSearchGlyphWords
     case settingsSearchResults
     case settingsShortcutWords
     case settingsTextSize
@@ -313,6 +318,10 @@ enum PickerWords {
             .scopeLabel: "المكتبة: {IBIS_VALUE}",
             .search: "البحث في المراجع",
             .searchActions: "ابحث في الإجراءات",
+            .searchGlyph: "رمز حقل البحث",
+            .searchGlyphBird: "طائر Ibis",
+            .searchGlyphMagnifier: "عدسة مكبّرة",
+            .searchGlyphNone: "بلا",
             .settings: "الإعدادات…",
             .settingsAppearanceWords: "الوضع الداكن داكن فاتح سمة النظام",
             .settingsNoResults: "لا إعدادات تطابق «{IBIS_VALUE}»",
@@ -320,6 +329,7 @@ enum PickerWords {
             .settingsReadFailed: "تعذّر على Ibis قراءة إعداداتك؛ أعد فتح الإعدادات للمحاولة مرة أخرى.",
             .settingsSaveFailed: "تعذّر على Ibis حفظ هذا الخيار؛ تظهر القيمة المحفوظة.",
             .settingsSearch: "البحث في الإعدادات",
+            .settingsSearchGlyphWords: "رمز شعار طائر عدسة شريط البحث",
             .settingsSearchResults: "نتائج البحث",
             .settingsShortcutWords: "لوحة مفاتيح اختصار مفتاح ربط",
             .settingsTextSize: "حجم النص",
@@ -477,6 +487,10 @@ enum PickerWords {
             .scopeLabel: "Bibliothek: {IBIS_VALUE}",
             .search: "Referenzen suchen",
             .searchActions: "Aktionen suchen",
+            .searchGlyph: "Symbol im Suchfeld",
+            .searchGlyphBird: "Ibis-Vogel",
+            .searchGlyphMagnifier: "Lupe",
+            .searchGlyphNone: "Keins",
             .settings: "Einstellungen…",
             .settingsAppearanceWords: "dunkelmodus dunkel hell thema design system",
             .settingsNoResults: "Keine Einstellungen zu „{IBIS_VALUE}“",
@@ -484,6 +498,7 @@ enum PickerWords {
             .settingsReadFailed: "Ibis konnte Ihre Einstellungen nicht lesen; öffnen Sie die Einstellungen erneut, um es noch einmal zu versuchen.",
             .settingsSaveFailed: "Ibis konnte diese Wahl nicht speichern; der gespeicherte Wert wird angezeigt.",
             .settingsSearch: "Suchen",
+            .settingsSearchGlyphWords: "Symbol Logo Vogel Lupe Suchleiste",
             .settingsSearchResults: "Suchergebnisse",
             .settingsShortcutWords: "tastatur tastenkürzel tastenbelegung kurzbefehl",
             .settingsTextSize: "Textgröße",
@@ -641,6 +656,10 @@ enum PickerWords {
             .scopeLabel: "Library: {IBIS_VALUE}",
             .search: "Search references",
             .searchActions: "Search actions",
+            .searchGlyph: "Search field symbol",
+            .searchGlyphBird: "Ibis bird",
+            .searchGlyphMagnifier: "Magnifying glass",
+            .searchGlyphNone: "None",
             .settings: "Settings…",
             .settingsAppearanceWords: "dark mode light theme system",
             .settingsNoResults: "No settings match ‘{IBIS_VALUE}’",
@@ -648,6 +667,7 @@ enum PickerWords {
             .settingsReadFailed: "Ibis could not read your settings; reopen Settings to try again.",
             .settingsSaveFailed: "Ibis could not save this choice; the saved value is shown.",
             .settingsSearch: "Search Settings",
+            .settingsSearchGlyphWords: "icon logo bird magnifier search bar",
             .settingsSearchResults: "Search results",
             .settingsShortcutWords: "keyboard hotkey keybinding",
             .settingsTextSize: "Text size",

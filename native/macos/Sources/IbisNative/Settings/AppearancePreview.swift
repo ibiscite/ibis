@@ -1,15 +1,25 @@
 import SwiftUI
 
-/// Two of the picker's own rows, one selected and one plain, so the preview
-/// shows exactly what the settings above it change and cannot drift.
+/// The picker's own search line and two of its rows, one selected and one
+/// plain, so the preview shows exactly what the settings above it change.
 struct AppearancePreview: View {
     let appearance: Appearance
     let density: Density
     let largerText: Bool
+    let searchGlyph: SearchGlyph
 
     var body: some View {
         let grid = PickerGrid(s: largerText ? 1.25 : 0.9)
         VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                if searchGlyph != .none {
+                    SearchFieldGlyph(kind: searchGlyph, grid: grid).padding(.trailing, grid.title - grid.edge - grid.icon)
+                }
+                Text(verbatim: "shoreline").font(.system(size: grid.query))
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, grid.edge)
+            .frame(height: grid.header * 0.8)
             ForEach(Array(Self.rows.enumerated()), id: \.offset) { index, row in
                 ResultRow(row: row, highlighted: index == 0, emphasized: index == 0, added: false,
                           note: index == 1 ? "p. 417" : nil, number: nil, density: density, grid: grid)

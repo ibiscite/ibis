@@ -11,7 +11,7 @@ enum SettingsPane: CaseIterable {
 }
 
 enum SettingsSearchRow: String, CaseIterable, Identifiable {
-    case library, shortcut, paste, appearance, density, largerText
+    case library, shortcut, paste, appearance, searchGlyph, density, largerText
 
     var id: Self { self }
 
@@ -19,7 +19,7 @@ enum SettingsSearchRow: String, CaseIterable, Identifiable {
         switch self {
         case .shortcut, .paste: .general
         case .library: .library
-        case .appearance, .density, .largerText: .appearance
+        case .appearance, .searchGlyph, .density, .largerText: .appearance
         }
     }
 
@@ -29,6 +29,7 @@ enum SettingsSearchRow: String, CaseIterable, Identifiable {
         case .shortcut: .open
         case .paste: .automaticPaste
         case .appearance: .appearance
+        case .searchGlyph: .searchGlyph
         case .density: .density
         case .largerText: .largerText
         }
@@ -42,6 +43,7 @@ enum SettingsSearchRow: String, CaseIterable, Identifiable {
         case .shortcut: [.shortcuts, .settingsShortcutWords, .restoreShortcut]
         case .paste: [.pasteSettings, .settingsPasteWords, .pasteNeedsAccess]
         case .appearance: [.settingsAppearanceWords]
+        case .searchGlyph: [.searchGlyphBird, .searchGlyphMagnifier, .settingsSearchGlyphWords]
         case .density: [.compact, .comfortable]
         case .largerText: [.settingsTextSize, .actionWordsText]
         }

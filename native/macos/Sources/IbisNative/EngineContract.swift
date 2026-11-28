@@ -413,6 +413,7 @@ struct PickerOpenResult: Codable, Hashable, Sendable {
     let libraryExtensions: [String]
     let locators: [PickerLocator]
     let pasteEnabled: Bool
+    let searchGlyph: SearchGlyph
     let state: PickerState
     let status: [PickerStatus]
 
@@ -427,6 +428,7 @@ struct PickerOpenResult: Codable, Hashable, Sendable {
         case libraryExtensions = "library_extensions"
         case locators = "locators"
         case pasteEnabled = "paste_enabled"
+        case searchGlyph = "search_glyph"
         case state = "state"
         case status = "status"
     }
@@ -572,6 +574,12 @@ enum Script: String, Codable, Hashable, Sendable {
     case superscript = "superscript"
 }
 
+enum SearchGlyph: String, Codable, Hashable, Sendable {
+    case bird = "bird"
+    case magnifier = "magnifier"
+    case none = "none"
+}
+
 struct SettingsLibrary: Codable, Hashable, Sendable {
     let file: String?
     let missing: Bool
@@ -584,6 +592,7 @@ struct SettingsRequest: Codable, Hashable, Sendable {
     let largerText: Bool?
     let libraryFile: String?
     let paste: Bool?
+    let searchGlyph: SearchGlyph?
     let shortcut: ShortcutSetting?
 
     enum CodingKeys: String, CodingKey {
@@ -592,6 +601,7 @@ struct SettingsRequest: Codable, Hashable, Sendable {
         case largerText = "larger_text"
         case libraryFile = "library_file"
         case paste = "paste"
+        case searchGlyph = "search_glyph"
         case shortcut = "shortcut"
     }
 }
@@ -603,6 +613,7 @@ struct SettingsResult: Codable, Hashable, Sendable {
     let library: SettingsLibrary?
     let libraryExtensions: [String]
     let paste: Bool
+    let searchGlyph: SearchGlyph
     let shortcut: String?
     let version: String
 
@@ -613,6 +624,7 @@ struct SettingsResult: Codable, Hashable, Sendable {
         case library = "library"
         case libraryExtensions = "library_extensions"
         case paste = "paste"
+        case searchGlyph = "search_glyph"
         case shortcut = "shortcut"
         case version = "version"
     }

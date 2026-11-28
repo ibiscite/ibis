@@ -73,6 +73,7 @@ pub struct PickerOpenResult {
     pub appearance: settings::Appearance,
     pub density: settings::Density,
     pub larger_text: bool,
+    pub search_glyph: settings::SearchGlyph,
     /// The session as it opens, drawn before the first key.
     pub state: PickerState,
 }
@@ -214,6 +215,7 @@ pub fn open_result(
         appearance: settings.portable.appearance(),
         density: settings.portable.density(),
         larger_text: settings.portable.larger_text(),
+        search_glyph: settings.portable.search_glyph(),
     }
 }
 

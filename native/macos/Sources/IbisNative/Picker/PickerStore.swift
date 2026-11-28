@@ -16,7 +16,9 @@ final class PickerStore: ObservableObject {
         case unreadable(String)
     }
 
-    enum Anchor: Hashable { case format, citation, actions }
+    /// Where controls sit, so menus open at them; the glyph and the first
+    /// row's icon and title let review shots check the grid.
+    enum Anchor: Hashable { case format, citation, actions, glyph, query, rowIcon, rowTitle }
 
     /// The line above the footer: what went wrong, or what just happened.
     struct Problem {
@@ -49,6 +51,7 @@ final class PickerStore: ObservableObject {
     @Published private(set) var revealed = 0
     @Published var appearance: Appearance = .system
     @Published var density: Density = .compact
+    @Published var searchGlyph: SearchGlyph = .bird
     @Published var textPercent = 100
 
     var anchors: [Anchor: CGRect] = [:]
@@ -264,6 +267,7 @@ final class PickerStore: ObservableObject {
                 catalog = opened
                 appearance = opened.appearance
                 density = opened.density
+                searchGlyph = opened.searchGlyph
                 if !hasTemporaryTextSize { textPercent = opened.largerText ? 150 : 100 }
                 let destination = ibis_native_paste_destination(opened.pasteEnabled)
                 pasteDestination = destination > 0 && destination == targetPID ? targetName : nil
@@ -307,6 +311,7 @@ final class PickerStore: ObservableObject {
     func applySettings(_ settings: SettingsResult, resetTextSize: Bool) {
         appearance = settings.appearance
         density = settings.density
+        searchGlyph = settings.searchGlyph
         if resetTextSize { hasTemporaryTextSize = false }
         if !hasTemporaryTextSize { textPercent = settings.largerText ? 150 : 100 }
     }

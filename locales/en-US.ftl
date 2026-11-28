@@ -2153,6 +2153,11 @@ picker-native-form-narrative = Name in the text
 picker-native-copy-citation = Copy Citation
 picker-native-paste-short = Paste
 picker-native-no-matches-in = No matches in { $name }
+picker-native-search-glyph = Search field symbol
+picker-native-search-glyph-bird = Ibis bird
+picker-native-search-glyph-magnifier = Magnifying glass
+picker-native-search-glyph-none = None
+picker-native-search-glyph-words = icon logo bird magnifier search bar
 
 picker-native-remember-format = Remember for { $app }
 picker-native-format-project = Project: { $name }

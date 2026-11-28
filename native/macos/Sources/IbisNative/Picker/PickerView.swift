@@ -4,26 +4,31 @@ import SwiftUI
 // The picker's content: one field, one list, one footer line, laid out with
 // the system's own controls. Every size is a multiple of the picker's scale.
 
-/// The picker's grid, one set of columns for every line, as in Spotlight:
-/// the search glyph, each row's kind symbol and the status symbol share one
-/// glyph column, and the query, titles and hints start at one text edge.
+/// The picker's one grid, as in Spotlight. The search glyph, each row's kind
+/// symbol and the status symbol share the icon column; the query, hints,
+/// titles and bylines start on `title`; headings and the footer on `edge`.
 ///
-///     | inset | pad | glyph | gap | text …
-///     ^ window edge   ^ edge        ^ lead
+///     | rowInset |  …  | icon | 10 | title …
+///     ^ window   ^ selection  ^ edge   ^ title
 struct PickerGrid {
     let s: CGFloat
     var width: CGFloat { 640 * s }
-    /// A highlighted row's distance from the window edge.
-    var inset: CGFloat { 8 * s }
-    /// Inside a row, before its symbol.
-    var pad: CGFloat { 10 * s }
-    /// Where every line's first glyph or label starts.
-    var edge: CGFloat { inset + pad }
-    var glyph: CGFloat { 30 * s }
-    var gap: CGFloat { 10 * s }
-    /// Where the query, titles and hints start.
-    var lead: CGFloat { edge + glyph + gap }
+    /// Where icons, section headings and the footer start.
+    var edge: CGFloat { 18 * s }
+    /// The icon column's width.
+    var icon: CGFloat { 30 * s }
+    /// Where the query, hints, titles and bylines start.
+    var title: CGFloat { edge + icon + 10 * s }
+    /// The selection fill's outer margin.
+    var rowInset: CGFloat { 8 * s }
     var trailing: CGFloat { 16 * s }
+    /// The query's font size.
+    var query: CGFloat { 22 * s }
+    /// How far the query's x-height middle sits below its line's centre.
+    var queryXHeightDrop: CGFloat {
+        let font = NSFont.systemFont(ofSize: query)
+        return (font.ascender + font.descender) / 2 - font.xHeight / 2
+    }
     var header: CGFloat { 56 * s }
     var hint: CGFloat { 22 * s }
     var heading: CGFloat { 26 * s }
@@ -47,7 +52,7 @@ struct PickerView: View {
                     .font(grid.font(12))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .padding(.leading, grid.lead)
+                    .padding(.leading, grid.title)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(height: grid.hint, alignment: .top)
                     .accessibilityLabel(readsAs)
@@ -79,18 +84,23 @@ private struct SearchHeader: View {
     let grid: PickerGrid
 
     var body: some View {
-        HStack(spacing: grid.gap) {
-            SearchGlyph(grid: grid)
+        HStack(spacing: 0) {
+            if store.searchGlyph != .none {
+                SearchFieldGlyph(kind: store.searchGlyph, grid: grid)
+                    .anchor(.glyph)
+                    .padding(.trailing, grid.title - grid.edge - grid.icon)
+            }
             NativeTextField(
                 text: store.query,
                 placeholder: PickerWords.text(.search),
                 label: PickerWords.text(.search),
                 style: .plain,
-                font: .systemFont(ofSize: 22 * grid.s),
+                font: .systemFont(ofSize: grid.query),
                 register: { store.searchField = $0 },
                 began: {},
                 change: { store.type($0) }
             )
+            .anchor(.query)
             if store.isOpening {
                 ProgressView().controlSize(.small)
             }
@@ -102,17 +112,48 @@ private struct SearchHeader: View {
     }
 }
 
-/// The search field's glyph, as in Spotlight: the brand stays in the menu bar.
-private struct SearchGlyph: View {
+/// The search field's symbol in the icon column, centred above the rows'
+/// symbols: the colour bird by default, or the magnifying glass (Settings ›
+/// Appearance). With none, the query starts on the grid's edge.
+struct SearchFieldGlyph: View {
+    let kind: SearchGlyph
     let grid: PickerGrid
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        Image(systemName: "magnifyingglass")
-            .font(grid.font(20))
-            .foregroundStyle(.secondary)
-            .frame(width: grid.glyph)
-            .accessibilityHidden(true)
+        Group {
+            switch kind {
+            case .bird:
+                if let image = PickerArt.image(scheme == .dark ? "pickerMark-dark" : "pickerMark") {
+                    Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                        .frame(height: 28 * grid.s)
+                }
+            case .magnifier:
+                Image(systemName: "magnifyingglass").font(.system(size: grid.query)).foregroundStyle(.secondary)
+            case .none:
+                EmptyView()
+            }
+        }
+        .frame(width: grid.icon)
+        // Sized to the query, and centred on its x-height rather than its line box.
+        .offset(y: grid.queryXHeightDrop)
+        .accessibilityHidden(true)
     }
+}
+
+/// The brand's drawings bundled for the picker, by file name.
+enum PickerArt {
+    private static let images: [String: NSImage] = {
+        guard let folder = Bundle.main.resourceURL?.appendingPathComponent("macos-picker"),
+              let urls = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+        else { return [:] }
+        return Dictionary(uniqueKeysWithValues: urls.compactMap { url in
+            guard url.pathExtension == "pdf", let image = NSImage(contentsOf: url) else { return nil }
+            return (url.deletingPathExtension().lastPathComponent, image)
+        })
+    }()
+
+    static func image(_ name: String) -> NSImage? { images[name] }
 }
 
 // MARK: Results
@@ -163,7 +204,7 @@ private struct ResultsList: View {
         let added = store.isAdded(row.id)
         return ResultRow(row: row, highlighted: highlighted, emphasized: highlighted && store.isKey,
                          added: added, note: store.entry(row.id)?.note, number: store.number(for: row.id),
-                         density: store.density, grid: grid,
+                         density: store.density, grid: grid, marksColumns: row.id == store.rows.first?.id,
                          actions: RowActions(toggle: { store.toggle(row.id) }, peek: { store.togglePeek(row.id) }))
             .background(GeometryReader { geometry in
                 Color.clear.preference(key: RowFrames.self, value: [row.id: geometry.frame(in: .named("results"))])
@@ -225,6 +266,8 @@ struct ResultRow: View {
     let number: Int?
     let density: Density
     let grid: PickerGrid
+    /// The first row records where its icon and title sit, so review shots can check the grid.
+    var marksColumns = false
     var actions = RowActions()
     @State private var hovered = false
 
@@ -243,13 +286,15 @@ struct ResultRow: View {
                     Image(systemName: row.kind.symbol).font(grid.font(15)).foregroundStyle(quiet)
                 }
             }
-            .frame(width: grid.glyph)
-            .padding(.trailing, grid.gap)
+            .frame(width: grid.icon)
+            .anchor(.rowIcon, if: marksColumns)
+            .padding(.trailing, grid.title - grid.edge - grid.icon)
             VStack(alignment: .leading, spacing: (density == .compact ? 1 : 3) * grid.s) {
                 Text(row.title ?? PickerWords.text(.untitled))
                     .font(grid.font(14, .medium))
                     .foregroundStyle(ink)
                     .lineLimit(1)
+                    .anchor(.rowTitle, if: marksColumns)
                 HStack(spacing: 0) {
                     Byline(options: row.bylines)
                     Text(verbatim: " · " + (row.year ?? PickerWords.text(.noDate))).fixedSize()
@@ -279,11 +324,11 @@ struct ResultRow: View {
                     .accessibilityHidden(true)
             }
         }
-        .padding(.leading, grid.pad)
+        .padding(.leading, grid.edge - grid.rowInset)
         .padding(.trailing, 12 * grid.s)
         .frame(height: grid.row(density))
         .background(RoundedRectangle(cornerRadius: 10 * grid.s, style: .continuous).fill(fill))
-        .padding(.horizontal, grid.inset)
+        .padding(.horizontal, grid.rowInset)
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
         .help(([row.title ?? "", row.fullByline] + row.matchReasons + [row.citationKey ?? ""])
@@ -376,13 +421,13 @@ private struct StatusLine: View {
 
     var body: some View {
         let status = problem.status
-        HStack(spacing: grid.gap) {
+        HStack(spacing: grid.title - grid.edge - grid.icon) {
             Image(systemName: problem.symbol
                 ?? (status?.kind == .citation ? "xmark.octagon.fill" : "exclamationmark.triangle.fill"))
                 .symbolRenderingMode(problem.symbol == nil ? .multicolor : .monochrome)
                 .foregroundStyle(.secondary)
                 .font(grid.font(12))
-                .frame(width: grid.glyph)
+                .frame(width: grid.icon)
             Text(problem.text).font(grid.font(12)).foregroundStyle(.secondary).lineLimit(1).help(problem.text)
             Spacer(minLength: 8 * grid.s)
             if let status, let fix = status.fix {
@@ -510,8 +555,6 @@ private struct Footer: View {
         .padding(.leading, grid.edge)
         .padding(.trailing, grid.trailing)
         .frame(height: grid.footer)
-        // The citation is read, so the footer takes Peek's reading material.
-        .readableMaterial()
     }
 
     private func deliveryButton(_ title: String) -> some View {
@@ -713,9 +756,9 @@ struct AnchorFrames: PreferenceKey {
 
 private extension View {
     /// Records where a control sits, so its native menu opens at it.
-    func anchor(_ anchor: PickerStore.Anchor) -> some View {
+    func anchor(_ anchor: PickerStore.Anchor, if recorded: Bool = true) -> some View {
         background(GeometryReader { geometry in
-            Color.clear.preference(key: AnchorFrames.self, value: [anchor: geometry.frame(in: .global)])
+            Color.clear.preference(key: AnchorFrames.self, value: recorded ? [anchor: geometry.frame(in: .global)] : [:])
         })
     }
 }

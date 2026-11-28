@@ -5,13 +5,15 @@ extension SettingsRequest {
     static let readOnly = patch()
 
     static func patch(appearance: Appearance? = nil, density: Density? = nil, largerText: Bool? = nil,
-                      libraryFile: String? = nil, paste: Bool? = nil, shortcut: ShortcutSetting? = nil) -> Self {
+                      libraryFile: String? = nil, paste: Bool? = nil, searchGlyph: SearchGlyph? = nil,
+                      shortcut: ShortcutSetting? = nil) -> Self {
         SettingsRequest(appearance: appearance, density: density, largerText: largerText, libraryFile: libraryFile,
-                        paste: paste, shortcut: shortcut)
+                        paste: paste, searchGlyph: searchGlyph, shortcut: shortcut)
     }
 
     var isReadOnly: Bool {
-        appearance == nil && density == nil && largerText == nil && paste == nil && shortcut == nil && libraryFile == nil
+        appearance == nil && density == nil && largerText == nil && paste == nil && searchGlyph == nil
+            && shortcut == nil && libraryFile == nil
     }
 }
 
