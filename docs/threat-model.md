@@ -110,7 +110,7 @@ What they stop is a paste nobody approved, including one an agent's text asks
 for: no MCP tool, record or editor request can grant one. An unreadable file,
 or one missing after it was saved, grants nothing until each app is answered
 again. A paste waiting for its app to come back reads the app's choice again
-just before it posts. Tests: `grants/tests.rs` and, for the wait,
+before it queues the post. Tests: `grants/tests.rs` and, for the wait,
 `a_choice_changed_while_the_app_comes_back_stops_the_paste` in
 `crates/ibis-native/src/paste/tests.rs`.
 

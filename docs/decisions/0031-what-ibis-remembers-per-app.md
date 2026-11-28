@@ -24,7 +24,9 @@ and format remain keyed by app ID. An update at the same location retains
 approval; a replacement at that exact location is indistinguishable.
 
 Atomic saves preserve durable choices on failure. Unreadable `apps.json` blocks
-automatic paste: losing Copy only cannot grant permission. A durable recovery
+automatic paste: losing Copy only cannot grant permission. So does a missing
+`apps.json` once the store has been saved, which the remaining
+`apps.json.lock` shows (2026-11-28); a new profile starts empty. A durable recovery
 flag remains until an explicit delivery choice resolves that app alone. A
 format save cannot clear it, and a delayed save cannot authorize an earlier copy.
 
