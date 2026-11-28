@@ -43,6 +43,34 @@ nothing that macOS already draws.
 - **Review:** `scripts/native-macos.sh shots` saves every review state in
   light and dark from the invented [review library](../../native/macos/Review.csljson).
 
+### Native app direction
+
+The maintainer chose these from A/B mock-ups on 2026-11-28 (round four); they
+are built in this order of need.
+
+- **Settings are pages for what you have:** General holds the few global
+  choices; then one page per library and one per app you have cited into,
+  found as you use them. An app's page holds its format, paste and text
+  rules, a library's page its location and keys. Depth sits behind each
+  row's **Details…**, and search finds every option.
+- **Your clipboard comes back:** after a paste Ibis restores what you had
+  copied, marks the citation as transient so clipboard managers skip it, and
+  leaves the clipboard alone if you copied something in between.
+- **The opening key is a chord** (as ⌥ Space is), offered with an
+  alternative when it is taken.
+- **References in Spotlight and Shortcuts, on from the start**, on this Mac
+  only, with one switch to turn it off.
+- **Checking a document is a line in the picker:** with an empty query, the
+  first row reports the document in front (“2 citations aren’t in
+  thesis.bib · Fix”); ↩ fixes, ⌘↩ opens the full report.
+- **Agent suggestions wait in one review list** (optional AI): each with
+  before and after, Accept, Reject and Undo; nothing changes until accepted.
+- **More ways in:** a Cite control in Control Center, a Services item for
+  selected text, and a short glow at the caret after a paste, beside the menu
+  bar item.
+- **Browsing the library** (0.5) is still open: the picker growing into a
+  library, or a Library window of its own.
+
 ## What the interface does
 
 - **The picker is a launcher.** Keep the field, results and delivery in that

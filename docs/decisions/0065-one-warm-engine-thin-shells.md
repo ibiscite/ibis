@@ -102,7 +102,12 @@ No more effort goes into making the web view imitate macOS.
      [0066](0066-native-shells-use-system-parts.md) point 4): WinUI 3 after
      Mac parity, then GTK 4 with libadwaita, each over the same socket. Until
      each reaches parity on the same user journeys, the Tauri app serves that
-     system as a daemon client with fixes only, in its own neutral recipe.
+     system with fixes only, in its own neutral recipe. **It is not converted
+     to an `ibisd` client** (amended 2026-11-28): it keeps its engine until a
+     native app replaces it on that system, and shares the daemon's files
+     (settings, recents, paste approvals) rather than its memory. A Draft,
+     paste approvals and delivered-once records live in files the engine
+     owns, so a daemon restart loses none of them.
    - **Measurement is the baseline:** whole-process memory, idle wake-ups,
      and summon time to typeable on a 10k and a 100k library, for every
      shell, measured against 0032's budgets. Each native app must beat the
@@ -157,8 +162,8 @@ No more effort goes into making the web view imitate macOS.
 ## Order
 
 1. Build `ibisd` beside `ibis serve`. The same method table serves both. The
-   CLI and MCP become clients; then the Tauri app does, and its in-process
-   engine is deleted.
+   CLI, MCP and the native apps are clients; the Tauri app shares its files
+   instead (amended 2026-11-28).
 2. Grow the macOS native shell from the spike to parity (amended
    2026-11-26: now, not after a measurement):
    1. picker;
@@ -173,8 +178,9 @@ No more effort goes into making the web view imitate macOS.
    Tauri Mac build is retired from it; Settings, Sparkle and signing follow in
    later nightlies.
 3. Measure every shell against 0032 (memory, wake-ups, summon to typeable).
-4. Move the Tauri app's in-process engine, its paste-consent decisions and
-   the editor endpoint into the daemon (amended 2026-11-28).
+4. Move paste approvals, the Draft and delivery records into files the
+   engine owns, and the editor endpoint out of the Tauri app (amended
+   2026-11-28).
 5. Build the Windows app in WinUI 3, then the Linux app in GTK 4 with
    libadwaita. Each system drops the Tauri app at parity.
 5. Add system extensions as thin clients.

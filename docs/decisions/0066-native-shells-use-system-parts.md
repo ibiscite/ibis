@@ -54,10 +54,10 @@ plan for a native feel on every system later. It refines the shell part of
    maintainer, 2026-11-28). Windows follows Mac parity in WinUI 3 (C#, Mica
    and Fluent controls, a Store MSIX); Linux follows Windows in GTK 4 with
    libadwaita (gtk4-rs). Each is a thin client of `ibisd` with the contract
-   generated for its language, and each follows this decision. Before the
-   Windows app starts, the daemon takes the Tauri app's in-process engine,
-   its paste-consent decisions and the editor endpoint. From now on the Tauri
-   app is a daemon client that gets fixes only, no new UI logic. Each system
+   generated for its language, and each follows this decision. The Tauri
+   app gets fixes only, no new UI logic. It is not rebuilt as a daemon
+   client: it keeps its in-process engine and shares the engine's files
+   (settings, recents, paste approvals) rather than its memory. Each system
    drops it once its native app reaches parity on the same user journeys,
    never on a version number. Measurements of the Tauri app (0032's hidden
    memory, wake-ups and summon to typeable) are the baseline each native app
