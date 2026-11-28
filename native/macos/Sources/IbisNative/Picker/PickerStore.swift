@@ -63,6 +63,7 @@ final class PickerStore: ObservableObject {
     private var targetPID: Int32?
     private var pasteDestination: String?
     private var lastShown: Date?
+    private var selectionSearch: String?
     private var lastDelivery: String?
     private var hasTemporaryTextSize = false
     private var announcement: Task<Void, Never>?
@@ -187,9 +188,13 @@ final class PickerStore: ObservableObject {
 
     // MARK: Opening and closing
 
-    func present(app: String?, name: String? = nil, pid: Int32? = nil, captureSite: () -> String? = { nil }) {
+    /// Opens for the app in front. `capture` reads its site and, once, the
+    /// short text selected there, which becomes the search (K5).
+    func present(app: String?, name: String? = nil, pid: Int32? = nil,
+                 capture: () -> (site: String?, selection: String?) = { (nil, nil) }) {
         dismiss()
-        let site = captureSite()
+        let (site, selection) = capture()
+        selectionSearch = selection
         let keepQuery = lastShown.map { Date().timeIntervalSince($0) < 60 } ?? false
         lastShown = Date()
         notice = lastDelivery
@@ -239,6 +244,7 @@ final class PickerStore: ObservableObject {
                 isOpening = false
                 query = opened.state.query
                 apply(opened.state)
+                if let selection = selectionSearch.take() { type(selection) }
             } catch {
                 guard !Task.isCancelled else { return }
                 isOpening = false
@@ -567,5 +573,13 @@ private func withUtf8<T>(_ text: String?, _ body: (IbisUtf8) -> T) -> T {
     guard let text else { return body(IbisUtf8(data: nil, len: 0)) }
     return Array(text.utf8).withUnsafeBufferPointer { bytes in
         body(IbisUtf8(data: bytes.baseAddress, len: bytes.count))
+    }
+}
+
+private extension Optional {
+    /// The value, leaving nil behind.
+    mutating func take() -> Wrapped? {
+        defer { self = nil }
+        return self
     }
 }
