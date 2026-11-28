@@ -274,3 +274,25 @@ fn each_apps_reference_list_holds_this_runs_citations_there_and_follows_the_list
     history.forget().unwrap_or_else(|error| panic!("{error}"));
     assert!(history.lock().cited_here("invented.writer").is_empty());
 }
+
+#[test]
+fn two_engines_keep_each_others_history() -> Result<(), Box<dyn std::error::Error>> {
+    let (dir, first) = history();
+    let second = SessionReferences::default();
+    *second.lock() = List::open(dir.path().join("recents.json"), true);
+    let (one, two) = (first.lock().epoch(), second.lock().epoch());
+    first.record(&one, Some("invented.writer"), &[item("a")]);
+    first.flush()?;
+    // The second engine read the file before the first wrote to it.
+    second.record(&two, Some("invented.editor"), &[item("b")]);
+    second.flush()?;
+    first.record(&one, Some("invented.writer"), &[item("c")]);
+    first.flush()?;
+    let reopened = List::open(dir.path().join("recents.json"), true);
+    assert_eq!(reopened.ids(Some("invented.writer")), [item("c"), item("a")]);
+    assert_eq!(reopened.ids(Some("invented.editor")), [item("b")]);
+    // Forgetting in either engine clears the history both share.
+    second.forget()?;
+    assert!(!List::open(dir.path().join("recents.json"), true).has_history());
+    Ok(())
+}

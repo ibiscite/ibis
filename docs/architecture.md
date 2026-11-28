@@ -79,11 +79,17 @@ to its AI app and relays that session to the daemon's existing MCP runtime.
 - Windows uses a local named pipe with `FILE_FLAG_FIRST_PIPE_INSTANCE`,
   `PIPE_REJECT_REMOTE_CLIENTS`, a DACL for the current user SID and a token
   SID check on each end. [Win32 named pipe access rights](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights)
-- The configuration directory distinguishes profiles that use different
-  settings. A startup lock serializes launches. The daemon holds a separate
+- Each installed Ibis keeps its own engine: the configuration directory and
+  the folder the program lives in choose the instance, named by 16 hex digits
+  of their hash so socket paths and pipe names stay short. A command linked
+  elsewhere, such as `~/.local/bin/ibis`, joins the installation it points
+  to, so the native app and an installed Nightly never refuse each other.
+  An AppImage mounts anew at every launch, so its image file names the
+  installation instead of its folder.
+  Every instance shares the person's files. A startup lock serializes launches. The daemon holds a separate
   lock for its lifetime. Both ends exchange a protocol version and build
-  identity before dispatch. A newer client asks an older daemon to finish
-  accepted work, then starts the replacement. Clients reconnect with backoff
+  identity before dispatch. A newer client of the same installation asks an
+  older daemon to finish accepted work, then starts the replacement. Clients reconnect with backoff
   after a crash. A lost reply to a write leaves its outcome uncertain.
 - The engine stays warm while a client is connected and exits after 60
   seconds without clients. That interval covers short terminal workflows and
@@ -105,7 +111,9 @@ The daemon owns CLI settings writes, watches settings files for hand edits
 and clears stored recents when the saved switch is off. The Tauri app keeps
 its in-process engine: native shells replace it system by system, and it is
 not rebuilt as a client. It shares the daemon's files instead of its memory.
-Settings and recents use the settings file lock. Paste approvals in
+Settings and recents use the settings file lock; a recents save rewrites
+only the apps that engine recorded and keeps every other app's list from the
+file, so two engines never drop each other's history. Paste approvals in
 `apps.json` belong to `ibis_engine::grants`, which keeps no copy in memory:
 every answer reads the file and every change rewrites it under
 `apps.json.lock`, so two processes never undo each other's choices.

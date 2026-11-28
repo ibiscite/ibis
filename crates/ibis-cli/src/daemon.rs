@@ -110,18 +110,65 @@ enum Welcome {
     Busy,
 }
 
-/// An isolated configuration selects its own instance within this user's runtime.
+/// Each installed Ibis keeps its own warm engine: the instance is chosen by the
+/// configuration and by the folder the program lives in, so the Nightly's
+/// command and the native app never refuse each other, while an upgrade in
+/// place still drains the older build. Every instance shares the same files.
 #[derive(Clone)]
 pub struct Endpoint(Address);
 
 impl Endpoint {
-    pub fn new(config: &Path, runtime_root: Option<&Path>) -> io::Result<Self> {
-        let digest = Fingerprint::of_bytes(config.as_os_str().as_encoded_bytes());
-        Address::new(&digest.as_str()[..16], runtime_root).map(Self)
+    pub fn new(config: &Path, program: &Path, runtime_root: Option<&Path>) -> io::Result<Self> {
+        Address::new(
+            &Self::namespace(config, &Self::installation(program, None)),
+            runtime_root,
+        )
+        .map(Self)
+    }
+
+    /// The installation a program belongs to: the resolved folder it lives in,
+    /// so a command linked elsewhere, such as `~/.local/bin/ibis`, joins the
+    /// installation it points at. An AppImage mounts anew at every launch, so
+    /// its image file is the installation instead.
+    pub fn installation(program: &Path, image: Option<PathBuf>) -> PathBuf {
+        if let Some(image) = image {
+            return std::fs::canonicalize(&image).unwrap_or(image);
+        }
+        // Resolve the program itself so a link joins its target; a program that
+        // cannot be resolved still names its folder in the same resolved form.
+        if let Some(folder) = std::fs::canonicalize(program)
+            .ok()
+            .and_then(|path| path.parent().map(Path::to_path_buf))
+        {
+            return folder;
+        }
+        program.parent().map_or_else(
+            || program.to_path_buf(),
+            |folder| std::fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf()),
+        )
+    }
+
+    /// Sixteen hex digits of the configuration and the installation, so a
+    /// socket path stays short and a pipe name stays valid.
+    pub fn namespace(config: &Path, installation: &Path) -> String {
+        let mut key = config.as_os_str().as_encoded_bytes().to_vec();
+        key.push(0);
+        key.extend_from_slice(installation.as_os_str().as_encoded_bytes());
+        Fingerprint::of_bytes(&key).as_str()[..16].to_owned()
     }
 
     pub fn current() -> io::Result<Self> {
         let config = ibis_engine::identity::config_dir().ok_or(io::ErrorKind::NotFound)?;
+        let program = std::env::current_exe()?;
+        let image = if cfg!(target_os = "linux") {
+            ibis_os::command_install::appimage_for(
+                &program,
+                std::env::var_os("APPIMAGE").map(PathBuf::from),
+                std::env::var_os("APPDIR").map(PathBuf::from),
+            )
+        } else {
+            None
+        };
         let root = if cfg!(target_os = "linux") {
             std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from)
         } else if cfg!(windows) {
@@ -129,7 +176,12 @@ impl Endpoint {
         } else {
             None
         };
-        Self::new(&std::path::absolute(config)?, root.as_deref())
+        let installation = Self::installation(&program, image);
+        Address::new(
+            &Self::namespace(&std::path::absolute(config)?, &installation),
+            root.as_deref(),
+        )
+        .map(Self)
     }
 
     /// Connect to an existing daemon's public method-table transport.

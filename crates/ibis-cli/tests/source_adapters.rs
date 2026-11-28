@@ -787,7 +787,7 @@ fn daemon_crash() {
     } else {
         (directory.to_path_buf(), Some(directory))
     };
-    let endpoint = ibis::daemon::Endpoint::new(&config, root).unwrap();
+    let endpoint = ibis::daemon::Endpoint::new(&config, program, root).unwrap();
     let mut daemon = configured().arg("daemon").spawn().unwrap();
     let started = Instant::now();
     let socket = loop {

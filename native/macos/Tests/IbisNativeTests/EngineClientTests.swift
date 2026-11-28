@@ -309,8 +309,11 @@ final class EngineClientTests: XCTestCase {
         let restarted = try fixture.identifyDaemon()
         XCTAssertNotEqual(original, restarted)
 
-        let newerBinary = fixture.root.appendingPathComponent("ibis-newer")
+        // An update in place: a newer build in the same folder takes over its engine.
+        let newerBinary = fixture.binary.deletingLastPathComponent()
+            .appendingPathComponent("ibis-newer-\(fixture.root.lastPathComponent)")
         try FileManager.default.copyItem(at: fixture.binary, to: newerBinary)
+        defer { try? FileManager.default.removeItem(at: newerBinary) }
         let modified = try XCTUnwrap(FileManager.default.attributesOfItem(atPath: fixture.binary.path)[.modificationDate] as? Date)
         try FileManager.default.setAttributes([.modificationDate: modified.addingTimeInterval(60)],
                                               ofItemAtPath: newerBinary.path)
