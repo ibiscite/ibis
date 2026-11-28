@@ -33,6 +33,11 @@ are in [CONTRIBUTING.md](../CONTRIBUTING.md#setup). In a Linux cloud session,
 | Remove the session after its PR merges | `bash scripts/land.sh end NAME` |
 
 Run one focused check for what changed and leave the rest to hosted CI.
+Four small skills in [`.agents/skills/`](../.agents/skills/) (linked from
+`.claude/skills/` for Claude Code) find problems on demand: `verify`, `review`,
+`audit` and `diagnose`. Keep them few; a skill that a check or a structure can
+replace is deleted. Git for Windows needs `core.symlinks=true` to see the
+Claude Code link.
 Specialised checks (links, generated files, the contract report, snapshots)
 are in [testing](testing.md#local-commands).
 
