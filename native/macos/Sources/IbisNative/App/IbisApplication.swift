@@ -46,6 +46,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
         panel.openSettings = { [weak self] in self?.showSettings() }
         store.needsPasteAccess = { PermissionHelper.shared.showAtPaste() }
         store.didDeliver = { [weak self] in self?.nod() }
+        store.didCopy = { NoticeHUD.shared.show($0) }
         return panel
     }()
     private lazy var settings = NativeSettingsWindow(engine: engine, shortcuts: shortcuts, chooseLibrary: {

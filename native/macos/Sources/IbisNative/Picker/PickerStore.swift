@@ -51,6 +51,8 @@ final class PickerStore: ObservableObject {
     var needsPasteAccess: (() -> Void)?
     /// A citation reached the app: the menu bar item nods.
     var didDeliver: (() -> Void)?
+    /// The citation was copied rather than pasted; the text says what to do next.
+    var didCopy: ((String) -> Void)?
 
     private let engine: EngineClient
     private var opening: PickerOpenRequest?
@@ -64,7 +66,6 @@ final class PickerStore: ObservableObject {
     private var pasteDestination: String?
     private var lastShown: Date?
     private var selectionSearch: String?
-    private var lastDelivery: String?
     private var hasTemporaryTextSize = false
     private var announcement: Task<Void, Never>?
     private var formsTask: Task<Void, Never>?
@@ -197,8 +198,7 @@ final class PickerStore: ObservableObject {
         selectionSearch = selection
         let keepQuery = lastShown.map { Date().timeIntervalSince($0) < 60 } ?? false
         lastShown = Date()
-        notice = lastDelivery
-        lastDelivery = nil
+        notice = nil
         targetName = name
         targetPID = pid
         pasteDestination = nil
@@ -430,11 +430,12 @@ final class PickerStore: ObservableObject {
                 switch result {
                 case IbisPasted: didDeliver?()
                 case IbisPermissionRequired:
-                    lastDelivery = PickerWords.text(.copiedPermission)
+                    didCopy?(PickerWords.text(.copied))
                     needsPasteAccess?()
                 case nil: notice = PickerWords.text(.copyFailed)
                 default:
-                    lastDelivery = PickerWords.text(.copied)
+                    // 8B: say so only when the citation was copied, not pasted.
+                    didCopy?(PickerWords.text(.copied))
                     didDeliver?()
                 }
                 if result != nil { query = "" }

@@ -2106,7 +2106,6 @@ picker-native-text-larger = Größere Schrift
 picker-native-text-smaller = Kleinere Schrift
 picker-native-density = Zeilen
 picker-native-copied = Kopiert. Drücken Sie ⌘V zum Einfügen.
-picker-native-copied-permission = Kopiert. Erlauben Sie im Ibis-Menü das automatische Einfügen.
 picker-native-access-title = { $app } einschalten
 picker-native-access-drag = Falls es nicht in der Liste steht, ziehen Sie dieses Symbol hinein.
 picker-native-access-wait = Dies schließt sich, sobald es eingeschaltet ist. Bis dahin werden Zitate zum Einfügen mit ⌘V kopiert.

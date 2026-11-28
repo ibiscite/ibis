@@ -43,8 +43,11 @@ its limits.
 8. **Updates are quiet and automatic**, with release notes one click away.
 9. **Desktop first; a web version is planned after 1.0** for reading and
    citing, over the same engine. Nothing before 1.0 may block it.
-10. **Every writing app is served equally**: Word, LaTeX editors, Google Docs,
-   Pages, LibreOffice, Obsidian, Markdown and Typst editors. Each gets the
+10. **Word and LaTeX excellent first, then every other writing app on the
+   same base** (the maintainer, 2026-11-28, choosing it over treating all
+   apps equally from the start). Word and the LaTeX editors get every check
+   and polish first. Google Docs, Pages, LibreOffice, Obsidian, Markdown and
+   Typst editors follow on the same delivery and format paths, each with the
    best citation its document format can hold.
 11. **The name is always Ibis**: the app on every system, the CLI and the
    brand. Working names such as "Ibis Native" are not used.

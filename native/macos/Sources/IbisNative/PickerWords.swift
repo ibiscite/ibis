@@ -49,7 +49,6 @@ enum PickerWord {
     case comfortable
     case compact
     case copied
-    case copiedPermission
     case copyCitation
     case copyCitations
     case copyFailed
@@ -225,7 +224,6 @@ enum PickerWords {
             .comfortable: "مريحة",
             .compact: "مضغوطة",
             .copied: "تم النسخ. اضغط ⌘V للصق.",
-            .copiedPermission: "تم النسخ. اسمح باللصق من قائمة Ibis لتفعيل اللصق التلقائي.",
             .copyCitation: "نسخ الاستشهاد",
             .copyCitations: "نسخ الاستشهادات ({IBIS_VALUE})",
             .copyFailed: "تغيّرت الحافظة أو تعذّرت الكتابة فيها.",
@@ -388,7 +386,6 @@ enum PickerWords {
             .comfortable: "Komfortabel",
             .compact: "Kompakt",
             .copied: "Kopiert. Drücken Sie ⌘V zum Einfügen.",
-            .copiedPermission: "Kopiert. Erlauben Sie im Ibis-Menü das automatische Einfügen.",
             .copyCitation: "Zitat kopieren",
             .copyCitations: "{IBIS_VALUE} Zitate kopieren",
             .copyFailed: "Die Zwischenablage hat sich geändert oder konnte nicht beschrieben werden.",
@@ -551,7 +548,6 @@ enum PickerWords {
             .comfortable: "Comfortable",
             .compact: "Compact",
             .copied: "Copied. Press ⌘V to paste.",
-            .copiedPermission: "Copied. Allow Paste in the Ibis menu to paste automatically.",
             .copyCitation: "Copy Citation",
             .copyCitations: "Copy {IBIS_VALUE} Citations",
             .copyFailed: "The clipboard changed or could not be written.",
