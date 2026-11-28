@@ -797,7 +797,9 @@ fn deliver_from_a_private_engine(home: &Home, library: &Path, delivery: &str) ->
 fn a_citation_being_built_survives_its_engine() {
     let home = Home::new();
     let library = home.library();
-    let open = |keep_query: bool| json!({"app":null,"file":library,"language":"en-US","keep_query":keep_query});
+    let open = |resume: bool| {
+        json!({"app":null,"file":library,"language":"en-US","keep_query":resume,"resume":resume})
+    };
     let added = |state: &Value| {
         state["citation"]
             .as_array()
@@ -808,6 +810,13 @@ fn a_citation_being_built_survives_its_engine() {
     };
     let mut first = PrivateEngine::start(&home);
     first.call("picker/open", open(false));
+    first.call("picker/act", json!({"intent":"type","query":"lantern"}));
+    let state = first.call("picker/act", json!({"intent":"add"}));
+    assert_eq!(added(&state), 1, "{state}");
+    // Reopening soon after, on the same engine, starts a new citation.
+    let soon = json!({"app":null,"file":library,"language":"en-US","keep_query":true});
+    let reopened = first.call("picker/open", soon);
+    assert_eq!(added(&reopened["state"]), 0, "{reopened}");
     first.call("picker/act", json!({"intent":"type","query":"lantern"}));
     let state = first.call("picker/act", json!({"intent":"add"}));
     assert_eq!(added(&state), 1, "{state}");

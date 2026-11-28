@@ -225,10 +225,10 @@ impl Picker<'_> {
             }
         }
         let recent = self.history().recent(&self.settings, self.target.as_ref());
-        // Reopening soon after, or after the engine changed, takes back the
+        // An opening that continues after the engine changed takes back the
         // citation an earlier engine saved; any other opening starts afresh.
         let drafts = Drafts::beside(&self.settings);
-        let draft = request.keep_query.then(|| drafts.load()).flatten();
+        let draft = request.resume.then(|| drafts.load()).flatten();
         if draft.is_none() {
             // Nothing saved to take back, or a new moment of writing.
             let _ = drafts.save(&PickerDraft::default());

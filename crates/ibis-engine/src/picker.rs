@@ -31,6 +31,10 @@ pub struct PickerOpenRequest {
     /// Keep the last search, as when the picker reopens soon after closing.
     #[serde(default)]
     pub keep_query: bool,
+    /// The same opening continues on a new engine: take back the citation an
+    /// earlier engine saved. Any other opening starts with an empty citation.
+    #[serde(default)]
+    pub resume: bool,
 }
 
 impl PickerOpenRequest {

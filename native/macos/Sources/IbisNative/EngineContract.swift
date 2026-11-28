@@ -394,6 +394,7 @@ struct PickerOpenRequest: Codable, Hashable, Sendable {
     let keepQuery: Bool?
     let language: Language
     let reload: Bool?
+    let resume: Bool?
     let site: String?
 
     enum CodingKeys: String, CodingKey {
@@ -402,6 +403,7 @@ struct PickerOpenRequest: Codable, Hashable, Sendable {
         case keepQuery = "keep_query"
         case language = "language"
         case reload = "reload"
+        case resume = "resume"
         case site = "site"
     }
 }

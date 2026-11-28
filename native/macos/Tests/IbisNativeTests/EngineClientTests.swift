@@ -9,7 +9,7 @@ final class EngineClientTests: XCTestCase {
         let fixture = try Fixture()
         try fixture.identifyDaemon()
         let settings = fixture.client()
-        let opening = PickerOpenRequest(app: nil, file: nil, keepQuery: nil, language: .enUS, reload: nil, site: nil)
+        let opening = PickerOpenRequest(app: nil, file: nil, keepQuery: nil, language: .enUS, reload: nil, resume: nil, site: nil)
         let empty = try await settings.open(opening)
         XCTAssertNil(empty.library)
         let saved = try await settings.chooseLibrary(fixture.library)
@@ -69,7 +69,7 @@ final class EngineClientTests: XCTestCase {
         XCTAssertEqual(stored.rememberedFor, text.app)
 
         func browser(_ site: String) -> PickerOpenRequest {
-            PickerOpenRequest(app: "com.apple.Safari", file: fixture.library.path, keepQuery: nil, language: .enUS, reload: nil, site: site)
+            PickerOpenRequest(app: "com.apple.Safari", file: fixture.library.path, keepQuery: nil, language: .enUS, reload: nil, resume: nil, site: site)
         }
         let overleaf = browser("overleaf.com")
         let googleDocs = browser("docs.google.com")

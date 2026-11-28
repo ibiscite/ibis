@@ -196,7 +196,8 @@ final class EngineClient: @unchecked Sendable {
         if restoring, let opening = lastOpening {
             // The same opening continues, so the new engine takes back the saved citation.
             let continued = PickerOpenRequest(app: opening.app, file: opening.file, keepQuery: true,
-                                              language: opening.language, reload: opening.reload, site: opening.site)
+                                              language: opening.language, reload: opening.reload, resume: true,
+                                              site: opening.site)
             _ = try exchange(PickerOpenMethod.self, continued, on: connected)
             restoredSession = true
         }
