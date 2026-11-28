@@ -156,9 +156,11 @@ impl Fake {
         std::fs::write(&self.scenario, scenario.to_string()).unwrap();
     }
     fn adapter(&self) -> SourceAdapter {
+        // Windows can take seconds to start a freshly copied program (hosted
+        // CI took over three), so the deadline leaves room for that.
         SourceAdapter::at("fake", self.program.clone())
             .unwrap()
-            .with_deadline(Duration::from_secs(3))
+            .with_deadline(Duration::from_secs(6))
     }
     fn configure(&self, configuration: Value) {
         let directory = self.directory.path();

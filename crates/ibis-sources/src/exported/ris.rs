@@ -226,6 +226,19 @@ fn csl(fields: &[(&str, String)]) -> Result<(BTreeMap<String, Value>, bool), Rec
         (None, lost) => dropped |= lost,
     }
 
+    if group == Group::Web {
+        let dates: Vec<_> = all(&["Y2"]).into_iter().map(without_access_time).collect();
+        match date(&[], &dates) {
+            Ok((accessed, lost)) => {
+                if let Some(accessed) = accessed {
+                    csl.insert("accessed".into(), accessed);
+                }
+                dropped |= lost;
+            }
+            Err(_) => dropped = true,
+        }
+    }
+
     let containers = one(&["T2", "JF"])?;
     match group {
         Group::Article => {
@@ -321,7 +334,32 @@ fn text(csl: &mut BTreeMap<String, Value>, field: &str, value: Option<&str>) {
     }
 }
 
-/// `issued` from `PY`/`Y1` and `DA`, and whether a value was dropped. Every
+/// Zotero can put the access time after the final slash. CSL needs the date.
+fn without_access_time(value: &str) -> &str {
+    let Some((date, time)) = value.rsplit_once('/') else {
+        return value;
+    };
+    if date.split('/').count() != 3 {
+        return value;
+    }
+    let mut fields = time.split(':');
+    let valid = |part: &str, limit| {
+        !part.is_empty()
+            && part.len() <= 2
+            && part.bytes().all(|byte| byte.is_ascii_digit())
+            && part.parse::<u8>().is_ok_and(|number| number <= limit)
+    };
+    let hour = fields.next().is_some_and(|part| valid(part, 23));
+    let minute = fields.next().is_some_and(|part| valid(part, 59));
+    let second = fields.next().is_none_or(|part| valid(part, 59));
+    if hour && minute && second && fields.next().is_none() {
+        date
+    } else {
+        value
+    }
+}
+
+/// Publication or access date, and whether a value was dropped. Every
 /// value must give the same year, and fuller dates must extend shorter ones;
 /// otherwise the record is refused. Exact parts win over text kept as
 /// written unless they give only the year.
@@ -373,11 +411,11 @@ fn date(years: &[&str], dates: &[&str]) -> Result<(Option<Value>, bool), RecordP
     }
     parts.sort_by_key(Vec::len);
     let fullest = parts.last();
-    let issued = match (fullest, literal) {
+    let parsed = match (fullest, literal) {
         (Some(fullest), Some(text)) if fullest.len() == 1 => serde_json::json!({"literal": text}),
         (Some(fullest), _) => serde_json::json!({"date-parts": [fullest]}),
         (None, Some(text)) => serde_json::json!({"literal": text}),
         (None, None) => return Ok((None, dropped)),
     };
-    Ok((Some(issued), dropped))
+    Ok((Some(parsed), dropped))
 }

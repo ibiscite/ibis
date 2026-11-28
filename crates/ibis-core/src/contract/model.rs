@@ -759,6 +759,15 @@ mod tests {
     }
 
     #[test]
+    fn csl_numbers_survive_the_wire_exactly() {
+        let mut record = record();
+        // Read without exact float parsing, this year comes back one unit off.
+        let issued = serde_json::from_str(r#"{"date-parts": [[2.027770000200e+52]]}"#).unwrap();
+        record.csl.insert("issued".into(), issued);
+        round_trip(&record);
+    }
+
+    #[test]
     fn citation_keys_keep_provenance_and_refuse_conflicts() {
         let mut record = record();
         round_trip(&record);

@@ -1,0 +1,32 @@
+{
+  "apa": {
+    "text": "Invented tidal charts. (n.d.). Example Field Guides. Retrieved March 14, 2026, from https://example.org/tides",
+    "html": "<div class=\"csl-bib-body\" style=\"line-height: 2; \"><p class=\"csl-entry\" style=\"margin: 0 0 0em 0.5in; text-indent: -0.5in; \"><i>Invented tidal charts</i>. (n.d.). Example Field Guides. Retrieved March 14, 2026, from <a href=\"https://example.org/tides\">https://example.org/tides</a></p></div>",
+    "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0 \\li720 \\fi-720 \\sl480 \\slmult1 \\sa0 \n{\\i{}Invented tidal charts}. (n.d.). Example Field Guides. Retrieved March 14, 2026, from https://example.org/tides\\par\n}"
+  },
+  "chicago-author-date": {
+    "text": "Example Field Guides. n.d. “Invented Tidal Charts.” Accessed March 14, 2026. https://example.org/tides.",
+    "html": "<div class=\"csl-bib-body\" style=\"line-height: 1.35; \"><p class=\"csl-entry\" style=\"margin: 0 0 0em 0.5in; text-indent: -0.5in; \">Example Field Guides. n.d. “Invented Tidal Charts.” Accessed March 14, 2026. <a href=\"https://example.org/tides\">https://example.org/tides</a>.</p></div>",
+    "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0 \\li720 \\fi-720 \\sl240 \\slmult1 \\sa240 \nExample Field Guides. n.d. \\uc0\\u8220{}Invented Tidal Charts.\\uc0\\u8221{} Accessed March 14, 2026. https://example.org/tides.\\par\n}"
+  },
+  "harvard-cite-them-right": {
+    "text": "Invented tidal charts (no date) Example field guides. Available at: https://example.org/tides (Accessed: March 14, 2026).",
+    "html": "<div class=\"csl-bib-body\" style=\"line-height: 1.35; \"><div class=\"csl-entry\"><i>Invented tidal charts</i> (no date) <i>Example field guides</i>. Available at: <a href=\"https://example.org/tides\">https://example.org/tides</a> (Accessed: March 14, 2026).</div></div>",
+    "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0 \\li0 \\fi0 \\sl240 \\slmult1 \\sa240 \n{\\i{}Invented tidal charts} (no date) {\\i{}Example field guides}. Available at: https://example.org/tides (Accessed: March 14, 2026).\\par\n}"
+  },
+  "ieee": {
+    "text": "“Invented tidal charts,” Example field guides. Accessed: Mar. 14, 2026. [Online]. Available: https://example.org/tides",
+    "html": "<div class=\"csl-bib-body\" style=\"line-height: 1.35; \"><div class=\"csl-entry\">“Invented tidal charts,” Example field guides. Accessed: Mar. 14, 2026. [Online]. Available: <a href=\"https://example.org/tides\">https://example.org/tides</a></div></div>",
+    "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0 \\li0 \\fi0 \\sl240 \\slmult1 \\sa0 \n\\uc0\\u8220{}Invented tidal charts,\\uc0\\u8221{} Example field guides. Accessed: Mar. 14, 2026. [Online]. Available: https://example.org/tides\\par\n}"
+  },
+  "modern-language-association": {
+    "text": "“Invented Tidal Charts.” Example Field Guides, https://example.org/tides. Accessed 14 Mar. 2026.",
+    "html": "<div class=\"csl-bib-body\" style=\"line-height: 2; \"><p class=\"csl-entry\" style=\"margin: 0 0 0em 0.5in; text-indent: -0.5in; \">“Invented Tidal Charts.” <i>Example Field Guides</i>, <a href=\"https://example.org/tides\">https://example.org/tides</a>. Accessed 14 Mar. 2026.</p></div>",
+    "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0 \\li720 \\fi-720 \\sl480 \\slmult1 \\sa0 \n\\uc0\\u8220{}Invented Tidal Charts.\\uc0\\u8221{} {\\i{}Example Field Guides}, https://example.org/tides. Accessed 14 Mar. 2026.\\par\n}"
+  },
+  "vancouver": {
+    "text": "Example field guides [Internet]. [cited 2026 Mar 14]. Invented tidal charts. Available from: https://example.org/tides",
+    "html": "<div class=\"csl-bib-body\" style=\"line-height: 1.35; \"><div class=\"csl-entry\">Example field guides [Internet]. [cited 2026 Mar 14]. Invented tidal charts. Available from: <a href=\"https://example.org/tides\">https://example.org/tides</a></div></div>",
+    "rtf": "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0 \\li0 \\fi0 \\sl240 \\slmult1 \\sa240 \nExample field guides [Internet]. [cited 2026 Mar 14]. Invented tidal charts. Available from: https://example.org/tides\\par\n}"
+  }
+}

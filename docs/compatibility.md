@@ -150,9 +150,10 @@ Automation.
 
 Choose Zotero directly or a bibliography manager's `.bib` where available.
 For other managers, export RIS and replace that file after library changes.
-Ibis reads reference metadata, not RIS notes, attachments, abstracts or
-keywords. Unknown types and conflicting titles, years or page ranges skip
-that record. Scopus `CONF` records are skipped. PubMed `.nbib` is not RIS.
+Ibis reads reference metadata. Web pages and blog posts include their access
+date from `Y2` when present. Ibis flags conflicting access dates and keeps the
+reference. RIS notes, attachments, abstracts and keywords are left out.
+Unknown types and conflicting titles, years or page ranges skip that record. Scopus `CONF` records are skipped. PubMed `.nbib` is not RIS.
 
 ### CSV template
 
