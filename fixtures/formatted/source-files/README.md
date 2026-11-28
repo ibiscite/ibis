@@ -61,7 +61,9 @@ the Node oracle with the current pins in `crates/ibis-csl/vendor/manifest.json`
 (Zotero `d569d42f`, styles `edc263cf`, locales `21a175a1`).
 Each request used locale `en-US`, the fixture's
 `ibis-0` as its sole cite, `keep_order: false` and `bibliography: true`.
-Vancouver is the bundled alias for `nlm-citation-sequence`. Like IEEE, its
+It was regenerated the same way on 28 November 2026 for the copied layout
+above (hanging indent on each entry, linked URLs, RTF paragraph ends); text
+was unchanged. Vancouver is the bundled alias for `nlm-citation-sequence`. Like IEEE, its
 standalone reference entry leaves out the citation number.
 The CLI test searches the RIS export for its opaque item reference, then sends
 that reference to `cite --request`.
