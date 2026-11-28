@@ -134,8 +134,18 @@ impl Endpoint {
         if let Some(image) = image {
             return std::fs::canonicalize(&image).unwrap_or(image);
         }
-        let program = std::fs::canonicalize(program).unwrap_or_else(|_| program.to_path_buf());
-        program.parent().map_or_else(|| program.clone(), Path::to_path_buf)
+        // Resolve the program itself so a link joins its target; a program that
+        // cannot be resolved still names its folder in the same resolved form.
+        if let Some(folder) = std::fs::canonicalize(program)
+            .ok()
+            .and_then(|path| path.parent().map(Path::to_path_buf))
+        {
+            return folder;
+        }
+        program.parent().map_or_else(
+            || program.to_path_buf(),
+            |folder| std::fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf()),
+        )
     }
 
     /// Sixteen hex digits of the configuration and the installation, so a
