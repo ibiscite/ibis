@@ -216,8 +216,9 @@ citation logic of their own:
 
 - The [Pandoc and Quarto filter](../plugins/pandoc/README.md) fills in the
   references a document cites from the libraries Ibis reads, Zotero
-  included, before citeproc formats them. A project's own `bibliography` and
-  `references` win over it. It needs Pandoc 3.1.1 or later.
+  included, before citeproc formats them (in Quarto, with `citeproc: true`).
+  A project's own `bibliography` and `references` win over it. It needs
+  Pandoc 3.1.1 or later.
 - The [Obsidian plugin](../plugins/obsidian/README.md) adds **Insert
   citation**, which searches with Ibis and inserts the citation in the format
   Ibis uses for Obsidian. It runs on Obsidian's desktop apps only and is not
@@ -227,8 +228,10 @@ citation logic of their own:
 `fidelity.rs` renders a document through Pandoc 3.1 twice, once from the
 `.bib` and once through the filter, and requires the same text.
 `obsidian.rs` runs the plugin's own tests against the built command with a
-stand-in for Obsidian's interface. Neither is a test inside Quarto or the
-Obsidian app.
+stand-in for Obsidian's interface. Quarto 1.11 was checked by hand on macOS on
+2026-11-28: with `citeproc: true` in the front matter, the references came from
+a `.bib` named in `ibis:` and `@fig-plot` stayed a figure cross-reference.
+RStudio and the Obsidian app are not yet checked.
 
 ## What the tests establish
 

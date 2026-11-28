@@ -21,11 +21,14 @@ pandoc paper.md --lua-filter ibis.lua --citeproc -o paper.docx
 quarto add ibiscite/ibis/plugins/pandoc
 ```
 
-Then name the filter in the document or `_quarto.yml`:
+Then name the filter in the document or `_quarto.yml`, and turn on citeproc:
+Quarto decides whether to run it from the front matter, before any filter, so a
+document with no `bibliography` of its own needs it said.
 
 ```yaml
 filters:
   - ibis
+citeproc: true
 ```
 
 ## Which libraries
@@ -47,9 +50,9 @@ Set `IBIS` to the command's full path when it is not on the PATH Pandoc sees.
   do not hold, so a project `.bib` always wins.
 - Records come from `ibis cite --format csl-json`, the same filtered export
   every Ibis client uses: notes and file paths never reach the document.
-- A key Ibis does not hold is left to citeproc, which warns about it; Quarto's
-  cross-references such as `@fig-plot` are left alone. A key that differs only
-  in letter case gets a hint.
+- A key Ibis does not hold is left to citeproc, which warns about it, so
+  Quarto's cross-references such as `@fig-plot` are never added. A key that
+  differs only in letter case gets a hint.
 - `nocite: '@*'` keeps meaning the document's own bibliography; it never pulls
   in a whole library.
 - Numbering, ibid. and year letters stay with citeproc, which sees the whole
