@@ -20,22 +20,21 @@ The [native app](../../native/macos/README.md) is layout over the system's own
 parts ([0066](../decisions/0066-native-shells-use-system-parts.md)). It draws
 nothing that macOS already draws.
 
-- **Window:** a non-activating `NSPanel` on Liquid Glass (`NSGlassEffectView`)
-  on macOS 26, the popover material before that, and an opaque window under
-  Reduce Transparency. Its corners are 26 pt on macOS 26 and 16 pt before.
-  Increase Contrast adds a separator outline.
-- **Content:** SwiftUI. It uses standard buttons (`.borderedProminent` for the
-  delivery when there is a draft, `.bordered`, `.borderless` and `.link`
-  otherwise), `Menu`, `Picker`, popovers, `ProgressView`, `Form` with the
-  grouped style and `NavigationSplitView`. Text fields that need exact focus
-  and caret control are `NSTextField`s.
+- **Window:** a non-activating `NSPanel` on Liquid Glass (`NSGlassEffectView`),
+  and an opaque window under Reduce Transparency. Its corners are 26 pt.
+  Increase Contrast adds a separator outline. The app targets macOS 26 and later.
+- **Content:** SwiftUI. It uses standard buttons (`.borderedProminent`,
+  `.borderless` and `.link`), `Menu`, `Picker`, popovers, `ProgressView`,
+  `ContentUnavailableView`, `Form` with the grouped style and
+  `NavigationSplitView`. Text fields that need exact focus and caret control
+  are `NSTextField`s.
 - **Colour and symbols:** semantic system colours and the person's accent.
-  Icons are SF Symbols. The bird and the quote beak are the brand's.
-- **Menus:** the format and library menus are `NSMenu`s, opened under the
-  control that owns them.
+  Icons are SF Symbols. The bird is the brand's.
+- **Menus:** Actions (⌘K), the format menu and row menus are `NSMenu`s, opened
+  at the control that owns them, with system section headers.
 - **Grid:** one scale multiplies every size, so Larger Text and ⌘+ scale the
-  whole picker. The lead column (48 pt) holds the bird, kind symbols and the
-  beak. Text starts after it.
+  whole picker. The lead column (48 pt) holds the bird and kind symbols. Text
+  starts after it.
 - **Review:** `scripts/native-macos.sh shots` saves every review state in
   light and dark from the invented [review library](../../native/macos/Review.csljson).
 

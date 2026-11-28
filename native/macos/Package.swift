@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.2
 import Foundation
 import PackageDescription
 
@@ -9,7 +9,7 @@ let rustLibrary = URL(fileURLWithPath: rustTarget).appendingPathComponent("debug
 
 let package = Package(
     name: "IbisNative",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v26)],
     targets: [
         .systemLibrary(name: "CIbisNative"),
         .executableTarget(
@@ -25,5 +25,6 @@ let package = Package(
             ]
         ),
         .testTarget(name: "IbisNativeTests", dependencies: ["IbisNative"]),
-    ]
+    ],
+    swiftLanguageModes: [.v5]
 )

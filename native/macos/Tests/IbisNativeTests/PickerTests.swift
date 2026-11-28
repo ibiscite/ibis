@@ -209,90 +209,6 @@ final class PickerTests: XCTestCase {
     }
 
     @MainActor
-    func testSearchingActionsPreservesTheQueryAndDraft() async throws {
-        guard CGSessionCopyCurrentDictionary() != nil else { throw XCTSkip("A WindowServer session is needed.") }
-        _ = NSApplication.shared
-        let fixture = try Fixture()
-        try fixture.identifyDaemon()
-        let model = PickerModel(engine: fixture.client(), file: fixture.library)
-        let panel = PickerPanel(model: model, chooseLibrary: { _ in })
-        let controller = panel.controller
-        panel.summon()
-        defer { panel.dismiss() }
-        try await eventually { model.canDeliver }
-        model.query = "north"
-        try await eventually { model.canDeliver && model.rows.count == 1 }
-        let row = try XCTUnwrap(model.selection)
-        model.toggleCitation(row)
-        model.changeDetails(for: row.id) { $0.locator = "417" }
-        try await eventually { model.canDeliver }
-        let expected = try XCTUnwrap(model.preview)
-        let search = try XCTUnwrap(panel.searchField)
-        search.focus(restoring: NSRange(location: 2, length: 0))
-
-        try send("k", key: UInt16(kVK_ANSI_K), flags: [.command], to: panel)
-        XCTAssertTrue(controller.actionsOpen)
-        try await eventually { controller.actionsField?.hasFocus == true }
-        try send("\u{1b}", key: UInt16(kVK_Escape), to: panel)
-        XCTAssertFalse(controller.actionsOpen)
-        XCTAssertTrue(search.hasFocus)
-        XCTAssertEqual(search.currentEditor()?.selectedRange, NSRange(location: 2, length: 0))
-
-        try send("k", key: UInt16(kVK_ANSI_K), flags: [.command], to: panel)
-        controller.actionsQuery = "invented no action"
-        XCTAssertNil(controller.highlighted)
-        try send("\r", key: UInt16(kVK_Return), to: panel)
-        XCTAssertTrue(controller.actionsOpen, "Return with no actions must not close the list.")
-        controller.actionsQuery = "locator"
-        XCTAssertEqual(controller.highlighted?.command, .page)
-        try send("\r", key: UInt16(kVK_Return), to: panel)
-        XCTAssertFalse(controller.actionsOpen)
-        XCTAssertTrue(controller.locatorField?.hasFocus == true)
-        XCTAssertEqual(model.query, "north")
-        XCTAssertEqual(model.citationItem, row.id)
-        XCTAssertEqual(model.details(for: row.id).locator, "417")
-        XCTAssertEqual(model.preview?.ticket, expected.ticket)
-
-        let page = try XCTUnwrap(controller.locatorField)
-        page.currentEditor()?.selectedRange = NSRange(location: 1, length: 1)
-        try send("k", key: UInt16(kVK_ANSI_K), flags: [.command], to: panel)
-        try send("\u{1b}", key: UInt16(kVK_Escape), to: panel)
-        XCTAssertTrue(page.hasFocus)
-        XCTAssertEqual(page.currentEditor()?.selectedRange, NSRange(location: 1, length: 1))
-        try send("k", key: UInt16(kVK_ANSI_K), flags: [.command], to: panel)
-        try send("\t", key: UInt16(kVK_Tab), to: panel)
-        XCTAssertFalse(controller.actionsOpen)
-        XCTAssertTrue(search.hasFocus)
-        XCTAssertEqual(model.preview?.ticket, expected.ticket)
-    }
-
-    @MainActor
-    func testActionHighlightOnlyKeepsAStillValidReturnTarget() async throws {
-        let fixture = try Fixture()
-        try fixture.identifyDaemon()
-        let model = PickerModel(engine: fixture.client(), file: fixture.library)
-        let controller = PickerController(model: model)
-        model.present(app: fixture.opening.app)
-        defer { model.dismiss() }
-        try await eventually { model.canDeliver && model.rows.count > 1 }
-        controller.showActions()
-        controller.actionsQuery = "peek"
-        XCTAssertEqual(controller.highlighted?.command, .peek)
-        let end = try XCTUnwrap(NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
-            characters: "\u{f72b}", charactersIgnoringModifiers: "\u{f72b}", isARepeat: false, keyCode: UInt16(kVK_End)))
-        XCTAssertFalse(controller.actionKey(end), "End belongs to the search field while editing.")
-
-        // Peek names the highlighted reference; a new highlight retires the old target.
-        model.move(1)
-        controller.refreshActions(newQuery: false)
-        XCTAssertNil(controller.highlighted)
-        XCTAssertEqual(controller.actionsQuery, "peek")
-        controller.moveAction(1)
-        XCTAssertEqual(controller.highlighted?.reference, model.selected)
-    }
-
-    @MainActor
     func testNonactivatingPanelTakesSearchAndArrowKeys() async throws {
         guard CGMainDisplayID() != 0, CGSessionCopyCurrentDictionary() != nil else {
             throw XCTSkip("A WindowServer session is needed to host an AppKit panel.")
@@ -312,56 +228,65 @@ final class PickerTests: XCTestCase {
         panel.summon()
         defer { panel.dismiss() }
         XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel))
+        XCTAssertFalse(panel.styleMask.contains(.resizable))
         XCTAssertTrue(panel.canBecomeKey)
         XCTAssertFalse(panel.canBecomeMain)
         XCTAssertEqual(NSWorkspace.shared.menuBarOwningApplication?.processIdentifier, owner)
-        try await eventually { model.canDeliver }
+        model.query = "invented"
+        try await eventually { model.canDeliver && model.rows.count == 14 }
         let search = try XCTUnwrap(panel.searchField)
         XCTAssertTrue(search.hasFocus)
         XCTAssertEqual(search.accessibilityLabel(), "Search references")
-        XCTAssertTrue(controller.quickDelivery, "With no draft the highlighted row is what Return delivers.")
+        XCTAssertTrue(controller.resultEmphasis, "The highlighted result is what Return delivers.")
+        try await eventually { abs(panel.frame.height - controller.height(PickerGrid(s: model.scale))) < 1 }
 
-        let first = model.selected
+        // Tab adds the highlighted result and clears the field for the next search.
         try send("\u{f701}", key: 125, to: panel) // Down
-        XCTAssertNotEqual(model.selected, first)
-        try await eventually { model.canDeliver }
-        try send("\r", key: 36, flags: [.shift], to: panel)
-        XCTAssertEqual(model.citations.map(\.row.id), [model.selected].compactMap { $0 })
-        XCTAssertFalse(controller.quickDelivery, "A draft moves the emphasis to the delivery button.")
-        try await eventually { model.canDeliver }
-        try send("i", key: 34, flags: [.command], to: panel)
-        XCTAssertEqual(model.editingCitation, model.selected)
-        XCTAssertEqual(controller.layer, .details(try XCTUnwrap(model.selected)))
-        controller.closeLayer(restoring: true)
-        XCTAssertNil(model.editingCitation)
-        try send("l", key: 37, flags: [.command], to: panel)
-        XCTAssertTrue(controller.locatorField?.hasFocus == true)
+        let added = try XCTUnwrap(model.selected)
+        try await eventually { model.canChangeSelectionMembership }
         try send("\t", key: 48, to: panel)
+        XCTAssertEqual(model.citations.map(\.row.id), [added])
+        XCTAssertEqual(model.query, "")
         XCTAssertTrue(search.hasFocus)
-        try send("\u{f701}", key: 125, flags: [.command], to: panel) // ⌘↓ reaches the token
-        XCTAssertEqual(controller.focus, .token(try XCTUnwrap(model.citationItem)))
-        try send("\u{f700}", key: 126, to: panel) // Up returns to search
-        XCTAssertTrue(search.hasFocus)
+
+        // Up from the first result reaches the added reference; Return opens it in place.
+        model.query = "invented"
+        try await eventually { model.canDeliver && model.rows.count == 14 }
+        for _ in 0..<20 where model.selected != model.rows.first?.id { try send("\u{f700}", key: 126, to: panel) }
         try send("\u{f700}", key: 126, to: panel)
-        XCTAssertEqual(model.selected, first)
+        XCTAssertEqual(controller.pinned, added)
+        XCTAssertFalse(controller.resultEmphasis)
+        try send("\r", key: 36, to: panel)
+        XCTAssertEqual(controller.editing, added)
+        XCTAssertEqual(model.editingCitation, added)
+        try await eventually { controller.locatorField?.hasFocus == true }
+        try send("\u{1b}", key: 53, to: panel)
+        XCTAssertNil(controller.editing)
+        XCTAssertNil(model.editingCitation)
+        XCTAssertTrue(search.hasFocus)
+
+        // Delete in an empty field removes the highlighted added reference.
+        model.query = ""
+        try await eventually { model.canDeliver }
+        try send("\u{7f}", key: 51, to: panel)
+        XCTAssertTrue(model.citations.isEmpty)
+
         for _ in 0..<10 {
             try send("=", key: 24, flags: [.command], to: panel)
         }
         XCTAssertEqual(model.scale, 2)
-        try await eventually { panel.frame.width > 720 }
+        try await eventually { panel.frame.width > 700 }
         let screen = try XCTUnwrap(panel.screen)
         XCTAssertTrue(screen.visibleFrame.insetBy(dx: -1, dy: -1).contains(panel.frame))
 
         model.query = "invented"
-        try await eventually { model.canDeliver && model.rows.count == 16 }
+        try await eventually { model.canDeliver && model.rows.count == 14 }
         controller.showNumbers(true)
         try await eventually { !controller.visibleRows.isEmpty }
-        let draft = model.citations.map(\.row.id)
         let target = controller.visibleRows[0]
         XCTAssertEqual(controller.number(for: target), 1)
-        try send("1", key: UInt16(kVK_ANSI_1), flags: [.command], to: panel)
+        controller.selectNumber(1)
         XCTAssertEqual(model.selected, target)
-        XCTAssertEqual(model.citations.map(\.row.id), draft)
 
         model.query = ""
         try await eventually { model.canDeliver }

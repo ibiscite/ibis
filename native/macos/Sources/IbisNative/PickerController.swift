@@ -2,13 +2,12 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// The picker's shell state: focus, the open layer, the action list and every
-/// command. The engine and `PickerModel` own the citation; this owns the window.
+/// The picker's shell state: the highlighted added reference, the reference
+/// open for editing, Peek and every command. The engine and `PickerModel` own
+/// the citation; this owns the window.
 @MainActor
 final class PickerController: ObservableObject {
-    enum Layer: Equatable { case details(ItemRef), peek(ItemRef) }
-    enum Focus: Equatable { case search, locator, token(ItemRef), actions }
-    enum Anchor: Hashable { case format, library, more }
+    enum Anchor: Hashable { case format, actions }
 
     enum EmptyState: Equatable {
         case newLibrary, noMatches, choose
@@ -16,22 +15,14 @@ final class PickerController: ObservableObject {
         case unreadable(String)
     }
 
-    private enum ReturnFocus {
-        case search(NSRange)
-        case locator(NSRange?)
-        case token(ItemRef)
-    }
-
     let model: PickerModel
-    @Published var layer: Layer?
-    @Published private(set) var actionsOpen = false
-    @Published private(set) var actions: [PickerAction] = []
-    @Published private(set) var highlighted: PickerAction?
-    @Published var actionsQuery = "" {
-        didSet { if actionsQuery != oldValue { refreshActions(newQuery: true) } }
-    }
+    /// The reference Peek shows beside its row.
+    @Published var peek: ItemRef?
+    /// The added reference the keyboard is on, in the "In this citation" section.
+    @Published private(set) var pinned: ItemRef?
+    /// The reference whose page, prefix and suffix are open in its row.
+    @Published private(set) var editing: ItemRef?
     @Published private(set) var numbers = false
-    @Published private(set) var focus: Focus = .search
     @Published private(set) var isKey = false
     /// Changes when the keyboard moves the highlight, so only then the list scrolls.
     @Published private(set) var revealedRow = 0
@@ -42,8 +33,6 @@ final class PickerController: ObservableObject {
     weak var panel: PickerPanel?
     weak var searchField: NSTextField?
     weak var locatorField: NSTextField?
-    weak var actionsField: NSTextField?
-    private var returnFocus: ReturnFocus?
     private var changes: AnyCancellable?
     private var announcedRevision = 0
     private var announcement: Task<Void, Never>?
@@ -56,14 +45,11 @@ final class PickerController: ObservableObject {
     }
 
     private func modelChanged() {
-        switch layer {
-        case let .details(item) where model.editingCitation != item: layer = nil
-        case let .peek(item) where item != model.selected: layer = nil
-        default: break
-        }
-        if case let .token(item) = focus, !tokenOrder.contains(item) { focusSearch() }
-        if actionsOpen { refreshActions(newQuery: false) }
+        if let peek, peek != model.selected { self.peek = nil }
+        if let pinned, !addedOrder.contains(pinned) { self.pinned = nil }
+        if let editing, model.editingCitation != editing { self.editing = nil }
         announceCount()
+        panel?.fitHeight()
     }
 
     /// VoiceOver hears the result count once typing settles.
@@ -83,13 +69,14 @@ final class PickerController: ObservableObject {
 
     // MARK: State the view reads
 
-    var hasOpenLayer: Bool { layer != nil || actionsOpen }
-    /// With no draft, Return delivers the highlighted row, so the row takes the accent.
-    var quickDelivery: Bool { !model.hasDraft && isKey && focus == .search && !hasOpenLayer }
-    var shownRows: [PickerRow] { model.rows }
+    var addedOrder: [ItemRef] { model.citations.map(\.row.id) }
+    /// The highlighted result takes the accent while it is what the keyboard acts on.
+    var resultEmphasis: Bool { isKey && pinned == nil && editing == nil }
+    var showsList: Bool { !model.rows.isEmpty || model.hasDraft }
+    var showsFooter: Bool { model.libraryReady && !model.isOpening && showsList }
 
     var emptyState: EmptyState? {
-        guard model.rows.isEmpty, !model.isOpening else { return nil }
+        guard model.rows.isEmpty, !model.hasDraft, !model.isOpening else { return nil }
         guard let catalog = model.catalog else { return model.notice == nil ? nil : .choose }
         guard let library = catalog.library else { return .choose }
         switch library.condition {
@@ -99,59 +86,60 @@ final class PickerController: ObservableObject {
         }
     }
 
-    /// One line above the list: a notice, a problem, or the section's name.
-    var heading: (text: String, count: String?, status: PickerStatus?, isProblem: Bool)? {
-        if model.isOpening { return (PickerWords.text(.opening), nil, nil, true) }
-        if model.formatScope?.requiresBibliography == true { return (model.formatContext, nil, nil, true) }
-        if let notice = model.notice { return (notice, nil, nil, true) }
-        let status = model.libraryReady
-            ? (model.preview?.problem ?? model.searchReply?.status.first ?? model.catalog?.status.first) : nil
-        if let status { return (status.text, nil, status, true) }
-        guard let first = model.sections.first else { return nil }
-        return (first.kind.label, model.searchReply?.countLabel, nil, false)
+    /// A problem or notice, shown on one line above the footer only when there is one.
+    var problem: (text: String, status: PickerStatus?)? {
+        if model.formatScope?.requiresBibliography == true { return (model.formatContext, nil) }
+        if let notice = model.notice { return (notice, nil) }
+        guard model.libraryReady, emptyState == nil else { return nil }
+        let status = model.preview?.problem ?? model.searchReply?.status.first ?? model.catalog?.status.first
+        return status.map { ($0.text, $0) }
     }
 
-    var tokenOrder: [ItemRef] {
-        var seen: [ItemRef] = []
-        for part in CitationLine.parts(model) {
-            if let item = part.item, !seen.contains(item) { seen.append(item) }
-        }
-        return seen
+    /// The panel's height follows its content, as Spotlight's does.
+    func height(_ grid: PickerGrid) -> CGFloat {
+        var height = grid.header
+        if emptyState != nil { height += 1 + grid.empty }
+        else if showsList { height += 1 + listHeight(grid) }
+        if problem != nil { height += grid.status }
+        if showsFooter { height += 1 + grid.footer }
+        return ceil(height)
+    }
+
+    func listHeight(_ grid: PickerGrid) -> CGFloat {
+        let rows = CGFloat(model.rows.count + model.citations.count)
+        let headings = CGFloat(model.sections.count + (model.hasDraft ? 1 : 0))
+        let content = rows * grid.row(model.density) + headings * grid.heading + (editing == nil ? 0 : grid.editor)
+            + 12 * grid.s
+        return min(content, grid.row(model.density) * 8 + grid.heading * 2 + 12 * grid.s)
     }
 
     func number(for item: ItemRef) -> Int? {
-        guard numbers, !hasOpenLayer, let index = visibleRows.prefix(9).firstIndex(of: item) else { return nil }
+        guard numbers, editing == nil, let index = visibleRows.prefix(9).firstIndex(of: item) else { return nil }
         return index + 1
+    }
+
+    func locatorLabel(for item: ItemRef) -> String? {
+        let details = model.details(for: item)
+        let locator = details.locator.trimmingCharacters(in: .whitespaces)
+        guard !locator.isEmpty else { return nil }
+        let term = model.catalog?.locators.first { $0.term == details.term }?.shortName ?? PickerWords.text(.pageShort)
+        return "\(term) \(locator)"
     }
 
     // MARK: Focus
 
     func panelKeyChanged(_ key: Bool) { isKey = key }
 
-    func fieldBegan(_ focus: Focus) {
-        if self.focus != focus { self.focus = focus }
-    }
-
     func focusSearch(caretAtEnd: Bool = false) {
-        focus = .search
         searchField?.focus(caretAtEnd: caretAtEnd)
     }
 
-    func focusLocator(_ item: ItemRef? = nil, restoring selection: NSRange? = nil) {
-        layer = nil
-        if let item { model.selectCitation(item) }
-        if panel?.isKeyWindow == false { panel?.makeKey() }
-        guard let field = locatorField, field.isEnabled else { return }
-        focus = .locator
-        field.focus(restoring: selection)
-    }
-
-    func focusToken(_ item: ItemRef) {
-        guard tokenOrder.contains(item) else { return }
-        model.selectCitation(item)
-        focus = .token(item)
-        // The window itself takes the keyboard; the panel routes token keys.
-        panel?.makeFirstResponder(nil)
+    func reset() {
+        peek = nil
+        pinned = nil
+        if editing != nil { model.endCitationEdit() }
+        editing = nil
+        showNumbers(false)
     }
 
     // MARK: Keys
@@ -159,177 +147,115 @@ final class PickerController: ObservableObject {
     func showNumbers(_ show: Bool) { if numbers != show { numbers = show } }
 
     func selectNumber(_ number: Int) {
-        guard !hasOpenLayer, visibleRows.indices.contains(number - 1) else { return }
+        guard editing == nil, visibleRows.indices.contains(number - 1) else { return }
+        pinned = nil
         model.select(visibleRows[number - 1])
     }
 
+    /// Up and Down walk one list: the added references first, then the results.
     func move(_ step: Int) {
-        model.move(step)
+        let added = addedOrder
+        if let pinned, let index = added.firstIndex(of: pinned) {
+            let next = index + step
+            if added.indices.contains(next) { self.pinned = added[next] }
+            else if next >= added.count, !model.rows.isEmpty {
+                self.pinned = nil
+                if let first = model.rows.first { model.select(first.id) }
+            }
+        } else if step < 0, !added.isEmpty, model.rows.isEmpty || model.selected == model.rows.first?.id {
+            pinned = added.last
+        } else {
+            model.move(step)
+        }
         revealedRow += 1
     }
 
-    func tokenKey(_ key: NSEvent.SpecialKey?, shift: Bool) -> Bool {
-        guard case let .token(token) = focus else { return false }
-        let order = tokenOrder
-        guard let index = order.firstIndex(of: token) else { return false }
-        switch key {
-        case .leftArrow, .rightArrow:
-            let step = key == .leftArrow ? -1 : 1
-            if shift { model.reorder(token, by: step, displayed: order) }
-            else if order.indices.contains(index + step) { focusToken(order[index + step]) }
-        case .delete, .deleteForward: removeToken(token)
-        case .downArrow: showDetails(token)
-        case .upArrow: focusSearch()
-        default: return false
+    /// Delete in an empty field reaches the last added reference, then removes it.
+    func deleteInEmptyField() -> Bool {
+        if let pinned {
+            let added = addedOrder
+            let index = added.firstIndex(of: pinned) ?? 0
+            model.remove(pinned)
+            let rest = addedOrder
+            self.pinned = rest.isEmpty ? nil : rest[max(0, min(index, rest.count) - 1)]
+            return true
         }
+        guard let last = addedOrder.last else { return false }
+        pinned = last
         return true
     }
 
+    func reorderPinned(_ step: Int) -> Bool {
+        guard let pinned else { return false }
+        model.reorder(pinned, by: step, displayed: addedOrder)
+        return true
+    }
+
+    /// Tab adds the highlighted result and clears the field for the next search.
+    func addSelection() {
+        guard editing == nil, let row = model.selection, model.canChangeSelectionMembership else { return }
+        if !model.isSelectionStaged { model.toggleCitation(row) }
+        pinned = nil
+        model.query = ""
+        focusSearch()
+    }
+
+    func returnKey() {
+        if editing != nil { closeEditing(); return }
+        if let pinned { edit(pinned); return }
+        panel?.submit(whenReady: true)
+    }
+
     func escape() -> Bool {
-        if actionsOpen { closeActions(restoring: true); return true }
-        if layer != nil { closeLayer(restoring: true); return true }
-        if case .token = focus { focusSearch(); return true }
+        if editing != nil { closeEditing(); return true }
+        if peek != nil { peek = nil; return true }
+        if pinned != nil { pinned = nil; return true }
         let handled = model.escape()
         if handled { focusSearch() }
         return handled
     }
 
-    // MARK: Layers
+    // MARK: Editing in place
 
-    func showDetails(_ id: ItemRef? = nil) {
-        guard let item = id ?? model.citationItem else { return }
-        if layer == .details(item) { closeLayer(restoring: true); return }
-        closeActions(restoring: false)
+    func edit(_ id: ItemRef? = nil) {
+        guard let item = id ?? pinned ?? model.citationItem else { return }
+        if editing == item { closeEditing(); return }
+        peek = nil
         model.beginCitationEdit(item)
         guard model.editingCitation == item else { return }
-        layer = .details(item)
+        editing = item
+        pinned = model.hasDraft ? item : nil
+        DispatchQueue.main.async { [weak self] in self?.locatorField?.focus(caretAtEnd: true) }
     }
 
-    func togglePeek() {
-        guard let row = model.selection else { return }
-        layer = layer == .peek(row.id) ? nil : .peek(row.id)
+    func closeEditing() {
+        guard editing != nil else { return }
+        model.endCitationEdit()
+        editing = nil
+        focusSearch(caretAtEnd: true)
+    }
+
+    func togglePeek(_ id: ItemRef? = nil) {
+        guard let item = id ?? model.selected else { return }
+        if id != nil { model.select(item) }
+        peek = peek == item ? nil : item
     }
 
     /// The popover closed itself, by Escape or a click elsewhere.
-    func layerClosed() {
-        let closing = layer
-        layer = nil
-        if case .details = closing { model.endCitationEdit() }
+    func peekClosed() {
+        peek = nil
         DispatchQueue.main.async { [weak self] in
-            guard let self, let panel, panel.pickerIsOpen, layer == nil else { return }
-            if panel.isKeyWindow { focusSearch() }
+            guard let self, let panel, panel.pickerIsOpen, peek == nil else { return }
+            if panel.isKeyWindow { focusSearch(caretAtEnd: true) }
             else if !choosingLibrary { panel.dismiss() }
         }
     }
 
-    func closeLayer(restoring: Bool) {
-        guard let closing = layer else { return }
-        layer = nil
-        if case let .details(item) = closing {
-            model.endCitationEdit()
-            if restoring, tokenOrder.contains(item) { focusToken(item); return }
-        }
-        if restoring { focusSearch() }
-    }
-
-    // MARK: Actions
-
-    func toggleActions() { actionsOpen ? closeActions(restoring: true) : showActions() }
-
-    func showActions() {
-        layer = nil
-        if let field = searchField, field.hasFocus, let editor = field.currentEditor() {
-            returnFocus = .search(editor.selectedRange)
-        } else if let field = locatorField, field.hasFocus {
-            returnFocus = .locator(field.currentEditor()?.selectedRange)
-        } else if case let .token(item) = focus {
-            returnFocus = .token(item)
-        } else {
-            returnFocus = nil
-        }
-        actionsQuery = ""
-        actionsOpen = true
-        focus = .actions
-        refreshActions(newQuery: true)
-        DispatchQueue.main.async { [weak self] in self?.actionsField?.focus() }
-    }
-
-    func closeActions(restoring: Bool, toSearch: Bool = false) {
-        guard actionsOpen else { return }
-        actionsOpen = false
-        let target = returnFocus
-        returnFocus = nil
-        guard restoring else { return }
-        switch toSearch ? nil : target {
-        case let .search(selection):
-            focus = .search
-            searchField?.focus(restoring: selection)
-        case let .locator(selection): focusLocator(restoring: selection)
-        case let .token(item) where tokenOrder.contains(item): focusToken(item)
-        default: focusSearch()
-        }
-    }
-
-    func refreshActions(newQuery: Bool) {
-        let all = PickerCommand.allCases.compactMap { command -> PickerAction? in
-            guard canRun(command), command != .remove || !membershipOwnsRemoval else { return nil }
-            return describe(command)
-        }
-        let ranked = SearchQuery(actionsQuery).ranked(all, title: \.title, aliases: \.aliases)
-        actions = ranked
-        if newQuery || !(highlighted.map(ranked.contains) ?? false) {
-            highlighted = newQuery ? ranked.first : nil
-        }
-    }
-
-    func moveAction(_ step: Int) {
-        guard !actions.isEmpty else { return }
-        let current = highlighted.flatMap(actions.firstIndex) ?? (step > 0 ? -1 : actions.count)
-        highlighted = actions[min(max(current + step, 0), actions.count - 1)]
-    }
-
-    func highlight(_ action: PickerAction) { highlighted = action }
-
-    func runHighlighted() {
-        guard let action = highlighted else { return }
-        run(action)
-    }
-
-    func run(_ action: PickerAction) {
-        guard describe(action.command) == action else { return }
-        closeActions(restoring: true)
-        runCommand(action.command)
-    }
-
-    /// Keys while the action list is open. Text editing keeps everything else.
-    func actionKey(_ event: NSEvent) -> Bool {
-        let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
-        let key = event.charactersIgnoringModifiers?.lowercased()
-        if (flags.isEmpty && key == "\u{1b}") || (flags == [.command] && key == "k") {
-            if !event.isARepeat { closeActions(restoring: true) }
-            return true
-        }
-        if flags.isEmpty || flags == [.shift], key == "\t" || key == "\u{19}" {
-            closeActions(restoring: true, toSearch: true)
-            return true
-        }
-        guard flags.isEmpty else { return false }
-        switch event.specialKey {
-        case .upArrow: moveAction(-1)
-        case .downArrow: moveAction(1)
-        case .carriageReturn, .enter: if !event.isARepeat { runHighlighted() }
-        case .home where actionsQuery.isEmpty: highlighted = actions.first
-        case .end where actionsQuery.isEmpty: highlighted = actions.last
-        default: return false
-        }
-        return true
-    }
+    // MARK: Commands
 
     private var membershipOwnsRemoval: Bool {
         canRun(.membership) && model.isSelectionStaged && model.selected == model.citationItem
     }
-
-    // MARK: Commands
 
     func canRun(_ command: PickerCommand) -> Bool {
         switch command {
@@ -337,7 +263,8 @@ final class PickerController: ObservableObject {
         case .typeCitation, .openSource: model.libraryReady
         case .peek: model.selection != nil
         case .membership: model.canChangeSelectionMembership
-        case .page, .details, .focusCitation: model.citationItem != nil
+        case .page, .details: model.citationItem != nil
+        case .focusCitation: model.hasDraft
         case .remove: model.hasDraft && model.citationItem != nil
         case .keepOrder: model.canKeepOrder
         case .undo: model.canUndo
@@ -364,7 +291,7 @@ final class PickerController: ObservableObject {
             }
             return command.action(reference: model.selected)
         case .remove:
-            if let row = model.citationRows.first(where: { $0.id == model.citationItem }) {
+            if let row = model.citationRows.first(where: { $0.id == (pinned ?? model.citationItem) }) {
                 return command.action(title: PickerWords.text(.removeToken, row.title ?? PickerWords.text(.untitled)),
                                       reference: row.id)
             }
@@ -381,10 +308,9 @@ final class PickerController: ObservableObject {
         case .format: openFormatMenu()
         case .peek: togglePeek()
         case .membership: if let row = model.selection { model.toggleCitation(row) }
-        case .page: focusLocator()
-        case .details: showDetails()
-        case .focusCitation: if let item = model.citationItem { focusToken(item) }
-        case .remove: if let item = model.citationItem { removeToken(item) }
+        case .page, .details: edit()
+        case .focusCitation: pinned = pinned == nil ? (model.citationItem ?? addedOrder.last) : nil
+        case .remove: if let item = pinned ?? model.citationItem { model.remove(item); pinned = nil }
         case .typeCitation: model.toggleShorthand(); focusSearch()
         case .keepOrder: model.toggleKeepOrder()
         case .undo: model.undoChange()
@@ -399,9 +325,10 @@ final class PickerController: ObservableObject {
         return true
     }
 
-    func removeToken(_ item: ItemRef) {
+    func remove(_ item: ItemRef) {
         model.remove(item)
-        focusSearch()
+        if pinned == item { pinned = nil }
+        focusSearch(caretAtEnd: true)
     }
 
     func fixTitle(_ fix: PickerFix) -> String {
@@ -423,8 +350,7 @@ final class PickerController: ObservableObject {
         case .reloadLibrary: model.reload()
         case .clearSearch: model.query = ""; focusSearch()
         case .chooseFormat: openFormatMenu()
-        case .editLocator: focusLocator(status.item)
-        case .editCitation: showDetails(status.item)
+        case .editLocator, .editCitation: edit(status.item)
         case nil: break
         }
     }
@@ -452,10 +378,34 @@ final class PickerController: ObservableObject {
 
     // MARK: Menus (native NSMenu, opened at the control that owns them)
 
+    /// ⌘K: every command that can run now, grouped, with its key equivalent.
+    func openActionsMenu() {
+        let menu = NSMenu()
+        var group: String?
+        for command in PickerCommand.allCases where canRun(command) {
+            guard command != .remove || !membershipOwnsRemoval else { continue }
+            let action = describe(command)
+            if action.group != group {
+                if group != nil { menu.addItem(.separator()) }
+                menu.addItem(heading(action.group))
+                group = action.group
+            }
+            let item = PickerMenuItem(action.title) { [weak self] in self?.runCommand(command) }
+            if let key = command.menuKey {
+                item.keyEquivalent = key.key
+                item.keyEquivalentModifierMask = key.modifiers
+            }
+            if let checked = action.checked { item.state = checked ? .on : .off }
+            menu.addItem(item)
+        }
+        panel?.popUp(menu, at: anchors[.actions])
+        if panel?.pickerIsOpen == true, !choosingLibrary { focusSearch(caretAtEnd: true) }
+    }
+
     func openFormatMenu() {
         guard model.canChooseFormat, let scope = model.formatScope, let formats = model.catalog?.formats else { return }
         let menu = NSMenu()
-        menu.addItem(heading(model.formatContext))
+        if !model.formatContext.isEmpty { menu.addItem(heading(model.formatContext)) }
         let remember = scope.project == nil && model.formatOwner != nil
         if model.formatIsHeld {
             let usual = formats.first { $0.id == scope.format }?.name ?? PickerWords.text(.formatDefault)
@@ -484,7 +434,7 @@ final class PickerController: ObservableObject {
         }
         addFormats(formats, to: menu, remembering: remember)
         panel?.popUp(menu, at: anchors[.format])
-        focusSearch()
+        if panel?.pickerIsOpen == true { focusSearch(caretAtEnd: true) }
     }
 
     private func addFormats(_ formats: [PickerFormat], to menu: NSMenu, remembering: Bool) {
@@ -503,40 +453,7 @@ final class PickerController: ObservableObject {
         }
     }
 
-    func openLibraryMenu() {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        if let name = model.catalog?.library?.name {
-            menu.addItem(heading(name))
-            for command in [PickerCommand.openSource, .locateLibrary, .reload] where canRun(command) {
-                menu.addItem(menuItem(command))
-            }
-            menu.addItem(.separator())
-        }
-        menu.addItem(menuItem(.chooseLibrary))
-        panel?.popUp(menu, at: anchors[.library])
-        if panel?.pickerIsOpen == true, !choosingLibrary { focusSearch() }
-    }
-
-    func tokenMenu(_ item: ItemRef) -> NSMenu {
-        let menu = NSMenu()
-        menu.addItem(PickerMenuItem(PickerWords.text(.details)) { [weak self] in self?.showDetails(item) })
-        let remove = PickerMenuItem(PickerWords.text(.remove)) { [weak self] in self?.removeToken(item) }
-        menu.addItem(remove)
-        return menu
-    }
-
-    private func heading(_ title: String) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        return item
-    }
-
-    private func menuItem(_ command: PickerCommand) -> NSMenuItem {
-        let item = PickerMenuItem(describe(command).title) { [weak self] in self?.runCommand(command) }
-        item.isEnabled = canRun(command)
-        return item
-    }
+    private func heading(_ title: String) -> NSMenuItem { .sectionHeader(title: title) }
 }
 
 @MainActor

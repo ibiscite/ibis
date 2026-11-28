@@ -4,13 +4,17 @@ Search, list and the delivery bar ([design](../design.md#the-model)). The Inspec
 
 ## Native macOS app
 
-Built from the system's parts ([macOS recipe](macos.md#the-native-recipe)). The layout and behaviour follow the web picker below.
+Built from the system's parts ([macOS recipe](macos.md#the-native-recipe)). Like Spotlight it is one field, one list and one footer line; the maintainer chose it from A/B mock-ups on 2026-11-28.
 
-- **Header:** the bird in the lead column, then the query in 22 pt type, with no frame. Typed-citation mode adds an accent capsule before the query. Drag the header to move the window.
-- **Heading line:** the first section's name and its count. A problem or notice takes the line, with a warning symbol in the lead column and at most one fix as a link. The library button sits at the trailing edge. It shows its name, or only its symbol when space is short, and opens the library menu.
-- **Rows:** compact rows are 38 pt and comfortable rows are 50 pt. The kind symbol sits in the lead column. The title and the trailing year are on the first line. The byline, the longest that fits whole, and the match reason are on the second. In quick cite, the highlighted row takes the system selection colour. With a draft, the row uses the unemphasised selection colour and the emphasis moves to the delivery button. A check replaces the kind symbol on a staged reference. Holding ⌘ numbers the wholly visible rows. Click selects, ⌘-click adds and double-click delivers. ⌘Y opens a popover with the full record.
-- **Delivery bar:** the beak, the citation exactly as Return delivers it, Page (locator menu and field), Format, then Add or Remove, the delivery button with ↩ and More ⌘K. Each reference is a token on an accent tint. A focused token gets the system focus ring, and hovering or focusing shows its remove button. Click or ↓ opens its details in a popover: Before, After and Show as. At narrow widths the commands move to a second row.
-- **Actions (⌘K):** a panel on the menu material above the bar, as in Raycast. The search field is at the bottom, the actions are grouped by scope, and each shows its toggle state and shortcut. Arrows move the highlight, Return runs it, and Escape or ⌘K closes the panel and restores the earlier focus. Tab returns to search.
+- **Window:** 640 pt wide at 100 % text, not resizable. Its height follows the content: the field alone, then the list up to eight rows, then the footer.
+- **Field:** the bird in the lead column, then the query in 22 pt type, with no frame. Typed-citation mode adds an accent capsule before the query. Drag the field's row to move the window.
+- **List:** section headings in small secondary type. Rows have two lines: the title, then the byline that fits whole, the year and the match reason. Compact rows are 44 pt, comfortable 52 pt. The highlighted row takes the system selection colour while the keyboard acts on it. Hovering shows Add and Peek on the row; right-click lists the same. Holding ⌘ numbers the wholly visible rows and ⌘1 to ⌘9 cite one. Click selects, ⌘-click adds and double-click delivers.
+- **Several references:** ⇥ adds the highlighted result and clears the field. Added references sit first, under **In citation**, with a check and their page. ↑ from the first result reaches them, ⇧↑ and ⇧↓ reorder, and ⌫ in an empty field removes one. ↩ with a new search adds the highlighted result, then delivers.
+- **Page, prefix and suffix:** ↩ on an added reference, a click, or ⌘L opens its row in place with the locator menu and field, Before, After and Show as. ↩ or Esc closes it. Typing them with the search ("see shore 417") works too.
+- **Footer:** the format pop-up, the citation exactly as ↩ delivers it, the delivery (Paste into … or Copy) with ↩, and Actions ⌘K. A problem or notice takes one line above it, with at most one fix.
+- **Actions (⌘K):** a real `NSMenu` of every command that can run now, grouped, with its key equivalent and toggle state.
+- **Peek (⌘Y):** a popover beside the row with the full record.
+- **Empty states:** `ContentUnavailableView` with one primary action.
 
 The sections below describe the web picker and its design targets.
 

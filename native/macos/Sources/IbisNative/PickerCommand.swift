@@ -81,6 +81,9 @@ enum PickerCommand: CaseIterable {
         }
     }
 
+    /// The key equivalent a menu item shows for this command.
+    var menuKey: (key: String, modifiers: NSEvent.ModifierFlags)? { binding.map { ($0.key, $0.modifiers) } }
+
     static func matching(_ key: String?, modifiers: NSEvent.ModifierFlags) -> Self? {
         guard let key else { return nil }
         if (key == "+" || key == "="), modifiers == [.command] || modifiers == [.command, .shift] {

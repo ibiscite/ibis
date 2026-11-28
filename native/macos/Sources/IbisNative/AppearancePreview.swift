@@ -17,19 +17,16 @@ struct AppearancePreview: View {
             .frame(height: grid.header * 0.85)
             Divider()
             Text(PickerSectionKind.best.label)
-                .font(grid.font(12, .medium)).foregroundStyle(.secondary)
-                .padding(.leading, grid.lead)
-                .frame(height: grid.heading)
+                .font(grid.font(11, .semibold)).foregroundStyle(.secondary)
+                .padding(.leading, 18 * grid.s)
+                .frame(height: grid.heading, alignment: .bottom)
             ForEach(Array(Self.rows.enumerated()), id: \.offset) { index, row in
-                ResultRow(row: row, selected: index == 0, emphasized: index == 0, cited: index == 1,
-                          number: nil, density: density, grid: grid)
+                ResultRow(row: row, selected: index == 0, emphasized: index == 0, added: index == 1,
+                          note: index == 1 ? "p. 417" : nil, number: nil, density: density, grid: grid)
             }
             Spacer(minLength: 6 * grid.s)
         }
-        .background(SystemMaterial(material: .popover))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .environment(\.colorScheme, scheme ?? systemScheme)
         .allowsHitTesting(false)
         .accessibilityHidden(true)

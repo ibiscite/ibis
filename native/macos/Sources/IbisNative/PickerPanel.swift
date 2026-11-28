@@ -6,16 +6,15 @@ import SwiftUI
 
 /// A nonactivating panel takes text without replacing the captured application.
 /// It owns the window, its glass and the keyboard; SwiftUI draws the content.
+/// Like Spotlight it is not resizable: its width follows the text size and its
+/// height follows the content.
 @MainActor
 final class PickerPanel: NSPanel, NSWindowDelegate {
-    private static let preferred = CGSize(width: 720, height: 480)
-    private static let minimum = CGSize(width: 480, height: 360)
     let model: PickerModel
     let controller: PickerController
     private let host: NSHostingView<PickerView>
     private let glass: PickerGlass
     private let chooser: (URL?) -> Void
-    private let sizes: UserDefaults?
     private var display: NSScreen?
     private var shown = false
     private var commandHold: Task<Void, Never>?
@@ -30,15 +29,14 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         set { controller.choosingLibrary = newValue }
     }
 
-    init(model: PickerModel, sizes: UserDefaults? = nil, chooseLibrary: @escaping (URL?) -> Void) {
+    init(model: PickerModel, chooseLibrary: @escaping (URL?) -> Void) {
         self.model = model
-        self.sizes = sizes
         chooser = chooseLibrary
         controller = PickerController(model: model)
         host = NSHostingView(rootView: PickerView(model: model, controller: controller))
         glass = PickerGlass(content: host)
-        super.init(contentRect: NSRect(origin: .zero, size: Self.preferred),
-                   styleMask: [.borderless, .nonactivatingPanel, .resizable],
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 640, height: 56),
+                   styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
         controller.panel = self
         title = PickerWords.text(.panel)
@@ -116,11 +114,9 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     func dismiss(forDelivery: Bool = false) {
         guard shown else { return }
         shown = false
-        controller.layer = nil
-        controller.closeActions(restoring: false)
+        controller.reset()
         commandHold?.cancel()
         commandHold = nil
-        controller.showNumbers(false)
         model.dismiss(forDelivery: forDelivery)
         if forDelivery || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             orderOut(nil)
@@ -146,44 +142,34 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
 
     func windowDidResignKey(_ notification: Notification) {
         controller.panelKeyChanged(false)
-        // A popover takes the keyboard for its fields; the picker stays open beneath it.
-        if shown, !choosingLibrary, controller.layer == nil { dismiss() }
+        // Peek's popover takes the keyboard; the picker stays open beneath it.
+        if shown, !choosingLibrary, controller.peek == nil { dismiss() }
     }
 
-    func windowDidEndLiveResize(_ notification: Notification) {
-        guard let screen, let key = keyForDisplay(screen) else { return }
-        let scale = model.scale
-        sizes?.set([Double(frame.width / scale), Double(frame.height / scale)], forKey: key)
-    }
-
-    /// Opens a native menu under the control that owns it.
+    /// Opens a native menu at the control that owns it. Footer menus open upward.
     func popUp(_ menu: NSMenu, at anchor: CGRect?) {
-        let rect = anchor ?? CGRect(x: 16, y: host.bounds.height - 48, width: 0, height: 0)
-        let y = host.isFlipped ? rect.maxY + 4 : host.bounds.height - rect.maxY - 4
+        let rect = anchor ?? CGRect(x: 16, y: host.bounds.height - 40, width: 0, height: 0)
+        let top = host.isFlipped ? rect.minY : host.bounds.height - rect.minY
         menu.autoenablesItems = false
-        menu.popUp(positioning: nil, at: NSPoint(x: rect.minX, y: y), in: host)
+        menu.popUp(positioning: menu.items.last, at: NSPoint(x: rect.minX, y: top - 4), in: host)
     }
 
-    private func keyForDisplay(_ screen: NSScreen) -> String? {
-        let key = NSDeviceDescriptionKey("NSScreenNumber")
-        guard let id = (screen.deviceDescription[key] as? NSNumber)?.uint32Value,
-              let uuid = CGDisplayCreateUUIDFromDisplayID(id)?.takeRetainedValue() else { return nil }
-        let name = CFUUIDCreateString(nil, uuid) as String
-        return "IbisPickerSize-\(name)"
-    }
-
+    /// Spotlight's place: centred, a quarter down the screen, growing downward.
     private func place(on screen: NSScreen) {
         let area = screen.visibleFrame
-        let scale = model.scale
-        let saved = keyForDisplay(screen).flatMap { sizes?.array(forKey: $0) as? [Double] }
-        let base = saved.flatMap { $0.count == 2 ? NSSize(width: $0[0], height: $0[1]) : nil } ?? Self.preferred
-        maxSize = NSSize(width: area.width * 0.8, height: area.height * 0.8)
-        minSize = NSSize(width: min(Self.minimum.width * scale, maxSize.width),
-                         height: min(Self.minimum.height * scale, maxSize.height))
-        let width = min(maxSize.width, max(minSize.width, base.width * scale))
-        let height = min(maxSize.height, max(minSize.height, base.height * scale))
-        let top = min(area.maxY, max(area.minY + height, area.maxY - area.height / 4 + 26 * scale))
+        let grid = PickerGrid(s: model.scale)
+        let width = min(grid.width, area.width * 0.9)
+        let height = min(controller.height(grid), area.height * 0.8)
+        let top = min(area.maxY - 8, area.maxY - area.height / 4 + grid.header)
         setFrame(NSRect(x: area.midX - width / 2, y: top - height, width: width, height: height), display: true)
+    }
+
+    /// Keeps the top edge still while the content grows or shrinks.
+    func fitHeight() {
+        guard shown, let area = (screen ?? display)?.visibleFrame else { return }
+        let height = min(controller.height(PickerGrid(s: model.scale)), area.height * 0.8)
+        guard abs(height - frame.height) > 0.5 else { return }
+        setFrame(NSRect(x: frame.minX, y: frame.maxY - height, width: frame.width, height: height), display: true)
     }
 
     private func focusedDisplay(for app: NSRunningApplication?) -> NSScreen? {
@@ -245,9 +231,16 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
         }
     }
 
+    /// Return delivers what the footer shows. With references already added and a
+    /// result highlighted for a new search, that result joins the citation first.
     func submit(whenReady: Bool = false) {
-        guard !controller.actionsOpen else { return }
         if whenReady, controller.resolveLibraryIfNeeded() { return }
+        if model.hasDraft, !model.query.isEmpty, let row = model.selection, !model.isSelectionStaged,
+           model.canChangeSelectionMembership {
+            model.toggleCitation(row)
+            model.deliver(whenReady: true) { [weak self] in self?.dismiss(forDelivery: true) }
+            return
+        }
         model.deliver(whenReady: whenReady) { [weak self] in self?.dismiss(forDelivery: true) }
     }
 
@@ -281,25 +274,29 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     func routeKey(_ event: NSEvent) -> Bool {
         let responder = (event.window ?? self).firstResponder
         guard (responder as? NSTextInputClient)?.hasMarkedText() != true else { return false }
-        if controller.actionsOpen { return controller.actionKey(event) }
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let key = event.specialKey
         let character = event.charactersIgnoringModifiers?.lowercased()
-        let inSearch = controller.searchField?.hasFocus == true
-        if modifiers.isEmpty || modifiers == [.shift], character == "\t" || character == "\u{19}" {
-            if inSearch, modifiers.isEmpty, model.citationItem != nil { controller.focusLocator() }
-            else { controller.focusSearch() }
+        let isReturn = key == .carriageReturn || key == .enter
+        if controller.editing != nil {
+            // The fields in the row keep Tab and typing; Return and Escape close the row.
+            if modifiers.isEmpty, isReturn || character == "\u{1b}" {
+                if !event.isARepeat { controller.closeEditing() }
+                return true
+            }
+            if modifiers.isEmpty || modifiers == [.shift] { return false }
+        }
+        if character == "\t" || character == "\u{19}", modifiers.isEmpty || modifiers == [.shift] {
+            if modifiers.isEmpty, !event.isARepeat { controller.addSelection() }
             return true
         }
-        if key == .carriageReturn || key == .enter {
-            if modifiers == [.shift] {
+        if isReturn {
+            if modifiers == [.shift] || modifiers == [.option] {
                 controller.runCommand(.membership, repeating: event.isARepeat)
                 return true
             }
-            if modifiers.isEmpty || modifiers == [.option] {
-                if !event.isARepeat {
-                    if modifiers.contains(.option) { controller.runCommand(.membership) } else { submit(whenReady: true) }
-                }
+            if modifiers.isEmpty {
+                if !event.isARepeat { controller.returnKey() }
                 return true
             }
         }
@@ -307,24 +304,28 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
             if !event.isARepeat, !controller.escape() { dismiss() }
             return true
         }
+        let inSearch = controller.searchField?.hasFocus == true
         if inSearch, modifiers.isEmpty {
             if key == .upArrow || key == .downArrow {
                 controller.move(key == .upArrow ? -1 : 1)
                 return true
             }
-            if key == .delete, model.shorthand, model.query.isEmpty {
-                model.toggleShorthand()
-                return true
+            if key == .delete, model.query.isEmpty {
+                if model.shorthand { model.toggleShorthand(); return true }
+                if controller.deleteInEmptyField() { return true }
             }
         }
-        if modifiers.isEmpty || modifiers == [.shift],
-           controller.tokenKey(key, shift: modifiers.contains(.shift)) { return true }
+        if modifiers == [.shift], key == .upArrow || key == .downArrow,
+           controller.reorderPinned(key == .upArrow ? -1 : 1) { return true }
         if modifiers == [.command], character == "k" {
-            if !event.isARepeat { controller.showActions() }
+            if !event.isARepeat { controller.openActionsMenu() }
             return true
         }
         if modifiers == [.command], let character, let number = Int(character), (1...9).contains(number) {
-            controller.selectNumber(number)
+            if !event.isARepeat {
+                controller.selectNumber(number)
+                submit(whenReady: true)
+            }
             return true
         }
         guard let command = PickerCommand.matching(character, modifiers: modifiers) else { return false }
@@ -332,25 +333,24 @@ final class PickerPanel: NSPanel, NSWindowDelegate {
     }
 }
 
-/// The system's glass behind the picker: Liquid Glass on macOS 26, the popover
-/// material before it, and an opaque window with Reduce Transparency.
+/// The system's Liquid Glass behind the picker, and an opaque window with
+/// Reduce Transparency, as the system's own panels do.
 @MainActor
 private final class PickerGlass: NSView {
+    private static let corner: CGFloat = 26
     private let content: NSView
-    private var material: NSView?
+    private var glass: NSGlassEffectView?
     private var reduced: Bool?
-    private let corner: CGFloat
 
     init(content: NSView) {
         self.content = content
-        if #available(macOS 26.0, *) { corner = 26 } else { corner = 16 }
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = corner
+        layer?.cornerRadius = Self.corner
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
         if let host = content as? NSHostingView<PickerView> {
-            if #available(macOS 13.3, *) { host.safeAreaRegions = [] }
+            host.safeAreaRegions = []
             host.sizingOptions = []
         }
         refresh()
@@ -365,36 +365,21 @@ private final class PickerGlass: NSView {
         guard reduced != reduce else { return }
         reduced = reduce
         content.removeFromSuperview()
-        material?.removeFromSuperview()
-        material = nil
+        glass?.removeFromSuperview()
+        glass = nil
         if reduce {
             layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
             addSubview(content)
         } else {
             layer?.backgroundColor = NSColor.clear.cgColor
-            material = makeMaterial()
+            let view = NSGlassEffectView()
+            view.style = .regular
+            view.cornerRadius = Self.corner
+            view.contentView = content
+            addSubview(view)
+            glass = view
         }
         needsLayout = true
-    }
-
-    private func makeMaterial() -> NSView {
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            let glass = NSGlassEffectView()
-            glass.style = .regular
-            glass.cornerRadius = corner
-            glass.contentView = content
-            addSubview(glass)
-            return glass
-        }
-        #endif
-        let effect = NSVisualEffectView()
-        effect.material = .popover
-        effect.blendingMode = .behindWindow
-        effect.state = .active
-        addSubview(effect)
-        addSubview(content)
-        return effect
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -407,7 +392,7 @@ private final class PickerGlass: NSView {
 
     override func layout() {
         super.layout()
-        material?.frame = bounds
+        glass?.frame = bounds
         content.frame = bounds
     }
 }

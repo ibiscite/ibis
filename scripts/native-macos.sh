@@ -68,10 +68,13 @@ if [[ "$mode" == shots ]]; then
   out=${1:-"$root/target/native-macos/shots"}
   mkdir -p "$out"
   config=$(mktemp -d)
-  states=(results search draft details actions peek no-matches larger choose
+  states=(results search draft details peek no-matches larger choose
           settings-general settings-appearance settings-library)
+  # The picker takes keys without activating, so wait while someone is typing.
+  idle() { ioreg -c IOHIDSystem | awk '/HIDIdleTime/ {print int($NF / 1000000000); exit}'; }
   for appearance in light dark; do
     for state in "${states[@]}"; do
+      for _ in $(seq 60); do (( $(idle) >= 3 )) && break; sleep 1; done
       args=(--state "$state" --appearance "$appearance")
       [[ "$state" == choose ]] || args+=(--file "$review")
       log="$config/$state.log"

@@ -98,18 +98,3 @@ extension NSTextField {
         }
     }
 }
-
-/// The system's own material, as a SwiftUI background.
-struct SystemMaterial: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .menu
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = .withinWindow
-        view.state = .active
-        return view
-    }
-
-    func updateNSView(_ view: NSVisualEffectView, context: Context) { view.material = material }
-}

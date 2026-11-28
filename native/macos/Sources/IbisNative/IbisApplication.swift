@@ -40,7 +40,7 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
     private let engine = EngineClient(binary: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/ibis"))
     private lazy var model = PickerModel(engine: engine, file: launch.file)
     private lazy var panel: PickerPanel = {
-        let panel = PickerPanel(model: model, sizes: layoutDefaults) { [weak self] missing in
+        let panel = PickerPanel(model: model) { [weak self] missing in
             self?.chooseLibrary(missing: missing)
         }
         panel.openSettings = { [weak self] in self?.showSettings() }
@@ -52,9 +52,6 @@ private final class PickerApp: NSObject, NSApplicationDelegate {
         self?.model.applySettings(saved, resetTextSize: resetText)
     })
     private var previousApp: NSRunningApplication?
-    private var layoutDefaults: UserDefaults? {
-        ProcessInfo.processInfo.environment["IBIS_CONFIG_DIR"] == nil ? .standard : nil
-    }
     private let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let openItem = NSMenuItem(title: PickerWords.text(.open), action: #selector(toggle), keyEquivalent: "")
     private lazy var shortcuts: OpeningShortcuts = OpeningShortcuts(engine: engine, action: { [weak self] in

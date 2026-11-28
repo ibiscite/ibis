@@ -47,20 +47,17 @@ and a listed site. Search can
 explain closest, spelling and hidden-field matches. It shows the active source,
 title and byline, with recent citations for the captured
 app or source-added references when the query is empty. Use Up and Down to
-preview a reference or Return to deliver it. The selected quick-cite row uses
-the system accent. Once you add a reference, a check marks it in the list
-and the delivery button takes the accent. The list and tray stay in place
-while you build a draft. Add, ⇧↩ and ⌘-click hold a
-reference in a citation draft, which stays available while you keep searching.
-The outlined token is the one ⌘L and the Page field edit. Use the locator
-menu to choose a chapter or another locator type. ⌘T starts typed citations,
-where a semicolon completes a reference. Click a citation token or press ⌘I to
-edit Text before, Text after and Show as in a popover. Return runs the delivery
-action shown in the bar. Escape closes the popover, clears the query, then
-hides the picker.
-More (⌘K) searches actions for the current citation, library and app.
-Use the arrow keys and Return to choose an action, or Escape to return
-to the same field and draft.
+preview a reference or Return to deliver it. The highlighted row uses the
+system accent, and the footer shows exactly what Return delivers. Tab adds the
+highlighted reference to the citation and clears the field for the next one;
+added references sit first, under In citation. Up from the first result reaches
+them, Shift-Up and Shift-Down reorder them, and Delete in an empty field removes
+one. Return on an added reference, a click, or ⌘L opens its page, text before,
+text after and Show as in its row; Return or Escape closes it. Hovering a row
+shows Add and Peek, and right-click lists the same. ⌘T starts typed citations,
+where a semicolon completes a reference. Escape closes what is open, clears the
+query, then hides the picker. Actions (⌘K) opens a menu of every command that
+can run now.
 
 For automatic paste, use Pasting in Settings › General (⌘,). The switch saves your
 preference and the form shows whether macOS allows the paste. If access is
@@ -72,8 +69,8 @@ stored recent citation history contains reference identities. In Settings,
 Appearance updates a live sample as you change the theme, Rows and Larger Text.
 Use ⌘F to find a control by its name or task. Return jumps to the actual control
 on its page. The Ibis menu bar item also opens About Ibis.
-⌘+ and ⌘− temporarily scale the picker from 100% to 200%. The window keeps its
-size while you type and remembers edge resizing per display.
+⌘+ and ⌘− temporarily scale the picker from 100% to 200%. Like Spotlight the
+window is not resizable: its height follows the results.
 
 The existing nightly sets the functional baseline for the native app
 (maintainer, 2026-11-27). The next Settings work covers launch at login.

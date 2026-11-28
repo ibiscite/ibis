@@ -4,7 +4,7 @@ import AppKit
 /// `ready WINDOW` so `scripts/native-macos.sh shots` can capture that window.
 @MainActor
 enum ReviewState: String, CaseIterable {
-    case results, search, draft, details, actions, peek
+    case results, search, draft, details, peek
     case noMatches = "no-matches"
     case larger, choose
     case settingsGeneral = "settings-general"
@@ -42,11 +42,14 @@ enum ReviewState: String, CaseIterable {
                 await settle(model)
                 for row in model.rows.prefix(2) { model.toggleCitation(row) }
                 await settle(model)
-                if let item = model.citationItem { model.changeDetails(for: item) { $0.locator = "417" } }
+                if let item = model.citations.first?.row.id { model.changeDetails(for: item) { $0.locator = "417" } }
+                model.query = self == .draft ? "tide" : ""
                 await settle(model)
-                if self == .details { controller.showDetails() }
-            case .actions: controller.showActions()
-            case .peek: controller.togglePeek()
+                if self == .details, let item = model.citations.first?.row.id { controller.edit(item) }
+            case .peek:
+                model.query = "shore"
+                await settle(model)
+                controller.togglePeek()
             default: break
             }
             await settle(model)
