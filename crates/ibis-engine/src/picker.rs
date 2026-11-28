@@ -439,7 +439,16 @@ fn row(item: &SnapshotObject, language: Language) -> Option<PickerRow> {
             .flatten()
             .map(str::to_owned)
             // A CSL-JSON record's own id, without the snapshot's prefix.
-            .or_else(|| Some(record.id.key.strip_prefix("record:").unwrap_or(&record.id.key).to_owned())),
+            .or_else(|| {
+                Some(
+                    record
+                        .id
+                        .key
+                        .strip_prefix("record:")
+                        .unwrap_or(&record.id.key)
+                        .to_owned(),
+                )
+            }),
         full_byline,
         bylines,
         match_reasons: Vec::new(),

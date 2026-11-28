@@ -95,9 +95,13 @@ extern "C" fn ibis_native_capture(window_number: isize, expected_pid: i32) -> Ib
     let own = i32::try_from(std::process::id()).unwrap_or(i32::MAX);
     let (front, ()) = site::read(own, || {
         let mut front = macos::frontmost(&Host);
-        SELECTED.set(front.as_mut().and_then(|front| front.search.take()).map(capture::SelectedText::into_search));
-        let captured =
-            capture::captured(System::Macos, front, own).unwrap_or_else(|| Captured::unknown(System::Macos));
+        SELECTED.set(
+            front
+                .as_mut()
+                .and_then(|front| front.search.take())
+                .map(capture::SelectedText::into_search),
+        );
+        let captured = capture::captured(System::Macos, front, own).unwrap_or_else(|| Captured::unknown(System::Macos));
         TARGET.begin_presentation(Some(captured));
         ((), TARGET.captured_window())
     });
