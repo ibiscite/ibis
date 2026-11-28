@@ -977,14 +977,22 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
 }
 
 fn reads_attachment_text(matches: &ArgMatches) -> bool {
-    // `check` reads attachments to find quotations.
-    matches!(
-        matches.subcommand_name(),
-        Some("outline" | "read" | "find-in" | "check")
-    ) || matches
-        .subcommand_matches("call")
-        .and_then(|call| call.get_one::<String>("method"))
-        .is_some_and(|method| matches!(method.as_str(), "outline" | "read" | "find-in" | "check"))
+    // `check --quotes` reads attachments to find quotations.
+    let quotes = |params: Option<&String>| {
+        params.is_none_or(|params| serde_json::from_str::<Value>(params).is_ok_and(|params| params["quotes"] == true))
+    };
+    matches!(matches.subcommand_name(), Some("outline" | "read" | "find-in"))
+        || matches
+            .subcommand_matches("check")
+            .is_some_and(|check| check.get_flag("quotes"))
+        || matches.subcommand_matches("call").is_some_and(|call| {
+            match call.get_one::<String>("method").map(String::as_str) {
+                Some("outline" | "read" | "find-in") => true,
+                // Parameters on stdin are read later; allow for quotations.
+                Some("check") => quotes(call.get_one::<String>("params")),
+                _ => false,
+            }
+        })
 }
 
 /// The library options of this run, as they would be typed again.

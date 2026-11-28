@@ -118,7 +118,10 @@ left out. Nothing is guessed or paraphrased.
 
 A citation of several references passes when one of them holds the words on
 its cited page. Pages are printed pages, from the PDF's own labels, never
-the file's page numbers.
+the file's page numbers. A cited `12f` holds pages 12 and 13, `12ff` page 12
+on, `12a` page 12, and `i-iii` the Roman pages between; Roman and Arabic
+pages are never mixed. In Typst, the page is the supplement of a one-key
+citation, `@key[p. 12]` or `#cite(<key>, supplement: [p. 12])`.
 
 ## Co-authors on different managers
 

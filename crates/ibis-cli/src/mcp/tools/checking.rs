@@ -39,6 +39,7 @@ pub(super) fn check_output() -> Value {
             "citations": {"type": "integer"},
             "keys": {"type": "integer"},
             "complete": {"type": "boolean", "description": "The whole text was read; a text read in part never settles."},
+            "cites_everything": {"type": "boolean", "description": "\\nocite{*} cites the whole bibliography; only keys cited by name were checked."},
             "findings": {
                 "type": "array",
                 "items": {
@@ -97,6 +98,7 @@ pub(super) fn check(
                 "citations": read.citations,
                 "keys": read.keys,
                 "complete": read.complete,
+                "cites_everything": read.cites_everything,
                 "findings": read.findings.iter().take(MAX_FINDINGS).collect::<Vec<_>>(),
             });
             if more > 0 {

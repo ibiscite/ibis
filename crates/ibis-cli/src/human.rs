@@ -440,6 +440,9 @@ fn check_report(result: &CheckResult) -> String {
     if !checked.complete {
         report.push(cli("cli-check-incomplete", &[]));
     }
+    if checked.cites_everything {
+        report.push(cli("cli-check-cites-everything", &[]));
+    }
     report.join("\n")
 }
 

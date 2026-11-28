@@ -797,11 +797,18 @@ fn typst_text(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mu
             }
             match rest.starts_with("#cite(").then(|| typst(rest, work)).flatten() {
                 Some(read) => {
+                    // One key's `supplement: [p. 12]` is its locator.
+                    let arguments = &rest[..rest.len() - read.rest.len()];
+                    let locator = (read.keys.len() == 1)
+                        .then(|| arguments.split_once("supplement:"))
+                        .flatten()
+                        .and_then(|(_, after)| supplement(after.trim_start()));
                     let cites: Vec<Cite> = read
                         .keys
                         .iter()
                         .map(|key| Cite {
                             key: key.to_string(),
+                            locator: locator.clone(),
                             ..Cite::default()
                         })
                         .collect();
@@ -833,6 +840,8 @@ fn typst_text(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mu
                 narrative: true,
                 cites: vec![Cite {
                     key: key.to_owned(),
+                    // `@key[p. 12]`: the supplement right after the key.
+                    locator: supplement(&masked[start + 1 + key.len()..]),
                     ..Cite::default()
                 }],
                 quote: quote_before(masked, start, TextKind::Typst),
@@ -843,6 +852,16 @@ fn typst_text(text: &str, work: &mut Work<'_>, places: &mut Places<'_>, out: &mu
             return;
         }
     }
+}
+
+/// The locator a Typst supplement `[p. 12]` at the start of `text` gives:
+/// plain words only, on one line, as a person writes a page.
+fn supplement(text: &str) -> Option<Locator> {
+    let inside = text.strip_prefix('[')?;
+    let end = inside.find([']', '[', '\n', '#', '@'])?;
+    (inside[end..].starts_with(']') && end <= 200)
+        .then(|| locator::read_given(inside[..end].trim()))
+        .flatten()
 }
 
 // ---- Quotations ----

@@ -665,15 +665,87 @@ impl Engine {
 /// Whether printed page `page` is in a page locator such as `12`, `12-14`
 /// or `xii, 15`.
 fn on_page(locator: &str, page: &str) -> bool {
-    locator.split([',', '&']).map(str::trim).any(|part| {
+    let printed = page_number(page);
+    locator.split([',', '&', ';']).map(str::trim).any(|part| {
+        // A label such as `A-3` is a page, not a range.
+        if part == page {
+            return true;
+        }
+        // `12f` is this page and the next; `12ff` this page on.
+        let (part, more) = if let Some(part) = part.strip_suffix("ff.").or_else(|| part.strip_suffix("ff")) {
+            (part, u64::MAX)
+        } else if let Some(part) = part.strip_suffix("f.").or_else(|| part.strip_suffix('f')) {
+            (part, 1)
+        } else {
+            (part, 0)
+        };
         let mut ends = part.splitn(2, ['-', '\u{2013}', '\u{2014}']).map(str::trim);
         let (first, last) = (ends.next().unwrap_or_default(), ends.next());
-        match (first.parse::<u64>(), last.map(str::parse::<u64>), page.parse::<u64>()) {
-            (Ok(first), Some(Ok(last)), Ok(page)) => (first..=last.max(first)).contains(&page),
-            (Ok(first), None, Ok(page)) => first == page,
-            _ => first == page || last == Some(page),
+        if first == page || last == Some(page) {
+            return true;
         }
+        let (Some(first), Some((roman, page))) = (page_number(first), printed) else {
+            return false;
+        };
+        let last = match last.map(page_number) {
+            Some(Some(last)) => last,
+            Some(None) => return false,
+            None => (first.0, first.1.saturating_add(more)),
+        };
+        // Arabic and Roman pages are two sequences: `ii` is never page 2.
+        first.0 == roman && last.0 == roman && (first.1..=last.1.max(first.1)).contains(&page)
     })
+}
+
+/// A printed page as a number, and whether it is a Roman numeral: `12`,
+/// `12a` (a lettered part of page 12) or `xiv`.
+fn page_number(text: &str) -> Option<(bool, u64)> {
+    let text = text.trim();
+    let digits = text.trim_end_matches(|c: char| c.is_ascii_lowercase());
+    if !digits.is_empty() && digits.len() + 1 >= text.len() && digits.bytes().all(|b| b.is_ascii_digit()) {
+        return digits.parse().ok().map(|page| (false, page));
+    }
+    roman(text).map(|page| (true, page))
+}
+
+/// A Roman numeral's value, only when it is written the usual way.
+fn roman(text: &str) -> Option<u64> {
+    const NUMERALS: [(u64, &str); 13] = [
+        (1000, "m"),
+        (900, "cm"),
+        (500, "d"),
+        (400, "cd"),
+        (100, "c"),
+        (90, "xc"),
+        (50, "l"),
+        (40, "xl"),
+        (10, "x"),
+        (9, "ix"),
+        (5, "v"),
+        (4, "iv"),
+        (1, "i"),
+    ];
+    let lower = text.to_ascii_lowercase();
+    if lower.is_empty() || lower.len() > 16 || (lower != text && text.to_ascii_uppercase() != text) {
+        return None;
+    }
+    let (mut rest, mut value) = (lower.as_str(), 0);
+    for (amount, numeral) in NUMERALS {
+        while let Some(after) = rest.strip_prefix(numeral) {
+            value += amount;
+            rest = after;
+        }
+    }
+    // Written again from its value, the numeral must come out the same.
+    let mut again = String::new();
+    let mut left = value;
+    for (amount, numeral) in NUMERALS {
+        while left >= amount {
+            again.push_str(numeral);
+            left -= amount;
+        }
+    }
+    (rest.is_empty() && again == lower).then_some(value)
 }
 
 /// CSL-JSON records by citation key, without the file-local `id`.

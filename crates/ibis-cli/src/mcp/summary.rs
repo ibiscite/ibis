@@ -302,6 +302,9 @@ fn check(data: &Map<String, Value>) -> Vec<String> {
     if data.get("complete").and_then(Value::as_bool) == Some(false) {
         lines.push("Part of the text was not read, so the check does not settle.".to_owned());
     }
+    if data.get("cites_everything").and_then(Value::as_bool) == Some(true) {
+        lines.push("\\nocite{*} cites the whole bibliography; only keys cited by name were checked.".to_owned());
+    }
     lines
 }
 

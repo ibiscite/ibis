@@ -164,3 +164,31 @@ fn a_reference_set_locks_the_cited_records_for_co_authors() {
         (1, "Couldn’t read the manuscript: nothing is at that path.\n")
     );
 }
+
+#[test]
+fn a_following_page_or_typst_supplement_is_read_and_nocite_is_named() {
+    let project = Project::new("pages");
+    project.write(
+        "draft.md",
+        "Lee finds \u{201c}a brass lantern\u{201d} [@atlas2026, p. 1f].\n",
+    );
+    let (status, stdout, stderr) = project.run(&["check", "draft.md", "--quotes"]);
+    assert_eq!(
+        (status, stdout.as_str()),
+        (0, "Citations read: 1. Keys: 1. Problems: 0.\n"),
+        "{stderr}"
+    );
+    project.write("draft.typ", "Lee finds \"a brass lantern\" @atlas2026[p. 1].\n");
+    let (status, stdout, _) = project.run(&["check", "draft.typ", "--quotes"]);
+    assert_eq!(status, 1);
+    assert!(stdout.contains("not on the cited page; it is on 2"), "{stdout}");
+    project.write("draft.tex", "\\nocite{*} See \\cite{atlas2026}.\n");
+    let (status, stdout, _) = project.run(&["check", "draft.tex"]);
+    assert_eq!(
+        (status, stdout.as_str()),
+        (
+            0,
+            "Citations read: 1. Keys: 1. Problems: 0.\n\\nocite{*} cites the whole bibliography; only the keys cited by name were checked.\n"
+        )
+    );
+}

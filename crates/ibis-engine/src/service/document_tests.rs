@@ -378,3 +378,35 @@ fn a_quotation_is_checked_against_the_cited_page_of_the_source() {
         ]
     );
 }
+
+#[test]
+fn a_cited_page_holds_its_following_pages_lettered_parts_and_roman_ranges() {
+    for (locator, page) in [
+        ("12", "12"),
+        ("12-14", "13"),
+        ("12–14", "14"),
+        ("2f", "3"),
+        ("2f.", "2"),
+        ("2ff", "40"),
+        ("12a", "12"),
+        ("4, 9", "9"),
+        ("i-iii", "ii"),
+        ("IV", "iv"),
+        ("xii f", "xiii"),
+        ("A-3", "A-3"),
+    ] {
+        assert!(on_page(locator, page), "{locator} holds {page}");
+    }
+    for (locator, page) in [
+        ("12", "13"),
+        ("2f", "4"),
+        ("12-14", "15"),
+        ("ii", "2"),
+        ("2", "ii"),
+        ("i-iii", "iv"),
+        ("iiii", "iv"),
+        ("12ab", "12"),
+    ] {
+        assert!(!on_page(locator, page), "{locator} does not hold {page}");
+    }
+}
